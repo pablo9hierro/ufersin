@@ -11,15 +11,15 @@ sites de cliente (como o Sunset Tabas) continuam em repositórios próprios.
   página de status pós-checkout.
 - `backend/`: Rust + Axum + SQLx — cria a assinatura recorrente no Mercado
   Pago e guarda o cadastro do lojista.
-- Banco: **mesmo projeto Supabase** já usado por sunset/vrtech/juete, num
-  schema próprio (`ufersin`) — isolado dos outros por `search_path`, sem
-  precisar de um projeto Supabase novo.
+- Banco: **projeto Supabase próprio e dedicado** do ufersin (não é o
+  compartilhado do sunset/vrtech/juete) — usa o schema `public` padrão
+  direto, sem precisar de isolamento por schema.
 
 ## Como funciona a assinatura
 
 1. Lojista preenche o formulário em `/` (nome da loja, responsável,
    WhatsApp, e-mail).
-2. Backend cria o registro em `ufersin.subscribers` e chama a API do
+2. Backend cria o registro em `subscribers` e chama a API do
    Mercado Pago (`POST /preapproval`, com `auto_recurring` embutido e
    `status: "pending"`) — isso devolve um `init_point`, o link do checkout
    HOSPEDADO pelo Mercado Pago.
@@ -36,11 +36,11 @@ robusto pro volume que essa página tem.
 
 ## Setup
 
-### 1. Banco (Supabase — mesmo projeto dos outros sites)
+### 1. Banco (Supabase — projeto dedicado do ufersin)
 
-Não precisa rodar SQL manual: `cargo run` (ou o deploy no Railway) cria o
-schema `ufersin` e roda as migrations sozinho na primeira vez que sobe,
-igual o backend do Sunset Tabas já faz.
+Não precisa rodar SQL manual: `cargo run` (ou o deploy no Railway) roda as
+migrations sozinho na primeira vez que sobe, igual o backend do Sunset
+Tabas já faz.
 
 ### 2. Mercado Pago
 
@@ -53,7 +53,7 @@ backend roda em modo mock (não cobra nada de verdade, só testa o fluxo).
 ### 3. Backend (`backend/.env`, copie de `.env.example`)
 
 ```
-DATABASE_URL=<mesma connection string do projeto Supabase compartilhado>
+DATABASE_URL=<connection string do projeto Supabase dedicado do ufersin>
 MP_ACCESS_TOKEN=<token de produção ou teste do Mercado Pago>
 PLANO_VALOR_MENSAL=99.00
 BACK_URL=https://ufersin.vercel.app/obrigado

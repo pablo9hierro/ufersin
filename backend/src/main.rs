@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     let database_url = std::env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set (Postgres connection string, mesmo projeto Supabase do sunset/vrtech/juete)");
+        .expect("DATABASE_URL must be set (Postgres connection string do projeto Supabase dedicado do ufersin)");
 
     let mp_token = std::env::var("MP_ACCESS_TOKEN")
         .ok()
@@ -47,22 +47,12 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("BACK_URL não configurado — o lojista não vai ter pra onde voltar depois do checkout do Mercado Pago");
     }
 
-    // Mesmo projeto Supabase de sunset/vrtech/juete — isolado no próprio
-    // schema "ufersin" (search_path abaixo), sem risco de colidir com as
-    // tabelas dos outros sites.
+    // Projeto Supabase dedicado só pro ufersin (diferente do projeto
+    // compartilhado sunset/vrtech/juete) — sem outro site dividindo esse
+    // banco, não precisa de schema próprio: usa o "public" padrão direto.
     let connect_options = PgConnectOptions::from_str(&database_url)?;
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .after_connect(|conn, _meta| {
-            Box::pin(async move {
-                sqlx::query("SET search_path TO ufersin, public").execute(conn).await?;
-                Ok(())
-            })
-        })
-        .connect_with(connect_options)
-        .await?;
+    let pool = PgPoolOptions::new().max_connections(5).connect_with(connect_options).await?;
 
-    sqlx::query("CREATE SCHEMA IF NOT EXISTS ufersin").execute(&pool).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     let state = AppState {

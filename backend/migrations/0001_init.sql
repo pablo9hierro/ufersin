@@ -1,7 +1,5 @@
--- Uma linha por lojista assinante da plataforma ufersin. Fica no schema
--- "ufersin" do MESMO projeto Supabase compartilhado com sunset/vrtech/juete
--- (main.rs faz SET search_path TO ufersin, public — sem risco de colidir
--- com as tabelas dos outros schemas).
+-- Uma linha por lojista assinante da plataforma ufersin. Projeto Supabase
+-- dedicado (não compartilhado com sunset/vrtech/juete), schema "public" padrão.
 CREATE TABLE IF NOT EXISTS subscribers (
   id                     text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   loja_nome              text NOT NULL,
