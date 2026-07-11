@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  --color-uf-black: #0a0e17;
+  --color-uf-surface: #12182b;
+  --color-uf-surface-light: #1b2340;
+  --color-uf-blue: #4d7cff;
+  --color-uf-purple: #8b5cf6;
+  --color-uf-silver: #e7e9f5;
+  --color-uf-silver-dim: #9099b8;
+
+  --font-sans: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+:root {
+  --background: var(--color-uf-black);
+  --foreground: var(--color-uf-silver);
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-uf-black);
+  color: var(--color-uf-silver);
+  font-family: var(--font-sans);
+}
+
+.uf-bg {
+  background: linear-gradient(135deg, var(--color-uf-blue), var(--color-uf-purple));
+}
+.uf-text {
+  background: linear-gradient(135deg, var(--color-uf-blue), var(--color-uf-purple));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.input-field {
+  width: 100%;
+  background: var(--color-uf-surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.9rem;
+  padding: 0.75rem 1rem;
+  color: var(--color-uf-silver);
+  outline: none;
+  font-size: 0.9rem;
+}
+.input-field:focus {
+  border-color: var(--color-uf-blue);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.9rem;
+  font-weight: 700;
+  color: white;
+  background: linear-gradient(135deg, var(--color-uf-blue), var(--color-uf-purple));
+  transition: opacity 0.15s;
+}
+.btn-primary:hover {
+  opacity: 0.92;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error-msg {
+  color: #ff8a8a;
+  font-size: 0.8rem;
+}
+
+.label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-uf-silver-dim);
+  margin-bottom: 0.35rem;
+}
