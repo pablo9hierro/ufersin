@@ -31,4 +31,8 @@ pub struct AppState {
     /// send this key to the browser).
     pub supabase_url: Arc<String>,
     pub supabase_service_key: Arc<String>,
+    /// Chave compartilhada que autoriza a plataforma Rodoletas (ufersin/
+    /// backend) a chamar POST /internal/provision-tenant — nunca chega ao
+    /// navegador, é uma chamada backend-a-backend só.
+    pub internal_api_key: Arc<String>,
 }

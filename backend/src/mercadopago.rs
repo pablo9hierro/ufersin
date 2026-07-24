@@ -133,3 +133,34 @@ pub async fn get_subscription_status(state: &AppState, preapproval_id: &str) -> 
         .map_err(|e| AppError::Internal(format!("mercado pago parse error: {e}")))?;
     Ok(parsed.status.unwrap_or_else(|| "pending".to_string()))
 }
+
+/// Cancela a cobrança recorrente (PUT status:"cancelled") — chamado quando
+/// o assinante cancela pelo dashboard.
+pub async fn cancel_subscription(state: &AppState, preapproval_id: &str) -> Result<(), AppError> {
+    if preapproval_id.starts_with("mock-") {
+        return Ok(());
+    }
+    let token = state
+        .mp_token
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
+
+    let url = format!("https://api.mercadopago.com/preapproval/{preapproval_id}");
+    let resp = state
+        .http
+        .put(&url)
+        .bearer_auth(token)
+        .json(&json!({ "status": "cancelled" }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago cancel preapproval failed: {status} {text}");
+        return Err(AppError::Internal("failed to cancel subscription".to_string()));
+    }
+    Ok(())
+}

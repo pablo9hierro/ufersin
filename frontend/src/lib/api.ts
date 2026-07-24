@@ -1,3 +1,5 @@
+import { authStore } from './authStore'
+
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
 export class ApiError extends Error {
@@ -9,14 +11,22 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = authStore.getToken()
   let res: Response
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...options.headers },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
     })
   } catch {
     throw new ApiError(0, 'Não foi possível conectar ao servidor. Verifique sua internet ou tente novamente em instantes.')
+  }
+  if (res.status === 401) {
+    authStore.setToken(null)
   }
   if (!res.ok) {
     let message = `Erro ${res.status}`
@@ -28,27 +38,99 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(res.status, message)
   }
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
+
+export type PlanoCode = 'essential' | 'management' | 'premium'
+export type MetodoPagamento = 'pix' | 'cartao' | 'cartao_parcelado'
 
 export interface NovaAssinaturaInput {
   loja_nome: string
   responsavel_nome: string
   whatsapp: string
   email: string
+  senha: string
+  plano: PlanoCode
+  metodo: MetodoPagamento
 }
 
 export interface AssinaturaCriada {
   id: string
-  checkout_url: string
+  token: string
+  checkout_url: string | null
+  pix_qr_code: string | null
+  pix_qr_base64: string | null
 }
 
 export interface StatusAssinatura {
   status: 'pendente' | 'ativo' | 'pausado' | 'cancelado'
+  onboarding_status: 'aguardando_pagamento' | 'aguardando_onboarding' | 'provisionado'
+}
+
+export interface LoginInput {
+  email: string
+  senha: string
+}
+export interface LoginResponse {
+  token: string
+  loja_nome: string
+}
+
+export interface MeResponse {
+  id: string
+  loja_nome: string
+  responsavel_nome: string
+  whatsapp: string
+  email: string
+  email_verified: boolean
+  plano: PlanoCode
+  valor_mensal: number
+  status: 'pendente' | 'ativo' | 'pausado' | 'cancelado'
+  gateway: string
+  metodo_pagamento: string
+  slug: string | null
+  dominio: string | null
+  onboarding_status: 'aguardando_pagamento' | 'aguardando_onboarding' | 'provisionado'
+  tenant_id: string | null
+  assinante_desde: string
+  proxima_cobranca: string | null
+}
+
+export interface OnboardingInput {
+  nome_loja: string
+  categoria: string
+  whatsapp: string
+  endereco: string
+  logo_url?: string
+  cor_principal: string
+  banner_url?: string
+  slug: string
+}
+export interface OnboardingOutput {
+  tenant_id: string
+  slug: string
+  admin_login_hint: string
 }
 
 export const api = {
   criarAssinatura: (input: NovaAssinaturaInput) =>
     request<AssinaturaCriada>('/api/assinaturas', { method: 'POST', body: JSON.stringify(input) }),
   statusAssinatura: (id: string) => request<StatusAssinatura>(`/api/assinaturas/${id}/status`),
+
+  login: (input: LoginInput) => request<LoginResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
+  verificarEmail: (codigo: string) =>
+    request<{ email_verified: boolean }>('/api/auth/verificar-email', { method: 'POST', body: JSON.stringify({ codigo }) }),
+  reenviarVerificacao: () => request<{ sent: boolean }>('/api/auth/reenviar-verificacao', { method: 'POST' }),
+  esqueciSenha: (email: string) =>
+    request<{ sent: boolean }>('/api/auth/esqueci-senha', { method: 'POST', body: JSON.stringify({ email }) }),
+  redefinirSenha: (input: { email: string; codigo: string; nova_senha: string }) =>
+    request<{ reset: boolean }>('/api/auth/redefinir-senha', { method: 'POST', body: JSON.stringify(input) }),
+
+  me: () => request<MeResponse>('/api/me'),
+  mudarPlano: (novo_plano: PlanoCode) =>
+    request<{ plano: PlanoCode }>('/api/me/plano', { method: 'POST', body: JSON.stringify({ novo_plano }) }),
+  cancelar: () => request<{ status: string }>('/api/me/cancelar', { method: 'POST' }),
+
+  onboarding: (input: OnboardingInput) => request<OnboardingOutput>('/api/onboarding', { method: 'POST', body: JSON.stringify(input) }),
 }

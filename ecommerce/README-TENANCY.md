@@ -97,11 +97,23 @@ nas telas de admin (funcionários, motoboy, banner, CRM) — combinado
 também pra ficar pra depois, já que o pedido original marcou
 explicitamente "ainda não criar dashboard" nesta etapa.
 
-## Não confundir com a plataforma UFERSIN
+## Integração com a plataforma Rodoletas (feito)
 
 O que vende esse motor (landing, cadastro do lojista, cobrança, painel do
-assinante, onboarding, `/implantar`) é uma aplicação SEPARADA — vive em
-`ufersin/backend` e `ufersin/frontend` (a página de assinatura que já
-existia antes desta cópia), não aqui dentro de `ecommerce/`. Esse motor
-aqui é "o Ecommerce" que a plataforma vende, na terminologia usada pra
-descrever o projeto.
+assinante, onboarding) é uma aplicação SEPARADA — vive em `ufersin/backend`
+e `ufersin/frontend` (rebrandizada pra "Rodoletas"), não aqui dentro de
+`ecommerce/`. A integração entre os dois já existe:
+`routes/internal.rs::provision_tenant` (`POST /internal/provision-tenant`,
+autenticado por `INTERNAL_API_KEY` — nunca chamado pelo navegador) recebe a
+chamada da Rodoletas no fim do onboarding do lojista e cria
+Organization + Tenant + Subscription + o admin da loja numa transação só.
+O admin nasce com o MESMO hash de senha (Argon2) da conta Rodoletas do
+lojista — nenhuma senha em texto puro trafega entre os dois backends.
+
+**Limitação conhecida:** login de admin no frontend deste motor
+(`ecommerce/frontend/src/pages/admin/AdminLogin.tsx`) chama
+`supabase.rpc('admin_login', ...)` — a RPC do Supabase, não o endpoint JWT
+Rust (`routes/auth.rs`) — e essa RPC ainda não é tenant-aware (é Fase 1B,
+ver acima). Então mesmo com o admin já corretamente provisionado com a
+senha certa, login multi-tenant de verdade só passa a funcionar quando
+`sunset_admin_auth.sql` for portado.

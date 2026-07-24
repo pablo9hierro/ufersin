@@ -5,13 +5,25 @@ use std::sync::Arc;
 pub struct AppState {
     pub pool: PgPool,
     pub http: reqwest::Client,
+    pub jwt_secret: Arc<String>,
     /// None = modo mock (sem cobrança de verdade, só pra testar o fluxo
     /// sem uma conta Mercado Pago com o produto de assinaturas aprovado).
     pub mp_token: Arc<Option<String>>,
+    /// None = camada AbacatePay em modo mock — ver gateway.rs/
+    /// abacatepay_gateway.rs. Quando presente, PASSA a ser o gateway usado
+    /// por padrão pra assinaturas novas (Mercado Pago fica só pra quem já
+    /// assinou por ele).
+    pub abacatepay_token: Arc<Option<String>>,
     /// Preço padrão da assinatura mensal (R$), usado quando o formulário
     /// não especifica outro plano.
     pub valor_padrao: f64,
     /// Pra onde o Mercado Pago manda o lojista de volta depois de autorizar
     /// (ou desistir d)a assinatura no checkout hospedado deles.
     pub back_url: Arc<String>,
+    /// Base URL + chave compartilhada do motor de e-commerce
+    /// (ecommerce/backend) — usado só pra chamar POST
+    /// /internal/provision-tenant no fim do onboarding. Nunca exposto ao
+    /// navegador; é uma chamada backend-a-backend.
+    pub ecommerce_internal_url: Arc<String>,
+    pub ecommerce_internal_key: Arc<String>,
 }

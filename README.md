@@ -1,89 +1,100 @@
-# ufersin
+# Rodoletas
 
-Página de assinatura da plataforma ufersin — onde o dono de uma loja assina o
-plano mensal e autoriza a cobrança recorrente via Mercado Pago. Essa é a
-PLATAFORMA (o "SaaS de fábrica de sites"), não um site de loja específico —
-sites de cliente (como o Sunset Tabas) continuam em repositórios próprios.
-
-## Stack
-
-- `frontend/`: Vite + React + TS + Tailwind v4 — página de assinatura +
-  página de status pós-checkout.
-- `backend/`: Rust + Axum + SQLx — cria a assinatura recorrente no Mercado
-  Pago e guarda o cadastro do lojista.
-- Banco: **projeto Supabase próprio e dedicado** do ufersin (não é o
-  compartilhado do sunset/vrtech/juete) — usa o schema `public` padrão
-  direto, sem precisar de isolamento por schema.
-
-## Como funciona a assinatura
-
-1. Lojista preenche o formulário em `/` (nome da loja, responsável,
-   WhatsApp, e-mail).
-2. Backend cria o registro em `subscribers` e chama a API do
-   Mercado Pago (`POST /preapproval`, com `auto_recurring` embutido e
-   `status: "pending"`) — isso devolve um `init_point`, o link do checkout
-   HOSPEDADO pelo Mercado Pago.
-3. Frontend redireciona o lojista pra esse link. O Mercado Pago coleta
-   cartão/Pix/etc — a gente nunca lida com dado de pagamento diretamente
-   (fora do escopo de PCI compliance).
-4. Mercado Pago manda o lojista de volta pra `/obrigado?id=<id>`, que fica
-   consultando `GET /api/assinaturas/:id/status` (polling, mesmo padrão já
-   usado no Pix do Sunset Tabas) até o status virar `ativo`.
-
-Não tem webhook — o formato de webhook do Mercado Pago varia por produto e
-é uma fonte de bug difícil de depurar às cegas; polling é mais simples e
-robusto pro volume que essa página tem.
-
-## Setup
-
-### 1. Banco (Supabase — projeto dedicado do ufersin)
-
-Não precisa rodar SQL manual: `cargo run` (ou o deploy no Railway) roda as
-migrations sozinho na primeira vez que sobe, igual o backend do Sunset
-Tabas já faz.
-
-### 2. Mercado Pago
-
-Precisa de uma conta Mercado Pago com o produto **Assinaturas/Preapproval**
-aprovado (é diferente de só aceitar Pix avulso — confirme no painel deles,
-em "Suas integrações", que esse produto está disponível pra sua conta antes
-de configurar `MP_ACCESS_TOKEN` em produção). Sem o token configurado, o
-backend roda em modo mock (não cobra nada de verdade, só testa o fluxo).
-
-### 3. Backend (`backend/.env`, copie de `.env.example`)
+A plataforma SaaS que vende o "Ecommerce" (motor multi-tenant em `ecommerce/`,
+uma cópia do Sunset Tabas retrofitada pra atender centenas de lojas — ver
+`ecommerce/README-TENANCY.md`). A Rodoletas em si **não é uma loja** — é a
+landing, o cadastro/checkout, o dashboard do assinante e o onboarding que
+provisiona automaticamente um Tenant novo dentro do motor.
 
 ```
-DATABASE_URL=<connection string do projeto Supabase dedicado do ufersin>
-MP_ACCESS_TOKEN=<token de produção ou teste do Mercado Pago>
-PLANO_VALOR_MENSAL=99.00
-BACK_URL=https://ufersin.vercel.app/obrigado
-CORS_ORIGINS=https://ufersin.vercel.app
+backend/       Rust + Axum + SQLx — assinatura, auth, dashboard, onboarding
+frontend/      Vite + React + TS + Tailwind v4 + Framer Motion — landing, área logada
+ecommerce/     motor de e-commerce multi-tenant (o que a Rodoletas vende)
+supabase/      (não usado ainda por este app — reservado pra integração futura)
 ```
+
+## Fluxo completo
+
+```
+Landing (/) -> Escolher plano (#planos) -> Cadastro (/cadastro, é o checkout)
+  -> Pagamento (Pix ou cartão) -> /obrigado (polling de status)
+  -> Onboarding (/onboarding) -> POST /internal/provision-tenant no motor
+  -> Dashboard (/dashboard) -> "Entrar no painel da loja" (ecommerce/frontend)
+```
+
+- **Planos**: Essential R$60, Management R$250, Premium R$350 — mesmos
+  planos/preços definidos no motor (`ecommerce/backend/migrations/0005_tenancy.sql`).
+- **Pagamento**: Mercado Pago (funcionando, cartão) já em produção antes
+  desse SaaS; AbacatePay (Pix) preparado em modo mock — ver
+  `backend/src/gateway.rs`. Sem `MP_ACCESS_TOKEN`/`ABACATEPAY_API_KEY`
+  configurada, tudo roda em modo mock (não cobra nada de verdade).
+- **Onboarding -> Tenant**: ao finalizar o onboarding, este backend chama
+  `POST /internal/provision-tenant` no motor de e-commerce (chave
+  compartilhada `ECOMMERCE_INTERNAL_KEY`/`INTERNAL_API_KEY`), que cria
+  Organization + Tenant + Subscription + o admin da loja numa unica
+  transação. O admin da loja usa o **mesmo e-mail e senha** da conta
+  Rodoletas (o hash Argon2 é reaproveitado, a senha em si nunca trafega) —
+  ver `backend/src/routes/onboarding.rs`.
+
+## Setup local
+
+### 1. Banco — local por enquanto (Supabase vem depois)
 
 ```bash
 cd backend
-cargo run
+docker compose up -d   # Postgres na porta 5434
 ```
 
-### 4. Frontend (`frontend/.env`, copie de `.env.example`)
+O projeto Supabase dedicado do ufersin (`retmfoorwjwzuevaqlsr`) continua
+documentado em `backend/.env.example` pra quando a integração real
+acontecer — não usado agora, de propósito (mesma decisão já tomada pro
+motor de e-commerce).
 
-```
-VITE_API_BASE_URL=https://<seu-backend>.up.railway.app
-```
+### 2. Rodar os 3 backends/frontends (portas diferentes de propósito)
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# 1. Motor de e-commerce (porta 8080) — ver ecommerce/README.md
+cd ecommerce/backend && docker compose up -d && cargo run
+
+# 2. Backend Rodoletas (porta 8081)
+cd backend && cargo run
+
+# 3. Frontend Rodoletas (porta 5174)
+cd frontend && npm install && npm run dev
 ```
+
+Acesse `http://localhost:5174`. O frontend do motor de e-commerce
+(`ecommerce/frontend`, porta 5173) só é necessário se você for testar o
+"Entrar no painel da loja" depois do onboarding.
+
+### 3. Variáveis de ambiente
+
+Copie `backend/.env.example` -> `backend/.env` e `frontend/.env.example` ->
+`frontend/.env`. `ECOMMERCE_INTERNAL_KEY` (aqui) precisa ser IGUAL a
+`INTERNAL_API_KEY` (em `ecommerce/backend/.env`) — é a chave que autoriza a
+chamada de provisionamento entre os dois backends.
 
 ## Deploy
 
-- **Backend**: Railway (Nixpacks builda o Rust sozinho a partir do
-  `Cargo.toml`). Configure as env vars da seção 3 direto no Railway.
-- **Frontend**: Vercel, apontando `frontend/` como root do projeto
-  (`vercel.json` já tem o `rewrites` pra SPA). Configure
-  `VITE_API_BASE_URL` nas env vars do projeto Vercel.
+- **Frontend**: Vercel — `.github/workflows/deploy-vercel.yml` já faz deploy
+  automático em todo push pra `main` (precisa configurar os secrets
+  `VERCEL_TOKEN`/`VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` no repo, ver comentário
+  no topo do workflow).
+- **Backend**: Rust não roda na Vercel (precisa de processo sempre-ativo) —
+  vai pro Railway, igual o motor de e-commerce. Ainda não configurado.
+- **CI**: `.github/workflows/ci.yml` roda `cargo check` + `tsc`/`vite build`
+  em todo push/PR pra `main`, antes do deploy.
 
-⚠️ **Vercel Hobby (grátis) não permite uso comercial** — assim que isso
-virar operação real com clientes pagantes, migre pro plano Pro.
+## O que ainda falta
+
+- Domínio próprio por loja (hoje é só `<slug>.rodoletas.app`, e nem isso
+  está de fato roteado ainda — é só o texto mostrado no dashboard).
+- SSO de verdade entre a Rodoletas e o painel da loja (hoje é "mesmo
+  e-mail/senha", não um token único) — e mesmo isso só passa a funcionar
+  quando `ecommerce/supabase/sunset_admin_auth.sql` for portado pra
+  respeitar tenant (Fase 1B do motor, ver `ecommerce/README-TENANCY.md`).
+- Sincronizar upgrade/downgrade de plano com o valor cobrado de verdade no
+  gateway (hoje só troca o plano localmente — ver o TODO em
+  `backend/src/routes/me.rs`).
+- Envio real de e-mail/SMS pra verificação de conta e recuperação de senha
+  (hoje só loga o código no console do backend).

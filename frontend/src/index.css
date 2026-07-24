@@ -1,13 +1,14 @@
 @import "tailwindcss";
 
 @theme {
-  --color-uf-black: #0a0e17;
-  --color-uf-surface: #12182b;
-  --color-uf-surface-light: #1b2340;
+  --color-uf-black: #06070d;
+  --color-uf-surface: #10131f;
+  --color-uf-surface-light: #1a1f33;
   --color-uf-blue: #4d7cff;
   --color-uf-purple: #8b5cf6;
-  --color-uf-silver: #e7e9f5;
-  --color-uf-silver-dim: #9099b8;
+  --color-uf-pink: #ec4899;
+  --color-uf-silver: #eef0fa;
+  --color-uf-silver-dim: #97a0c2;
 
   --font-sans: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -18,21 +19,131 @@
   color-scheme: dark;
 }
 
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--color-uf-black);
   color: var(--color-uf-silver);
   font-family: var(--font-sans);
+  overflow-x: hidden;
 }
+
+::selection {
+  background: var(--color-uf-purple);
+  color: white;
+}
+
+/* ---------- brand ---------- */
 
 .uf-bg {
   background: linear-gradient(135deg, var(--color-uf-blue), var(--color-uf-purple));
 }
 .uf-text {
-  background: linear-gradient(135deg, var(--color-uf-blue), var(--color-uf-purple));
+  background: linear-gradient(135deg, var(--color-uf-blue), var(--color-uf-pink));
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
 }
+
+/* Mesh de fundo usado no Hero e em outras seções de destaque — três blobs
+   radiais borrados, parados (não anima; o Framer Motion cuida de tudo que
+   se move nesta página, isso aqui é só cenário). */
+.uf-mesh {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.uf-mesh::before,
+.uf-mesh::after,
+.uf-mesh > .uf-mesh-blob {
+  content: '';
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(120px);
+  opacity: 0.35;
+}
+.uf-mesh::before {
+  width: 32rem;
+  height: 32rem;
+  top: -8rem;
+  left: -6rem;
+  background: var(--color-uf-blue);
+}
+.uf-mesh::after {
+  width: 28rem;
+  height: 28rem;
+  bottom: -10rem;
+  right: -4rem;
+  background: var(--color-uf-purple);
+}
+.uf-mesh-blob {
+  width: 24rem;
+  height: 24rem;
+  top: 30%;
+  left: 45%;
+  background: var(--color-uf-pink);
+  opacity: 0.18;
+}
+
+/* ---------- glass ---------- */
+
+.uf-glass {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.uf-glass-hover {
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+.uf-glass-hover:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-2px);
+}
+
+/* ---------- layout ---------- */
+
+.uf-section {
+  position: relative;
+  padding: 6rem 1.25rem;
+}
+@media (min-width: 768px) {
+  .uf-section {
+    padding: 8rem 1.5rem;
+  }
+}
+.uf-container {
+  max-width: 72rem;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+.uf-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-uf-silver-dim);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+}
+
+/* ---------- forms ---------- */
 
 .input-field {
   width: 100%;
@@ -43,10 +154,25 @@ body {
   color: var(--color-uf-silver);
   outline: none;
   font-size: 0.9rem;
+  transition: border-color 0.15s;
 }
 .input-field:focus {
   border-color: var(--color-uf-blue);
 }
+
+.label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-uf-silver-dim);
+  margin-bottom: 0.35rem;
+}
+
+.error-msg {
+  color: #ff8a8a;
+  font-size: 0.8rem;
+}
+
+/* ---------- buttons ---------- */
 
 .btn-primary {
   display: inline-flex;
@@ -57,24 +183,44 @@ body {
   font-weight: 700;
   color: white;
   background: linear-gradient(135deg, var(--color-uf-blue), var(--color-uf-purple));
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, transform 0.15s;
 }
 .btn-primary:hover {
   opacity: 0.92;
+}
+.btn-primary:active {
+  transform: scale(0.98);
 }
 .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.error-msg {
-  color: #ff8a8a;
-  font-size: 0.8rem;
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.9rem;
+  font-weight: 600;
+  color: var(--color-uf-silver);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
-.label {
-  display: block;
-  font-size: 0.8rem;
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   color: var(--color-uf-silver-dim);
-  margin-bottom: 0.35rem;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+.btn-ghost:hover {
+  color: var(--color-uf-silver);
 }

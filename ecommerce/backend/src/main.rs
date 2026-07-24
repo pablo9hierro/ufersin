@@ -120,6 +120,15 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Autoriza a plataforma Rodoletas a chamar POST /internal/provision-tenant
+    // no fim do onboarding de um lojista novo — ver routes/internal.rs.
+    let internal_api_key = env_trimmed("INTERNAL_API_KEY");
+    if internal_api_key.is_empty() {
+        tracing::warn!(
+            "INTERNAL_API_KEY not set — /internal/provision-tenant will reject every request until it's configured"
+        );
+    }
+
     // Server-side only — used to upload product images to Supabase Storage
     // (bypasses RLS). Never expose SUPABASE_SERVICE_ROLE_KEY to the frontend.
     let supabase_url = env_trimmed("SUPABASE_URL");
@@ -173,6 +182,7 @@ async fn main() -> anyhow::Result<()> {
         frontend_public_url: Arc::new(frontend_public_url),
         supabase_url: Arc::new(supabase_url),
         supabase_service_key: Arc::new(supabase_service_key),
+        internal_api_key: Arc::new(internal_api_key),
     };
 
     // CORS_ORIGINS: comma-separated list of allowed frontend origins. Defaults
@@ -298,6 +308,11 @@ async fn main() -> anyhow::Result<()> {
         // Público de propósito: é a Evolution API chamando, não um usuário
         // logado. Fica fora do CORS layer não importar (não é um browser).
         .route("/api/webhooks/evolution", post(routes::webhooks::evolution_webhook))
+        // Backend-a-backend só (plataforma Rodoletas -> este motor),
+        // protegido por INTERNAL_API_KEY em vez de JWT de usuário — ver
+        // routes/internal.rs.
+        .route("/internal/health", get(routes::internal::health))
+        .route("/internal/provision-tenant", post(routes::internal::provision_tenant))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         // Axum's próprio default é 2MB — baixo demais pra banner de campanha
