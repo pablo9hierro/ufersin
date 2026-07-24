@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 import SunsetBackdrop from './components/SunsetBackdrop'
 import CustomerPageDecorations from './components/CustomerPageDecorations'
 import Landing from './pages/Landing'
+import LandingPadrao from './pages/LandingPadrao'
 import Catalogo from './pages/Catalogo'
 import ProdutoDetalhe from './pages/ProdutoDetalhe'
 import Carrinho from './pages/Carrinho'
@@ -49,9 +50,11 @@ function PdvFallback() {
 
 // Fundo fixo com o cenário pôr-do-sol só aparece nas páginas de cliente —
 // telas de staff (admin/motoboy/logins) continuam no fundo sólido de sempre.
+// /vitrine-padrao também fica de fora: é o tema PADRÃO (não-Sunset) pra
+// lojista sem layout personalizado, com identidade visual própria.
 function CustomerBackdrop() {
   const { pathname } = useLocation()
-  if (pathname.startsWith('/admin') || pathname.startsWith('/funcionarios')) return null
+  if (pathname.startsWith('/admin') || pathname.startsWith('/funcionarios') || pathname === '/vitrine-padrao') return null
   return <SunsetBackdrop />
 }
 
@@ -62,6 +65,11 @@ export default function App() {
       <CustomerPageDecorations />
       <Routes>
         <Route path="/" element={<Landing />} />
+        {/* Preview da vitrine PADRÃO (tema novo, não-Sunset) — vira a Home
+            de lojista sem layout personalizado quando o motor de
+            multi-tenancy no frontend estiver pronto; por enquanto só uma
+            rota fixa pra visualizar. */}
+        <Route path="/vitrine-padrao" element={<LandingPadrao />} />
         <Route path="/catalogo" element={<Catalogo />} />
         <Route path="/produto/:id" element={<ProdutoDetalhe />} />
         <Route path="/carrinho" element={<Carrinho />} />

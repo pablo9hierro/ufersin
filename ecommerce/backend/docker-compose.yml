@@ -1,3 +1,10 @@
+# `name:` explícito porque tanto este arquivo quanto backend/docker-compose.yml
+# do Rodoletas (ufersin/backend) vivem numa pasta chamada "backend" — sem
+# isso, o Docker Compose usa o nome da pasta como projeto por padrão e os
+# dois colidem no MESMO nome de container, cada `up -d` substituindo o
+# container do outro em vez de rodar lado a lado.
+name: sonset-ecommerce
+
 services:
   postgres:
     image: postgres:16-alpine

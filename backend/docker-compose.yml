@@ -1,3 +1,8 @@
+# `name:` explícito — ver o mesmo comentário em ecommerce/backend/docker-compose.yml
+# (as duas pastas se chamam "backend", que é o nome de projeto padrão do
+# Docker Compose sem isso, causando colisão de container entre os dois).
+name: rodoletas
+
 services:
   postgres:
     image: postgres:16-alpine

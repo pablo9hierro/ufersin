@@ -97,6 +97,7 @@ pub async fn criar_assinatura(
     .bind(plano)
     .bind(gateway_kind)
     .bind(valor)
+    .bind(&verification_code)
     .execute(&state.pool)
     .await?;
 

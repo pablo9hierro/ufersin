@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { Check } from 'lucide-react'
+import { Check, MousePointerClick } from 'lucide-react'
 import type { PlanoCode } from '../../lib/api'
 
 interface Plan {
@@ -100,6 +100,17 @@ export default function Pricing() {
               >
                 Assinar {plan.name}
               </Link>
+              <a
+                href={`/demo?plano=${plan.code}`}
+                target="_blank"
+                rel="noreferrer"
+                className={`mt-2 w-full py-2.5 text-xs flex items-center justify-center gap-1.5 ${
+                  plan.highlight ? 'text-white/80 hover:text-white' : 'text-uf-silver-dim hover:text-uf-silver'
+                }`}
+              >
+                <MousePointerClick className="w-3.5 h-3.5" />
+                Experimentar esse plano
+              </a>
             </motion.div>
           ))}
         </div>

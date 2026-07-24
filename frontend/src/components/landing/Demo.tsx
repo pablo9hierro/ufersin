@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { LayoutDashboard, Play, Smartphone, Store } from 'lucide-react'
+import { LayoutDashboard, MousePointerClick, Play, Smartphone, Store } from 'lucide-react'
 
 const SCREENS = [
   { icon: Store, label: 'Loja do cliente', desc: 'Catálogo, carrinho e checkout que seu cliente final vê.' },
@@ -31,23 +31,30 @@ export default function Demo() {
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mt-4">
             Veja a <span className="uf-text">Rodoletas</span> por dentro
           </h2>
+          <p className="mt-4 text-uf-silver-dim max-w-xl mx-auto">
+            Quer mexer de verdade? Testa o painel mockado e vê o que cada plano libera.
+          </p>
+          <a href="/demo" target="_blank" rel="noreferrer" className="btn-primary px-6 py-3 text-sm mt-6 inline-flex">
+            <MousePointerClick className="w-4 h-4" />
+            Testar demo
+          </a>
         </motion.div>
 
         <div className="grid lg:grid-cols-[1fr_1.4fr] gap-6 items-center">
-          <div className="flex lg:flex-col gap-3 order-2 lg:order-1">
+          <div className="grid grid-cols-3 lg:grid-cols-1 gap-3 order-2 lg:order-1">
             {SCREENS.map((s, i) => (
               <button
                 key={s.label}
                 onClick={() => setActive(i)}
-                className={`text-left flex items-start gap-3 p-4 rounded-2xl border transition-all ${
+                className={`min-w-0 text-left flex flex-col sm:flex-row items-center sm:items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-2xl border transition-all ${
                   active === i ? 'uf-glass border-white/20' : 'border-white/5 hover:border-white/10'
                 }`}
               >
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${active === i ? 'uf-bg' : 'bg-white/5'}`}>
-                  <s.icon className="w-5 h-5" />
+                <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${active === i ? 'uf-bg' : 'bg-white/5'}`}>
+                  <s.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <p className="font-semibold text-sm">{s.label}</p>
+                <div className="min-w-0 text-center sm:text-left">
+                  <p className="font-semibold text-xs sm:text-sm truncate">{s.label}</p>
                   <p className="text-xs text-uf-silver-dim mt-0.5 hidden sm:block">{s.desc}</p>
                 </div>
               </button>
@@ -61,7 +68,12 @@ export default function Demo() {
             transition={{ duration: 0.35 }}
             className="uf-glass rounded-3xl p-2 sm:p-3 order-1 lg:order-2"
           >
-            <div className="rounded-2xl bg-uf-surface aspect-video relative overflow-hidden flex items-center justify-center group cursor-pointer">
+            <a
+              href="/demo"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-2xl bg-uf-surface aspect-video relative overflow-hidden flex items-center justify-center group cursor-pointer"
+            >
               <div className="uf-mesh opacity-50" />
               <div className="relative z-10 flex flex-col items-center gap-3">
                 <div className="w-16 h-16 rounded-full uf-bg flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -69,7 +81,7 @@ export default function Demo() {
                 </div>
                 <p className="text-sm text-uf-silver-dim">{Screen.label}</p>
               </div>
-            </div>
+            </a>
           </motion.div>
         </div>
       </div>
