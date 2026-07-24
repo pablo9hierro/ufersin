@@ -167,6 +167,7 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     seed::seed_if_empty(&pool).await?;
+    seed::seed_demo_tenant(&pool).await?;
 
     let http = reqwest::Client::new();
 
@@ -206,6 +207,10 @@ async fn main() -> anyhow::Result<()> {
         // auth
         .route("/api/auth/admin/login", post(routes::auth::admin_login))
         .route("/api/auth/motoboy/login", post(routes::auth::motoboy_login))
+        // Demo pública da plataforma Rodoletas (/demo lá) — só enxerga o
+        // tenant fixo "loja-demo" seedado por seed::seed_demo_tenant,
+        // nunca uma loja real. Ver routes/demo.rs.
+        .route("/demo/tokens", get(routes::demo::demo_tokens))
         // public / customer-facing — catálogo e pedido em si são RPCs do
         // Supabase agora (ver supabase/*.sql); só sobra o que precisa de
         // segredo (Pix, WhatsApp).

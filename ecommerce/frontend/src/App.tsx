@@ -5,6 +5,7 @@ import SunsetBackdrop from './components/SunsetBackdrop'
 import CustomerPageDecorations from './components/CustomerPageDecorations'
 import Landing from './pages/Landing'
 import LandingPadrao from './pages/LandingPadrao'
+import DemoEntrar from './pages/DemoEntrar'
 import Catalogo from './pages/Catalogo'
 import ProdutoDetalhe from './pages/ProdutoDetalhe'
 import Carrinho from './pages/Carrinho'
@@ -70,6 +71,8 @@ export default function App() {
             multi-tenancy no frontend estiver pronto; por enquanto só uma
             rota fixa pra visualizar. */}
         <Route path="/vitrine-padrao" element={<LandingPadrao />} />
+        {/* Ponte da demo pública da Rodoletas — ver pages/DemoEntrar.tsx. */}
+        <Route path="/demo-entrar" element={<DemoEntrar />} />
         <Route path="/catalogo" element={<Catalogo />} />
         <Route path="/produto/:id" element={<ProdutoDetalhe />} />
         <Route path="/carrinho" element={<Carrinho />} />

@@ -101,7 +101,7 @@ export default function Pricing() {
                 Assinar {plan.name}
               </Link>
               <a
-                href={`/demo?plano=${plan.code}`}
+                href={`/demo/${plan.code}`}
                 target="_blank"
                 rel="noreferrer"
                 className={`mt-2 w-full py-2.5 text-xs flex items-center justify-center gap-1.5 ${
