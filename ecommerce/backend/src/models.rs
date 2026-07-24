@@ -1,0 +1,276 @@
+use serde::{Deserialize, Serialize};
+
+// ---------- Categories ----------
+
+#[derive(Debug, sqlx::FromRow, Serialize)]
+pub struct Category {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CategoryInput {
+    pub name: String,
+}
+
+// ---------- Products ----------
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct ProductRow {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub price: f64,
+    pub quantity: i64,
+    pub image_url: Option<String>,
+    pub category_id: Option<String>,
+    pub active: i64,
+    #[allow(dead_code)]
+    pub created_at: String,
+    pub category_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProductDto {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub price: f64,
+    pub quantity: i64,
+    pub image_url: Option<String>,
+    pub category_id: Option<String>,
+    pub category_name: Option<String>,
+    pub active: bool,
+}
+
+impl From<ProductRow> for ProductDto {
+    fn from(r: ProductRow) -> Self {
+        ProductDto {
+            id: r.id,
+            name: r.name,
+            description: r.description,
+            price: r.price,
+            quantity: r.quantity,
+            image_url: r.image_url,
+            category_id: r.category_id,
+            category_name: r.category_name,
+            active: r.active != 0,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProductInput {
+    pub name: String,
+    pub description: Option<String>,
+    pub price: f64,
+    pub quantity: i64,
+    pub image_url: Option<String>,
+    pub category_id: Option<String>,
+    #[serde(default)]
+    pub active: Option<bool>,
+}
+
+// ---------- Motoboys ----------
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct MotoboyRow {
+    pub id: String,
+    pub name: String,
+    pub phone: String,
+    pub email: String,
+    #[allow(dead_code)]
+    pub password_hash: String,
+    pub active: i64,
+    #[allow(dead_code)]
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MotoboyDto {
+    pub id: String,
+    pub name: String,
+    pub phone: String,
+    pub email: String,
+    pub active: bool,
+}
+
+impl From<MotoboyRow> for MotoboyDto {
+    fn from(r: MotoboyRow) -> Self {
+        MotoboyDto {
+            id: r.id,
+            name: r.name,
+            phone: r.phone,
+            email: r.email,
+            active: r.active != 0,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MotoboyInput {
+    pub name: String,
+    pub phone: String,
+    pub email: String,
+    pub password: Option<String>,
+    #[serde(default)]
+    pub active: Option<bool>,
+}
+
+// ---------- Orders ----------
+
+#[derive(Debug, sqlx::FromRow, Clone)]
+pub struct OrderRow {
+    pub id: String,
+    pub customer_id: String,
+    pub customer_name: String,
+    pub customer_whatsapp: String,
+    pub delivery_type: String,
+    pub neighborhood: Option<String>,
+    pub address: Option<String>,
+    pub payment_method: String,
+    pub payment_status: String,
+    pub status: String,
+    pub shipping_price: f64,
+    pub total: f64,
+    pub motoboy_id: Option<String>,
+    pub pix_payment_id: Option<String>,
+    pub pix_qr_base64: Option<String>,
+    pub pix_copia_cola: Option<String>,
+    pub customer_lat: Option<f64>,
+    pub customer_lng: Option<f64>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, sqlx::FromRow, Serialize, Clone)]
+pub struct OrderItemDto {
+    pub id: String,
+    pub product_id: String,
+    pub product_name: String,
+    pub unit_price: f64,
+    pub quantity: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OrderDto {
+    pub id: String,
+    pub customer_id: String,
+    pub customer_name: String,
+    pub customer_whatsapp: String,
+    pub delivery_type: String,
+    pub neighborhood: Option<String>,
+    pub address: Option<String>,
+    pub payment_method: String,
+    pub payment_status: String,
+    pub status: String,
+    pub shipping_price: f64,
+    pub total: f64,
+    pub motoboy_id: Option<String>,
+    pub pix_payment_id: Option<String>,
+    pub pix_qr_base64: Option<String>,
+    pub pix_copia_cola: Option<String>,
+    pub customer_lat: Option<f64>,
+    pub customer_lng: Option<f64>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub items: Vec<OrderItemDto>,
+}
+
+impl OrderDto {
+    pub fn from_row(row: OrderRow, items: Vec<OrderItemDto>) -> Self {
+        OrderDto {
+            id: row.id,
+            customer_id: row.customer_id,
+            customer_name: row.customer_name,
+            customer_whatsapp: row.customer_whatsapp,
+            delivery_type: row.delivery_type,
+            neighborhood: row.neighborhood,
+            address: row.address,
+            payment_method: row.payment_method,
+            payment_status: row.payment_status,
+            status: row.status,
+            shipping_price: row.shipping_price,
+            total: row.total,
+            motoboy_id: row.motoboy_id,
+            pix_payment_id: row.pix_payment_id,
+            pix_qr_base64: row.pix_qr_base64,
+            pix_copia_cola: row.pix_copia_cola,
+            customer_lat: row.customer_lat,
+            customer_lng: row.customer_lng,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            items,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateStatusInput {
+    pub status: String,
+    #[serde(default)]
+    pub payment_confirmed: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RequestLocationInput {
+    pub order_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SkippedOrder {
+    pub id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RequestLocationResult {
+    pub updated: Vec<OrderDto>,
+    pub skipped: Vec<SkippedOrder>,
+}
+
+// ---------- Auth ----------
+
+#[derive(Debug, Deserialize)]
+pub struct LoginInput {
+    /// Which tenant this login is for. Required for now because email is
+    /// only unique *within* a tenant (two stores can each have their own
+    /// admin@... account) and there's no subdomain/domain routing yet to
+    /// infer it automatically — the frontend will get this from the
+    /// subdomain once that's built (see ufersin's multi-tenancy plan) and
+    /// this field can stay, just pre-filled instead of typed.
+    pub tenant_slug: String,
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub token: String,
+    pub name: String,
+}
+
+// ---------- Financeiro ----------
+
+#[derive(Debug, Serialize)]
+pub struct StatusCount {
+    pub status: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TopProduct {
+    pub product_id: String,
+    pub product_name: String,
+    pub quantity_sold: i64,
+    pub revenue: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FinanceiroSummary {
+    pub total_revenue: f64,
+    pub total_orders: i64,
+    pub orders_by_status: Vec<StatusCount>,
+    pub top_products: Vec<TopProduct>,
+    pub recent_orders: Vec<OrderDto>,
+}

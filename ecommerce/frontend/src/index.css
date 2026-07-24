@@ -1,0 +1,2721 @@
+@import "tailwindcss";
+
+@theme {
+  --color-son-black: #081912;
+  --color-son-surface: #0f2b1d;
+  --color-son-surface-light: #1a4530;
+  --color-son-orange: #e08a3a;
+  --color-son-pink: #d5aa45;
+  --color-son-purple: #b57c27;
+  --color-son-gold: #ffd23d;
+  --color-son-silver: #ece4cf;
+  --color-son-silver-dim: #a79b7f;
+
+  --font-sans: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+:root {
+  --background: var(--color-son-black);
+  --foreground: var(--color-son-silver);
+  color-scheme: dark;
+}
+
+/* O Leaflet pinta a área do mapa com cinza claro (#ddd) por padrão até o
+   tile de verdade terminar de carregar — igual pro tile escuro "Dark
+   Matter" que a gente usa. Toda vez que uma parte nova do mapa entra na
+   tela (arrastando/dando zoom) e aquele tile ainda não baixou da CARTO,
+   aparece esse cinza claro por baixo por uma fração de segundo: é ISSO que
+   parecia "piscar entre claro e escuro" durante o gesto, não é o tile
+   trocando de cor. Fundo escuro aqui garante que qualquer brecha de
+   carregamento mostra escuro, nunca claro. */
+.leaflet-container {
+  background: #060a08;
+}
+
+/* Tile "Dark Matter" já é escuro de fábrica (ver lib/geo/mapa.ts), mas a
+   rua residencial nele é cinza ~40/255 sobre fundo ~12/255 — quase igual.
+   O contrast() do CSS gira em torno do meio-tom (50%): como AMBAS as cores
+   ficam bem abaixo dele, aumentar contrast() sozinho empurrava as duas
+   pra baixo, pra perto do preto, JUNTAS (testei com números reais: cinza
+   40 vira 6.8/255 com brightness 1.6 + contrast 1.9 — praticamente preto
+   igual o fundo, por isso não tinha jeito de ver rua nenhuma). A correção
+   de verdade é dar bastante brightness ANTES pra tirar as duas cores lá de
+   baixo, só DEPOIS o contrast tem "sobra" pra separar de verdade (mesma
+   conta, mas com brightness 3.5: o cinza da rua sobe pra ~147/255, bem
+   visível, e o fundo continua ~0, preto solido). */
+/* O filter mora nos TILES individuais (.leaflet-tile), não no pane pai —
+   com zoomSnap:0 (zoom contínuo, usado em todo mapa deste app), cada frame
+   do gesto de pinça reescala o PANE inteiro via transform pra simular o
+   zoom fracionário (os tiles de verdade só existem em zoom inteiro; o
+   fracionário é a textura atual esticada/encolhida). Isolar o pane na
+   própria camada de composição (tentativa anterior, will-change+translateZ
+   nele) não bastava: o filter continuava sendo recalculado a cada frame
+   EM CIMA desse escalonamento contínuo, e com brightness(3.5) — bem
+   extremo — qualquer artefato de reamostragem durante o scale virava um
+   branco estourado por cima do mapa inteiro até o dedo soltar (aí sim o
+   Leaflet assenta no zoom final e troca pelos tiles de verdade). Com o
+   filter já "assado" em cada tile ANTES do pane escalar, o gesto só
+   estica um bitmap já filtrado — escala pura, sem recalcular filter em
+   cada frame. */
+.leaflet-tile-pane .leaflet-tile {
+  filter: brightness(3.5) contrast(1.6) saturate(1.4);
+  will-change: filter;
+}
+
+/* Atribuição do OSM/CARTO é obrigatória pelos termos de uso dos tiles
+   grátis — não dá pra tirar, mas não precisa ser um botão clicável
+   chamativo no meio da tela. Fica pequena, apagada e sem clique. */
+.leaflet-control-attribution {
+  font-size: 8px;
+  line-height: 1.4;
+  opacity: 0.4;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  padding: 1px 4px;
+  pointer-events: none;
+}
+.leaflet-control-attribution a {
+  pointer-events: none;
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Modo claro, hoje só usado no dashboard do motoboy (o atributo fica no
+   container raiz de MotoboyLayout). Redefinir os tokens de cor aqui já
+   cobre a maior parte da UI por cascata normal de custom property; o resto
+   abaixo cobre classes literais que várias telas do motoboy usam direto,
+   inclusive as que vêm de @apply dentro de @layer components (uma regra
+   sem layer, como esta, sempre vence uma regra em layer). */
+[data-theme='light'] {
+  --color-son-black: #faf6ee;
+  --color-son-surface: #ffffff;
+  --color-son-surface-light: #f2ece0;
+  --color-son-silver: #241b0f;
+  --color-son-silver-dim: #6f6353;
+  color-scheme: light;
+}
+
+/* Cada regra cobre DOIS casos: a classe num descendente do container com
+   data-theme (o normal) E a classe no PRÓPRIO elemento que carrega
+   data-theme (ex.: o container raiz de MotoboyLayout tem os dois atributos
+   ao mesmo tempo — um combinador de descendente sozinho NUNCA casa um
+   elemento contra ele mesmo, então sem a versão composta a cor herdada por
+   tudo que não define a própria cor ficava presa em branco). */
+[data-theme='light'] [class~='text-white'],
+[data-theme='light'][class~='text-white'] {
+  color: var(--color-son-silver);
+}
+
+[data-theme='light'] [class~='bg-white/10'],
+[data-theme='light'][class~='bg-white/10'] {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='light'] [class~='border-white/5'],
+[data-theme='light'][class~='border-white/5'] {
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='light'] [class~='border-white/10'],
+[data-theme='light'][class~='border-white/10'] {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='light'] [class~='divide-white/5'] > :not(:last-child) {
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='light'] .glass {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='light'] .btn-secondary {
+  color: var(--color-son-silver);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='light'] .input-field {
+  color: var(--color-son-silver);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(120% 120% at 50% -10%, #173d28 0%, #081912 55%), var(--background);
+  background-attachment: fixed;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: var(--color-son-pink);
+  color: #081912;
+}
+
+.sunset-text {
+  background: linear-gradient(90deg, var(--color-son-orange), var(--color-son-pink) 55%, var(--color-son-purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sunset-bg {
+  background: linear-gradient(135deg, var(--color-son-orange), var(--color-son-pink) 55%, var(--color-son-purple));
+}
+
+.glow-sm {
+  box-shadow: 0 0 8px 0 rgba(242, 193, 78, 0.16);
+}
+
+.glow {
+  box-shadow: 0 0 16px 2px rgba(242, 193, 78, 0.16), 0 0 40px 8px rgba(201, 138, 44, 0.1);
+}
+
+/* Uiverse.io by dovatgabriel — na referência o card sob :hover crescia
+   (flex:2) e os outros ficavam pequenos. Adaptado pro carrossel de
+   cupons em /cliente/cupons: sem hover no celular, então é o card mais
+   perto do centro do scroll (calculado em CuponsCliente.tsx a cada
+   evento de scroll) que vira "principal" — cresce e volta à opacidade
+   cheia — enquanto os outros encolhem/apagam um pouco. */
+.sunset-coupon-card {
+  transition: transform 0.35s ease, opacity 0.35s ease;
+  transform: scale(0.86);
+  opacity: 0.5;
+}
+.sunset-coupon-card-active {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.glass {
+  background: rgba(15, 43, 29, 0.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Só o card do mapa de rastreio na landing — opacidade do .glass (0.65)
+   dobrada (vira praticamente opaco). Classe própria, não mexe no
+   .glass compartilhado com o resto do site. */
+.sunset-feature-card-solid {
+  background: rgba(15, 43, 29, 1);
+}
+
+/* Custom component classes live in the "components" layer (below Tailwind's
+   "utilities" layer) so that utility classes appended after them in a
+   className (e.g. `input-field w-24`) correctly win, instead of this
+   unlayered CSS always overriding them regardless of source order. */
+@layer components {
+  .btn-primary {
+    /* text-white deliberately left out of @apply: Tailwind v4 compiles @apply
+       utilities into the "utilities" cascade layer even inside a component
+       class, so a plain `color` declared below (this layer) would lose to a
+       `text-white` from @apply regardless of source order. Setting the dark
+       color directly (no competing utility) avoids that entirely. */
+    @apply font-semibold py-3 px-6 rounded-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 hover:brightness-110 hover:scale-[1.02] active:scale-[0.98];
+    background: linear-gradient(135deg, var(--color-son-orange), var(--color-son-pink) 55%, var(--color-son-purple));
+    box-shadow: 0 0 8px 0 rgba(242, 193, 78, 0.16);
+    color: #081912;
+  }
+
+  .btn-secondary {
+    @apply bg-son-surface-light text-white font-semibold py-3 px-6 rounded-2xl border border-white/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 hover:border-son-pink/40;
+  }
+
+  .btn-outline {
+    @apply border-2 border-son-pink text-son-pink font-semibold py-3 px-6 rounded-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 hover:text-white hover:border-transparent;
+  }
+  .btn-outline:hover {
+    background: linear-gradient(135deg, var(--color-son-orange), var(--color-son-pink) 55%, var(--color-son-purple));
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-2xl border border-white/10 bg-son-surface focus:border-son-pink focus:ring-2 focus:ring-son-pink/20 outline-none transition-all duration-200 text-white placeholder-son-silver-dim;
+  }
+
+  .label {
+    @apply block text-sm font-semibold text-son-silver/80 mb-1.5;
+  }
+
+  .error-msg {
+    @apply text-son-pink text-xs mt-1;
+  }
+}
+
+/* From Uiverse.io by Shoh2008 — só o campo/botão do checkout ganham esse
+   visual (não o .input-field/.btn-primary inteiro, usados em outras 18
+   páginas). Fora de @layer de propósito: estilo sem @layer sempre vence
+   sobre @apply dentro de @layer components no Tailwind v4, então isso
+   sobrepõe o .input-field/.btn-primary sem precisar de !important (mesmo
+   motivo documentado acima no .btn-primary). Cor "orange" da referência
+   já É a cor de destaque do site — mantida literal, sem recolorir. */
+.sunset-checkout-input {
+  border: 2px solid var(--color-son-orange);
+  background: transparent;
+  transition: background 0.35s ease, color 0.35s ease;
+}
+.sunset-checkout-input:focus {
+  background: var(--color-son-orange);
+  color: var(--color-son-black);
+  box-shadow: none;
+}
+.sunset-checkout-input::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+.sunset-checkout-input:focus::placeholder {
+  color: rgba(8, 25, 18, 0.6);
+}
+
+/* Botão que abre a lista de cupons exclusivos do cliente no checkout —
+   visual dourado próprio (diferente do .btn-secondary cinza padrão) pra
+   deixar claro que é uma vantagem especial, não só um botão genérico de
+   formulário. */
+.sunset-coupon-select-btn {
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  border: 2px solid var(--color-son-gold);
+  background: rgba(255, 210, 61, 0.08);
+  color: var(--color-son-gold);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.sunset-coupon-select-btn:hover:not(:disabled) {
+  background: var(--color-son-gold);
+  color: var(--color-son-black);
+}
+.sunset-coupon-select-btn-open {
+  background: var(--color-son-gold);
+  color: var(--color-son-black);
+}
+.sunset-coupon-select-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Uiverse.io by Yaya12085 — ícone dentro do canto do campo (era e-mail/
+   cadeado num form claro; aqui é usuário/telefone/nota, recolorido pro
+   dourado do site em vez do cinza #9CA3AF original, layout/posição
+   idênticos ao da referência). */
+.sunset-input-icon-wrap {
+  position: relative;
+}
+.sunset-input-icon {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: grid;
+  place-content: center;
+  padding: 0 0.9rem;
+  pointer-events: none;
+  color: var(--color-son-gold);
+  opacity: 0.75;
+}
+.sunset-input-icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.sunset-checkout-input:focus ~ .sunset-input-icon {
+  color: var(--color-son-black);
+  opacity: 0.85;
+}
+.sunset-checkout-submit {
+  background: var(--color-son-orange);
+  color: #fff;
+}
+.sunset-checkout-submit:hover,
+.sunset-checkout-submit:focus-visible {
+  background: var(--color-son-gold);
+  color: var(--color-son-black);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* From Uiverse.io by umerhassaan — cores/gradiente trocados pra paleta
+   sunset (era cinza/azul). Roda sempre (não só no :hover): o site é
+   majoritariamente acessado no celular, que não tem hover. O "padding: 2px"
+   no wrapper + a cor sólida no filho de dentro é o que faz o gradiente
+   animado do ::before aparecer só como uma BORDA fina, não preencher tudo. */
+.sunset-shine-badge {
+  position: relative;
+  display: inline-block;
+  border-radius: 100px;
+  padding: 2px;
+  overflow: hidden;
+  isolation: isolate;
+}
+.sunset-shine-badge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 400%;
+  height: 100%;
+  background: linear-gradient(115deg, var(--color-son-gold), var(--color-son-orange), var(--color-son-pink));
+  background-size: 25% 100%;
+  animation: sunset-shine-slide 2.5s linear infinite;
+  translate: -5% 0%;
+  transition: translate 0.25s ease-out;
+}
+.sunset-shine-badge:hover::before {
+  translate: 0% 0%;
+}
+@keyframes sunset-shine-slide {
+  to {
+    transform: translateX(-25%);
+  }
+}
+.sunset-shine-badge-inner {
+  position: relative;
+  display: block;
+  border-radius: 100px;
+  height: 100%;
+  background: rgba(15, 43, 29, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* From Uiverse.io by KhelVers — cores trocadas pra paleta sunset (era
+   ciano/azul neon). Cartão "flutuando" com brilho quente por dentro/fora,
+   pro card de login não ficar tão seco quanto um glass panel comum. */
+@keyframes sunset-login-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(8px);
+  }
+}
+.sunset-login-card {
+  position: relative;
+  animation: sunset-login-float 3s ease-in-out infinite;
+  border: 3px solid rgba(255, 210, 61, 0.45);
+  background: rgba(15, 43, 29, 0.55);
+  box-shadow:
+    0 0 60px 0 rgba(224, 138, 58, 0.35) inset,
+    0 0 24px rgba(255, 210, 61, 0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Cartão dos itens da aba "🔥 Promoção" do catálogo — cor/estilo adaptado
+   da referência Uiverse.io by ashwin_5681, mas em grade estática (a
+   esteira automática que rolava sozinha foi removida a pedido). */
+.sunset-promo-card {
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  background: var(--color-son-surface);
+  color: #fff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Uiverse.io by Javierrocadev — card com "tela" (screen) branca por
+   dentro que ganha um brilho passando de raspão, halo laranja borrado
+   atrás, e um rodapé título+subtítulo+seta. Na referência a tela
+   revelava 3 botões deslizando ao :hover; aqui a tela mostra a imagem
+   real do banner/promoção e o brilho vira loop automático contínuo
+   (mobile não tem hover) — o carrossel continua sendo UM card só que
+   troca de conteúdo sozinho (ver activeIndex no Landing.tsx). */
+.sunset-book-row {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  /* Espaço até o botão "Ver catálogo" reduzido em 75% (era 2.5rem).
+     Espaço até o navbar acima também reduzido bastante (era 3.5rem). */
+  padding: 1rem 1.5rem 0.625rem;
+}
+.sunset-jcard {
+  position: relative;
+  flex: 0 0 auto;
+  /* Proporcional a 1200x600 (2:1) — a imagem real do banner/promoção é
+     nesse formato paisagem, não retrato. */
+  width: min(340px, calc(100vw - 3rem));
+  aspect-ratio: 2 / 1;
+  border-radius: 0.9rem;
+  background-color: #3d3c3d;
+  box-shadow: 0 20px 45px -12px rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  overflow: hidden;
+  /* Deixa o gesto vertical (rolagem da página) passar direto pro browser
+     e só captura o horizontal via pointer events (swipe manual). */
+  touch-action: pan-y;
+}
+.sunset-jcard-glow {
+  position: absolute;
+  z-index: 0;
+  width: 13rem;
+  height: 11rem;
+  border-radius: 9999px;
+  background: var(--color-son-orange);
+  filter: blur(50px);
+  opacity: 0.6;
+  animation: sunset-jcard-glow-drift 6s ease-in-out infinite;
+}
+@keyframes sunset-jcard-glow-drift {
+  0%,
+  100% {
+    top: 65%;
+    left: -35%;
+  }
+  50% {
+    top: 0%;
+    left: 25%;
+  }
+}
+.sunset-jcard-inner {
+  position: absolute;
+  inset: 2px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.425rem;
+  border-radius: 0.7rem;
+  background-color: rgba(50, 49, 50, 0.92);
+  padding: 0.6rem;
+  color: #fff;
+}
+.sunset-jcard-screen {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 0.55rem;
+  background-color: #fff;
+  background-size: cover;
+  background-position: center;
+}
+.sunset-jcard-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(8, 25, 18, 0.8), rgba(8, 25, 18, 0.05) 55%);
+}
+.sunset-jcard-screen::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 45%;
+  height: 100%;
+  z-index: 2;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: sunset-jcard-sweep 3.4s ease-in-out infinite;
+}
+@keyframes sunset-jcard-sweep {
+  0% {
+    left: -60%;
+  }
+  60%,
+  100% {
+    left: 130%;
+  }
+}
+.sunset-jcard-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.sunset-jcard-footer-text p:first-child {
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+.sunset-jcard-footer-text p:last-child {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+.sunset-jcard-arrow {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  color: var(--color-son-gold);
+  animation: sunset-jcard-arrow-nudge 1.8s ease-in-out infinite;
+}
+@keyframes sunset-jcard-arrow-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translateX(4px);
+    opacity: 1;
+  }
+}
+
+/* Estilo alternativo do carrossel da landing (escolhido em
+   /admin/promocoes): card inspirado em Uiverse.io by 05akalan57 (base
+   escura + halo borrado no canto), recolorido pro tema. A faixa inteira
+   (todos os cards) desliza pra esquerda — um card por vez em tela, 3s
+   cada — e também aceita arrastar manualmente (swipe via pointer events
+   em Landing.tsx), em loop pros dois lados. */
+.sunset-slide-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+.sunset-slide-carousel {
+  position: relative;
+  width: min(340px, calc(100vw - 3rem));
+  aspect-ratio: 2 / 1;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 20px 45px -12px rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.sunset-slide-track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.5s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.sunset-slide-card {
+  position: relative;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  background-color: #1a1611;
+  overflow: hidden;
+}
+.sunset-slide-card-halo {
+  position: absolute;
+  z-index: 0;
+  width: 65%;
+  height: 70%;
+  left: -25%;
+  top: -25%;
+  background: var(--color-son-gold);
+  filter: blur(50px);
+  opacity: 0.5;
+}
+.sunset-slide-card-inner {
+  position: absolute;
+  z-index: 1;
+  inset: 3px;
+  border-radius: calc(1rem - 3px);
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.sunset-slide-card-inner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(8, 25, 18, 0.88) 0%, rgba(8, 25, 18, 0.2) 45%, transparent 72%);
+}
+.sunset-slide-card-footer {
+  position: relative;
+  z-index: 1;
+  padding: 0.75rem 0.9rem;
+  color: #fff;
+}
+.sunset-slide-card-footer p:first-child {
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+.sunset-slide-card-footer p:last-child {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 1px;
+}
+.sunset-slide-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.sunset-slide-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.25);
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+.sunset-slide-dot-active {
+  width: 16px;
+  background: var(--color-son-gold);
+}
+
+/* Layout por página de cliente (/admin/layout-cliente): imagem de fundo +
+   elementos decorativos de fumaça/fogo posicionados em % da tela
+   (viewport), fixos atrás do conteúdo mas na frente do fundo global do
+   site (SunsetBackdrop, -z-10). */
+.sunset-page-decor-bg-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: -5;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Fumaça/fogo compostos ao redor do botão de carrinho (CartFab),
+   editados em /admin/layout-cliente aba "Ícone do carrinho" — x/y aqui
+   são % da própria caixinha 64x64 do botão (não da tela), atrás do
+   ícone (z-index:0, o #cart-icon real fica em z-index:2) e sem
+   pointer-events, então nunca competem com o clique do botão de verdade. */
+.sunset-carticon-decor-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.sunset-page-decor-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+}
+/* transform ancora o CANTO INFERIOR central da caixa no ponto x%/y%, não
+   o centro geométrico — fumaça e fogo sobem a partir de bottom:0 do
+   próprio container (ver .sunset-decor-smoke-loader/.sunset-decor-fire),
+   então "onde arrasta" = onde a base do efeito nasce. Com o centro
+   geométrico como âncora, caixas altas (o fogo chega a 420px) faziam a
+   base visível cair até metade da altura abaixo do ponto arrastado —
+   imperceptível na fumaça (máx 60px), muito visível no fogo. */
+.sunset-decor-anchor {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+}
+
+/* Fumaça — Uiverse.io by esraaabdel-kareem (ver smoke-element.html), sem
+   o copo, só as baforadas. A referência tinha 3 fixas; aqui o admin
+   controla a quantidade (até 15, um <span> por baforada em
+   SmokeDecor.tsx) e width/height/blur/velocidade via --smoke-*. */
+.sunset-decor-smoke-loader {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  animation: sunset-decor-smoke-shake calc(3s / var(--smoke-speed, 1)) infinite ease-in-out;
+}
+.sunset-decor-smoke {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: var(--smoke-puff-w, 10px);
+  height: var(--smoke-puff-h, 25px);
+  background: rgba(72, 67, 67, 0.5);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  animation: sunset-decor-smoke-rise calc(3s / var(--smoke-speed, 1)) infinite ease-in-out;
+  filter: blur(var(--smoke-blur, 8px));
+}
+@keyframes sunset-decor-smoke-rise {
+  0% {
+    transform: translate(-50%, 0) scale(0.4);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.7;
+  }
+  60% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(-50%, -120px) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes sunset-decor-smoke-shake {
+  0% {
+    transform: translateX(0) translateY(0) rotate(0);
+  }
+  25% {
+    transform: translateX(-4px) translateY(-2px) rotate(-2deg);
+  }
+  50% {
+    transform: translateX(0) translateY(0) rotate(0);
+  }
+  75% {
+    transform: translateX(4px) translateY(-2px) rotate(2deg);
+  }
+  100% {
+    transform: translateX(0) translateY(0) rotate(0);
+  }
+}
+
+/* Fogo — Uiverse.io by SelfMadeSystem (ver fire-element.html). --b e
+   --bmod6 (posição/atraso de cada bolinha, derivados de --n) vêm
+   pré-calculados do FireDecor.tsx em vez de usar a função CSS mod() —
+   mesmo resultado visual, sem depender de suporte recente de navegador. */
+.sunset-decor-fire {
+  position: relative;
+  width: var(--fire-w, 133px);
+  height: var(--fire-h, 200px);
+}
+.sunset-decor-fire-ball {
+  position: absolute;
+  bottom: 0;
+  --w: 24px;
+  --m: 10px;
+  left: calc((100% - var(--w)) * var(--b));
+  width: var(--w);
+  height: var(--w);
+  background: radial-gradient(closest-side, #fff, #f50, #f00, #f300);
+  border-radius: 0% 100%;
+  filter: blur(var(--fire-ball-blur, 2px));
+  translate: calc(-1 * var(--m)) 0;
+  animation-name: sunset-decor-fire-wee, sunset-decor-fire-bf;
+  animation-duration: calc(2s / var(--fire-speed, 1)), calc(1.756s / var(--fire-speed, 1));
+  animation-delay: calc(var(--n) * -2s / var(--fire-speed, 1)), calc(var(--bmod6) * -1.232s / var(--fire-speed, 1));
+  animation-timing-function: linear, ease-in-out;
+  animation-iteration-count: infinite, infinite;
+}
+@keyframes sunset-decor-fire-wee {
+  from {
+    scale: 0;
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  15% {
+    scale: 1;
+  }
+  to {
+    left: calc(50% - var(--w) * 0.5 + (25%) * (var(--b) * 2 - 1));
+    bottom: calc(100% - 24px);
+    scale: 0;
+    rotate: 180deg;
+  }
+}
+@keyframes sunset-decor-fire-bf {
+  50% {
+    translate: var(--m) 0;
+  }
+}
+
+/* From Uiverse.io by devkatyall — cores trocadas pra paleta sunset (era
+   verde/ciano). Feixe preto na diagonal que "varre" revelando o
+   gradiente por baixo. */
+.sunset-search-trigger {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.sunset-search-trigger::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(135deg, var(--color-son-orange), var(--color-son-pink) 55%, var(--color-son-purple));
+}
+.sunset-search-trigger::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -10%;
+  width: 120%;
+  height: 100%;
+  z-index: -1;
+  background: var(--color-son-black);
+  transform: skewX(30deg);
+  transition: transform 0.4s cubic-bezier(0.3, 1, 0.8, 1);
+}
+.sunset-search-trigger:hover::after,
+.sunset-search-trigger.is-open::after {
+  transform: translate3d(100%, 0, 0) skewX(30deg);
+}
+/* Quando a faixa preta "abre" e revela o degradê laranja/rosa/roxo por
+   trás do input (que é !bg-transparent de propósito), o texto/
+   placeholder claro de sempre (pra fundo escuro) ficava ilegível em
+   cima do degradê claro — texto e ícones viram escuros só nesse
+   estado. */
+.sunset-search-trigger:hover input,
+.sunset-search-trigger.is-open input {
+  color: var(--color-son-black);
+}
+.sunset-search-trigger:hover input::placeholder,
+.sunset-search-trigger.is-open input::placeholder {
+  color: rgba(8, 25, 18, 0.65);
+}
+.sunset-search-trigger:hover svg,
+.sunset-search-trigger.is-open svg {
+  color: var(--color-son-black);
+}
+
+/* Uiverse.io by 3bdel3ziz-T — dropdown de dia/mês/ano em /checkout. Na
+   referência era só 4 opções fixas e abria no :hover, com a label do
+   valor escolhido resolvida via CSS puro (:has() + attr()); aqui viram
+   dezenas de opções (31 dias, 12 meses, ~80 anos), então a abertura é
+   por clique (JS, .is-open — mobile não tem hover) e a label "selected"
+   também é controlada em JS, mas o visual (caixa escura, seta que gira,
+   lista que desliza de cima com opacity+top) é o mesmo, recolorido pro
+   tema escuro do site (era #2a2f3b, cor genérica, mantido bem próximo). */
+.sunset-dd {
+  position: relative;
+  cursor: pointer;
+  color: white;
+}
+.sunset-dd-selected {
+  background-color: var(--color-son-surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  color: white;
+}
+.sunset-dd-selected span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sunset-dd-arrow {
+  flex-shrink: 0;
+  height: 10px;
+  width: 18px;
+  fill: var(--color-son-silver-dim);
+  transform: rotate(-90deg);
+  transition: transform 0.3s;
+}
+.sunset-dd.is-open .sunset-dd-arrow {
+  transform: rotate(0deg);
+}
+.sunset-dd-options {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 1rem;
+  padding: 6px;
+  background-color: var(--color-son-surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-12px);
+  transition: opacity 0.25s, transform 0.25s;
+}
+.sunset-dd.is-open .sunset-dd-options {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.sunset-dd-option {
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.9rem;
+  color: var(--color-son-silver);
+  text-align: left;
+  transition: background-color 0.2s, color 0.2s;
+}
+.sunset-dd-option:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+.sunset-dd-option.is-selected {
+  background: linear-gradient(135deg, var(--color-son-orange), var(--color-son-pink) 55%, var(--color-son-purple));
+  color: white;
+  font-weight: 600;
+}
+
+/* From Uiverse.io by abhinav_7137 — só o carrinho SVG ficou (os 5 itens
+   caindo foram removidos). Traço do carrinho recolorido de #334155 pra
+   ficar visível no fundo escuro do site. */
+#cart-icon {
+  position: relative;
+  z-index: 2;
+  width: 140px;
+  height: 120px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 140 120' width='140' height='120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='35' y1='90' x2='110' y2='90' /%3E%3Cline x1='40' y1='90' x2='50' y2='70' /%3E%3Cpolyline points='10,15 25,15 40,30' /%3E%3Cline x1='40' y1='30' x2='50' y2='70' /%3E%3Cline x1='68' y1='30' x2='71' y2='70' /%3E%3Cline x1='96' y1='30' x2='93' y2='70' /%3E%3Cline x1='125' y1='30' x2='115' y2='70' /%3E%3Cline x1='40' y1='30' x2='125' y2='30' /%3E%3Cline x1='43' y1='43' x2='122' y2='43' /%3E%3Cline x1='47' y1='57' x2='118' y2='57' /%3E%3Cline x1='50' y1='70' x2='115' y2='70' /%3E%3Ccircle cx='45' cy='105' r='8' /%3E%3Ccircle cx='105' cy='105' r='8' /%3E%3C/g%3E%3C/svg%3E");
+  filter: drop-shadow(0 0 1.5px #081912) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+  animation: sunset-cart-bounce 0.8s ease-in-out infinite;
+  animation-delay: 0.2s;
+}
+@keyframes sunset-cart-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(2.5px);
+  }
+  60% {
+    transform: translateY(0);
+  }
+}
+
+/* Bolhas explodindo pra cima/baixo — reproduzido fiel à referência
+   original do botão de WhatsApp (mesmos radial-gradient em camadas,
+   mesmos keyframes de posição/tamanho), recolorido pro dourado/laranja
+   do site (era roxo #7d2ae8). Removido do botão de WhatsApp (reportado)
+   e movido pro botão "Resgatar cupom" — que desde então virou o
+   CouponSlot (ver coupon/CouponSlot.tsx), então as bolhas passaram a
+   decorar o wrapper do slot em vez do botão em si, como dois <span>
+   reais (não dá pra usar ::before/::after aqui, já ocupados pela
+   máscara/relevo do ticket dentro do papel). Loop automático e contínuo
+   (celular não tem hover). */
+.sunset-cs-bubble-wrap {
+  position: relative;
+  isolation: isolate;
+}
+.sunset-cs-bubble {
+  position: absolute;
+  width: 150%;
+  left: 50%;
+  height: 100%;
+  transform: translateX(-50%);
+  z-index: -1;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.sunset-cs-bubble-top {
+  top: -70%;
+  background-image: radial-gradient(circle, var(--color-son-gold) 20%, transparent 20%),
+    radial-gradient(circle, transparent 20%, var(--color-son-orange) 20%, transparent 30%),
+    radial-gradient(circle, var(--color-son-gold) 20%, transparent 20%),
+    radial-gradient(circle, var(--color-son-pink) 20%, transparent 20%),
+    radial-gradient(circle, transparent 10%, var(--color-son-orange) 15%, transparent 20%),
+    radial-gradient(circle, var(--color-son-gold) 20%, transparent 20%),
+    radial-gradient(circle, var(--color-son-pink) 20%, transparent 20%),
+    radial-gradient(circle, var(--color-son-gold) 20%, transparent 20%),
+    radial-gradient(circle, var(--color-son-orange) 20%, transparent 20%);
+  background-size: 10% 10%, 20% 20%, 15% 15%, 20% 20%, 18% 18%, 10% 10%, 15% 15%, 10% 10%, 18% 18%;
+  background-position: 50% 120%;
+  animation: sunset-bubbles-top 2.4s ease infinite;
+}
+@keyframes sunset-bubbles-top {
+  0% {
+    background-position: 5% 90%, 10% 90%, 10% 90%, 15% 90%, 25% 90%, 25% 90%, 40% 90%, 55% 90%, 70% 90%;
+  }
+  50% {
+    background-position: 0% 80%, 0% 20%, 10% 40%, 20% 0%, 30% 30%, 22% 50%, 50% 50%, 65% 20%, 90% 30%;
+  }
+  100% {
+    background-position: 0% 70%, 0% 10%, 10% 30%, 20% -10%, 30% 20%, 22% 40%, 50% 40%, 65% 10%, 90% 20%;
+    background-size: 0% 0%, 0% 0%, 0% 0%, 0% 0%, 0% 0%, 0% 0%;
+  }
+}
+.sunset-cs-bubble-bottom {
+  bottom: -70%;
+  background-image: radial-gradient(circle, var(--color-son-gold) 20%, transparent 20%),
+    radial-gradient(circle, var(--color-son-orange) 20%, transparent 20%),
+    radial-gradient(circle, transparent 10%, var(--color-son-pink) 15%, transparent 20%),
+    radial-gradient(circle, var(--color-son-gold) 20%, transparent 20%),
+    radial-gradient(circle, var(--color-son-orange) 20%, transparent 20%),
+    radial-gradient(circle, var(--color-son-gold) 20%, transparent 20%),
+    radial-gradient(circle, var(--color-son-pink) 20%, transparent 20%);
+  background-size: 15% 15%, 20% 20%, 18% 18%, 20% 20%, 15% 15%, 20% 20%, 18% 18%;
+  background-position: 50% 0%;
+  animation: sunset-bubbles-bottom 2.4s ease infinite;
+}
+@keyframes sunset-bubbles-bottom {
+  0% {
+    background-position: 10% -10%, 30% 10%, 55% -10%, 70% -10%, 85% -10%, 70% -10%, 70% 0%;
+  }
+  50% {
+    background-position: 0% 80%, 20% 80%, 45% 60%, 60% 100%, 75% 70%, 95% 60%, 105% 0%;
+  }
+  100% {
+    background-position: 0% 90%, 20% 90%, 45% 70%, 60% 110%, 75% 80%, 95% 70%, 110% 10%;
+    background-size: 0% 0%, 0% 0%, 0% 0%, 0% 0%, 0% 0%, 0% 0%;
+  }
+}
+/* Uiverse.io by Mohammad-Rahme-576 — "tooltip-container" (share button
+   que revela ícones de rede social). Na referência abria no :hover; aqui
+   abre AO CLICAR no botão de WhatsApp (celular não tem hover) e mostra
+   só 2 redes, no estilo ícone-preenche+tooltip de Uiverse.io by
+   wilsondesouza (example-2), recolorido por rede (WhatsApp #128c7e
+   original, Instagram gradiente original). */
+.sunset-share-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 14px);
+  display: flex;
+  gap: 18px;
+  margin: 0;
+  padding: 14px 18px;
+  border-radius: 18px;
+  list-style: none;
+  background: var(--color-son-black);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(8px) scale(0.92);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  /* Acima do backdrop (z-0) e do botão (z-20) — sem isso o backdrop que
+     fecha o tooltip no clique-fora ficava por cima e engolia o clique
+     nos ícones ("clico e não acontece nada"). */
+  z-index: 21;
+}
+.sunset-share-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  border-top-color: var(--color-son-black);
+}
+.sunset-share-tooltip.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+/* Variante usada no navbar (BrandHeader) — botão fica no topo da tela,
+   então o tooltip abre pra BAIXO em vez de pra cima. */
+.sunset-share-tooltip-down {
+  bottom: auto;
+  top: calc(100% + 14px);
+  transform: translateX(-50%) translateY(-8px) scale(0.92);
+}
+.sunset-share-tooltip-down.is-open {
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+.sunset-share-tooltip-down::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--color-son-black);
+}
+.sunset-share-item {
+  position: relative;
+}
+.sunset-share-item a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  color: var(--color-son-silver);
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  isolation: isolate;
+  transition: color 0.3s ease;
+}
+.sunset-share-item a svg {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+}
+.sunset-share-item a::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.68, -0.4, 0.27, 1.4);
+  z-index: 0;
+}
+.sunset-share-item[data-network='whatsapp'] a::before {
+  background: #128c7e;
+}
+.sunset-share-item[data-network='instagram'] a::before {
+  background: radial-gradient(circle at 30% 110%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285aeb 90%);
+}
+.sunset-share-item a:hover::before,
+.sunset-share-item a:focus-visible::before,
+.sunset-share-item a:active::before {
+  transform: translateY(0);
+}
+.sunset-share-item a:hover,
+.sunset-share-item a:focus-visible,
+.sunset-share-item a:active {
+  color: #fff;
+}
+.sunset-share-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  white-space: nowrap;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--color-son-surface);
+  color: var(--color-son-silver);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.sunset-share-item a:hover + .sunset-share-tip,
+.sunset-share-item a:focus-visible + .sunset-share-tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+
+/* Uiverse.io by JaydipPrajapati1910 — "pulse" loader: um anel em formato
+   de gota (border-radius assimétrico + rotate(45deg)) que pulsa saindo do
+   centro via radial-gradient + perspective/translateZ. Substitui o pino
+   de destino (cliente) nos mapas do site — só o estilo/motion foi
+   reaproveitado, recolorido pro rosa do site (era vermelho na referência).
+   Tamanho controlado por --s (setado inline no icones.ts, proporcional ao
+   `size` pedido em cada mapa) — a referência original tem 44.8px fixos,
+   aqui fica bem menor de propósito pra não dominar o mapa. */
+.sunset-dest-ping {
+  --s: 22px;
+  width: var(--s);
+  height: var(--s);
+  position: relative;
+  transform: rotate(45deg);
+}
+.sunset-dest-ping::before,
+.sunset-dest-ping::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50% 50% 0 50%;
+  background-image: radial-gradient(circle calc(var(--s) * 0.25) at 50% 50%, transparent 94%, var(--color-son-pink));
+}
+.sunset-dest-ping::after {
+  animation: sunset-dest-ping-pulse 1.4s infinite;
+  transform: perspective(calc(var(--s) * 7.5)) translateZ(0px);
+}
+@keyframes sunset-dest-ping-pulse {
+  to {
+    transform: perspective(calc(var(--s) * 7.5)) translateZ(calc(var(--s) * 3.75));
+    opacity: 0;
+  }
+}
+
+/* Ícone do card de WhatsApp da landing — vidro fosco com um "BG" verde
+   atrás. Na referência original o "BG" só girava 35° no :hover; como
+   esse card não é mais clicável (a função de link é exclusiva do
+   WhatsAppFab), virou um loop automático e contínuo balançando o BG pra
+   lá e pra cá, em vez de esperar interação. */
+.sunset-wa-static {
+  width: 79px;
+  height: 79px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-radius: 7px;
+}
+.sunset-wa-static-icon {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  backdrop-filter: blur(4px);
+  border-radius: 10px;
+  border: 1px solid rgba(156, 156, 156, 0.466);
+}
+.sunset-wa-static-bg {
+  position: absolute;
+  content: '';
+  width: 100%;
+  height: 100%;
+  background: #00d757;
+  z-index: -1;
+  border-radius: 9px;
+  pointer-events: none;
+  transform-origin: bottom;
+  animation: sunset-wa-static-sway 3.2s ease-in-out infinite;
+}
+@keyframes sunset-wa-static-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(35deg);
+  }
+}
+
+/* "animated-button" — reproduzido fiel à referência (mesma seta
+   entrando/saindo, mesmo círculo expandindo por baixo, mesmo texto
+   deslizando, mesmo scale no :active), só recolorido pro dourado do
+   site (era azul #1f387e sobre fundo claro). O badge de endereço vira
+   um botão de verdade (os outros 3 continuam só decorativos) — abre o
+   endereço no Google Maps. */
+.sunset-maps-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 22px;
+  border: 3px solid transparent;
+  background-color: var(--color-son-surface);
+  border-radius: 100px;
+  font-weight: 700;
+  color: var(--color-son-gold);
+  box-shadow: 0 0 0 2px var(--color-son-gold);
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+  text-align: center;
+}
+.sunset-maps-btn svg {
+  position: absolute;
+  width: 18px;
+  fill: var(--color-son-gold);
+  z-index: 9;
+  transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.sunset-maps-btn .arr-1 {
+  right: 12px;
+}
+.sunset-maps-btn .arr-2 {
+  left: -25%;
+}
+.sunset-maps-btn .circle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  background-color: var(--color-son-gold);
+  border-radius: 50%;
+  opacity: 0;
+  transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.sunset-maps-btn .text {
+  position: relative;
+  z-index: 1;
+  transform: translateX(-10px);
+  transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.sunset-maps-btn:hover {
+  box-shadow: 0 0 0 12px transparent;
+  color: var(--color-son-black);
+  border-radius: 12px;
+}
+.sunset-maps-btn:hover .arr-1 {
+  right: -25%;
+}
+.sunset-maps-btn:hover .arr-2 {
+  left: 12px;
+}
+.sunset-maps-btn:hover .text {
+  transform: translateX(10px);
+}
+.sunset-maps-btn:hover svg {
+  fill: var(--color-son-black);
+}
+.sunset-maps-btn:active {
+  scale: 0.95;
+  box-shadow: 0 0 0 4px var(--color-son-orange);
+}
+.sunset-maps-btn:hover .circle {
+  width: 260px;
+  height: 260px;
+  opacity: 1;
+}
+
+/* "Continue" — reproduzido fiel à referência (pill + círculo com seta),
+   recolorido pro dourado do site (era branco/preto). Na referência a
+   seta só deslizava no :hover; vira loop automático e contínuo aqui. */
+/* Uiverse.io by german_7619 — abas "de pasta" fundidas com o painel de
+   conteúdo abaixo (era radio+label com :checked; aqui continua
+   button+estado do React — só o truque visual dos cantos côncavos
+   ::before/::after + box-shadow foi reaproveitado). A trilha agora
+   encosta direto no painel (.glass mais abaixo), sem gap — a aba ativa
+   "vira" a mesma cor do painel, criando a ilusão de fusão. Recolorido
+   de verde/cinza claro pra paleta sunset. */
+.sunset-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 6px 0 6px;
+  border-top-left-radius: 0.85rem;
+  border-top-right-radius: 0.85rem;
+  background-color: var(--color-son-black);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.sunset-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  padding: 0.5rem 1rem;
+  border-top-left-radius: 0.65rem;
+  border-top-right-radius: 0.65rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+  position: relative;
+  /* Contraste próprio pra cada pílula NÃO ativa — sem isso, texto solto
+     direto no fundo preto da trilha ficava sem nenhum limite visível
+     entre um botão e outro ("tudo preto"). O ativo ganha .sunset-tab-active
+     (mesma cor do painel) por cima disso. */
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+}
+.sunset-tab:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+/* Cor sólida e clara de propósito — a versão anterior tentava "fundir"
+   com a cor do painel abaixo (fundo escuro translúcido), o que deixava a
+   aba ativa quase idêntica às inativas (reportado: "sem contraste,
+   continua tudo preto"). Contraste vence a fusão aqui. */
+.sunset-tab-active {
+  background: linear-gradient(135deg, var(--color-son-orange), var(--color-son-gold)) !important;
+  color: var(--color-son-black) !important;
+  border-color: transparent !important;
+  font-weight: 700;
+}
+
+/* Uiverse.io by ShrinilDhorda — botão neon: glow em box-shadow,
+   gradiente varrendo no hover, encolhe no clique. Aplicado como classe
+   extra em cima do botão "Ver catálogo" (mantém a pílula/seta) e do
+   "Acompanhar meu pedido" (mantém o .btn-secondary compartilhado
+   intacto — só esse elemento ganha a classe extra). Fundo preto da
+   referência trocado pelo degradê laranja/rosa/roxo original do site (o
+   preto destoava do resto da paleta) — o reflexo espelhado abaixo
+   (-webkit-box-reflect) da referência foi removido de vez: com os
+   botões empilhados de perto, a cópia espelhada de um vazava por cima
+   do botão/badges de baixo e lia como sujeira, não como reflexo. */
+.sunset-glow-btn {
+  background: linear-gradient(135deg, var(--color-son-orange), var(--color-son-pink) 55%, var(--color-son-purple)) !important;
+  color: var(--color-son-black) !important;
+  box-shadow: 0 0 8px 0 rgba(242, 193, 78, 0.16), 0 0 45px rgba(255, 210, 61, 0.45) !important;
+  transition: 0.5s !important;
+}
+.sunset-glow-btn:active {
+  scale: 0.94;
+}
+.sunset-glow-btn:hover {
+  background: linear-gradient(270deg, var(--color-son-gold) 0%, var(--color-son-orange) 60%) !important;
+  color: var(--color-son-black) !important;
+  filter: brightness(1.08);
+}
+.sunset-continue-btn {
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.2s;
+  padding: 10px 14px 10px 24px;
+  border-radius: 100px;
+  background: var(--color-son-gold);
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 16px;
+  color: var(--color-son-black);
+}
+.sunset-continue-btn:active {
+  transform: scale(0.95);
+}
+.sunset-continue-btn svg {
+  width: 34px;
+  flex-shrink: 0;
+  animation: sunset-continue-arrow 1.6s ease-in-out infinite;
+}
+@keyframes sunset-continue-arrow {
+  0%,
+  20% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(6px);
+  }
+  80%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* Uiverse.io by Zain-Muhammad — moldura do seletor de plano (3 abas)
+   virou a moldura do navbar do cliente: voltar / nome da página /
+   favoritos, cada um num terço igual da barra. Recolorido de azul
+   (#1da1f2) pro dourado sunset. */
+.sunset-nav-bar {
+  display: flex;
+  align-items: center;
+  column-gap: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-son-gold);
+  padding: 8px;
+}
+.sunset-nav-slot {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+/* Início/fim do tamanho do próprio conteúdo (ícones de tamanho fixo) —
+   o nome da página no meio é quem deve crescer/encolher, senão nomes
+   maiores que "Catálogo" (ex: "Consultar pedido") ficavam truncados
+   num terço fixo da barra, mesmo sobrando espaço nas pontas. */
+.sunset-nav-slot-start,
+.sunset-nav-slot-end {
+  flex: 0 0 auto;
+}
+.sunset-nav-slot-center {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-width: 0;
+}
+.sunset-nav-slot-end {
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.sunset-nav-label {
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-son-silver);
+}
+/* Uiverse.io by Cornerstone-04 — cantinhos que abrem num contorno neon
+   com glow. Recolorido de #0f0 pra dourado sunset; era só :hover, virou
+   loop automático (mobile não tem hover de verdade). Usado no nome da
+   página em TODO navbar de cliente (não só a marca na landing). Antes
+   ficava pulsando pra sempre (infinite); agora toca UMA vez só (ao
+   entrar/recarregar a página) e congela no estado final (forwards) —
+   pedido explícito pra parar de ficar em loop reiterado. */
+.sunset-brand-btn {
+  cursor: pointer;
+  background: transparent;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 28px;
+  border: 2px solid var(--color-son-gold);
+  text-transform: uppercase;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--color-son-silver);
+  animation: sunset-brand-glow 5s ease-in-out 1 forwards;
+}
+.sunset-brand-btn span {
+  position: relative;
+  z-index: 100;
+  font-size: 1.1rem;
+  white-space: pre-line;
+  text-align: center;
+  line-height: 1.3;
+}
+.sunset-brand-btn::before,
+.sunset-brand-btn::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 2px;
+  background: var(--color-son-gold);
+}
+.sunset-brand-btn::before {
+  left: -20px;
+  animation: sunset-brand-before 5s ease-in-out 1 forwards;
+}
+.sunset-brand-btn::after {
+  right: -20px;
+  animation: sunset-brand-after 5s ease-in-out 1 forwards;
+}
+@keyframes sunset-brand-glow {
+  0%, 15% {
+    color: var(--color-son-silver);
+    box-shadow: none;
+  }
+  40%, 60% {
+    color: var(--color-son-black);
+    box-shadow: 0 0 10px var(--color-son-gold), 0 0 20px var(--color-son-gold), 0 0 40px var(--color-son-gold), 0 0 80px var(--color-son-gold);
+  }
+  85%, 100% {
+    color: var(--color-son-silver);
+    box-shadow: none;
+  }
+}
+@keyframes sunset-brand-before {
+  0%, 15% {
+    width: 20px;
+    height: 2px;
+    left: -20px;
+    box-shadow: 5px -8px 0 var(--color-son-gold), 5px 8px 0 var(--color-son-gold);
+  }
+  40%, 60% {
+    width: 60%;
+    height: 100%;
+    left: -2px;
+    box-shadow: 5px 0 0 var(--color-son-gold), 5px 0 0 var(--color-son-gold);
+  }
+  85%, 100% {
+    width: 20px;
+    height: 2px;
+    left: -20px;
+    box-shadow: 5px -8px 0 var(--color-son-gold), 5px 8px 0 var(--color-son-gold);
+  }
+}
+@keyframes sunset-brand-after {
+  0%, 15% {
+    width: 20px;
+    height: 2px;
+    right: -20px;
+    box-shadow: -5px -8px 0 var(--color-son-gold), -5px 8px 0 var(--color-son-gold);
+  }
+  40%, 60% {
+    width: 60%;
+    height: 102%;
+    right: -2px;
+    box-shadow: -5px 0 0 var(--color-son-gold), -5px 0 0 var(--color-son-gold);
+  }
+  85%, 100% {
+    width: 20px;
+    height: 2px;
+    right: -20px;
+    box-shadow: -5px -8px 0 var(--color-son-gold), -5px 8px 0 var(--color-son-gold);
+  }
+}
+
+/* Uiverse.io by karthik092726122003 — botão circular com 2 setas
+   empilhadas que trocam de lugar deslizando, e o anel de contorno que
+   troca de estilo junto. Original só tocava no :hover; virou loop
+   automático (celular não tem hover de verdade). Escalado de 76px pro
+   tamanho de ícone do navbar. Cores recoloridas: prata (anel parado) e
+   dourado sunset (anel "ativo"), no lugar de preto/verde. */
+.sunset-back-wrap {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.sunset-back-btn2 {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 76px;
+  height: 76px;
+  transform: translate(-50%, -50%) scale(0.58);
+  transform-origin: center;
+  overflow: hidden;
+  border-radius: 50%;
+}
+.sunset-back-btn2::before,
+.sunset-back-btn2::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  inset: 7px;
+}
+.sunset-back-btn2::before {
+  border: 3px solid var(--color-son-silver-dim);
+  animation: sunset-back-ring-a 9s ease-in-out infinite;
+}
+.sunset-back-btn2::after {
+  border: 4px solid var(--color-son-gold);
+  animation: sunset-back-ring-b 9s ease-in-out infinite;
+}
+.sunset-back-box {
+  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: sunset-back-slide 9s ease-in-out infinite;
+}
+.sunset-back-elem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: 23px 18px 0 22px;
+  color: var(--color-son-silver);
+}
+@keyframes sunset-back-ring-a {
+  0%, 15% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  40%, 60% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  85%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes sunset-back-ring-b {
+  0%, 15% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+  40%, 60% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  85%, 100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+@keyframes sunset-back-slide {
+  0%, 15% {
+    transform: translateX(0);
+  }
+  40%, 60% {
+    transform: translateX(-69px);
+  }
+  85%, 100% {
+    transform: translateX(0);
+  }
+}
+
+/* Botão de perfil no SiteHeader — mesmo círculo/hover do ícone de voltar,
+   pra ficar visualmente no mesmo peso do carrinho ao lado. */
+.sunset-profile-btn {
+  border-radius: 50%;
+  background: var(--color-son-surface-light);
+  color: var(--color-son-silver-dim);
+  transition: background-color 0.3s, color 0.3s;
+}
+.sunset-profile-btn:hover {
+  background: var(--color-son-pink);
+  color: white;
+}
+
+/* Uiverse.io by SachinKumar666 — card com brilho diagonal + glow radial +
+   badge, recolorido pra paleta sunset. Na referência os efeitos só
+   apareciam no :hover; aqui o card É o toggle de detalhes do produto
+   (abre no clique), então já nasce com tudo "revelado" e o brilho roda
+   em loop contínuo (sem hover de verdade no celular). */
+.sunset-pd-card {
+  --card-accent: var(--color-son-gold);
+  width: min(320px, 100%);
+  background: var(--color-son-surface);
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.45), 0 10px 10px -5px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+}
+.sunset-pd-shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0) 40%, rgba(255, 255, 255, 0.35) 50%, rgba(255, 255, 255, 0) 60%);
+  background-size: 250% 100%;
+  animation: sunset-pd-shine 4s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes sunset-pd-shine {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+.sunset-pd-glow {
+  position: absolute;
+  inset: -10px;
+  background: radial-gradient(circle at 50% 0%, rgba(255, 210, 61, 0.35) 0%, rgba(255, 210, 61, 0) 70%);
+  pointer-events: none;
+}
+.sunset-pd-close {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--color-son-silver);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s, color 0.3s;
+}
+.sunset-pd-close:hover {
+  background: var(--color-son-pink);
+  color: white;
+}
+.sunset-pd-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  background: var(--color-son-orange);
+  color: white;
+  padding: 0.3em 0.65em;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.sunset-pd-content {
+  padding: 1.5em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85em;
+  position: relative;
+  z-index: 2;
+}
+
+/* Uiverse.io by mrhyddenn — fitinha "Premium" diagonal no canto superior
+   esquerdo do card_box, recolorida (era laranja/vermelho puro) pro
+   gradiente laranja->dourado sunset, texto trocado pro desconto do
+   produto via attr(data-label) (era fixo "Premium"). */
+.sunset-promo-ribbon-wrap {
+  position: absolute;
+  overflow: hidden;
+  width: 90px;
+  height: 90px;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+.sunset-promo-ribbon {
+  position: absolute;
+  inset: 0;
+}
+.sunset-promo-ribbon::before {
+  content: attr(data-label);
+  position: absolute;
+  width: 150%;
+  height: 22px;
+  top: 16px;
+  left: -28px;
+  background-image: linear-gradient(45deg, var(--color-son-orange) 0%, var(--color-son-gold) 51%, var(--color-son-orange) 100%);
+  transform: rotate(-45deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-son-black);
+  font-weight: 800;
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.35);
+}
+.sunset-promo-ribbon::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  bottom: 0;
+  left: 0;
+  height: 6px;
+  z-index: -1;
+  box-shadow: 84px -84px var(--color-son-purple);
+  background-image: linear-gradient(45deg, var(--color-son-orange) 0%, var(--color-son-gold) 51%, var(--color-son-orange) 100%);
+}
+
+/* Uiverse.io by preet_7613 — cartão do rostinho triste (nenhum cupom pra
+   resgatar), traços em stroke-dasharray "desenhando" em loop, olhos
+   piscando, lágrima caindo. */
+.sunset-nocoupon-card {
+  position: relative;
+  width: min(320px, 100%);
+  background: var(--color-son-surface);
+  border-radius: 20px;
+  padding: 2rem 1.5rem 1.75rem;
+  border: 1px solid rgba(255, 210, 61, 0.2);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.45), 0 10px 10px -5px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.sunset-nocoupon-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--color-son-silver);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.sunset-nocoupon-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: white;
+}
+.sunset-nocoupon-face {
+  width: 110px;
+  height: 110px;
+  overflow: visible;
+}
+.sunset-nocoupon-outline,
+.sunset-nocoupon-mouth {
+  stroke: var(--color-son-gold);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  fill: none;
+}
+.sunset-nocoupon-outline {
+  stroke-dasharray: 240;
+  stroke-dashoffset: 240;
+  animation: sunset-nocoupon-draw 2.4s ease-in-out infinite;
+}
+.sunset-nocoupon-mouth {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: sunset-nocoupon-draw 2.4s ease-in-out infinite 0.3s;
+}
+.sunset-nocoupon-eye {
+  fill: var(--color-son-silver);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: sunset-nocoupon-blink 3.2s ease-in-out infinite;
+}
+.sunset-nocoupon-eye-r {
+  animation-delay: 0.08s;
+}
+.sunset-nocoupon-tear {
+  fill: var(--color-son-orange);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: top center;
+  animation: sunset-nocoupon-tear-fall 2.8s ease-in infinite 0.6s;
+}
+@keyframes sunset-nocoupon-draw {
+  0% {
+    stroke-dashoffset: 240;
+  }
+  55%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes sunset-nocoupon-blink {
+  0%,
+  85%,
+  100% {
+    transform: scaleY(1);
+  }
+  92% {
+    transform: scaleY(0.1);
+  }
+}
+@keyframes sunset-nocoupon-tear-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(14px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.8);
+  }
+}
+.sunset-nocoupon-title {
+  margin-top: 1rem;
+  font-weight: 700;
+  color: white;
+  font-size: 1rem;
+}
+.sunset-nocoupon-message {
+  margin-top: 0.4rem;
+  color: var(--color-son-silver-dim);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.sunset-pd-image {
+  width: 100%;
+  height: 160px;
+  border-radius: 14px;
+  background: linear-gradient(45deg, var(--color-son-purple), var(--color-son-orange));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.sunset-pd-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sunset-pd-title {
+  color: white;
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+}
+.sunset-pd-category {
+  color: var(--color-son-silver);
+  font-weight: 600;
+  font-size: 0.75rem;
+  margin: 0;
+}
+.sunset-pd-description {
+  color: var(--color-son-silver-dim);
+  font-size: 0.8rem;
+  margin: 0;
+  line-height: 1.45;
+  max-height: 6.5em;
+  overflow-y: auto;
+}
+.sunset-pd-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 0.75em;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.sunset-pd-price {
+  color: var(--color-son-gold);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.sunset-pd-button {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  background: var(--card-accent);
+  color: var(--color-son-black);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  transition: transform 0.2s;
+}
+.sunset-pd-button:active {
+  transform: scale(0.9);
+}
+.sunset-pd-button:disabled {
+  opacity: 0.35;
+}
+
+/* Uiverse.io by Na3ar-17 — cartão de menu com grupos separados, recolorido
+   pra paleta sunset (era cinza-azulado/roxo). Abre AO CLICAR no botão de
+   menu (já era clique, não hover) e fecha clicando fora. */
+.sunset-menu-card {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 30;
+  width: 190px;
+  background-color: var(--color-son-surface);
+  background-image: linear-gradient(139deg, var(--color-son-surface) 0%, var(--color-son-surface) 40%, var(--color-son-black) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.sunset-menu-separator {
+  border-top: 1.5px solid rgba(255, 255, 255, 0.1);
+  margin: 0 10px;
+}
+.sunset-menu-list {
+  list-style-type: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px;
+  margin: 0;
+}
+.sunset-menu-item {
+  display: flex;
+  align-items: center;
+  color: var(--color-son-silver-dim);
+  gap: 10px;
+  transition: all 0.2s ease-out;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.sunset-menu-item svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  transition: all 0.2s ease-out;
+}
+.sunset-menu-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin: 0;
+}
+.sunset-menu-item:hover {
+  background-color: var(--color-son-pink);
+  color: white;
+}
+.sunset-menu-item:hover svg {
+  stroke: white;
+}
+.sunset-menu-item:active {
+  transform: scale(0.98);
+}
+/* Último grupo ("Histórico" aqui) — mesmo destaque de cor própria da
+   referência (lá era roxo, aqui dourado sunset). */
+.sunset-menu-item-accent {
+  color: var(--color-son-gold);
+}
+.sunset-menu-item-accent svg {
+  stroke: var(--color-son-gold);
+}
+.sunset-menu-item-accent:hover {
+  background-color: rgba(255, 210, 61, 0.15);
+  color: var(--color-son-gold);
+}
+.sunset-menu-item-accent:hover svg {
+  stroke: var(--color-son-gold);
+}
+/* "Sair" — mesma lógica do "Delete" vermelho da referência Na3ar-17
+   original (a única cor de destaque diferente do dourado usado em
+   Histórico). */
+.sunset-menu-item-danger {
+  color: #f87171;
+}
+.sunset-menu-item-danger svg {
+  stroke: #f87171;
+}
+.sunset-menu-item-danger:hover {
+  background-color: #7f1d1d;
+  color: #ffffff;
+}
+.sunset-menu-item-danger:hover svg {
+  stroke: #ffffff;
+}
+
+/* Uiverse.io by devkatyall — botão de menu do visitante deslogado (verde
+   sólido na referência, aqui dourado sunset) com popup "Log In"/"Sign
+   Up". Reaproveita .sunset-menu-card/.sunset-menu-list/.sunset-menu-item
+   pro popup em si (mesmo container do menu de cliente logado) — só o
+   círculo do botão em si é próprio, sólido em vez do círculo escuro
+   translúcido do resto do navbar (chama mais atenção de propósito, pra
+   quem ainda não tem conta). */
+.sunset-guest-burger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-son-gold);
+  color: var(--color-son-black);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s ease-in-out;
+}
+.sunset-guest-burger:hover {
+  transform: scale(1.08);
+}
+.sunset-guest-burger:active {
+  transform: scale(0.95);
+}
+
+/* Uiverse.io by barisdogansutcu — checkbox+coração que pulsa ao marcar,
+   recolorido pro rosa sunset (era vermelho puro). Botão compacto (sem os
+   rótulos de texto da referência, que abriam espaço lateral) — cabe no
+   canto de qualquer card. */
+.sunset-fav-heart {
+  display: inline-flex;
+  position: relative;
+}
+.sunset-fav-checkbox {
+  display: none;
+}
+.sunset-fav-heart label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--color-son-silver);
+  cursor: pointer;
+  user-select: none;
+}
+.sunset-fav-heart label svg {
+  width: 16px;
+  height: 16px;
+}
+.sunset-fav-checkbox:checked + label {
+  color: var(--color-son-pink);
+}
+.sunset-fav-checkbox:checked + label svg {
+  fill: var(--color-son-pink);
+  stroke: var(--color-son-pink);
+  animation: sunset-fav-pulse 0.6s;
+}
+@keyframes sunset-fav-pulse {
+  0% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.35);
+  }
+  50% {
+    transform: scale(1);
+  }
+  75% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Versão com texto (referência completa do barisdogansutcu) — usada
+   dentro do toggle de detalhes do produto (.sunset-pd-content), onde tem
+   espaço horizontal pra pílula com "Adicionar aos favoritos"/"Adicionado
+   aos favoritos" trocando em crossfade. */
+.sunset-fav-heart-labeled label {
+  width: auto;
+  height: auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 0.6rem;
+  padding: 0.5rem 0.85rem 0.5rem 0.6rem;
+}
+.sunset-fav-heart-labeled label svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.sunset-fav-action {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sunset-fav-option-1,
+.sunset-fav-option-2 {
+  grid-column-start: 1;
+  grid-column-end: 1;
+  grid-row-start: 1;
+  grid-row-end: 1;
+  transition: all 0.5s;
+}
+.sunset-fav-option-1 {
+  transform: translate(0px, 0%);
+  opacity: 1;
+}
+.sunset-fav-checkbox:checked + label .sunset-fav-option-1 {
+  transform: translate(0px, -100%);
+  opacity: 0;
+}
+.sunset-fav-option-2 {
+  transform: translate(0px, 100%);
+  opacity: 0;
+}
+.sunset-fav-checkbox:checked + label .sunset-fav-option-2 {
+  transform: translate(0px, 0%);
+  opacity: 1;
+}
+
+/* Uiverse.io by Yaya12085 — cartão de confirmação (era claro, "desativar
+   conta"; aqui escuro/sunset, genérico pra qualquer ação destrutiva). */
+.sunset-confirm-card {
+  position: relative;
+  background-color: var(--color-son-surface);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.85rem;
+  max-width: 290px;
+  width: 100%;
+  padding: 1.25rem 1rem 1rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+}
+.sunset-confirm-icon {
+  display: flex;
+  margin: 0 auto;
+  background-color: rgba(239, 68, 68, 0.15);
+  flex-shrink: 0;
+  justify-content: center;
+  align-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  color: #f87171;
+}
+.sunset-confirm-title {
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5rem;
+}
+.sunset-confirm-message {
+  margin-top: 0.5rem;
+  color: var(--color-son-silver-dim);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+.sunset-confirm-danger-btn {
+  display: flex;
+  padding: 0.5rem 1rem;
+  background-color: #dc2626;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  justify-content: center;
+  width: 100%;
+  border-radius: 0.5rem;
+}
+.sunset-confirm-danger-btn:hover {
+  background-color: #b91c1c;
+}
+.sunset-confirm-cancel-btn {
+  display: flex;
+  padding: 0.5rem 1rem;
+  background-color: transparent;
+  color: var(--color-son-silver);
+  font-size: 0.95rem;
+  font-weight: 600;
+  justify-content: center;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.sunset-confirm-cancel-btn:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Uiverse.io by dexter-st — ticket holográfico com corte/perfuração via
+   máscara CSS (mask com radial-gradients simulando os furos + recorte
+   picotado nas bordas) e relevo falso em 3D (feTurbulence +
+   feSpecularLighting num filtro SVG, luz batendo no "papel" perfurado).
+   Clone fiel da técnica; a paleta do holográfico (originalmente
+   roxo/ciano) foi deslocada pro dourado/laranja/rosa do site — como boa
+   parte usa mix-blend-mode (difference/color-burn), troca de matiz não é
+   1:1 previsível só na fórmula, o resultado foi conferido visualmente.
+   Usado tanto sozinho (TicketCardVisual, dentro de CouponTicket/
+   CouponHistoryTicket no carrossel de /cliente/cupons) quanto dentro do
+   slot que puxa o papel (CouponSlot — botão "Resgatar cupom" e o card da
+   landing). Tamanho ajustável via --t2-width/--t2-height (px fixos, a
+   máscara/relevo são todos em px reais, não dá pra escalar só com
+   font-size como no ticket antigo). */
+.sunset-t2-card {
+  --t2-width: 180px;
+  --t2-height: 320px;
+  --t2-perforation: 12px;
+  --t2-cutouts-adjust: 70px;
+
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 1rem;
+  grid-template-areas: 'header' 'body' 'footer';
+
+  width: var(--t2-width);
+  height: var(--t2-height);
+  padding: var(--t2-perforation) 0;
+
+  font-family: 'Poppins', sans-serif;
+  user-select: none;
+  overflow: hidden;
+
+  /* Era animado (flutuação + 5 camadas de drop-shadow trocando a cada
+     frame) -- drop-shadow empilhado é caro de recompor, e MUITOS cards
+     assim no carrossel ao mesmo tempo pesava demais pra renderizar
+     (reportado). Sombra única, estática. */
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+}
+.sunset-t2-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+.sunset-t2-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: #fff;
+  mask:
+    radial-gradient(circle at 50% 0, #fff0 calc(var(--t2-perforation) - 5px), #000 calc(var(--t2-perforation) - 4px)),
+    radial-gradient(
+      circle at 50% 100%,
+      #fff0 calc(var(--t2-perforation) - 5px),
+      #000 calc(var(--t2-perforation) - 4px)
+    ),
+    radial-gradient(circle 8px at left center, #000 98%, #0000 100%),
+    radial-gradient(circle 8px at right center, #000 98%, #0000 100%),
+    repeating-linear-gradient(90deg, #000 10px, #000 15px, #0000 16px, #0000 24px);
+  mask-repeat: repeat-x, repeat-x, no-repeat, no-repeat, repeat-x;
+  mask-size:
+    calc(var(--t2-perforation) * 2) 100%,
+    calc(var(--t2-perforation) * 2) 100%,
+    16px 16px,
+    16px 16px,
+    10px 2px;
+  mask-position:
+    calc(0.5 * var(--t2-perforation)) top,
+    calc(0.5 * var(--t2-perforation)) bottom,
+    left var(--t2-cutouts-adjust),
+    right var(--t2-cutouts-adjust),
+    0 calc(var(--t2-cutouts-adjust) + 7px);
+  mask-composite: intersect, exclude, add, add;
+}
+.sunset-t2-holographic {
+  background-image: linear-gradient(to bottom, #fe58, 90%, #0002),
+    conic-gradient(
+      at 60% 50%,
+      var(--color-son-silver),
+      var(--color-son-pink),
+      var(--color-son-gold),
+      var(--color-son-silver),
+      var(--color-son-orange),
+      #fff4c2,
+      var(--color-son-orange),
+      var(--color-son-pink),
+      #0002,
+      var(--color-son-orange),
+      var(--color-son-silver),
+      var(--color-son-gold),
+      var(--color-son-silver)
+    );
+}
+.sunset-t2-holographic::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 70% 20%, var(--color-son-pink), #0000),
+    repeating-radial-gradient(circle at 30% 80%, #fff, var(--color-son-gold) 48px, #eeeeee 150px);
+  mix-blend-mode: color-burn;
+}
+/* Era animado (faixa deslizando de cima pra baixo em loop, via
+   background-position) -- mix-blend-mode recompondo a cada frame pesava
+   demais junto com os outros cards do carrossel (reportado). Faixa
+   parada -- ainda contribui pro efeito holográfico, só sem o motion. */
+.sunset-t2-holographic::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, #f905, var(--color-son-orange), var(--color-son-gold), #f905);
+  mix-blend-mode: difference;
+  background-position: 0 0;
+  background-size: 100% 300%;
+  background-repeat: repeat;
+}
+.sunset-t2-header {
+  position: relative;
+  grid-area: header;
+  margin: 0 8px;
+  text-align: center;
+  z-index: 1;
+  font-weight: 900;
+  font-size: 2.1rem;
+  letter-spacing: 1px;
+  color: #ffffff9f;
+  text-shadow: 0 0 0 #000;
+  -webkit-text-stroke: #fff 0.5px;
+  mix-blend-mode: difference;
+}
+.sunset-t2-body {
+  grid-area: body;
+  margin: 0 1em;
+  padding: 0.5em;
+  font-weight: 300;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: center;
+  color: #fff;
+  z-index: 1;
+  position: relative;
+}
+.sunset-t2-footer {
+  grid-area: footer;
+  z-index: 1;
+  position: relative;
+  margin: 0 1em 1em 1em;
+}
+.sunset-t2-number {
+  margin-bottom: 0.75rem;
+  text-align: center;
+  color: #000;
+  font-weight: 300;
+  font-size: 0.85rem;
+}
+.sunset-t2-bold {
+  font-weight: 700;
+}
+.sunset-t2-barcode {
+  margin: 0 auto;
+  width: 0;
+  height: 32px;
+  box-shadow:
+    0px 0 0 1px #000,
+    5px 0 0 1px #000,
+    7px 0 0 1px #000,
+    11px 0 0 1px #000,
+    15px 0 0 1px #000,
+    16px 0 0 1px #000,
+    22px 0 0 1px #000,
+    27px 0 0 1px #000,
+    30px 0 0 1px #000,
+    35px 0 0 1px #000,
+    36px 0 0 1px #000,
+    39px 0 0 1px #000,
+    43px 0 0 1px #000,
+    47px 0 0 1px #000,
+    50px 0 0 1px #000,
+    55px 0 0 1px #000,
+    59px 0 0 1px #000,
+    60px 0 0 1px #000,
+    64px 0 0 1px #000,
+    69px 0 0 1px #000,
+    70px 0 0 1px #000,
+    74px 0 0 1px #000;
+  transform: translateX(37px);
+}
+.sunset-t2-symbol {
+  position: absolute;
+  top: 1.1em;
+  right: 0px;
+  rotate: 185deg;
+  font-size: 1.1em;
+  color: #fff;
+  line-height: 0.5;
+  opacity: 0.2;
+}
+
+/* Uiverse.io by dexter-st — "papel" (aqui, o TicketCardVisual acima)
+   espiando pra fora de um corte na parede, em loop contínuo cobrindo
+   peek/reveal-parcial/saída-total (ver CouponSlot.tsx). --cs-width/
+   --cs-paper-height vêm do componente (prop size); o resto (corte,
+   sombra, perspectiva 3D) é fixo. O ticket de dentro (.sunset-t2-card)
+   é forçado a 100% do papel, em vez do tamanho intrínseco (180x320)
+   que ele tem quando renderizado sozinho no carrossel. */
+.sunset-cs-wrapper {
+  --cs-width: 190px;
+  --cs-paper-height: 220px;
+  --cs-cut-size: 5px;
+  --cs-perspective: 200px;
+  --cs-paper-width-multiplier: 0.95;
+
+  position: relative;
+  /* O papel puxado no arrasto pode se estender bem além desses 60px
+     (ver .sunset-cs-paper-wrapper) e agora tem permissão de sobrepor
+     as abas logo abaixo -- z-index garante que ele desenha por cima
+     em vez de ficar por baixo do conteúdo seguinte. */
+  z-index: 5;
+  display: grid;
+  place-items: center;
+
+  width: var(--cs-width);
+  height: 60px;
+  margin: 0 auto;
+  flex-shrink: 0;
+
+  user-select: none;
+  pointer-events: none;
+}
+.sunset-cs-cutout-wrapper {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  height: 60px;
+  transform-style: preserve-3d;
+  perspective: var(--cs-perspective);
+}
+.sunset-cs-cutout {
+  position: absolute;
+  width: 100%;
+  height: 60px;
+  transform: rotateX(-10deg);
+  box-sizing: border-box;
+
+  border: 1px solid #0004;
+  box-shadow:
+    inset 0 1px 1px 0px #0017,
+    inset 0 2px 2px 0px #0017,
+    inset 0 4px 4px 0px #0017,
+    inset 0 12px 12px 0px #0017,
+    inset 0 24px 24px 0px #0017;
+}
+.sunset-cs-paper-wrapper {
+  position: absolute;
+  width: calc(var(--cs-width) * var(--cs-paper-width-multiplier));
+  height: var(--cs-paper-height);
+  top: 2px;
+  filter: drop-shadow(0 1px 1px #0003) drop-shadow(0 6px 3px #0004) drop-shadow(0 16px 16px #0003);
+  overflow: hidden;
+}
+.sunset-cs-paper {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+
+  border: none;
+  background: transparent;
+  padding: 0;
+  box-sizing: border-box;
+
+  mask-image: linear-gradient(
+      #000 calc(var(--cs-paper-height) - var(--cs-cut-size)),
+      #0000 calc(var(--cs-paper-height) - var(--cs-cut-size) + 2px)
+    ),
+    conic-gradient(#000 135deg, #0000 135.5deg, #0000 224.5deg, #000 225deg);
+  mask-position:
+    0,
+    0 calc(var(--cs-paper-height) - var(--cs-cut-size));
+  mask-repeat: no-repeat, repeat-x;
+  mask-size:
+    100%,
+    var(--cs-cut-size) var(--cs-cut-size);
+
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sunset-cs-paper .sunset-t2-card {
+  width: 100%;
+  height: 100%;
+}
+.sunset-cs-sec {
+  height: 100%;
+  transform: translateY(calc(-1 * var(--cs-paper-height) + 70px));
+
+  /* Loop parado no "espiando"/reveal parcial só -- a saída completa
+     (translateY(0)) não é mais um loop nem uma ação de toque: agora só
+     acontece arrastando o papel pra baixo até o fim (ver
+     onPointerDown/Move/Up em CouponSlot.tsx), que assume o controle via
+     transform inline e desliga esta animação enquanto isso. Duração
+     reduzida à metade (era 7s). */
+  animation: sunset-cs-cycle 3.5s ease-in-out infinite;
+}
+@keyframes sunset-cs-cycle {
+  0%,
+  20% {
+    transform: translateY(calc(-1 * var(--cs-paper-height) + 70px));
+  }
+  45%,
+  60% {
+    transform: translateY(calc(-1 * var(--cs-paper-height) + 130px));
+  }
+  85%,
+  100% {
+    transform: translateY(calc(-1 * var(--cs-paper-height) + 70px));
+  }
+}
+/* Variante 'sm' (card decorativo da landing, sem espaço reservado ao
+   redor pro papel esticar até sair todo pra fora) — mesma ideia, mas o
+   avanço máximo fica bem mais curto (~78px, igual ao :focus da versão
+   antiga desse card), nunca chega a sobrepor o texto ao lado. */
+.sunset-cs-sec-sm {
+  animation-name: sunset-cs-cycle-sm;
+  /* Card decorativo da landing não foi pedido pra ficar mais rápido —
+     só o botão "Resgatar cupom" (.sunset-cs-sec base, 3.5s); sem isso
+     herdaria a duração reduzida do shorthand `animation` da regra
+     base junto com o resto das propriedades. */
+  animation-duration: 7s;
+}
+@keyframes sunset-cs-cycle-sm {
+  0%,
+  20% {
+    transform: translateY(calc(-1 * var(--cs-paper-height) + 50px));
+  }
+  45%,
+  60% {
+    transform: translateY(calc(-1 * var(--cs-paper-height) + 78px));
+  }
+  85%,
+  100% {
+    transform: translateY(calc(-1 * var(--cs-paper-height) + 50px));
+  }
+}
+.sunset-cs-shadow-wrapper {
+  position: absolute;
+  width: 100%;
+  height: 32px;
+  top: 0;
+
+  transform-style: preserve-3d;
+  perspective: calc(var(--cs-perspective) / 1.33);
+}
+.sunset-cs-shadow {
+  position: absolute;
+  top: 1px;
+  width: 100%;
+  height: 32px;
+  background-color: #0005;
+  background-image: linear-gradient(#000, #0000 8px);
+  mask-image: linear-gradient(#000 0, #0000 70%);
+  transform: rotateX(-10deg);
+}
+.sunset-cs-cutter-wrapper {
+  position: absolute;
+  width: 100%;
+  height: 32px;
+  top: 0;
+  transform-style: preserve-3d;
+  perspective: calc(var(--cs-perspective) / 1.33);
+  mix-blend-mode: screen;
+}
+.sunset-cs-cutter {
+  position: absolute;
+  top: 1px;
+  width: 100%;
+  height: calc(var(--cs-cut-size) + 3px);
+  background-color: #ddd;
+  background-image: linear-gradient(#000, #0000 8px);
+  mask-image: linear-gradient(
+      #000 calc(calc(var(--cs-cut-size) + 3px) - var(--cs-cut-size)),
+      #0000 calc(calc(var(--cs-cut-size) + 3px) - var(--cs-cut-size) + 2px)
+    ),
+    conic-gradient(#000 135deg, #0000 135.5deg, #0000 224.5deg, #000 225deg);
+  mask-position:
+    0,
+    calc(var(--cs-cut-size) / 2) 3px;
+  mask-repeat: no-repeat, repeat-x;
+  mask-size:
+    100%,
+    var(--cs-cut-size) var(--cs-cut-size);
+
+  transform: rotateX(-10deg);
+}

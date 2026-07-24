@@ -1,0 +1,27 @@
+
+# Rust
+backend/target/
+backend/.env
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+whatsapp-gateway/node_modules/
+whatsapp-gateway/.env
+whatsapp-gateway/.wwebjs_auth/
+whatsapp-gateway/.wwebjs_cache/
+worker/.wrangler/
+
+# Env
+.env
+.env.local
+
+# DB
+*.sqlite
+*.sqlite3
+*.db
+
+# OS
+.DS_Store
+Thumbs.db

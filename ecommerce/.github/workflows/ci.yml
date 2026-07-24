@@ -1,0 +1,44 @@
+name: CI
+
+# Deploy em si já é automático (Railway e Vercel redeployam sozinhos a cada
+# push em main, sem passo manual). Isso aqui é o pedaço que faltava: validar
+# ANTES de deixar chegar lá — roda em toda push/PR, pra pegar build quebrado
+# na hora, com o resultado visível direto no GitHub (não só descobrir depois
+# que o Railway/Vercel já tentou e falhou o deploy).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (cargo check)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - run: cargo check --all-targets
+
+  frontend:
+    name: Frontend (tsc + test + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
