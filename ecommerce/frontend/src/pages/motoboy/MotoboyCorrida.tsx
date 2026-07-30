@@ -4,14 +4,15 @@ import { animate, motion, useMotionValue } from 'framer-motion'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Check, ChevronsRight, Copy, ExternalLink, Loader2, Navigation, MapPin, PackageCheck } from 'lucide-react'
-import { api, ApiError } from '../../lib/api'
+import { ApiError } from '../../lib/apiError'
+import { motoboyService } from '../../services/motoboyService'
 import { seguirLocalizacao } from '../../lib/geo/localizacao'
 import { calcularRota, distanciaKm } from '../../lib/geo/rotas'
 import { FALLBACK, monitorarTiles, TILE_ATTR, TILE_URL } from '../../lib/geo/mapa'
 import { destDivIcon, motoDivIcon } from '../../lib/geo/icones'
 import { anexarGestoMapa } from '../../lib/geo/rotacaoMapa'
 import type { Ponto, Rota } from '../../lib/geo/tipos'
-import type { MotoboyRun } from '../../lib/types'
+import type { MotoboyRun } from '../../types'
 
 const ARRIVAL_RADIUS_KM = 0.08 // ~80m — dá pra considerar "chegou"
 const POSITION_UPDATE_MIN_MS = 4000
@@ -104,7 +105,7 @@ export default function MotoboyCorrida() {
   // nunca "some" mesmo depois de um reload.
   useEffect(() => {
     let cancelled = false
-    api.motoboy.runs
+    motoboyService.runs
       .active()
       .then((r) => {
         if (cancelled) return
@@ -189,7 +190,7 @@ export default function MotoboyCorrida() {
         const now = Date.now()
         if (now - lastSentRef.current > POSITION_UPDATE_MIN_MS) {
           lastSentRef.current = now
-          api.motoboy.runs.updatePosition(p.lat, p.lng, p.heading).catch(() => {})
+          motoboyService.runs.updatePosition(p.lat, p.lng, p.heading).catch(() => {})
         }
       },
       () => setError('Não consegui acessar seu GPS. Ative a localização pra continuar navegando.')
@@ -287,7 +288,7 @@ export default function MotoboyCorrida() {
     setError(null)
     setCompleting(true)
     try {
-      const updated = await api.motoboy.runs.completeCurrent(paymentConfirmed)
+      const updated = await motoboyService.runs.completeCurrent(paymentConfirmed)
       setConfirmingPayment(false)
       if (updated.status === 'concluido') {
         navigate('/funcionarios/motoboy')

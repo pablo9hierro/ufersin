@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import Logo from '../ui/Logo'
 import { useAdminAuth } from '../../store/adminAuth'
+import { isDemoModeActive, planoIncludes, type PlanoCode } from '../../lib/demoMode'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 // Exclusivo do admin — vendedor tem seu próprio layout/rota
 // (VendedorLayout, /funcionarios/vendedor/*) e motoboy também
@@ -20,29 +22,60 @@ import { useAdminAuth } from '../../store/adminAuth'
 // componente de guarda nem prefixo de URL entre si (antes vendedor caía
 // dentro de /admin/... usando este mesmo layout, e mesmo com sessões
 // isoladas de verdade isso lia como "confundindo usuário" — reportado).
-const NAV_ITEMS = [
-  { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList },
-  { href: '/admin/pdv', label: 'PDV', icon: ShoppingCart },
-  { href: '/admin/produtos', label: 'Produtos', icon: Package },
-  { href: '/admin/motoboys', label: 'Funcionários', icon: Truck },
-  { href: '/admin/crm', label: 'CRM', icon: Users },
-  { href: '/admin/promocoes', label: 'Promoções', icon: Megaphone },
-  { href: '/admin/layout-cliente', label: 'Layout', icon: Layers },
-  { href: '/admin/financeiro', label: 'Financeiro', icon: Wallet },
-  { href: '/admin/conta', label: 'Configurações', icon: Settings },
-] as const
+//
+// `requiredPlan` só é aplicado em modo demo (ver demoMode.ts) — fora
+// dele, todo item sempre aparece pra qualquer admin de verdade (gating
+// de plano de verdade no admin real é trabalho futuro, ver
+// ecommerce/README-TENANCY.md).
+const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requiredPlan: PlanoCode }[] = [
+  { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, requiredPlan: 'essential' },
+  { href: '/admin/pdv', label: 'PDV', icon: ShoppingCart, requiredPlan: 'essential' },
+  { href: '/admin/produtos', label: 'Produtos', icon: Package, requiredPlan: 'essential' },
+  { href: '/admin/motoboys', label: 'Funcionários', icon: Truck, requiredPlan: 'management' },
+  { href: '/admin/crm', label: 'CRM', icon: Users, requiredPlan: 'premium' },
+  { href: '/admin/promocoes', label: 'Promoções', icon: Megaphone, requiredPlan: 'management' },
+  { href: '/admin/layout-cliente', label: 'Layout', icon: Layers, requiredPlan: 'essential' },
+  { href: '/admin/financeiro', label: 'Financeiro', icon: Wallet, requiredPlan: 'essential' },
+  { href: '/admin/conta', label: 'Configurações', icon: Settings, requiredPlan: 'essential' },
+]
 
 export default function AdminLayout() {
   const { token, name, logout } = useAdminAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const demo = isDemoModeActive()
+  const tenantConfig = useTenantConfig()
+  // null enquanto carrega -- otimista (nunca esconde/bloqueia à toa
+  // enquanto a config real ainda não chegou).
+  const pedidosLiberado = tenantConfig?.vender_externamente !== false
 
   if (!token) return <Navigate to="/admin/login" state={{ from: location }} replace />
+
+  // Em demo, navegar direto pra URL de um item bloqueado pelo plano (não
+  // só clicar no menu, que já nem deixa) também precisa ser barrado.
+  const currentItem = NAV_ITEMS.find((i) => i.href === location.pathname)
+  if (demo && currentItem && !planoIncludes(currentItem.requiredPlan)) {
+    return <Navigate to="/admin/pedidos" replace />
+  }
+  // Onboarding marcou "vender apenas internamente" -- Pedidos não existe
+  // pra esse tenant (só existe fila de balcão via PDV).
+  if (location.pathname === '/admin/pedidos' && !pedidosLiberado) {
+    return <Navigate to="/admin/pdv" replace />
+  }
 
   const handleLogout = () => {
     logout()
     navigate('/admin/login')
   }
+
+  // Item bloqueado pelo plano nem aparece no menu -- diferente de
+  // deixar visível/cinza com cadeado (removido a pedido: quem tá no
+  // essential não deve nem saber que "CRM"/"Promoções" existem no menu).
+  // "Pedidos" some também quando o onboarding marcou "vender apenas
+  // internamente" -- ver useTenantConfig acima.
+  const visibleItems = NAV_ITEMS.filter(
+    (i) => (!demo || planoIncludes(i.requiredPlan)) && (i.href !== '/admin/pedidos' || pedidosLiberado)
+  )
 
   return (
     <div className="min-h-screen bg-son-black text-white flex">
@@ -52,7 +85,7 @@ export default function AdminLayout() {
           <p className="text-xs text-son-silver-dim mt-1">Olá, {name}</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {visibleItems.map(({ href, label, icon: Icon }) => {
             const active = location.pathname === href
             return (
               <Link
@@ -88,7 +121,7 @@ export default function AdminLayout() {
           </button>
         </header>
         <nav className="md:hidden flex gap-2 overflow-x-auto px-4 py-3 bg-son-black border-b border-white/5 scrollbar-hide sticky top-[65px] z-10">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {visibleItems.map(({ href, label, icon: Icon }) => {
             const active = location.pathname === href
             return (
               <Link

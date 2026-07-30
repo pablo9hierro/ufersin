@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useCart } from '../store/cart'
-import { api } from '../lib/api'
-import type { PageDecorationElement } from '../lib/types'
+import { pageDecorationService } from '../services/pageDecorationService'
+import type { PageDecorationElement } from '../types'
 import SunsetCartIcon from './SunsetCartIcon'
 import SmokeDecor from './decor/SmokeDecor'
 import FireDecor from './decor/FireDecor'
@@ -16,7 +16,7 @@ export default function CartFab() {
   const [elements, setElements] = useState<PageDecorationElement[]>([])
 
   useEffect(() => {
-    api.pageDecorations
+    pageDecorationService
       .list()
       .then((all) => setElements(all.find((d) => d.page_key === 'cart_icon')?.elements ?? []))
       .catch(() => {})

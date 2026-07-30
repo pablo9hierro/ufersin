@@ -1,8 +1,7 @@
 import { Minus, Package, Plus, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 import FavoriteHeartButton from './FavoriteHeartButton'
-import type { Product } from '../lib/types'
-import type { PromotionalProduct } from '../lib/supabasePublicApi'
+import type { Product, PromotionalProduct } from '../types'
 
 export function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -38,6 +37,17 @@ export function PromoRibbon({ promo }: { promo: PromotionalProduct }) {
   return (
     <div className="sunset-promo-ribbon-wrap">
       <span className="sunset-promo-ribbon" data-label={discountLabel(promo)} />
+    </div>
+  )
+}
+
+// Mesma fitinha, versão cinza pra produto com estoque zerado -- nunca
+// junto com PromoRibbon no mesmo card (produto esgotado não é elegível
+// pra nenhuma promoção enquanto não repor).
+export function OutOfStockRibbon() {
+  return (
+    <div className="sunset-promo-ribbon-wrap">
+      <span className="sunset-promo-ribbon sunset-promo-ribbon-gray" data-label="Em falta" />
     </div>
   )
 }
@@ -110,7 +120,7 @@ export default function ProductDetailModal({
           <div className="sunset-pd-footer">
             {promo ? <PromoPriceBlock price={product.price} promo={promo} /> : <span className="sunset-pd-price">{currency(product.price)}</span>}
             {outOfStock ? (
-              <span className="text-xs font-semibold text-son-silver-dim">Esgotado</span>
+              <span className="text-xs font-semibold text-son-silver-dim">Em falta</span>
             ) : inCart > 0 ? (
               <div className="flex items-center gap-2">
                 <button type="button" onClick={onRemove} className="sunset-pd-button">

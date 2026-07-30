@@ -5,13 +5,18 @@ import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import LocationPicker from '../components/checkout/LocationPicker'
 import BirthdateInput from '../components/checkout/BirthdateInput'
-import { api, ApiError } from '../lib/api'
-import type { CouponPreview, PromotionalProduct } from '../lib/supabasePublicApi'
-import type { Promotion, PaymentMethod, Product, ShippingEstimate } from '../lib/types'
+import { ApiError } from '../lib/apiError'
+import { productService } from '../services/productService'
+import { couponService } from '../services/couponService'
+import { promotionService } from '../services/promotionService'
+import { shippingService } from '../services/shippingService'
+import { orderService } from '../services/orderService'
+import type { CouponPreview, PromotionalProduct, Promotion, PaymentMethod, Product, ShippingEstimate } from '../types'
 import { useCart } from '../store/cart'
 import { useCustomer } from '../store/customer'
 import { useCustomerAuth } from '../store/customerAuth'
 import CustomerAuthModal from '../components/CustomerAuthModal'
+import { isDemoModeActive } from '../lib/demoMode'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -75,13 +80,13 @@ export default function Checkout() {
   const [autoPromoCode, setAutoPromoCode] = useState<string | null>(null)
 
   useEffect(() => {
-    api.products.list().then(setProducts)
-    api.coupons.listPromotionalProducts().then(setPromoProducts).catch(() => {})
+    productService.list().then(setProducts)
+    couponService.listPromotionalProducts().then(setPromoProducts).catch(() => {})
   }, [])
 
   useEffect(() => {
     if (!promotionId) return
-    api.promotions
+    promotionService
       .get(promotionId)
       .then(setPromotion)
       .catch(() => setPromotionError('Essa campanha não está mais disponível.'))
@@ -92,7 +97,7 @@ export default function Checkout() {
   // o frete (o preço por km do admin pode ter mudado desde então).
   useEffect(() => {
     if (customer.lat == null || customer.lng == null) return
-    api.estimateShipping(customer.lat, customer.lng).then(setShippingEstimate).catch(() => setShippingEstimate(null))
+    shippingService.estimate(customer.lat, customer.lng).then(setShippingEstimate).catch(() => setShippingEstimate(null))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -110,7 +115,7 @@ export default function Checkout() {
       return
     }
     const timer = setTimeout(() => {
-      api.coupons
+      couponService
         .listForCustomer(`55${digits}`)
         .then((available) => {
           setCustomerCoupons(available)
@@ -151,7 +156,7 @@ export default function Checkout() {
     const promo = promoByProduct.get(match.product.id)!
     if (autoPromoCode === promo.coupon_code) return
     const digits = customer.whatsapp.replace(/\D/g, '')
-    api.coupons
+    couponService
       .validate(promo.coupon_code, promotion?.id, customer.birthdate, digits ? `55${digits}` : undefined)
       .then((result) => {
         setAutoPromoCode(promo.coupon_code)
@@ -260,7 +265,7 @@ export default function Checkout() {
     setCouponChecking(true)
     try {
       const digits = customer.whatsapp.replace(/\D/g, '')
-      const result = await api.coupons.validate(code.trim(), promotion?.id, customer.birthdate, digits ? `55${digits}` : undefined)
+      const result = await couponService.validate(code.trim(), promotion?.id, customer.birthdate, digits ? `55${digits}` : undefined)
       setAppliedCoupon(result)
     } catch (e) {
       setAppliedCoupon(null)
@@ -297,10 +302,14 @@ export default function Checkout() {
       setError('Informe sua data de nascimento.')
       return
     }
-    const age = (Date.now() - new Date(customer.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
-    if (age < 18) {
-      setError('Você precisa ser maior de idade para comprar produtos de tabacaria.')
-      return
+    // Exigência de maioridade é específica de tabacaria (venda de fumo) —
+    // não se aplica ao ramo lanchonete simulado na demo.
+    if (!isDemoModeActive()) {
+      const age = (Date.now() - new Date(customer.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+      if (age < 18) {
+        setError('Você precisa ser maior de idade para comprar produtos de tabacaria.')
+        return
+      }
     }
     if (!pickupAtStore && (customer.lat == null || customer.lng == null)) {
       setError('Escolha sua localização no mapa ou marque retirada no local.')
@@ -309,7 +318,7 @@ export default function Checkout() {
 
     setSubmitting(true)
     try {
-      const order = await api.orders.create({
+      const order = await orderService.create({
         customer_name: customer.name.trim(),
         customer_whatsapp: `55${digits}`,
         customer_birthdate: customer.birthdate,
@@ -327,7 +336,7 @@ export default function Checkout() {
       // Checkout de campanha nunca mexeu no carrinho normal — só limpa o
       // carrinho quando o pedido realmente veio dele.
       if (!promotion) clear()
-      api.orders.notifyCreated(order.id).catch(() => {})
+      orderService.notifyCreated(order.id).catch(() => {})
       if (paymentMethod === 'pix') {
         navigate(`/pagamento/${order.id}`)
       } else {
@@ -400,7 +409,9 @@ export default function Checkout() {
           <div>
             <label className="label">Data de nascimento *</label>
             <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
-            <p className="text-xs text-son-silver-dim mt-1">Exigido por lei — venda de produtos de tabacaria só para maiores de 18 anos.</p>
+            <p className="text-xs text-son-silver-dim mt-1">
+              {isDemoModeActive() ? 'Pra te avisar em datas especiais e promoções de aniversário.' : 'Exigido por lei — venda de produtos de tabacaria só para maiores de 18 anos.'}
+            </p>
           </div>
 
           <label className="flex items-center gap-2 text-sm text-son-silver">

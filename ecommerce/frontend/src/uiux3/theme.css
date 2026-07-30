@@ -1,0 +1,215 @@
+/*
+ * Estilo de layout "BurgerBite" -- inspirado num app de delivery
+ * específico (onboarding cheio de energia: wordmark em degradê sobre
+ * foto de produto, botões em PÍLULA cheia largura, navegação por ÍCONES
+ * circulares soltos em vez de barra de abas, catálogo em duas camadas
+ * -- destaques em cartão grande + resto em LISTA com selo). Componentes
+ * e classes 100% PRÓPRIOS deste estilo -- não reaproveita nada de
+ * uiux2/theme.css (Ufersin nativo) nem da estrutura de Shell/ProductCard
+ * de lá, só a MESMA técnica de harmonização (fundo fixo, trio de acento
+ * override-able, gradiente só entre vizinhos, proporção base/texto/
+ * acento ~78/12/10).
+ */
+.u3-page {
+  --u3-black: #0e0d0d;
+  --u3-surface: #1c1a19;
+  --u3-surface-light: #292523;
+  --u3-red: var(--tenant-accent-1, #ff3d3d);
+  --u3-orange: var(--tenant-accent-2, #ff8a00);
+  --u3-gold: var(--tenant-accent-3, #ffc93c);
+  --u3-white: #ffffff;
+  --u3-gray: #9a9a9a;
+
+  position: relative;
+  background: var(--u3-black);
+  color: var(--u3-white);
+  color-scheme: dark;
+  min-height: 100vh;
+  font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+.u3-page ::selection {
+  background: var(--u3-orange);
+  color: #000;
+}
+
+/* Wordmark em degradê vermelho→laranja, usado SÓ em texto (nunca ícone
+   SVG -- clip de background em cima de currentColor apagaria o stroke). */
+.u3-wordmark {
+  background: linear-gradient(135deg, var(--u3-red), var(--u3-orange));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  font-weight: 900;
+}
+
+/* Barra superior -- ícones circulares soltos (voltar/menu à esquerda,
+   busca/sacola à direita), NUNCA uma fileira de abas como o Ufersin
+   nativo. Nome da loja centralizado, pequeno, versalete. */
+.u3-topbar {
+  background: color-mix(in srgb, var(--u3-black) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.u3-icon-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--u3-surface);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.u3-icon-btn:hover {
+  background: var(--u3-surface-light);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.u3-icon-btn-accent {
+  background: linear-gradient(135deg, var(--u3-red), var(--u3-orange));
+  border: none;
+  color: #fff;
+}
+
+/* Dock flutuante do rodapé (mobile) -- pílula única com 3-4 ícones,
+   nunca uma barra retangular de ponta a ponta como o Ufersin nativo. */
+.u3-dock {
+  background: color-mix(in srgb, var(--u3-surface) 92%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.6);
+}
+.u3-dock-item {
+  color: var(--u3-gray);
+  transition: color 0.15s ease;
+}
+.u3-dock-item.is-active {
+  color: var(--u3-orange);
+}
+
+/* Cartão de destaque -- foto GRANDE, quadrada, cantos bem arredondados,
+   legenda (nome + preço) ABAIXO da foto (nunca sobreposta). É o oposto
+   do .u2-card do Ufersin nativo (borda+sombra uniforme pra qualquer
+   conteúdo) -- aqui a foto é a protagonista. */
+.u3-feature-card {
+  border-radius: 28px;
+  overflow: hidden;
+  background: var(--u3-surface);
+}
+.u3-feature-photo {
+  aspect-ratio: 1;
+  background: var(--u3-surface-light);
+  overflow: hidden;
+}
+
+/* Linha de lista (segunda camada do catálogo, "Menu" na referência) --
+   miniatura pequena + nome + selo + preço, tudo numa linha. Não existe
+   equivalente no Ufersin nativo (lá tudo é grade de cartão). */
+.u3-list-row {
+  background: var(--u3-surface);
+  border-radius: 20px;
+  transition: background 0.15s ease;
+}
+.u3-list-row:hover,
+.u3-list-row:active {
+  background: var(--u3-surface-light);
+}
+.u3-list-thumb {
+  border-radius: 16px;
+  background: var(--u3-surface-light);
+  overflow: hidden;
+}
+
+/* Selo "popular" -- chama pequena + texto, decorativo (não é nota real
+   de cliente), preenche o papel do "★ avaliação" da referência sem
+   inventar dado de negócio que não existe no contrato. */
+.u3-badge-pop {
+  color: var(--u3-gold);
+  font-weight: 700;
+}
+
+/* Botões em PÍLULA cheia largura -- vermelho sólido (ação principal,
+   "Log In"/"Adicionar") e laranja/contorno (ação secundária, "Sign Up"/
+   "Cancelar"). Sempre rounded-full, nunca rounded-xl como o Ufersin
+   nativo. */
+.u3-pill-primary {
+  background: linear-gradient(135deg, var(--u3-red), var(--u3-orange));
+  color: #fff;
+  border-radius: 9999px;
+  font-weight: 800;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.u3-pill-primary:hover {
+  opacity: 0.92;
+}
+.u3-pill-primary:active {
+  transform: scale(0.98);
+}
+.u3-pill-primary:disabled {
+  opacity: 0.45;
+}
+.u3-pill-secondary {
+  background: transparent;
+  color: var(--u3-white);
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+  font-weight: 700;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.u3-pill-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Botão circular flutuante sobre foto (coração de favorito) -- sólido
+   escuro translúcido, sem blur (diferente do glass do Ufersin nativo). */
+.u3-fab {
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.u3-accent {
+  color: var(--u3-orange);
+}
+.u3-dim {
+  color: var(--u3-gray);
+}
+.u3-oncanvas {
+  color: var(--u3-white);
+}
+.u3-oncanvas-dim {
+  color: var(--u3-gray);
+}
+
+/* Painel genérico (formulários de checkout/favoritos/cupons/histórico --
+   páginas sem referência visual direta nas imagens, então usam um painel
+   neutro consistente com a paleta em vez de inventar mais um padrão). */
+.u3-panel {
+  background: var(--u3-surface);
+  border-radius: 24px;
+}
+.u3-input {
+  background: var(--u3-surface);
+  border-radius: 16px;
+  border: none;
+}
+.u3-oncanvas-accent {
+  color: var(--u3-orange);
+  font-weight: 800;
+}
+.u3-chip {
+  background: linear-gradient(135deg, var(--u3-red), var(--u3-orange));
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* Tela cheia de "onboarding" (login/cadastro) -- mesma linguagem da
+   referência: foto grande no topo, wordmark em degradê por cima, 2
+   pílulas empilhadas embaixo. Nada a ver com o modal centralizado
+   pequeno do Ufersin nativo. */
+.u3-onboard-photo {
+  background: radial-gradient(circle at 50% 30%, var(--u3-surface-light), var(--u3-black) 75%);
+}

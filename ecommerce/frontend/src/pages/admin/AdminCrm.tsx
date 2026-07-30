@@ -9,7 +9,8 @@ import ProductCategoryMultiSelect from '../../components/admin/ProductCategoryMu
 import ProductDiscountList from '../../components/admin/ProductDiscountList'
 import ToggleSwitch from '../../components/admin/ToggleSwitch'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
-import { api, ApiError } from '../../lib/api'
+import { ApiError } from '../../lib/apiError'
+import { adminService } from '../../services/adminService'
 import type {
   CampanhaOrientation,
   Category,
@@ -24,7 +25,7 @@ import type {
   DiscountType,
   Product,
   ProductDiscount,
-} from '../../lib/types'
+} from '../../types'
 
 // Some browsers only show the native number spinner on hover/focus, which
 // looks broken in these narrow filter inputs — hidden consistently here.
@@ -690,18 +691,18 @@ export default function AdminCrm() {
 
   const loadCustomers = () => {
     setLoading(true)
-    api.admin.crm.customers().then(setCustomers).finally(() => setLoading(false))
+    adminService.crm.customers().then(setCustomers).finally(() => setLoading(false))
   }
   const loadCoupons = () => {
     setCouponsLoading(true)
-    api.admin.coupons.list().then(setCoupons).finally(() => setCouponsLoading(false))
+    adminService.coupons.list().then(setCoupons).finally(() => setCouponsLoading(false))
   }
   const loadCampanhaCoupons = (segmentId: string) => {
-    api.admin.campanhaCoupons.list(segmentId).then((rows) => setCampanhaCouponsBySegment((prev) => ({ ...prev, [segmentId]: rows })))
+    adminService.campanhaCoupons.list(segmentId).then((rows) => setCampanhaCouponsBySegment((prev) => ({ ...prev, [segmentId]: rows })))
   }
   const loadSegments = () => {
     setSegmentsLoading(true)
-    api.admin.segments
+    adminService.segments
       .list()
       .then((rows) => {
         setSegments(rows)
@@ -713,8 +714,8 @@ export default function AdminCrm() {
     loadCustomers()
     loadCoupons()
     loadSegments()
-    api.admin.products.list().then(setProducts)
-    api.admin.categories.list().then(setCategories)
+    adminService.products.list().then(setProducts)
+    adminService.categories.list().then(setCategories)
   }, [])
 
   // Não existe job em background pra campanhas 'evento' — a única forma de
@@ -729,16 +730,16 @@ export default function AdminCrm() {
     autoCheckedEventos.current = true
     ;(async () => {
       for (const seg of segments) {
-        const rows = await api.admin.campanhaCoupons.list(seg.id).catch(() => [])
+        const rows = await adminService.campanhaCoupons.list(seg.id).catch(() => [])
         let changed = false
         for (const row of rows) {
           if (row.orientation !== 'evento' || !row.trigger_criteria || !row.active || !row.coupon_id) continue
           const matching = applyFilters(customers, row.trigger_criteria as unknown as FilterState, products).map((c) => c.whatsapp)
           if (matching.length === 0) continue
-          const result = await api.admin.campanhaCoupons.fireEvent(row.id, matching).catch(() => null)
+          const result = await adminService.campanhaCoupons.fireEvent(row.id, matching).catch(() => null)
           if (result) {
             for (const n of result.to_notify) {
-              api.admin.whatsapp.notifyCouponGrant(n.coupon_id, n.message_template).catch(() => {})
+              adminService.whatsapp.notifyCouponGrant(n.coupon_id, n.message_template).catch(() => {})
             }
             if (result.newly_granted.length > 0 || result.to_notify.length > 0) changed = true
           }
@@ -756,9 +757,9 @@ export default function AdminCrm() {
     if (autoDispatchedSchedule.current) return
     autoDispatchedSchedule.current = true
     ;(async () => {
-      const due = await api.admin.campanhaCoupons.dispatchScheduledNotifications().catch(() => [])
+      const due = await adminService.campanhaCoupons.dispatchScheduledNotifications().catch(() => [])
       for (const n of due) {
-        api.admin.whatsapp.notifyCouponGrant(n.coupon_id, n.message_template).catch(() => {})
+        adminService.whatsapp.notifyCouponGrant(n.coupon_id, n.message_template).catch(() => {})
       }
     })()
   }, [])
@@ -773,10 +774,10 @@ export default function AdminCrm() {
     if (coupons.length === 0) return
     autoCheckedBirthdays.current = true
     ;(async () => {
-      const results = await api.admin.coupons.checkBirthdays().catch(() => [])
+      const results = await adminService.coupons.checkBirthdays().catch(() => [])
       if (results.length === 0) return
       for (const r of results) {
-        api.admin.whatsapp.notifyCouponGrant(r.coupon_id, r.message_template).catch(() => {})
+        adminService.whatsapp.notifyCouponGrant(r.coupon_id, r.message_template).catch(() => {})
       }
       loadCoupons()
     })()
@@ -793,7 +794,7 @@ export default function AdminCrm() {
       for (const row of rows) {
         if (!row.active || healedStale.current.has(row.id) || !isCampanhaStale(row, seg)) continue
         healedStale.current.add(row.id)
-        api.admin.campanhaCoupons
+        adminService.campanhaCoupons
           .toggleActive(row.id, false)
           .then(() => loadCampanhaCoupons(seg.id))
           .catch(() => {})
@@ -816,7 +817,7 @@ export default function AdminCrm() {
           const matches = applyFilters(customers, row.end_criteria as unknown as FilterState, products).length > 0
           if (matches) {
             autoEndedCampanhas.current.add(row.id)
-            api.admin.campanhaCoupons.toggleActive(row.id, false).then(() => loadCampanhaCoupons(seg.id)).catch(() => {})
+            adminService.campanhaCoupons.toggleActive(row.id, false).then(() => loadCampanhaCoupons(seg.id)).catch(() => {})
           }
         }
         for (const ec of row.extra_coupons) {
@@ -824,7 +825,7 @@ export default function AdminCrm() {
             const matches = applyFilters(customers, ec.end_criteria as unknown as FilterState, products).length > 0
             if (matches) {
               autoEndedExtras.current.add(ec.id)
-              api.admin.campanhaCoupons.deactivateExtra(ec.id).then(() => loadCampanhaCoupons(seg.id)).catch(() => {})
+              adminService.campanhaCoupons.deactivateExtra(ec.id).then(() => loadCampanhaCoupons(seg.id)).catch(() => {})
             }
           }
         }
@@ -941,9 +942,9 @@ export default function AdminCrm() {
         filter_criteria: filter,
       }
       if (editingSegmentId) {
-        await api.admin.segments.update(editingSegmentId, payload)
+        await adminService.segments.update(editingSegmentId, payload)
       } else {
-        await api.admin.segments.create(payload)
+        await adminService.segments.create(payload)
       }
       loadSegments()
       resetSegmentForm()
@@ -958,7 +959,7 @@ export default function AdminCrm() {
   }
   const removeSegment = (id: string) =>
     askConfirm('Remover esta segmentação?', async () => {
-      await api.admin.segments.delete(id)
+      await adminService.segments.delete(id)
       if (editingSegmentId === id) {
         resetSegmentForm()
         setAppliedFilter(null)
@@ -1005,7 +1006,7 @@ export default function AdminCrm() {
     setSavingCampanhaBasic(true)
     try {
       const segmentId = newCampanhaSegment.id
-      await api.admin.campanhaCoupons.create({
+      await adminService.campanhaCoupons.create({
         segment_id: segmentId,
         orientation: campanhaBasicOrientation,
         name: campanhaBasicForm.name.trim(),
@@ -1499,15 +1500,15 @@ export default function AdminCrm() {
     setHistoryLoading(true)
     try {
       const matching = applyFilters(customers, row.trigger_criteria as unknown as FilterState, products).map((c) => c.whatsapp)
-      const result = await api.admin.campanhaCoupons.fireEvent(row.id, matching)
+      const result = await adminService.campanhaCoupons.fireEvent(row.id, matching)
       // Extras são concedidos junto com o principal na mesma chamada (mesmo
       // critério de "novo"); to_notify já filtra quem tem envio agendado
       // pra não disparar WhatsApp agora.
       for (const n of result.to_notify) {
-        api.admin.whatsapp.notifyCouponGrant(n.coupon_id, n.message_template).catch(() => {})
+        adminService.whatsapp.notifyCouponGrant(n.coupon_id, n.message_template).catch(() => {})
       }
       loadCampanhaCoupons(row.segment_id)
-      const grants = await api.admin.coupons.listGrants(couponId)
+      const grants = await adminService.coupons.listGrants(couponId)
       setHistoryGrants(grants)
     } finally {
       setHistoryLoading(false)
@@ -1516,13 +1517,13 @@ export default function AdminCrm() {
 
   const removeCampanha = (row: CrmCampanhaCoupon) =>
     askConfirm('Remover esta campanha?', async () => {
-      await api.admin.campanhaCoupons.delete(row.id)
+      await adminService.campanhaCoupons.delete(row.id)
       loadCampanhaCoupons(row.segment_id)
     })
 
   const toggleCampanhaActive = async (row: CrmCampanhaCoupon) => {
     try {
-      await api.admin.campanhaCoupons.toggleActive(row.id, !row.active)
+      await adminService.campanhaCoupons.toggleActive(row.id, !row.active)
       loadCampanhaCoupons(row.segment_id)
     } catch (err) {
       alert(err instanceof ApiError ? err.message : 'Não foi possível atualizar o status da campanha.')
@@ -1691,7 +1692,7 @@ export default function AdminCrm() {
     setGatilhoSaveError(null)
     setSavingGatilho(true)
     try {
-      const row = await api.admin.campanhaCoupons.setGatilho(
+      const row = await adminService.campanhaCoupons.setGatilho(
         editingCampanhaId,
         gatilhoForm as unknown as CrmFilterCriteria,
         gatilhoDescription.trim() || undefined
@@ -1707,13 +1708,13 @@ export default function AdminCrm() {
 
   const clearGatilho = (cc: CrmCampanhaCoupon) =>
     askConfirm('Limpar o gatilho deste evento? Os cupons ligados a ele deixam de ter critério de disparo automático.', async () => {
-      const row = await api.admin.campanhaCoupons.setGatilho(cc.id, null)
+      const row = await adminService.campanhaCoupons.setGatilho(cc.id, null)
       loadCampanhaCoupons(row.segment_id)
     })
 
   const deletePrimaryCoupon = (cc: CrmCampanhaCoupon) =>
     askConfirm('Remover o cupom principal desta campanha?', async () => {
-      await api.admin.campanhaCoupons.deletePrimary(cc.id)
+      await adminService.campanhaCoupons.deletePrimary(cc.id)
       loadCampanhaCoupons(cc.segment_id)
     })
 
@@ -1729,7 +1730,7 @@ export default function AdminCrm() {
     }
     setSavingCampanhaCadastro(true)
     try {
-      const row = await api.admin.campanhaCoupons.updateCadastro(editingCampanhaId, {
+      const row = await adminService.campanhaCoupons.updateCadastro(editingCampanhaId, {
         name: campanhaCadastroForm.name.trim(),
         description: campanhaCadastroForm.description.trim() || undefined,
         starts_at: campanhaCadastroForm.starts_at || undefined,
@@ -1754,7 +1755,7 @@ export default function AdminCrm() {
     setCampanhaEndSaveError(null)
     setSavingCampanhaEnd(true)
     try {
-      const row = await api.admin.campanhaCoupons.setEndCriteria(
+      const row = await adminService.campanhaCoupons.setEndCriteria(
         editingCampanhaId,
         campanhaEndCriteria as unknown as CrmFilterCriteria,
         campanhaEndDescription.trim() || undefined
@@ -1770,7 +1771,7 @@ export default function AdminCrm() {
 
   const clearCampanhaEndCriteria = (cc: CrmCampanhaCoupon) =>
     askConfirm('Remover o gatilho de encerramento desta campanha?', async () => {
-      const row = await api.admin.campanhaCoupons.setEndCriteria(cc.id, null)
+      const row = await adminService.campanhaCoupons.setEndCriteria(cc.id, null)
       loadCampanhaCoupons(row.segment_id)
     })
 
@@ -1787,7 +1788,7 @@ export default function AdminCrm() {
     }
     setSavingCampanhaEdit(true)
     try {
-      const row = await api.admin.campanhaCoupons.update(editingCampanhaId, {
+      const row = await adminService.campanhaCoupons.update(editingCampanhaId, {
         message_template: campanhaEditForm.messageTemplate,
         uses_per_customer: Number(campanhaEditForm.uses_per_customer) || 1,
         combinable_with_public: campanhaEditForm.combinable_with_public,
@@ -1872,7 +1873,7 @@ export default function AdminCrm() {
     setSavingExtraCoupon(true)
     try {
       if (editingExtraCouponId) {
-        await api.admin.campanhaCoupons.updateExtra(editingExtraCouponId, {
+        await adminService.campanhaCoupons.updateExtra(editingExtraCouponId, {
           message_template: extraCouponForm.messageTemplate,
           uses_per_customer: Number(extraCouponForm.uses_per_customer) || 1,
           combinable_with_public: extraCouponForm.combinable_with_public,
@@ -1887,7 +1888,7 @@ export default function AdminCrm() {
           product_discounts: extraCouponForm.productMode === 'produto' ? extraCouponForm.productDiscounts : undefined,
           description: extraCouponForm.description || undefined,
         })
-        await api.admin.campanhaCoupons.setExtraEndCriteria(
+        await adminService.campanhaCoupons.setExtraEndCriteria(
           editingExtraCouponId,
           extraCouponEndEnabled ? (extraCouponEndCriteria as unknown as CrmFilterCriteria) : null
         )
@@ -1908,7 +1909,7 @@ export default function AdminCrm() {
         isBootstrapPrimary && extraCouponCampanha.orientation === 'segmento' && segment
           ? applyFilters(customers, segment.filter_criteria as unknown as FilterState, products).map((c) => c.whatsapp)
           : []
-      const created = await api.admin.campanhaCoupons.createExtra(extraCouponCampanha.id, {
+      const created = await adminService.campanhaCoupons.createExtra(extraCouponCampanha.id, {
         code: extraCouponForm.code,
         message_template: extraCouponForm.messageTemplate,
         uses_per_customer: Number(extraCouponForm.uses_per_customer) || 1,
@@ -1931,7 +1932,7 @@ export default function AdminCrm() {
       // com a mensagem própria deste cupom extra. Mesma coisa se este
       // cupom acabou de virar o principal e já dispara na hora.
       if (extraCouponCampanha.fired_at || matchingWhatsapps.length > 0) {
-        api.admin.whatsapp.notifyCouponGrant(created.id, extraCouponForm.messageTemplate).catch(() => {})
+        adminService.whatsapp.notifyCouponGrant(created.id, extraCouponForm.messageTemplate).catch(() => {})
       }
       const segmentId = extraCouponCampanha.segment_id
       setExtraCouponCampanha(null)
@@ -1946,7 +1947,7 @@ export default function AdminCrm() {
 
   const removeCampanhaExtraCoupon = (ec: CrmCampanhaExtraCoupon, cc: CrmCampanhaCoupon) =>
     askConfirm('Remover este cupom da campanha?', async () => {
-      await api.admin.campanhaCoupons.deleteExtra(ec.id)
+      await adminService.campanhaCoupons.deleteExtra(ec.id)
       loadCampanhaCoupons(cc.segment_id)
       loadCoupons()
     })
@@ -1979,9 +1980,9 @@ export default function AdminCrm() {
     setSavingSchedule(true)
     try {
       if (kind === 'primary') {
-        await api.admin.campanhaCoupons.setSchedule(id, delayDays, hour)
+        await adminService.campanhaCoupons.setSchedule(id, delayDays, hour)
       } else {
-        await api.admin.campanhaCoupons.setExtraSchedule(id, delayDays, hour)
+        await adminService.campanhaCoupons.setExtraSchedule(id, delayDays, hour)
       }
       setScheduleOpenKey(null)
       loadCampanhaCoupons(segmentId)
@@ -2082,9 +2083,9 @@ export default function AdminCrm() {
       }
       if (editingCouponId) {
         const active = coupons.find((c) => c.id === editingCouponId)?.active ?? true
-        await api.admin.coupons.update(editingCouponId, { active, ...payload })
+        await adminService.coupons.update(editingCouponId, { active, ...payload })
       } else {
-        await api.admin.coupons.create({ code: couponForm.code, ...payload })
+        await adminService.coupons.create({ code: couponForm.code, ...payload })
       }
       setShowCouponForm(false)
       setEditingCouponId(null)
@@ -2098,7 +2099,7 @@ export default function AdminCrm() {
   }
 
   const toggleCouponActive = async (c: Coupon) => {
-    await api.admin.coupons.update(c.id, {
+    await adminService.coupons.update(c.id, {
       active: !c.active,
       allow_promotion_checkout: c.allow_promotion_checkout,
       combinable_with_public: c.combinable_with_public,
@@ -2120,7 +2121,7 @@ export default function AdminCrm() {
 
   const removeCoupon = (id: string) =>
     askConfirm('Remover este cupom?', async () => {
-      await api.admin.coupons.delete(id)
+      await adminService.coupons.delete(id)
       loadCoupons()
     })
 

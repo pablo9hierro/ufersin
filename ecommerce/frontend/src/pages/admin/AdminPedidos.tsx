@@ -4,8 +4,10 @@ import { GripVertical, Loader2, Package } from 'lucide-react'
 import { StatusBadge } from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
 import WhatsAppLink from '../../components/ui/WhatsAppLink'
-import { api, ApiError } from '../../lib/api'
-import type { Order } from '../../lib/types'
+import { ApiError } from '../../lib/apiError'
+import { adminService } from '../../services/adminService'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import type { Order } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -47,16 +49,24 @@ function OrderCard({
   order,
   busyId,
   advance,
+  manualPaymentMode,
 }: {
   order: Order
   busyId: string | null
   advance: (order: Order, requirePayment: boolean) => void
+  manualPaymentMode: boolean
 }) {
   const dragControls = useDragControls()
   const next = nextStatusFor(order)
   const canAdvance = !!next
+  // Retirada com pagamento não-Pix sempre exige confirmação manual (é
+  // uma entrega física em mãos, independe da config da loja). Onboarding
+  // marcado como "cobrança manual" (sem plataforma de Pix cadastrada)
+  // estende essa mesma confirmação pra QUALQUER pedido ainda não pago,
+  // não só retirada -- é o lojista que cobra/recebe por conta própria em
+  // todos os casos, então toda venda precisa da baixa manual dele.
   const requiresPaymentConfirm =
-    order.status === 'retiradas' && order.payment_method !== 'pix' && order.payment_status !== 'pago'
+    order.payment_status !== 'pago' && (manualPaymentMode || (order.status === 'retiradas' && order.payment_method !== 'pix'))
 
   return (
     <Reorder.Item value={order} dragListener={false} dragControls={dragControls}>
@@ -111,6 +121,8 @@ function OrderCard({
 }
 
 export default function AdminPedidos() {
+  const tenantConfig = useTenantConfig()
+  const manualPaymentMode = tenantConfig?.forma_pagamento === 'manual'
   const [orders, setOrders] = useState<Order[]>([])
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['value']>('pendente')
   const [loading, setLoading] = useState(true)
@@ -123,7 +135,7 @@ export default function AdminPedidos() {
 
   const load = () => {
     setLoading(true)
-    api.admin.orders.list().then(setOrders).finally(() => setLoading(false))
+    adminService.orders.list().then(setOrders).finally(() => setLoading(false))
   }
 
   useEffect(load, [])
@@ -144,9 +156,9 @@ export default function AdminPedidos() {
     setError(null)
     setBusyId(order.id)
     try {
-      await api.admin.orders.updateStatus(order.id, next)
+      await adminService.orders.updateStatus(order.id, next)
       if (next === 'pedido_pronto') {
-        api.admin.orders.notifyReady(order.id).catch(() => {})
+        adminService.orders.notifyReady(order.id).catch(() => {})
       }
       load()
     } catch (e) {
@@ -163,7 +175,7 @@ export default function AdminPedidos() {
     setError(null)
     setBusyId(confirmingOrder.id)
     try {
-      await api.admin.orders.updateStatus(confirmingOrder.id, next, true)
+      await adminService.orders.updateStatus(confirmingOrder.id, next, true)
       setConfirmingOrder(null)
       load()
     } catch (e) {
@@ -205,7 +217,7 @@ export default function AdminPedidos() {
       ) : (
         <Reorder.Group axis="y" values={visible} onReorder={setVisible} className="space-y-4">
           {visible.map((order) => (
-            <OrderCard key={order.id} order={order} busyId={busyId} advance={advance} />
+            <OrderCard key={order.id} order={order} busyId={busyId} advance={advance} manualPaymentMode={manualPaymentMode} />
           ))}
         </Reorder.Group>
       )}

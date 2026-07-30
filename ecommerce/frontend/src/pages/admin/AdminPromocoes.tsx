@@ -5,8 +5,10 @@ import ExpiryInput from '../../components/admin/ExpiryInput'
 import ProductDiscountList from '../../components/admin/ProductDiscountList'
 import ToggleSwitch from '../../components/admin/ToggleSwitch'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
-import { api, ApiError } from '../../lib/api'
-import type { CarouselStyle, Category, Product, ProductDiscount, Promotion } from '../../lib/types'
+import { ApiError } from '../../lib/apiError'
+import { adminService } from '../../services/adminService'
+import { siteSettingsService } from '../../services/siteSettingsService'
+import type { CarouselStyle, Category, Product, ProductDiscount, Promotion } from '../../types'
 
 const MAX_BANNER_MB = 10
 
@@ -48,7 +50,7 @@ function HeroImageCard() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    api.siteSettings.get().then((s) => setHeroUrl(s.hero_image_url))
+    siteSettingsService.get().then((s) => setHeroUrl(s.hero_image_url))
   }, [])
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,8 +64,8 @@ function HeroImageCard() {
     }
     setUploading(true)
     try {
-      const { url } = await api.admin.products.uploadImage(file)
-      const result = await api.admin.siteSettings.updateHeroImage(url)
+      const { url } = await adminService.products.uploadImage(file)
+      const result = await adminService.siteSettings.updateHeroImage(url)
       setHeroUrl(result.hero_image_url)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao enviar a imagem.')
@@ -121,7 +123,7 @@ function CarouselStyleCard() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.siteSettings.get().then((s) => setStyle(s.carousel_style))
+    siteSettingsService.get().then((s) => setStyle(s.carousel_style))
   }, [])
 
   const choose = async (next: CarouselStyle) => {
@@ -131,7 +133,7 @@ function CarouselStyleCard() {
     const previous = style
     setStyle(next)
     try {
-      await api.admin.siteSettings.updateCarouselStyle(next)
+      await adminService.siteSettings.updateCarouselStyle(next)
     } catch (err) {
       setStyle(previous)
       setError(err instanceof ApiError ? err.message : 'Não foi possível salvar o estilo do carrossel.')
@@ -193,11 +195,11 @@ export default function AdminPromocoes() {
 
   const loadPromotions = () => {
     setPromotionsLoading(true)
-    api.admin.promotions.list().then(setPromotions).finally(() => setPromotionsLoading(false))
+    adminService.promotions.list().then(setPromotions).finally(() => setPromotionsLoading(false))
   }
   useEffect(() => {
-    api.admin.products.list().then(setProducts)
-    api.admin.categories.list().then(setCategories)
+    adminService.products.list().then(setProducts)
+    adminService.categories.list().then(setCategories)
     loadPromotions()
   }, [])
 
@@ -212,7 +214,7 @@ export default function AdminPromocoes() {
     }
     setUploading(true)
     try {
-      const { url } = await api.admin.products.uploadImage(file)
+      const { url } = await adminService.products.uploadImage(file)
       setPromotionForm((f) => ({ ...f, image_url: url }))
     } catch (err) {
       setPromotionError(err instanceof ApiError ? err.message : 'Erro ao enviar a imagem.')
@@ -288,9 +290,9 @@ export default function AdminPromocoes() {
         expires_at: promotionForm.expires_at || undefined,
       }
       if (editingPromotionId) {
-        await api.admin.promotions.update(editingPromotionId, { ...payload, active: promotionForm.active })
+        await adminService.promotions.update(editingPromotionId, { ...payload, active: promotionForm.active })
       } else {
-        await api.admin.promotions.create(payload)
+        await adminService.promotions.create(payload)
       }
       setShowPromotionForm(false)
       setEditingPromotionId(null)
@@ -304,7 +306,7 @@ export default function AdminPromocoes() {
   }
 
   const togglePromotionActive = async (p: Promotion) => {
-    await api.admin.promotions.update(p.id, {
+    await adminService.promotions.update(p.id, {
       title: p.title,
       subtitle: p.subtitle ?? undefined,
       image_url: p.image_url,
@@ -324,7 +326,7 @@ export default function AdminPromocoes() {
 
   const removePromotion = (id: string) =>
     askConfirm('Remover esta promoção?', async () => {
-      await api.admin.promotions.delete(id)
+      await adminService.promotions.delete(id)
       loadPromotions()
     })
 

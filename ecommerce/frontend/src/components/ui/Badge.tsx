@@ -1,5 +1,5 @@
-import type { OrderStatus } from '../../lib/types'
-import { STATUS_LABELS } from '../../lib/types'
+import type { OrderStatus } from '../../types'
+import { STATUS_LABELS } from '../../types'
 import clsx from 'clsx'
 
 const STATUS_COLORS: Record<OrderStatus, string> = {

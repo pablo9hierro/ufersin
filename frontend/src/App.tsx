@@ -8,6 +8,7 @@ import EsqueciSenha from './pages/EsqueciSenha'
 import VerificarEmail from './pages/VerificarEmail'
 import Dashboard from './pages/Dashboard'
 import Onboarding from './pages/Onboarding'
+import MeuPlano from './pages/MeuPlano'
 import Obrigado from './pages/Obrigado'
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
       <Route path="/verificar-email" element={<VerificarEmail />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/onboarding" element={<Onboarding />} />
+      <Route path="/meu-plano" element={<MeuPlano />} />
       <Route path="/obrigado" element={<Obrigado />} />
     </Routes>
   )

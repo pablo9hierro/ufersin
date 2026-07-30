@@ -5,14 +5,22 @@ import { AnimatePresence, motion } from 'framer-motion'
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import CartFab from '../components/CartFab'
-import ProductDetailModal, { PromoPriceBlock, PromoRibbon, currency } from '../components/ProductDetailModal'
+import ProductDetailModal, { OutOfStockRibbon, PromoPriceBlock, PromoRibbon, currency } from '../components/ProductDetailModal'
 import FavoriteHeartButton from '../components/FavoriteHeartButton'
 import ConfirmRemoveDialog from '../components/ConfirmRemoveDialog'
-import { api } from '../lib/api'
-import type { Category, Product } from '../lib/types'
-import type { PromotionalProduct } from '../lib/supabasePublicApi'
+import { favoriteService } from '../services/favoriteService'
+import { useCatalog } from '../hooks/useCatalog'
+import type { Category, Product, PromotionalProduct } from '../types'
 import { useCart } from '../store/cart'
 import { useCustomerAuth } from '../store/customerAuth'
+
+// Referência estável enquanto os dados do catálogo ainda não chegaram —
+// um `[]` literal novo a cada render faria os useMemo abaixo recalcular
+// sem necessidade só por causa da identidade do array mudar.
+const EMPTY_PRODUCTS: Product[] = []
+const EMPTY_CATEGORIES: Category[] = []
+const EMPTY_PROMOS: PromotionalProduct[] = []
+const EMPTY_SALES_COUNTS: { product_id: string; sold_count: number }[] = []
 
 // Grade estática pros itens em promoção — cada categoria da aba
 // "🔥 Promoção" listava antes numa esteira que rolava sozinha; removida a
@@ -54,14 +62,14 @@ function PromoCards({
 }
 
 export default function Catalogo() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [promos, setPromos] = useState<PromotionalProduct[]>([])
-  const [salesCounts, setSalesCounts] = useState<{ product_id: string; sold_count: number }[]>([])
+  const { data: catalogData, loading } = useCatalog()
+  const products = catalogData?.products ?? EMPTY_PRODUCTS
+  const categories = catalogData?.categories ?? EMPTY_CATEGORIES
+  const promos = catalogData?.promos ?? EMPTY_PROMOS
+  const salesCounts = catalogData?.salesCounts ?? EMPTY_SALES_COUNTS
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [sortBy, setSortBy] = useState<'padrao' | 'menor_preco' | 'maior_preco' | 'mais_vendido' | 'alfabetica'>('padrao')
   const [view, setView] = useState<'grid' | 'list'>('grid')
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [detailProduct, setDetailProduct] = useState<Product | null>(null)
@@ -79,16 +87,16 @@ export default function Catalogo() {
 
   useEffect(() => {
     if (!customerAuth.token) return
-    api.customerAuth
-      .listFavorites(customerAuth.token)
+    favoriteService
+      .list(customerAuth.token)
       .then((favs) => setFavoriteIds(new Set(favs.map((p) => p.id))))
       .catch(() => {})
   }, [customerAuth.token])
 
   const toggleFavorite = (productId: string) => {
     if (!customerAuth.token) return
-    api.customerAuth
-      .toggleFavorite(customerAuth.token, productId)
+    favoriteService
+      .toggle(customerAuth.token, productId)
       .then((isNowFavorite) => {
         setFavoriteIds((prev) => {
           const next = new Set(prev)
@@ -112,17 +120,6 @@ export default function Catalogo() {
     setPendingRemove(null)
     toggleFavorite(product.id)
   }
-
-  useEffect(() => {
-    Promise.all([api.products.list(), api.categories.list(), api.coupons.listPromotionalProducts(), api.products.salesCounts()])
-      .then(([p, c, promo, sales]) => {
-        setProducts(p)
-        setCategories(c)
-        setPromos(promo)
-        setSalesCounts(sales)
-      })
-      .finally(() => setLoading(false))
-  }, [])
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -217,15 +214,20 @@ export default function Catalogo() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay: Math.min(i * 0.03, 0.3) }}
-        className="relative bg-son-surface border border-white/5 rounded-2xl overflow-hidden flex flex-col hover:border-son-pink/30 transition-colors"
+        className={`relative bg-son-surface border border-white/5 rounded-2xl overflow-hidden flex flex-col transition-colors ${outOfStock ? 'grayscale opacity-70' : 'hover:border-son-pink/30'}`}
       >
-        {promo && <PromoRibbon promo={promo} />}
+        {outOfStock ? <OutOfStockRibbon /> : promo && <PromoRibbon promo={promo} />}
         {customerAuth.token && (
           <div className="absolute top-2 right-2 z-10">
             <FavoriteHeartButton checked={favoriteIds.has(product.id)} onChange={() => requestToggleFavorite(product)} />
           </div>
         )}
-        <button type="button" onClick={() => setDetailProduct(product)} className="flex flex-col flex-1 text-left">
+        <button
+          type="button"
+          onClick={() => !outOfStock && setDetailProduct(product)}
+          disabled={outOfStock}
+          className="flex flex-col flex-1 text-left disabled:cursor-not-allowed"
+        >
           <div className="aspect-square bg-son-surface-light flex items-center justify-center overflow-hidden">
             {product.image_url ? (
               <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
@@ -243,7 +245,7 @@ export default function Catalogo() {
         </button>
         <div className="px-3 pb-3">
           {outOfStock ? (
-            <span className="block text-xs font-semibold text-son-silver-dim text-center py-2">Esgotado</span>
+            <span className="block text-xs font-semibold text-son-silver-dim text-center py-2">Em falta</span>
           ) : inCart > 0 ? (
             <div className="flex items-center justify-between bg-son-surface-light rounded-xl px-2 py-1">
               <button onClick={() => changeQty(product.id, -1)} className="w-7 h-7 flex items-center justify-center text-son-pink">
@@ -282,7 +284,7 @@ export default function Catalogo() {
         initial={{ opacity: 0, x: -12 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.3, delay: Math.min(i * 0.03, 0.3) }}
-        className="relative bg-son-surface border border-white/5 rounded-2xl overflow-visible flex items-center gap-4 p-3 hover:border-son-pink/30 transition-colors"
+        className={`relative bg-son-surface border border-white/5 rounded-2xl overflow-visible flex items-center gap-4 p-3 transition-colors ${outOfStock ? 'grayscale opacity-70' : 'hover:border-son-pink/30'}`}
       >
         {customerAuth.token && (
           <div className="absolute -top-1.5 -right-1.5 z-10">
@@ -291,13 +293,20 @@ export default function Catalogo() {
         )}
         <button
           type="button"
-          onClick={() => setDetailProduct(product)}
-          className="relative w-16 h-16 flex-shrink-0 rounded-xl bg-son-surface-light flex items-center justify-center overflow-hidden"
+          onClick={() => !outOfStock && setDetailProduct(product)}
+          disabled={outOfStock}
+          className="relative w-16 h-16 flex-shrink-0 rounded-xl bg-son-surface-light flex items-center justify-center overflow-hidden disabled:cursor-not-allowed"
         >
-          {promo && (
+          {outOfStock ? (
             <div className="absolute top-0 left-0 origin-top-left scale-50">
-              <PromoRibbon promo={promo} />
+              <OutOfStockRibbon />
             </div>
+          ) : (
+            promo && (
+              <div className="absolute top-0 left-0 origin-top-left scale-50">
+                <PromoRibbon promo={promo} />
+              </div>
+            )
           )}
           {product.image_url ? (
             <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
@@ -305,13 +314,18 @@ export default function Catalogo() {
             <Package className="w-6 h-6 text-son-silver-dim/40" />
           )}
         </button>
-        <button type="button" onClick={() => setDetailProduct(product)} className="flex-1 min-w-0 text-left">
+        <button
+          type="button"
+          onClick={() => !outOfStock && setDetailProduct(product)}
+          disabled={outOfStock}
+          className="flex-1 min-w-0 text-left disabled:cursor-not-allowed"
+        >
           <p className="text-sm font-semibold text-white truncate">{product.name}</p>
           {product.category_name && <p className="text-xs text-son-silver-dim">{product.category_name}</p>}
           {promo ? <PromoPriceBlock price={product.price} promo={promo} /> : <p className="sunset-text font-bold mt-0.5">{currency(product.price)}</p>}
         </button>
         {outOfStock ? (
-          <span className="text-xs font-semibold text-son-silver-dim px-3">Esgotado</span>
+          <span className="text-xs font-semibold text-son-silver-dim px-3">Em falta</span>
         ) : inCart > 0 ? (
           <div className="flex items-center gap-1.5 bg-son-surface-light rounded-xl px-2 py-1.5">
             <button onClick={() => changeQty(product.id, -1)} className="w-6 h-6 flex items-center justify-center text-son-pink">

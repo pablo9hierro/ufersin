@@ -109,10 +109,15 @@ export default function Dashboard() {
           <Link to="/" className="text-lg font-black uf-text">
             Rodoletas
           </Link>
-          <button onClick={handleLogout} className="btn-ghost text-sm">
-            <LogOut className="w-4 h-4" />
-            Sair
-          </button>
+          <div className="flex items-center gap-4">
+            <Link to="/meu-plano" className="btn-ghost text-sm">
+              Meu plano
+            </Link>
+            <button onClick={handleLogout} className="btn-ghost text-sm">
+              <LogOut className="w-4 h-4" />
+              Sair
+            </button>
+          </div>
         </div>
       </header>
 

@@ -1,0 +1,215 @@
+/*
+ * Estilo de layout "Burger House" -- inspirado num app de delivery
+ * diferente do BurgerBite (uiux3): quase monocromático (preto/branco +
+ * UM acento laranja só, sem degradê de 3 cores), tipografia CONDENSADA
+ * em caixa alta gigante no hero, catálogo em GRADE DE AZULEJOS quadrados
+ * (foto ocupa o tile inteiro, legenda em faixa translúcida por cima --
+ * nunca legenda abaixo como no BurgerBite, nunca cartão uniforme como o
+ * Ufersin nativo), navegação por ABAS de texto (nunca dock de ícones,
+ * nunca fileira ícone+label). Componentes e classes 100% próprios -- não
+ * compartilha nada com uiux2 (Ufersin) nem uiux3 (BurgerBite).
+ */
+.u4-page {
+  --u4-black: #050505;
+  --u4-surface: #141414;
+  --u4-surface-light: #1f1f1f;
+  --u4-orange: var(--tenant-accent-1, #ff7a1a);
+  --u4-orange-soft: var(--tenant-accent-2, #c85f16);
+  --u4-orange-pale: var(--tenant-accent-3, #ffb066);
+  --u4-white: #ffffff;
+  --u4-gray: #7a7a7a;
+
+  position: relative;
+  background: var(--u4-black);
+  color: var(--u4-white);
+  color-scheme: dark;
+  min-height: 100vh;
+  font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+.u4-page ::selection {
+  background: var(--u4-orange);
+  color: #000;
+}
+
+/* Tipografia condensada gigante do hero -- caixa alta, peso máximo,
+   tracking apertado. Nunca usada em ícone (é sempre <h1>/<span> de
+   texto). */
+.u4-display {
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+}
+.u4-display-accent {
+  color: var(--u4-orange);
+}
+
+/* Selo pequeno de preço/eyebrow -- pílula laranja sólida compacta,
+   nunca um badge com ícone grande como o Ufersin nativo. */
+.u4-tag {
+  background: var(--u4-orange);
+  color: #000;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+/* Barra superior minimalista -- ícones PEQUENOS sem fundo (não círculos
+   preenchidos como o BurgerBite), traço fino. */
+.u4-topbar {
+  background: color-mix(in srgb, var(--u4-black) 92%, transparent);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.u4-icon-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--u4-white);
+  transition: background 0.15s ease;
+}
+.u4-icon-btn:hover {
+  background: var(--u4-surface);
+}
+.u4-icon-btn.is-active {
+  background: var(--u4-orange);
+  color: #000;
+}
+
+/* Aba de categoria -- texto puro, a ativa ganha pílula sólida laranja de
+   fundo (sem borda, sem ícone). Nunca um dock ou fileira ícone+label. */
+.u4-tab {
+  color: var(--u4-gray);
+  font-weight: 700;
+  border-radius: 999px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.u4-tab.is-active {
+  background: var(--u4-orange);
+  color: #000;
+}
+
+/* Navegação principal (Cardápio/Sacola/Pedidos) -- faixa fina de texto
+   sublinhado, fixa no rodapé, NUNCA um dock flutuante (uiux3) nem barra
+   ícone+label cheia (uiux2). */
+.u4-navstrip {
+  background: color-mix(in srgb, var(--u4-black) 94%, transparent);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.u4-navstrip-item {
+  color: var(--u4-gray);
+  border-top: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.u4-navstrip-item.is-active {
+  color: var(--u4-white);
+  border-top-color: var(--u4-orange);
+}
+
+/* Tile de produto -- QUADRADO, a foto ocupa 100% do espaço, legenda numa
+   faixa translúcida sobreposta na base (nunca abaixo da foto como o
+   BurgerBite). Borda fina cinza por padrão; vira laranja quando o
+   produto já está na sacola (estado real, não decorativo). */
+.u4-tile {
+  aspect-ratio: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  background: var(--u4-surface);
+  transition: border-color 0.15s ease;
+}
+.u4-tile.in-cart {
+  border-color: var(--u4-orange);
+}
+.u4-tile-caption {
+  position: absolute;
+  inset: auto 0 0 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.05));
+  padding: 0.6rem 0.6rem 0.5rem;
+}
+
+/* Botão circular de paginação do hero (setas) -- traço fino, sem
+   preenchimento, bem diferente do ícone cheio do BurgerBite. */
+.u4-arrow-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--u4-white);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.u4-arrow-btn:hover {
+  border-color: var(--u4-orange);
+  background: rgba(255, 122, 26, 0.08);
+}
+
+.u4-btn-primary {
+  background: var(--u4-orange);
+  color: #000;
+  border-radius: 12px;
+  font-weight: 800;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.u4-btn-primary:hover {
+  opacity: 0.9;
+}
+.u4-btn-primary:active {
+  transform: scale(0.98);
+}
+.u4-btn-primary:disabled {
+  opacity: 0.4;
+}
+.u4-btn-secondary {
+  background: transparent;
+  color: var(--u4-white);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  font-weight: 700;
+  transition: border-color 0.15s ease;
+}
+.u4-btn-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.u4-panel {
+  background: var(--u4-surface);
+  border-radius: 16px;
+}
+.u4-input {
+  background: var(--u4-surface);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.u4-chip {
+  background: var(--u4-orange);
+  color: #000;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.u4-accent {
+  color: var(--u4-orange);
+}
+.u4-dim {
+  color: var(--u4-gray);
+}
+.u4-oncanvas {
+  color: var(--u4-white);
+}
+.u4-oncanvas-dim {
+  color: var(--u4-gray);
+}
+.u4-oncanvas-accent {
+  color: var(--u4-orange);
+  font-weight: 800;
+}
+
+.u4-fab {
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}

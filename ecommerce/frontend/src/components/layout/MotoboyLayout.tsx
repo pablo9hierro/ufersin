@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { LogOut, MessageCircle, Moon, Navigation, Sun, Truck, Wallet } from 'lucide-react'
 import Logo from '../ui/Logo'
-import { api } from '../../lib/api'
+import { motoboyService } from '../../services/motoboyService'
+import { isDemoModeActive, planoIncludes } from '../../lib/demoMode'
 import { useMotoboyAuth } from '../../store/motoboyAuth'
 import { useMotoboyTheme } from '../../store/motoboyTheme'
 
@@ -27,7 +28,7 @@ export default function MotoboyLayout() {
   useEffect(() => {
     if (!token) return
     let cancelled = false
-    const check = () => api.motoboy.runs.active().then((r) => !cancelled && setHasActiveRun(!!r))
+    const check = () => motoboyService.runs.active().then((r) => !cancelled && setHasActiveRun(!!r))
     check()
     const interval = setInterval(check, ACTIVE_RUN_POLL_MS)
     return () => {
@@ -37,6 +38,9 @@ export default function MotoboyLayout() {
   }, [token])
 
   if (!token) return <Navigate to="/funcionarios/login" state={{ from: location }} replace />
+  // Motoboy só entra no plano Management pra cima — só relevante em modo
+  // demo (fora dele nunca há restrição, ver demoMode.ts).
+  if (isDemoModeActive() && !planoIncludes('management')) return <Navigate to="/" replace />
 
   const handleLogout = () => {
     logout()

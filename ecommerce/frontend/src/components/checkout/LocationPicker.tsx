@@ -8,8 +8,8 @@ import { obterLocalizacao } from '../../lib/geo/localizacao'
 import { FALLBACK, monitorarTiles, TILE_ATTR, TILE_URL } from '../../lib/geo/mapa'
 import { anexarGestoMapa } from '../../lib/geo/rotacaoMapa'
 import type { EnderecoResultado, Ponto } from '../../lib/geo/tipos'
-import { api } from '../../lib/api'
-import type { ShippingEstimate } from '../../lib/types'
+import { shippingService } from '../../services/shippingService'
+import type { ShippingEstimate } from '../../types'
 
 export interface LocationPickerResult {
   lat: number
@@ -231,7 +231,7 @@ export default function LocationPicker({ initial, onClose, onConfirm }: Location
         setBairro(addr.bairro)
       }
       try {
-        const est = await api.estimateShipping(ajusteCentro.lat, ajusteCentro.lng)
+        const est = await shippingService.estimate(ajusteCentro.lat, ajusteCentro.lng)
         if (!cancelled) setEstimate(est)
       } catch {
         if (!cancelled) setEstimate(null)
@@ -309,7 +309,7 @@ export default function LocationPicker({ initial, onClose, onConfirm }: Location
     if (moveTimer.current) clearTimeout(moveTimer.current)
     const id = ++moveSeq.current
     moveTimer.current = setTimeout(async () => {
-      const [addr, est] = await Promise.allSettled([enderecoDe(c), api.estimateShipping(c.lat, c.lng)])
+      const [addr, est] = await Promise.allSettled([enderecoDe(c), shippingService.estimate(c.lat, c.lng)])
       if (id !== moveSeq.current) return
       if (addr.status === 'fulfilled') {
         setLabel(addr.value.label)

@@ -16,12 +16,19 @@ INSERT INTO sunset.customers (id, name, whatsapp)
 VALUES ('pdv-balcao-anonimo', 'Cliente balcão', 'pdv-balcao-anonimo')
 ON CONFLICT (id) DO NOTHING;
 
+-- DROP explícito da assinatura antiga -- adicionar parâmetros no fim faria
+-- o Postgres tratar como uma NOVA função sobrecarregada em vez de
+-- substituir a antiga (mesmo problema já resolvido em admin_create_product
+-- /admin_update_product, ver sunset_admin_crud.sql).
+DROP FUNCTION IF EXISTS sunset.pdv_create_sale(text, jsonb, text, text, text);
 CREATE OR REPLACE FUNCTION sunset.pdv_create_sale(
   p_token text,
   p_items jsonb,
   p_payment_method text,
   p_customer_name text DEFAULT NULL,
-  p_customer_whatsapp text DEFAULT NULL
+  p_customer_whatsapp text DEFAULT NULL,
+  p_discount_type text DEFAULT NULL,
+  p_discount_value double precision DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -34,6 +41,8 @@ DECLARE
   v_item        jsonb;
   v_product     sunset.products%ROWTYPE;
   v_quantity    bigint;
+  v_subtotal    double precision := 0;
+  v_discount    double precision := 0;
   v_total       double precision := 0;
   v_customer_id text;
   v_order_id    text := gen_random_uuid()::text;
@@ -48,6 +57,9 @@ BEGIN
   END IF;
   IF p_payment_method NOT IN ('pix', 'cartao', 'dinheiro') THEN
     RAISE EXCEPTION 'invalid payment_method';
+  END IF;
+  IF p_discount_type IS NOT NULL AND p_discount_type NOT IN ('percent', 'fixed') THEN
+    RAISE EXCEPTION 'invalid discount_type';
   END IF;
 
   v_name := COALESCE(NULLIF(trim(p_customer_name), ''), 'Cliente balcão');
@@ -70,8 +82,20 @@ BEGIN
       RAISE EXCEPTION 'insufficient stock for product %', v_product.name;
     END IF;
 
-    v_total := v_total + v_product.price * v_quantity;
+    v_subtotal := v_subtotal + v_product.price * v_quantity;
   END LOOP;
+
+  -- Desconto manual opcional do vendedor no ato da venda (nunca um cupom
+  -- de verdade, não fica gravado em nenhum cadastro -- só abate o total
+  -- desta venda específica). Sempre travado entre 0 e o subtotal, nunca
+  -- deixa o total negativo.
+  IF p_discount_type = 'percent' THEN
+    v_discount := v_subtotal * COALESCE(p_discount_value, 0) / 100;
+  ELSIF p_discount_type = 'fixed' THEN
+    v_discount := COALESCE(p_discount_value, 0);
+  END IF;
+  v_discount := LEAST(GREATEST(v_discount, 0), v_subtotal);
+  v_total := v_subtotal - v_discount;
 
   IF v_whatsapp IS NOT NULL THEN
     SELECT id INTO v_customer_id FROM sunset.customers WHERE whatsapp = v_whatsapp;
@@ -87,11 +111,11 @@ BEGIN
 
   INSERT INTO sunset.orders (
     id, customer_id, customer_name, customer_whatsapp, delivery_type,
-    payment_method, payment_status, status, shipping_price, total,
+    payment_method, payment_status, status, shipping_price, total, discount_amount,
     sold_by_role, sold_by_id
   ) VALUES (
     v_order_id, v_customer_id, v_name, COALESCE(v_whatsapp, ''), 'balcao',
-    p_payment_method, 'pago', 'concluido', 0, v_total,
+    p_payment_method, 'pago', 'concluido', 0, v_total, v_discount,
     v_role, v_subject
   );
 
@@ -109,4 +133,4 @@ BEGIN
   RETURN sunset.get_order(v_order_id);
 END;
 $$;
-GRANT EXECUTE ON FUNCTION sunset.pdv_create_sale(text, jsonb, text, text, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION sunset.pdv_create_sale(text, jsonb, text, text, text, text, double precision) TO anon, authenticated;

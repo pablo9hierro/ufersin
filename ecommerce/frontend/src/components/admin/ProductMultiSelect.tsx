@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Search, X } from 'lucide-react'
-import type { Product } from '../../lib/types'
+import type { Product } from '../../types'
 
 // Busca com autocomplete (nome ou código de barras) + chips dos produtos já
 // escolhidos — usado tanto no formulário de campanha quanto no filtro de

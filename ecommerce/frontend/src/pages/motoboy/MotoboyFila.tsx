@@ -4,8 +4,9 @@ import { Reorder, useDragControls } from 'framer-motion'
 import { GripVertical, Loader2, MapPin, MapPinned, Navigation, Package } from 'lucide-react'
 import { StatusBadge } from '../../components/ui/Badge'
 import WhatsAppLink from '../../components/ui/WhatsAppLink'
-import { api, ApiError } from '../../lib/api'
-import type { MotoboyRun, Order, OrderStatus } from '../../lib/types'
+import { ApiError } from '../../lib/apiError'
+import { motoboyService } from '../../services/motoboyService'
+import type { MotoboyRun, Order, OrderStatus } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -122,19 +123,19 @@ export default function MotoboyFila() {
   const navigate = useNavigate()
 
   const loadCounts = () => {
-    api.motoboy.orders.counts().then(setCounts)
+    motoboyService.orders.counts().then(setCounts)
   }
 
   const load = () => {
     setLoading(true)
     setSelected([])
     if (tab === 'em_rota_de_entrega') {
-      api.motoboy.runs
+      motoboyService.runs
         .active()
         .then(setActiveRun)
         .finally(() => setLoading(false))
     } else {
-      api.motoboy.orders
+      motoboyService.orders
         .list(tab)
         .then(setOrders)
         .finally(() => setLoading(false))
@@ -153,9 +154,9 @@ export default function MotoboyFila() {
     setError(null)
     setStarting(true)
     try {
-      const run = await api.motoboy.runs.start(selected)
+      const run = await motoboyService.runs.start(selected)
       for (const orderId of run.order_ids) {
-        api.motoboy.whatsapp.notifyEnRoute(orderId).catch(() => {})
+        motoboyService.whatsapp.notifyEnRoute(orderId).catch(() => {})
       }
       navigate('/funcionarios/motoboy/corrida')
     } catch (e) {

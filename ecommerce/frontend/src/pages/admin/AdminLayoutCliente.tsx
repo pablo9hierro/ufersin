@@ -3,8 +3,11 @@ import { Flame, Image as ImageIcon, ImagePlus, Loader2, Palette, Plus, Tags, Tra
 import Card from '../../components/ui/Card'
 import SunsetCartIcon from '../../components/SunsetCartIcon'
 import BackgroundScene from '../../components/BackgroundScene'
-import { api, ApiError } from '../../lib/api'
-import type { BadgesLayout, BgMode, BgSettings, DecorElementType, LandingBadge, PageDecoration, PageDecorationElement, PageKey } from '../../lib/types'
+import { ApiError } from '../../lib/apiError'
+import { adminService } from '../../services/adminService'
+import { siteSettingsService } from '../../services/siteSettingsService'
+import { pageDecorationService } from '../../services/pageDecorationService'
+import type { BadgesLayout, BgMode, BgSettings, DecorElementType, LandingBadge, PageDecoration, PageDecorationElement, PageKey } from '../../types'
 
 const MAX_BG_MB = 10
 
@@ -89,7 +92,7 @@ function BackgroundSettingsCard() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    api.siteSettings.get().then((s) =>
+    siteSettingsService.get().then((s) =>
       setDraft({ bg_mode: s.bg_mode, bg_image_url: s.bg_image_url, bg_scale: s.bg_scale, bg_x: s.bg_x, bg_y: s.bg_y, bg_fit: s.bg_fit })
     )
   }, [])
@@ -103,7 +106,7 @@ function BackgroundSettingsCard() {
     setUploading(true)
     setError(null)
     try {
-      const { url } = await api.admin.products.uploadImage(file)
+      const { url } = await adminService.products.uploadImage(file)
       patch({ bg_image_url: url, bg_mode: 'custom' })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao enviar a imagem.')
@@ -118,7 +121,7 @@ function BackgroundSettingsCard() {
     setError(null)
     setSaved(false)
     try {
-      await api.admin.siteSettings.updateBackground(draft)
+      await adminService.siteSettings.updateBackground(draft)
       setSaved(true)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao salvar o fundo.')
@@ -276,7 +279,7 @@ function BadgesSettingsCard() {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    api.siteSettings.get().then((s) => {
+    siteSettingsService.get().then((s) => {
       setItems(s.badges)
       setLayout(s.badges_layout)
       setGap(s.badges_gap)
@@ -299,7 +302,7 @@ function BadgesSettingsCard() {
     setSaved(false)
     try {
       const cleaned = items.map((b) => ({ ...b, text: b.text.trim() })).filter((b) => b.text)
-      await api.admin.siteSettings.updateBadges({ badges: cleaned, badges_layout: layout, badges_gap: gap, badges_offset_y: offsetY })
+      await adminService.siteSettings.updateBadges({ badges: cleaned, badges_layout: layout, badges_gap: gap, badges_offset_y: offsetY })
       setItems(cleaned)
       setSaved(true)
     } catch (err) {
@@ -414,7 +417,7 @@ export default function AdminLayoutCliente() {
   const draggingId = useRef<string | null>(null)
 
   useEffect(() => {
-    api.pageDecorations
+    pageDecorationService
       .list()
       .then((all) => {
         const map: Partial<Record<PageKey, PageDecoration>> = {}
@@ -450,7 +453,7 @@ export default function AdminLayoutCliente() {
     }
     setBgUploading(true)
     try {
-      const { url } = await api.admin.products.uploadImage(file)
+      const { url } = await adminService.products.uploadImage(file)
       updateCurrent({ background_image_url: url })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao enviar a imagem.')
@@ -483,7 +486,7 @@ export default function AdminLayoutCliente() {
     setError(null)
     setSaved(false)
     try {
-      const result = await api.admin.pageDecorations.save(pageKey, current.background_image_url, current.elements)
+      const result = await adminService.pageDecorations.save(pageKey, current.background_image_url, current.elements)
       setByPage((prev) => ({ ...prev, [pageKey]: result }))
       setSaved(true)
       // Recarrega o preview pra refletir o que acabou de ser salvo — sem

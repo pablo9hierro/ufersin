@@ -5,8 +5,8 @@ import { motion } from 'framer-motion'
 import { QRCodeSVG } from 'qrcode.react'
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
-import { api } from '../lib/api'
-import type { Order } from '../lib/types'
+import { orderService } from '../services/orderService'
+import type { Order } from '../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -21,7 +21,7 @@ export default function Pagamento() {
   const refresh = useCallback(async () => {
     if (!orderId) return
     try {
-      const updated = await api.orders.refreshPayment(orderId)
+      const updated = await orderService.refreshPayment(orderId)
       setOrder(updated)
     } catch {
       // ignore polling error, tenta de novo no próximo ciclo
@@ -30,13 +30,13 @@ export default function Pagamento() {
 
   useEffect(() => {
     if (!orderId) return
-    api.orders.get(orderId).then(async (o) => {
+    orderService.get(orderId).then(async (o) => {
       // Nada cria a cobrança Pix antes disso (nem o checkout, nem a RPC de
       // criar pedido) — na primeira vez que essa tela abre pra um pedido
       // Pix sem cobrança ainda, gera de verdade agora.
       if (o.payment_method === 'pix' && o.payment_status !== 'pago' && !o.pix_copia_cola) {
         try {
-          o = await api.orders.createPixPayment(orderId)
+          o = await orderService.createPixPayment(orderId)
         } catch {
           // deixa a tela mostrar "QR indisponível" — o polling de refresh
           // abaixo tenta de novo mais adiante se o usuário recarregar.
@@ -63,7 +63,7 @@ export default function Pagamento() {
   const handleSimulate = async () => {
     if (!orderId) return
     try {
-      const updated = await api.orders.simulatePixPaid(orderId)
+      const updated = await orderService.simulatePixPaid(orderId)
       setOrder(updated)
     } catch {
       // endpoint só funciona em modo mock; ignora se não disponível

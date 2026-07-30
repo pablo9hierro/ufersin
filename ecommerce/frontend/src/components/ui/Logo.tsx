@@ -1,5 +1,7 @@
 import clsx from 'clsx'
 import logoSrc from '../../assets/logo.png'
+import { isDemoModeActive } from '../../lib/demoMode'
+import UfersinMark from './UfersinMark'
 
 const SIZES = {
   sm: 'h-16',
@@ -8,6 +10,9 @@ const SIZES = {
 }
 
 export default function Logo({ size = 'md', className }: { size?: keyof typeof SIZES; className?: string }) {
+  if (isDemoModeActive()) {
+    return <UfersinMark className={clsx('w-auto text-son-pink', SIZES[size], className)} />
+  }
   return (
     <img
       src={logoSrc}

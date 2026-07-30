@@ -22,6 +22,16 @@ struct SubscriberRow {
     onboarding_status: String,
     tenant_id: Option<String>,
     created_at: chrono::DateTime<chrono::Utc>,
+    categoria: Option<String>,
+    endereco: Option<String>,
+    logo_url: Option<String>,
+    cor_principal: Option<String>,
+    documento: Option<String>,
+    tipo_documento: Option<String>,
+    vender_externamente: bool,
+    whatsapp_habilitado: bool,
+    forma_pagamento: String,
+    plataforma_pagamento: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -42,6 +52,16 @@ pub struct MeResponse {
     pub onboarding_status: String,
     pub tenant_id: Option<String>,
     pub assinante_desde: chrono::DateTime<chrono::Utc>,
+    pub categoria: Option<String>,
+    pub endereco: Option<String>,
+    pub logo_url: Option<String>,
+    pub cor_principal: Option<String>,
+    pub documento: Option<String>,
+    pub tipo_documento: Option<String>,
+    pub vender_externamente: bool,
+    pub whatsapp_habilitado: bool,
+    pub forma_pagamento: String,
+    pub plataforma_pagamento: Option<String>,
     /// Próxima cobrança / histórico de faturas dependem de consultar o
     /// gateway (Mercado Pago não expõe isso na mesma chamada de status) ou
     /// de um worker que registre cada cobrança recebida por webhook — não
@@ -54,7 +74,9 @@ pub struct MeResponse {
 pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<MeResponse>, AppError> {
     let row: Option<SubscriberRow> = sqlx::query_as(
         "SELECT id, loja_nome, responsavel_nome, whatsapp, email, email_verified, plan_code, valor_mensal,
-                status, gateway, slug, onboarding_status, tenant_id, created_at
+                status, gateway, slug, onboarding_status, tenant_id, created_at,
+                categoria, endereco, logo_url, cor_principal, documento, tipo_documento,
+                vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento
          FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
@@ -82,6 +104,16 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         onboarding_status: row.onboarding_status,
         tenant_id: row.tenant_id,
         assinante_desde: row.created_at,
+        categoria: row.categoria,
+        endereco: row.endereco,
+        logo_url: row.logo_url,
+        cor_principal: row.cor_principal,
+        documento: row.documento,
+        tipo_documento: row.tipo_documento,
+        vender_externamente: row.vender_externamente,
+        whatsapp_habilitado: row.whatsapp_habilitado,
+        forma_pagamento: row.forma_pagamento,
+        plataforma_pagamento: row.plataforma_pagamento,
         proxima_cobranca: None,
     }))
 }

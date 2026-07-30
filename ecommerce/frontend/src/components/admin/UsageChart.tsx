@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FinanceiroTimeseriesPoint } from '../../lib/types'
+import type { FinanceiroTimeseriesPoint } from '../../types'
 
 function formatDay(iso: string) {
   const [, m, d] = iso.split('-')

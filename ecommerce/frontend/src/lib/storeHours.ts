@@ -1,4 +1,4 @@
-import type { StoreStatus } from './types'
+import type { StoreStatus } from '../types'
 
 export const DAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 

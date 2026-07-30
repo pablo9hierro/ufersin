@@ -3,10 +3,17 @@ import { Clock, Gift, Loader2, Package, Receipt, TrendingDown, TrendingUp, Truck
 import Card from '../../components/ui/Card'
 import { StatusBadge } from '../../components/ui/Badge'
 import UsageChart from '../../components/admin/UsageChart'
-import { api } from '../../lib/api'
+import { adminService } from '../../services/adminService'
+import { pdvService } from '../../services/pdvService'
 import { useAdminAuth } from '../../store/adminAuth'
 import { useVendedorAuth } from '../../store/vendedorAuth'
-import type { FinanceiroSummary, FinanceiroTimeseriesPoint, Order, VendedorRelatorio } from '../../lib/types'
+import { isDemoModeActive, planoIncludes } from '../../lib/demoMode'
+import type { FinanceiroSummary, FinanceiroTimeseriesPoint, Order, VendedorRelatorio } from '../../types'
+
+// Cupom/campanha vive atrás do plano Management pra cima — no plano
+// Essential da demo, essas referências não fazem sentido (a loja nem
+// tem como criar cupom/campanha) e ficavam soltas nos relatórios.
+const showCupomCampanha = !isDemoModeActive() || planoIncludes('management')
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -60,7 +67,7 @@ function PdvSalesSection({ role }: { role: string }) {
   const [selected, setSelected] = useState<string[] | 'all'>('all')
 
   useEffect(() => {
-    api.pdv.relatorio().then(setData).finally(() => setLoading(false))
+    pdvService.relatorio().then(setData).finally(() => setLoading(false))
   }, [])
 
   const sellerNames = useMemo(
@@ -228,7 +235,7 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
               <span>-{currency((order.discount_amount ?? 0) + (order.shipping_discount ?? 0))}</span>
             </div>
           ) : null}
-          {order.coupon_code && (
+          {showCupomCampanha && order.coupon_code && (
             <p className="text-xs text-son-silver-dim">Cupom: {order.coupon_code}</p>
           )}
           <p className="text-xs text-son-silver-dim">Criado em {formatDate(order.created_at)}</p>
@@ -252,8 +259,8 @@ export default function AdminFinanceiro() {
 
   useEffect(() => {
     if (role !== 'admin') return
-    api.admin.financeiro.get().then(setData).finally(() => setLoading(false))
-    api.admin.financeiro.timeseries(30).then(setTimeseries).catch(() => {})
+    adminService.financeiro.get().then(setData).finally(() => setLoading(false))
+    adminService.financeiro.timeseries(30).then(setTimeseries).catch(() => {})
   }, [role])
 
   // Vendedor só enxerga as próprias vendas de balcão — o resto do
@@ -302,14 +309,16 @@ export default function AdminFinanceiro() {
             {data.avg_delivery_minutes > 0 ? `${data.avg_delivery_minutes.toFixed(1).replace('.', ',')} min` : '—'}
           </p>
         </Card>
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
-            <Gift className="w-3.5 h-3.5" /> Concedido em campanha/cupom
-          </div>
-          <p className={`font-black text-2xl ${data.total_discount_given > 0 ? 'text-amber-400' : 'text-white'}`}>
-            {currency(data.total_discount_given)}
-          </p>
-        </Card>
+        {showCupomCampanha && (
+          <Card className="p-5">
+            <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
+              <Gift className="w-3.5 h-3.5" /> Concedido em campanha/cupom
+            </div>
+            <p className={`font-black text-2xl ${data.total_discount_given > 0 ? 'text-amber-400' : 'text-white'}`}>
+              {currency(data.total_discount_given)}
+            </p>
+          </Card>
+        )}
         <Card className="p-5">
           <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
             <TrendingDown className="w-3.5 h-3.5" /> Faturaria sem desconto

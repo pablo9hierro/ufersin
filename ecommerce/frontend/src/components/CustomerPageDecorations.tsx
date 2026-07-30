@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { api } from '../lib/api'
-import type { PageDecoration, PageKey } from '../lib/types'
+import { pageDecorationService } from '../services/pageDecorationService'
+import type { PageDecoration, PageKey } from '../types'
 import SmokeDecor from './decor/SmokeDecor'
 import FireDecor from './decor/FireDecor'
 
@@ -23,7 +23,7 @@ export default function CustomerPageDecorations() {
   const [all, setAll] = useState<PageDecoration[]>([])
 
   useEffect(() => {
-    api.pageDecorations.list().then(setAll).catch(() => {})
+    pageDecorationService.list().then(setAll).catch(() => {})
   }, [])
 
   const pageKey = pageKeyForPath(pathname)

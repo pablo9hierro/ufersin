@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Clock, KeyRound, Loader2, MessageCircle, Plus, Power, Trash2 } from 'lucide-react'
-import { api, ApiError } from '../../lib/api'
-import type { StoreHourDay, StoreStatus } from '../../lib/types'
+import { ApiError } from '../../lib/apiError'
+import { adminService } from '../../services/adminService'
+import { authService } from '../../services/authService'
+import type { StoreHourDay, StoreStatus } from '../../types'
 import { DAY_LABELS, isScheduledOpenNow } from '../../lib/storeHours'
 import WhatsAppConnection from '../../components/ui/WhatsAppConnection'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 // Horas inteiras de 0 a 24 (Brasil usa 24h) — granularidade de intervalo é
 // por hora cheia, sem minutos.
@@ -21,7 +24,7 @@ function StoreHoursCard() {
   const [savingManual, setSavingManual] = useState(false)
   const [manualError, setManualError] = useState<string | null>(null)
 
-  const load = () => api.admin.storeStatus.get().then((s) => {
+  const load = () => adminService.storeStatus.get().then((s) => {
     setStatus(s)
     setHours(s.hours)
   })
@@ -55,7 +58,7 @@ function StoreHoursCard() {
     setHoursError(null)
     setHoursSaved(false)
     try {
-      await api.admin.storeStatus.setHours(hours)
+      await adminService.storeStatus.setHours(hours)
       setHoursSaved(true)
       load()
     } catch (err) {
@@ -70,7 +73,7 @@ function StoreHoursCard() {
     setSavingManual(true)
     setManualError(null)
     try {
-      await api.admin.storeStatus.setManualStatus(!status.manually_closed, reason)
+      await adminService.storeStatus.setManualStatus(!status.manually_closed, reason)
       setShowCloseReasonPrompt(false)
       setCloseReasonDraft('')
       load()
@@ -251,6 +254,10 @@ function StoreHoursCard() {
 }
 
 export default function AdminSenha() {
+  const tenantConfig = useTenantConfig()
+  // null enquanto carrega -- otimista, não pisca escondido pra depois
+  // reaparecer.
+  const whatsappHabilitado = tenantConfig?.whatsapp_habilitado !== false
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -273,7 +280,7 @@ export default function AdminSenha() {
 
     setLoading(true)
     try {
-      await api.auth.setAdminPassword(newPassword)
+      await authService.staff.setAdminPassword(newPassword)
       setSuccess(true)
       setNewPassword('')
       setConfirmPassword('')
@@ -334,13 +341,15 @@ export default function AdminSenha() {
         <StoreHoursCard />
       </div>
 
-      <div>
-        <h2 className="text-2xl font-black mb-1 flex items-center gap-2">
-          <MessageCircle className="w-5 h-5" /> WhatsApp
-        </h2>
-        <p className="text-son-silver-dim text-sm mb-6">Conecte o número da loja pra disparar as notificações automáticas.</p>
-        <WhatsAppConnection api={api.admin.whatsapp} />
-      </div>
+      {whatsappHabilitado && (
+        <div>
+          <h2 className="text-2xl font-black mb-1 flex items-center gap-2">
+            <MessageCircle className="w-5 h-5" /> WhatsApp
+          </h2>
+          <p className="text-son-silver-dim text-sm mb-6">Conecte o número da loja pra disparar as notificações automáticas.</p>
+          <WhatsAppConnection api={adminService.whatsapp} />
+        </div>
+      )}
 
     </div>
   )

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Customer } from '../lib/types'
+import type { Customer } from '../types'
 
 // Sessão de LOGIN do cliente (whatsapp+senha) — desacoplada do rascunho
 // de checkout em store/customer.ts. localStorage (não sessionStorage) de

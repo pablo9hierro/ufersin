@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Loader2, Minus, Package, Plus, ShoppingBag } from 'lucide-react'
 import { motion } from 'framer-motion'
 import SiteHeader from '../components/layout/SiteHeader'
-import { api } from '../lib/api'
-import type { Product } from '../lib/types'
+import { useProduct } from '../hooks/useProducts'
 import { useCart } from '../store/cart'
 
 function currency(v: number) {
@@ -14,19 +12,8 @@ function currency(v: number) {
 export default function ProdutoDetalhe() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [product, setProduct] = useState<Product | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { data: product, loading } = useProduct(id)
   const { items, addItem, changeQty } = useCart()
-
-  useEffect(() => {
-    if (!id) return
-    setLoading(true)
-    api.products
-      .get(id)
-      .then(setProduct)
-      .catch(() => setProduct(null))
-      .finally(() => setLoading(false))
-  }, [id])
 
   const qty = items.find((i) => i.productId === id)?.quantity ?? 0
 

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Loader2, Lock, Store, Truck } from 'lucide-react'
 import Logo from '../../components/ui/Logo'
-import { api, ApiError } from '../../lib/api'
+import { ApiError } from '../../lib/apiError'
+import { authService } from '../../services/authService'
 import { useVendedorAuth } from '../../store/vendedorAuth'
 import { useMotoboyAuth } from '../../store/motoboyAuth'
 
@@ -34,11 +35,11 @@ export default function FuncionarioLogin() {
     setLoading(true)
     try {
       if (role === 'vendedor') {
-        const res = await api.auth.vendedorLogin(email, password)
+        const res = await authService.staff.vendedorLogin(email, password)
         vendedorLogin(res.token, res.name)
         navigate('/funcionarios/vendedor')
       } else {
-        const res = await api.auth.motoboyLogin(email, password)
+        const res = await authService.staff.motoboyLogin(email, password)
         motoboyLogin(res.token, res.name)
         navigate('/funcionarios/motoboy')
       }

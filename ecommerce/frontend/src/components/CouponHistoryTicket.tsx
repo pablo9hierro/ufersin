@@ -1,4 +1,4 @@
-import type { CustomerCouponHistoryEntry } from '../lib/types'
+import type { CustomerCouponHistoryEntry } from '../types'
 import TicketCardVisual from './coupon/TicketCardVisual'
 
 function currency(v: number) {

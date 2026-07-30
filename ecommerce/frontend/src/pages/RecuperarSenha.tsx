@@ -4,7 +4,8 @@ import { Loader2, Lock } from 'lucide-react'
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import Logo from '../components/ui/Logo'
-import { api, ApiError } from '../lib/api'
+import { ApiError } from '../lib/apiError'
+import { authService } from '../services/authService'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -41,7 +42,7 @@ export default function RecuperarSenha() {
     }
     setLoading(true)
     try {
-      await api.customerAuth.requestPasswordReset(fullWhatsapp)
+      await authService.customer.requestPasswordReset(fullWhatsapp)
       setStep('code')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível enviar o código agora. Tente novamente em instantes.')
@@ -58,7 +59,7 @@ export default function RecuperarSenha() {
     }
     setLoading(true)
     try {
-      await api.customerAuth.verifyResetCode(fullWhatsapp, code)
+      await authService.customer.verifyResetCode(fullWhatsapp, code)
       setStep('password')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Código inválido ou expirado.')
@@ -79,7 +80,7 @@ export default function RecuperarSenha() {
     }
     setLoading(true)
     try {
-      await api.customerAuth.resetPassword(fullWhatsapp, code, password)
+      await authService.customer.resetPassword(fullWhatsapp, code, password)
       setStep('done')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível redefinir sua senha.')

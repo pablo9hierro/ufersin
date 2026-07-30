@@ -3,8 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2, Minus, Package, Plus, X } from 'lucide-react'
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
-import { api } from '../lib/api'
-import type { DiscountType, Product, Promotion } from '../lib/types'
+import { promotionService } from '../services/promotionService'
+import { productService } from '../services/productService'
+import type { DiscountType, Product, Promotion } from '../types'
 import { useBannerCart } from '../store/bannerCart'
 
 function currency(v: number) {
@@ -37,7 +38,7 @@ export default function Banner() {
       setLoading(false)
       return
     }
-    Promise.all([api.promotions.get(promotionId), api.products.list()])
+    Promise.all([promotionService.get(promotionId), productService.list()])
       .then(([p, prods]) => {
         setPromotion(p)
         setProducts(prods)

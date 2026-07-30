@@ -80,6 +80,99 @@
   color: inherit;
 }
 
+/* Vitrine da demo pública da Rodoletas: MESMO front-end do Sunset —
+   componente, animação, motion e posição de botão idênticos, sem alterar
+   uma linha de JSX — só a paleta troca. Como todo .sunset-* e utilitário
+   Tailwind (bg-son-pink etc, gerado do @theme lá em cima) referencia
+   var(--color-son-*), sobrescrever essas variáveis aqui basta pra
+   recolorir o site inteiro. Ativado via [data-brand='demo'] no <html>
+   enquanto o modo demonstração desta aba estiver ligado (ver
+   DemoBrandScope em App.tsx e demoMode.ts) — paleta clara/pastel (tom de
+   e-commerce de venda, não o synthwave escuro do Sunset original).
+   --color-son-pink/gold são a cor predominante/coadjuvante — as duas que
+   o seletor de estilo (ThemeSwitcher em components/theme/) escreve direto
+   via style inline, valem em cima de qualquer um dos 3 tons abaixo. */
+[data-brand='demo'] {
+  --color-son-orange: #ff8a65;
+  --color-son-pink: #ff5a3c;
+  --color-son-purple: #c94f6d;
+  --color-son-gold: #2a9d8f;
+}
+
+/* Nas páginas de CLIENTE (não admin/motoboy/vendedor -- esses continuam
+   escuros, ferramenta interna) o :root também reaproveita [data-theme='light']
+   (mesma troca de --color-son-black/surface/silver + as classes literais
+   text-white/bg-white-10/etc já cobertas ali) -- ver DemoBrandScope, que
+   liga os dois atributos juntos fora de /admin e /funcionarios. Os 3 tons
+   abaixo sobrescrevem só a base clara (não mexem no accent pink/gold), com
+   especificidade maior que o [data-theme='light'] sozinho (2 atributos
+   contra 1), então sempre vencem sem precisar reordenar nada no arquivo. */
+[data-theme='light'][data-brand='demo'] {
+  color-scheme: light;
+}
+/* Base quase neutra de propósito (tingimento bem sutil, não pastel
+   saturado) -- é isso que faltava: card branco puro sobre fundo quase-
+   branco só funciona se o fundo for BEM mais claro/neutro que o card,
+   senão os dois se misturam num borrão só (reportado). O contraste real
+   vem do accent (--color-son-pink/gold) contra esse fundo neutro. */
+[data-theme='light'][data-brand='demo'][data-tom='pessego'] {
+  --color-son-black: #faf6f2;
+  --color-son-surface: #ffffff;
+  --color-son-surface-light: #f2e9df;
+}
+[data-theme='light'][data-brand='demo'][data-tom='lavanda'] {
+  --color-son-black: #f7f5fb;
+  --color-son-surface: #ffffff;
+  --color-son-surface-light: #ece4f5;
+}
+[data-theme='light'][data-brand='demo'][data-tom='menta'] {
+  --color-son-black: #f4faf7;
+  --color-son-surface: #ffffff;
+  --color-son-surface-light: #dff0e8;
+}
+
+/* Textura "brilho suave" -- um filete de luz diagonal bem discreto
+   passando pela página, textura comum em vitrines de venda claras (não é
+   animado, fica parado). "Liso" (padrão) não aplica nada.
+   [data-layout-style='sunset'] -- flourish (glow/gradiente) é do CLONE
+   Sunset; o nativo Ufersin é propositalmente liso (ver uiux2/theme.css),
+   nunca deve ganhar essa textura mesmo que "Brilho suave" esteja marcado
+   no seletor -- reportado como "ainda parece Sunset" quando vazava pro
+   uiux2. */
+html[data-brand='demo'][data-layout-style='sunset'][data-textura='brilho'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.5) 0%, transparent 24%, transparent 76%, rgba(255, 255, 255, 0.35) 100%);
+}
+
+/* Sombra de profundidade no fundo -- escurece a borda de baixo, de cima,
+   ou as duas, bem sutil (12%). Escolhido no botão de paleta (ver
+   DemoPaletteSwitcher / store/demoPalette.ts). "Nenhuma" (padrão) não
+   aplica nada. Mesma restrição ao clone Sunset da textura acima -- o
+   nativo Ufersin nunca ganha esse gradiente de sombra. */
+html[data-brand='demo'][data-layout-style='sunset'][data-sombra='baixo-cima'] body::after,
+html[data-brand='demo'][data-layout-style='sunset'][data-sombra='cima-baixo'] body::after,
+html[data-brand='demo'][data-layout-style='sunset'][data-sombra='ambos'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+html[data-brand='demo'][data-layout-style='sunset'][data-sombra='baixo-cima'] body::after {
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0%, transparent 30%);
+}
+html[data-brand='demo'][data-layout-style='sunset'][data-sombra='cima-baixo'] body::after {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.14) 0%, transparent 30%);
+}
+html[data-brand='demo'][data-layout-style='sunset'][data-sombra='ambos'] body::after {
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.14) 0%, transparent 22%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.14) 0%, transparent 22%);
+}
+
 /* Modo claro, hoje só usado no dashboard do motoboy (o atributo fica no
    container raiz de MotoboyLayout). Redefinir os tokens de cor aqui já
    cobre a maior parte da UI por cascata normal de custom property; o resto
@@ -159,6 +252,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Fundo padrão do site-localhost-demo: cor sólida (o tom escolhido na
+   paleta white-label, ver DemoPaletteSwitcher), não o degradê verde-escuro
+   do Sunset original nem a cena pôr-do-sol (SunsetBackdrop continua
+   renderizando por cima -- ver bg_mode em seedDb()/AdminLayoutCliente,
+   onde o admin pode trocar esse fundo por uma imagem própria se quiser). */
+html[data-brand='demo'] body {
+  background: var(--background);
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -215,7 +317,7 @@ a {
    dobrada (vira praticamente opaco). Classe própria, não mexe no
    .glass compartilhado com o resto do site. */
 .sunset-feature-card-solid {
-  background: rgba(15, 43, 29, 1);
+  background: var(--color-son-surface);
 }
 
 /* Custom component classes live in the "components" layer (below Tailwind's
@@ -292,7 +394,7 @@ a {
   padding: 0.75rem 1rem;
   border-radius: 1rem;
   border: 2px solid var(--color-son-gold);
-  background: rgba(255, 210, 61, 0.08);
+  background: color-mix(in srgb, var(--color-son-gold) 8%, transparent);
   color: var(--color-son-gold);
   transition: background 0.2s ease, color 0.2s ease;
 }
@@ -390,7 +492,7 @@ a {
   display: block;
   border-radius: 100px;
   height: 100%;
-  background: rgba(15, 43, 29, 0.88);
+  background: color-mix(in srgb, var(--color-son-surface) 88%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -410,11 +512,11 @@ a {
 .sunset-login-card {
   position: relative;
   animation: sunset-login-float 3s ease-in-out infinite;
-  border: 3px solid rgba(255, 210, 61, 0.45);
-  background: rgba(15, 43, 29, 0.55);
+  border: 3px solid color-mix(in srgb, var(--color-son-gold) 45%, transparent);
+  background: color-mix(in srgb, var(--color-son-surface) 55%, transparent);
   box-shadow:
-    0 0 60px 0 rgba(224, 138, 58, 0.35) inset,
-    0 0 24px rgba(255, 210, 61, 0.3);
+    0 0 60px 0 color-mix(in srgb, var(--color-son-orange) 35%, transparent) inset,
+    0 0 24px color-mix(in srgb, var(--color-son-gold) 30%, transparent);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -424,11 +526,11 @@ a {
    esteira automática que rolava sozinha foi removida a pedido). */
 .sunset-promo-card {
   padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--color-son-silver-dim) 20%, transparent);
   border-radius: 16px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   background: var(--color-son-surface);
-  color: #fff;
+  color: var(--color-son-silver);
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -880,11 +982,11 @@ a {
 .sunset-dd {
   position: relative;
   cursor: pointer;
-  color: white;
+  color: var(--color-son-silver);
 }
 .sunset-dd-selected {
   background-color: var(--color-son-surface);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--color-son-silver-dim) 20%, transparent);
   padding: 0.75rem 1rem;
   border-radius: 1rem;
   display: flex;
@@ -892,7 +994,7 @@ a {
   justify-content: space-between;
   gap: 0.5rem;
   font-size: 0.95rem;
-  color: white;
+  color: var(--color-son-silver);
 }
 .sunset-dd-selected span:first-child {
   overflow: hidden;
@@ -924,7 +1026,7 @@ a {
   border-radius: 1rem;
   padding: 6px;
   background-color: var(--color-son-surface);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--color-son-silver-dim) 20%, transparent);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
   opacity: 0;
   pointer-events: none;
@@ -945,8 +1047,8 @@ a {
   transition: background-color 0.2s, color 0.2s;
 }
 .sunset-dd-option:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  color: white;
+  background-color: color-mix(in srgb, var(--color-son-silver) 8%, transparent);
+  color: var(--color-son-silver);
 }
 .sunset-dd-option.is-selected {
   background: linear-gradient(135deg, var(--color-son-orange), var(--color-son-pink) 55%, var(--color-son-purple));
@@ -1076,7 +1178,7 @@ a {
   border-radius: 18px;
   list-style: none;
   background: var(--color-son-black);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--color-son-silver) 12%, transparent);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   opacity: 0;
   pointer-events: none;
@@ -1368,7 +1470,7 @@ a {
   border-top-left-radius: 0.85rem;
   border-top-right-radius: 0.85rem;
   background-color: var(--color-son-black);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-son-silver) 6%, transparent);
 }
 .sunset-tab {
   display: flex;
@@ -1387,12 +1489,12 @@ a {
      direto no fundo preto da trilha ficava sem nenhum limite visível
      entre um botão e outro ("tudo preto"). O ativo ganha .sunset-tab-active
      (mesma cor do painel) por cima disso. */
-  background-color: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: color-mix(in srgb, var(--color-son-silver) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-son-silver) 8%, transparent);
   border-bottom: none;
 }
 .sunset-tab:hover {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: color-mix(in srgb, var(--color-son-silver) 12%, transparent);
 }
 /* Cor sólida e clara de propósito — a versão anterior tentava "fundir"
    com a cor do painel abaixo (fundo escuro translúcido), o que deixava a
@@ -1418,7 +1520,7 @@ a {
 .sunset-glow-btn {
   background: linear-gradient(135deg, var(--color-son-orange), var(--color-son-pink) 55%, var(--color-son-purple)) !important;
   color: var(--color-son-black) !important;
-  box-shadow: 0 0 8px 0 rgba(242, 193, 78, 0.16), 0 0 45px rgba(255, 210, 61, 0.45) !important;
+  box-shadow: 0 0 8px 0 rgba(242, 193, 78, 0.16), 0 0 45px color-mix(in srgb, var(--color-son-gold) 45%, transparent) !important;
   transition: 0.5s !important;
 }
 .sunset-glow-btn:active {
@@ -1751,7 +1853,7 @@ a {
 .sunset-pd-glow {
   position: absolute;
   inset: -10px;
-  background: radial-gradient(circle at 50% 0%, rgba(255, 210, 61, 0.35) 0%, rgba(255, 210, 61, 0) 70%);
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--color-son-gold) 35%, transparent) 0%, color-mix(in srgb, var(--color-son-gold) 0%, transparent) 70%);
   pointer-events: none;
 }
 .sunset-pd-close {
@@ -1762,7 +1864,7 @@ a {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.4);
+  background: color-mix(in srgb, var(--color-son-black) 40%, transparent);
   color: var(--color-son-silver);
   display: flex;
   align-items: center;
@@ -1844,6 +1946,18 @@ a {
   background-image: linear-gradient(45deg, var(--color-son-orange) 0%, var(--color-son-gold) 51%, var(--color-son-orange) 100%);
 }
 
+/* Mesma fitinha, versão cinza -- produto com estoque zerado (nunca é
+   promoção, não pode reaproveitar o dourado/laranja que já significa
+   desconto). */
+.sunset-promo-ribbon-gray::before {
+  background-image: linear-gradient(45deg, #4b4b4b 0%, #8a8a8a 51%, #4b4b4b 100%);
+  color: #fff;
+}
+.sunset-promo-ribbon-gray::after {
+  background-image: linear-gradient(45deg, #4b4b4b 0%, #8a8a8a 51%, #4b4b4b 100%);
+  box-shadow: 84px -84px #2a2a2a;
+}
+
 /* Uiverse.io by preet_7613 — cartão do rostinho triste (nenhum cupom pra
    resgatar), traços em stroke-dasharray "desenhando" em loop, olhos
    piscando, lágrima caindo. */
@@ -1853,7 +1967,7 @@ a {
   background: var(--color-son-surface);
   border-radius: 20px;
   padding: 2rem 1.5rem 1.75rem;
-  border: 1px solid rgba(255, 210, 61, 0.2);
+  border: 1px solid color-mix(in srgb, var(--color-son-gold) 20%, transparent);
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.45), 0 10px 10px -5px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -1867,8 +1981,8 @@ a {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--color-son-silver) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-son-silver) 12%, transparent);
   color: var(--color-son-silver);
   display: flex;
   align-items: center;
@@ -1876,8 +1990,8 @@ a {
   transition: background 0.15s, color 0.15s;
 }
 .sunset-nocoupon-close:hover {
-  background: rgba(255, 255, 255, 0.16);
-  color: white;
+  background: color-mix(in srgb, var(--color-son-silver) 16%, transparent);
+  color: var(--color-son-silver);
 }
 .sunset-nocoupon-face {
   width: 110px;
@@ -1957,7 +2071,7 @@ a {
 .sunset-nocoupon-title {
   margin-top: 1rem;
   font-weight: 700;
-  color: white;
+  color: var(--color-son-silver);
   font-size: 1rem;
 }
 .sunset-nocoupon-message {
@@ -1983,7 +2097,7 @@ a {
   object-fit: cover;
 }
 .sunset-pd-title {
-  color: white;
+  color: var(--color-son-silver);
   font-size: 1.15rem;
   font-weight: 700;
   margin: 0;
@@ -2046,7 +2160,7 @@ a {
   width: 190px;
   background-color: var(--color-son-surface);
   background-image: linear-gradient(139deg, var(--color-son-surface) 0%, var(--color-son-surface) 40%, var(--color-son-black) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--color-son-silver) 8%, transparent);
   border-radius: 10px;
   padding: 12px 0;
   display: flex;
@@ -2055,7 +2169,7 @@ a {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 .sunset-menu-separator {
-  border-top: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-top: 1.5px solid color-mix(in srgb, var(--color-son-silver) 10%, transparent);
   margin: 0 10px;
 }
 .sunset-menu-list {
@@ -2106,7 +2220,7 @@ a {
   stroke: var(--color-son-gold);
 }
 .sunset-menu-item-accent:hover {
-  background-color: rgba(255, 210, 61, 0.15);
+  background-color: color-mix(in srgb, var(--color-son-gold) 15%, transparent);
   color: var(--color-son-gold);
 }
 .sunset-menu-item-accent:hover svg {
@@ -2172,7 +2286,7 @@ a {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.4);
+  background: color-mix(in srgb, var(--color-son-black) 40%, transparent);
   color: var(--color-son-silver);
   cursor: pointer;
   user-select: none;
@@ -2215,8 +2329,8 @@ a {
   width: auto;
   height: auto;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--color-son-silver) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-son-silver) 8%, transparent);
   gap: 0.6rem;
   padding: 0.5rem 0.85rem 0.5rem 0.6rem;
 }
@@ -2263,7 +2377,7 @@ a {
 .sunset-confirm-card {
   position: relative;
   background-color: var(--color-son-surface);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--color-son-silver) 8%, transparent);
   border-radius: 0.85rem;
   max-width: 290px;
   width: 100%;
@@ -2283,7 +2397,7 @@ a {
   color: #f87171;
 }
 .sunset-confirm-title {
-  color: white;
+  color: var(--color-son-silver);
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.5rem;

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { BgSettings } from '../lib/types'
+import type { BgSettings } from '../types'
 import SynthwaveBackdrop from './SynthwaveBackdrop'
 import StarsBackdrop from './StarsBackdrop'
 
@@ -155,9 +155,11 @@ export default function BackgroundScene({ settings }: { settings: BgSettings }) 
     )
   }
 
-  // 'custom' — imagem própria enviada pelo admin.
+  // 'custom' — imagem própria enviada pelo admin. Sem imagem, cai na cor
+  // predominante da paleta (var(--background) -- ver DemoBrandScope em
+  // App.tsx), não no --color-son-black quase-branco usado pelos cards.
   return (
-    <div className="relative w-full h-full overflow-hidden bg-son-black">
+    <div className="relative w-full h-full overflow-hidden" style={{ backgroundColor: 'var(--background)' }}>
       {settings.bg_image_url && (
         <div
           className="absolute inset-0"

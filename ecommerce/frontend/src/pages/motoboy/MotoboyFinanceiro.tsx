@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Clock, Loader2, MapPin, Package, Wallet } from 'lucide-react'
 import Card from '../../components/ui/Card'
-import { api } from '../../lib/api'
-import type { MotoboyFinanceiro as MotoboyFinanceiroData } from '../../lib/types'
+import { motoboyService } from '../../services/motoboyService'
+import type { MotoboyFinanceiro as MotoboyFinanceiroData } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -13,7 +13,7 @@ export default function MotoboyFinanceiro() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.motoboy.financeiro.get().then(setData).finally(() => setLoading(false))
+    motoboyService.financeiro.get().then(setData).finally(() => setLoading(false))
   }, [])
 
   if (loading) {

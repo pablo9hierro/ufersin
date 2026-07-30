@@ -77,6 +77,10 @@ export interface LoginResponse {
   loja_nome: string
 }
 
+export type FormaPagamento = 'manual' | 'plataforma'
+export type PlataformaPagamento = 'mercado_pago' | 'pagbank' | 'abacate_pay'
+export type TipoDocumento = 'cnpj' | 'cpf'
+
 export interface MeResponse {
   id: string
   loja_nome: string
@@ -94,6 +98,16 @@ export interface MeResponse {
   onboarding_status: 'aguardando_pagamento' | 'aguardando_onboarding' | 'provisionado'
   tenant_id: string | null
   assinante_desde: string
+  categoria: string | null
+  endereco: string | null
+  logo_url: string | null
+  cor_principal: string | null
+  documento: string | null
+  tipo_documento: TipoDocumento | null
+  vender_externamente: boolean
+  whatsapp_habilitado: boolean
+  forma_pagamento: FormaPagamento
+  plataforma_pagamento: PlataformaPagamento | null
   proxima_cobranca: string | null
 }
 
@@ -106,11 +120,33 @@ export interface OnboardingInput {
   cor_principal: string
   banner_url?: string
   slug: string
+  documento: string
+  tipo_documento: TipoDocumento
+  vender_externamente: boolean
+  whatsapp_habilitado: boolean
+  forma_pagamento: FormaPagamento
+  plataforma_pagamento?: PlataformaPagamento
+  plataforma_credenciais?: Record<string, string>
 }
 export interface OnboardingOutput {
   tenant_id: string
   slug: string
   admin_login_hint: string
+}
+
+export interface EditOnboardingInput {
+  categoria?: string
+  whatsapp?: string
+  endereco?: string
+  logo_url?: string
+  cor_principal?: string
+  documento?: string
+  tipo_documento?: TipoDocumento
+  vender_externamente?: boolean
+  whatsapp_habilitado?: boolean
+  forma_pagamento?: FormaPagamento
+  plataforma_pagamento?: PlataformaPagamento
+  plataforma_credenciais?: Record<string, string>
 }
 
 export const api = {
@@ -133,4 +169,6 @@ export const api = {
   cancelar: () => request<{ status: string }>('/api/me/cancelar', { method: 'POST' }),
 
   onboarding: (input: OnboardingInput) => request<OnboardingOutput>('/api/onboarding', { method: 'POST', body: JSON.stringify(input) }),
+  editarOnboarding: (input: EditOnboardingInput) =>
+    request<{ updated: boolean }>('/api/onboarding', { method: 'PUT', body: JSON.stringify(input) }),
 }

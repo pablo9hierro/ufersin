@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { PageDecorationElement } from '../../lib/types'
+import type { PageDecorationElement } from '../../types'
 
 // Baseado em Uiverse.io by esraaabdel-kareem (ver smoke-element.html) —
 // a referência tinha só 3 baforadas fixas; aqui o admin controla a

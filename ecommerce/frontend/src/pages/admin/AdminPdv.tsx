@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import type { IScannerControls } from '@zxing/browser'
 import { Camera, CheckCircle2, Loader2, Minus, Package, Plus, ScanBarcode, Search, Trash2, X } from 'lucide-react'
-import { api, ApiError } from '../../lib/api'
-import type { PaymentMethod, Product } from '../../lib/types'
+import { ApiError } from '../../lib/apiError'
+import { pdvService } from '../../services/pdvService'
+import { productService } from '../../services/productService'
+import type { PaymentMethod, Product } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -39,12 +41,14 @@ export default function AdminPdv() {
   const [customerName, setCustomerName] = useState('')
   const [customerWhatsapp, setCustomerWhatsapp] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro')
+  const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent')
+  const [discountValue, setDiscountValue] = useState('')
   const [finalizing, setFinalizing] = useState(false)
   const [finalizeError, setFinalizeError] = useState<string | null>(null)
   const [success, setSuccess] = useState<number | null>(null)
 
   useEffect(() => {
-    api.products
+    productService
       .list()
       .then((p) => setProducts(p.filter((x) => x.active !== false)))
       .finally(() => setLoadingProducts(false))
@@ -64,7 +68,12 @@ export default function AdminPdv() {
   }, [query, products])
 
   const cartLines = Object.values(cart)
-  const cartTotal = cartLines.reduce((sum, l) => sum + l.product.price * l.quantity, 0)
+  const cartSubtotal = cartLines.reduce((sum, l) => sum + l.product.price * l.quantity, 0)
+  const discountAmount = Math.min(
+    Math.max(discountType === 'percent' ? (cartSubtotal * (Number(discountValue) || 0)) / 100 : Number(discountValue) || 0, 0),
+    cartSubtotal
+  )
+  const cartTotal = cartSubtotal - discountAmount
 
   const addToCart = (product: Product, qty = 1) => {
     setCart((c) => {
@@ -172,20 +181,24 @@ export default function AdminPdv() {
     setFinalizing(true)
     setFinalizeError(null)
     try {
-      const order = await api.pdv.createSale({
+      const order = await pdvService.createSale({
         items: cartLines.map((l) => ({ product_id: l.product.id, quantity: l.quantity })),
         payment_method: paymentMethod,
         customer_name: customerName.trim() || undefined,
         customer_whatsapp: customerWhatsapp.replace(/\D/g, '') ? `55${customerWhatsapp.replace(/\D/g, '')}` : undefined,
+        discount_type: discountAmount > 0 ? discountType : undefined,
+        discount_value: discountAmount > 0 ? Number(discountValue) || 0 : undefined,
       })
-      api.pdv.notifySale(order.id).catch(() => {})
+      pdvService.notifySale(order.id).catch(() => {})
       setSuccess(cartTotal)
       setCart({})
       setCustomerName('')
       setCustomerWhatsapp('')
       setPaymentMethod('dinheiro')
+      setDiscountType('percent')
+      setDiscountValue('')
       // Recarrega estoque (a venda já decrementou no banco).
-      api.products.list().then((p) => setProducts(p.filter((x) => x.active !== false)))
+      productService.list().then((p) => setProducts(p.filter((x) => x.active !== false)))
       setTimeout(() => setSuccess(null), 4000)
     } catch (e) {
       setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
@@ -321,9 +334,52 @@ export default function AdminPdv() {
             </div>
           )}
 
+          {discountAmount > 0 && (
+            <div className="flex items-center justify-between text-sm mb-1 px-1 text-son-silver-dim">
+              <span>Subtotal</span>
+              <span>{currency(cartSubtotal)}</span>
+            </div>
+          )}
+          {discountAmount > 0 && (
+            <div className="flex items-center justify-between text-sm mb-1 px-1 text-emerald-400">
+              <span>Desconto</span>
+              <span>-{currency(discountAmount)}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between text-lg font-black mb-4 px-1">
             <span className="text-white">Total</span>
             <span className="sunset-text">{currency(cartTotal)}</span>
+          </div>
+
+          <div className="mb-3">
+            <label className="label">Desconto na venda (opcional)</label>
+            <div className="flex gap-2">
+              <div className="flex rounded-2xl overflow-hidden border border-white/10 flex-none">
+                <button
+                  type="button"
+                  onClick={() => setDiscountType('percent')}
+                  className={`px-3 py-2 text-sm font-semibold ${discountType === 'percent' ? 'sunset-bg text-white' : 'bg-son-surface text-son-silver-dim'}`}
+                >
+                  %
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiscountType('fixed')}
+                  className={`px-3 py-2 text-sm font-semibold ${discountType === 'fixed' ? 'sunset-bg text-white' : 'bg-son-surface text-son-silver-dim'}`}
+                >
+                  R$
+                </button>
+              </div>
+              <input
+                className="input-field"
+                type="number"
+                min={0}
+                step="0.01"
+                value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+                placeholder={discountType === 'percent' ? 'Ex: 10' : 'Ex: 5,00'}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-3">

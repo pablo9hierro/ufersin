@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Loader2, Lock, Users } from 'lucide-react'
 import Logo from '../../components/ui/Logo'
-import { api, ApiError } from '../../lib/api'
+import { ApiError } from '../../lib/apiError'
+import { authService } from '../../services/authService'
 import { useAdminAuth } from '../../store/adminAuth'
 
 // Login exclusivo do admin — não tenta mais vendedor/motoboy em cascata
@@ -27,7 +28,7 @@ export default function AdminLogin() {
     setError(null)
     setLoading(true)
     try {
-      const res = await api.auth.adminLogin(email, password)
+      const res = await authService.staff.adminLogin(email, password)
       login(res.token, res.name)
       navigate('/admin/pedidos')
     } catch (err) {

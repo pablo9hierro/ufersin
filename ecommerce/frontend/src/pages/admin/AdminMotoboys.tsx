@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Check, Eye, Loader2, MapPinned, Pencil, Plus, Save, Store, Trash2, Truck, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
-import { api, ApiError } from '../../lib/api'
-import type { Motoboy, PaymentMethod, Vendedor } from '../../lib/types'
+import { ApiError } from '../../lib/apiError'
+import { adminService } from '../../services/adminService'
+import { shippingService } from '../../services/shippingService'
+import type { Motoboy, PaymentMethod, Vendedor } from '../../types'
 
 const EMPTY_MOTOBOY_FORM = { name: '', phone: '', email: '', password: '', whatsapp: '' }
 const EMPTY_VENDEDOR_FORM = { name: '', email: '', password: '', commission_active: false, commission_percent: '' }
@@ -21,7 +23,7 @@ function FreteSettingsCard() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.shippingSettings.get().then((settings) => {
+    shippingService.getSettings().then((settings) => {
       setPricePerKm(String(settings.price_per_km))
       setMaxKm(settings.max_km != null ? String(settings.max_km) : '')
       setLoading(false)
@@ -36,7 +38,7 @@ function FreteSettingsCard() {
     setError(null)
     setSaving(true)
     try {
-      const updated = await api.admin.shippingSettings.update(value, maxValue)
+      const updated = await adminService.shippingSettings.update(value, maxValue)
       setPricePerKm(String(updated.price_per_km))
       setMaxKm(updated.max_km != null ? String(updated.max_km) : '')
       setSaved(true)
@@ -116,7 +118,7 @@ export default function AdminMotoboys() {
   const viewPassword = async (kind: 'motoboy' | 'vendedor', id: string, name: string) => {
     setPasswordPopup({ name, password: null, loading: true })
     try {
-      const password = kind === 'motoboy' ? await api.admin.motoboys.getPassword(id) : await api.admin.vendedores.getPassword(id)
+      const password = kind === 'motoboy' ? await adminService.motoboys.getPassword(id) : await adminService.vendedores.getPassword(id)
       setPasswordPopup({ name, password, loading: false })
     } catch {
       setPasswordPopup({ name, password: null, loading: false })
@@ -139,11 +141,11 @@ export default function AdminMotoboys() {
 
   const load = () => {
     setLoading(true)
-    api.admin.motoboys.list().then(setMotoboys).finally(() => setLoading(false))
+    adminService.motoboys.list().then(setMotoboys).finally(() => setLoading(false))
   }
   const loadVendedores = () => {
     setVendedoresLoading(true)
-    api.admin.vendedores.list().then(setVendedores).finally(() => setVendedoresLoading(false))
+    adminService.vendedores.list().then(setVendedores).finally(() => setVendedoresLoading(false))
   }
   useEffect(() => {
     load()
@@ -165,9 +167,9 @@ export default function AdminMotoboys() {
     setSaving(true)
     try {
       if (editingMotoboy) {
-        await api.admin.motoboys.update(editingMotoboy.id, { ...form, active: editingMotoboy.active })
+        await adminService.motoboys.update(editingMotoboy.id, { ...form, active: editingMotoboy.active })
       } else {
-        await api.admin.motoboys.create(form)
+        await adminService.motoboys.create(form)
       }
       setShowForm(false)
       setEditingMotoboy(null)
@@ -180,12 +182,12 @@ export default function AdminMotoboys() {
 
   const remove = (id: string) =>
     askConfirm('Remover este motoboy?', async () => {
-      await api.admin.motoboys.delete(id)
+      await adminService.motoboys.delete(id)
       load()
     })
 
   const toggleActive = async (m: Motoboy) => {
-    await api.admin.motoboys.update(m.id, { active: !m.active })
+    await adminService.motoboys.update(m.id, { active: !m.active })
     load()
   }
 
@@ -196,7 +198,7 @@ export default function AdminMotoboys() {
     setPendingAmount(null)
     setPendingLoading(true)
     try {
-      const data = await api.admin.motoboys.pending(m.id)
+      const data = await adminService.motoboys.pending(m.id)
       setPendingAmount(data.pending_amount)
     } catch (e) {
       setPayError(e instanceof ApiError ? e.message : 'Não foi possível consultar o valor acumulado.')
@@ -210,7 +212,7 @@ export default function AdminMotoboys() {
     setPaying(true)
     setPayError(null)
     try {
-      await api.admin.motoboys.pay(payingMotoboy.id, paymentMethod)
+      await adminService.motoboys.pay(payingMotoboy.id, paymentMethod)
       setPayingMotoboy(null)
     } catch (e) {
       setPayError(e instanceof ApiError ? e.message : 'Não foi possível registrar o pagamento.')
@@ -246,13 +248,13 @@ export default function AdminMotoboys() {
         commission_percent: vendedorForm.commission_active ? Number(vendedorForm.commission_percent) : undefined,
       }
       if (editingVendedor) {
-        await api.admin.vendedores.update(editingVendedor.id, {
+        await adminService.vendedores.update(editingVendedor.id, {
           ...payload,
           active: editingVendedor.active,
           password: vendedorForm.password || undefined,
         })
       } else {
-        await api.admin.vendedores.create({ ...payload, password: vendedorForm.password })
+        await adminService.vendedores.create({ ...payload, password: vendedorForm.password })
       }
       setShowVendedorForm(false)
       setEditingVendedor(null)
@@ -265,12 +267,12 @@ export default function AdminMotoboys() {
 
   const removeVendedor = (id: string) =>
     askConfirm('Remover este vendedor?', async () => {
-      await api.admin.vendedores.delete(id)
+      await adminService.vendedores.delete(id)
       loadVendedores()
     })
 
   const toggleVendedorActive = async (v: Vendedor) => {
-    await api.admin.vendedores.update(v.id, {
+    await adminService.vendedores.update(v.id, {
       name: v.name,
       email: v.email,
       active: !v.active,

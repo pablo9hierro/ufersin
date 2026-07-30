@@ -6,9 +6,11 @@ import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import ProductDetailModal from '../components/ProductDetailModal'
 import ConfirmRemoveDialog from '../components/ConfirmRemoveDialog'
-import { api } from '../lib/api'
-import type { Product } from '../lib/types'
-import type { PromotionalProduct } from '../lib/supabasePublicApi'
+import { productService } from '../services/productService'
+import { couponService } from '../services/couponService'
+import { favoriteService } from '../services/favoriteService'
+import { useAsync } from '../hooks/useAsync'
+import type { Product, PromotionalProduct } from '../types'
 import { useCart } from '../store/cart'
 import { useCustomerAuth } from '../store/customerAuth'
 
@@ -18,13 +20,24 @@ function currency(v: number) {
 
 type ViewMode = 'grid' | 'list'
 
+// Referência estável enquanto os dados ainda não chegaram -- ver mesma
+// nota em pages/Catalogo.tsx.
+const EMPTY_PRODUCTS: Product[] = []
+const EMPTY_PROMO_PRODUCTS: PromotionalProduct[] = []
+
 export default function Carrinho() {
   const navigate = useNavigate()
   const { items, changeQty, removeItem } = useCart()
   const customerAuth = useCustomerAuth()
-  const [products, setProducts] = useState<Product[]>([])
-  const [promoProducts, setPromoProducts] = useState<PromotionalProduct[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: cartCatalog, loading } = useAsync(
+    async () => {
+      const [p, promo] = await Promise.all([productService.list(), couponService.listPromotionalProducts().catch(() => [])])
+      return { products: p, promoProducts: promo }
+    },
+    []
+  )
+  const products = cartCatalog?.products ?? EMPTY_PRODUCTS
+  const promoProducts = cartCatalog?.promoProducts ?? EMPTY_PROMO_PRODUCTS
   const [detailProduct, setDetailProduct] = useState<Product | null>(null)
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
   // Mesma dinâmica de /catalogo: desmarcar favorito pede confirmação
@@ -36,26 +49,17 @@ export default function Carrinho() {
   const [view, setView] = useState<ViewMode>('list')
 
   useEffect(() => {
-    Promise.all([api.products.list(), api.coupons.listPromotionalProducts().catch(() => [])])
-      .then(([p, promo]) => {
-        setProducts(p)
-        setPromoProducts(promo)
-      })
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
     if (!customerAuth.token) return
-    api.customerAuth
-      .listFavorites(customerAuth.token)
+    favoriteService
+      .list(customerAuth.token)
       .then((favs) => setFavoriteIds(new Set(favs.map((p) => p.id))))
       .catch(() => {})
   }, [customerAuth.token])
 
   const toggleFavorite = (productId: string) => {
     if (!customerAuth.token) return
-    api.customerAuth
-      .toggleFavorite(customerAuth.token, productId)
+    favoriteService
+      .toggle(customerAuth.token, productId)
       .then((isNowFavorite) => {
         setFavoriteIds((prev) => {
           const next = new Set(prev)

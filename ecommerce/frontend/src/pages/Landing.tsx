@@ -7,36 +7,75 @@ import { useCustomerAuth } from '../store/customerAuth'
 import LiveTrackingMapMock from '../components/landing/LiveTrackingMapMock'
 import CouponTicketCard from '../components/landing/CouponTicketCard'
 import LandingWhatsAppCard from '../components/landing/LandingWhatsAppCard'
-import { api } from '../lib/api'
-import type { BadgesLayout, CarouselStyle, LandingBadge, Promotion, StoreStatus } from '../lib/types'
+import { useSiteSettings } from '../hooks/useSiteSettings'
+import { useActivePromotions } from '../hooks/usePromotions'
+import { useStoreStatus } from '../hooks/useStoreStatus'
+import type { BadgesLayout, LandingBadge } from '../types'
 import { getStoreOpenState } from '../lib/storeHours'
+import { isDemoModeActive, planoIncludes } from '../lib/demoMode'
 
 // Limiar de arrasto (px) pra contar como swipe de navegação em vez de tap
 // ou rolagem vertical da página — usado nos dois estilos de carrossel.
 const SWIPE_THRESHOLD = 40
 
-const DEFAULT_BADGES: LandingBadge[] = [
+const SUNSET_BADGES: LandingBadge[] = [
   { id: '1', text: 'SUNSET • Desde 2023', bold: true },
   { id: '2', text: '🔥 Experiência, vibe e essência', bold: false },
   { id: '3', text: '👇 A vibe começa aqui', bold: false },
 ]
 
+// Copy da demo (ramo lanchonete, tom de venda) — bem mais direta ao ponto
+// e persuasiva que o texto original do Sunset, de propósito: é a vitrine
+// que convence um lojista em potencial a assinar a Rodoletas.
+const UFERSIN_BADGES: LandingBadge[] = [
+  { id: '1', text: '🔥 Mais de 5 mil pedidos entregues', bold: true },
+  { id: '2', text: '⚡ Pedido pronto em até 20 minutos', bold: false },
+  { id: '3', text: '⭐ 4,9 de 5 — o point mais pedido da cidade', bold: false },
+]
+
+const FEATURE_CARDS_SUNSET = [
+  {
+    title: 'Atualizações direto no seu WhatsApp',
+    desc: 'Confirmado, pronto, saiu pra entrega — você acompanha cada etapa sem precisar ficar recarregando a tela.',
+  },
+  {
+    title: 'Acompanhe a entrega em tempo real',
+    desc: 'Assim que seu pedido sai, você vê o trajeto do motoboy no mapa, ao vivo, até chegar na sua porta.',
+    solid: true,
+  },
+  {
+    title: 'Cupons exclusivos de fidelidade',
+    desc: 'Participe das campanhas e ganhe cupons de desconto e de frete grátis só pra quem já é nosso cliente.',
+  },
+]
+
+const FEATURE_CARDS_UFERSIN = [
+  {
+    title: 'Fome? Chega em minutos.',
+    desc: 'Peça agora e receba quentinho, fresco e rápido — sem fila, sem ligação, sem complicação. É só escolher e pagar.',
+  },
+  {
+    title: 'Acompanhe cada passo, ao vivo',
+    desc: 'Você vê o motoboy se aproximando no mapa em tempo real — sem ficar atualizando a tela pra saber "cadê meu pedido".',
+    solid: true,
+  },
+  {
+    title: 'Cupom de boas-vindas garantido',
+    desc: 'Toda semana rola desconto e frete grátis pra quem já é cliente — o point que mais recompensa quem volta.',
+  },
+]
+
 function BannerCarousel() {
   const navigate = useNavigate()
-  const [heroUrl, setHeroUrl] = useState<string | null>(null)
-  const [promotions, setPromotions] = useState<Promotion[]>([])
-  const [carouselStyle, setCarouselStyle] = useState<CarouselStyle>('atual')
-
-  useEffect(() => {
-    api.siteSettings
-      .get()
-      .then((s) => {
-        setHeroUrl(s.hero_image_url)
-        setCarouselStyle(s.carousel_style)
-      })
-      .catch(() => setHeroUrl(null))
-    api.promotions.listActive().then(setPromotions).catch(() => setPromotions([]))
-  }, [])
+  const { data: siteSettings } = useSiteSettings()
+  const heroUrl = siteSettings?.hero_image_url ?? null
+  const carouselStyle = siteSettings?.carousel_style ?? 'atual'
+  // Promoções (banners) vivem atrás do plano Management pra cima -- o
+  // plano Essential da demo não tem como gerir promoção nenhuma, então
+  // nem chega a carregar isso (cai sozinho no banner estático de sempre,
+  // igual quando a loja não tem promoção nenhuma cadastrada).
+  const { data: activePromotions } = useActivePromotions({ enabled: !isDemoModeActive() || planoIncludes('management') })
+  const promotions = activePromotions ?? []
 
   const firstPromo = promotions[0]
   const bannerImage = firstPromo?.image_url ?? heroUrl
@@ -207,27 +246,16 @@ function BannerCarousel() {
 export default function Landing() {
   const navigate = useNavigate()
   const customerAuth = useCustomerAuth()
-  const [storeStatus, setStoreStatus] = useState<StoreStatus | null>(null)
-  const [badges, setBadges] = useState<LandingBadge[]>(DEFAULT_BADGES)
-  const [badgesLayout, setBadgesLayout] = useState<BadgesLayout>('row')
-  const [badgesGap, setBadgesGap] = useState(8)
-  const [badgesOffsetY, setBadgesOffsetY] = useState(0)
+  const { data: storeStatus } = useStoreStatus()
+  const { data: siteSettings } = useSiteSettings()
+  const defaultBadges = isDemoModeActive() ? UFERSIN_BADGES : SUNSET_BADGES
+  const badges: LandingBadge[] = siteSettings && siteSettings.badges.length > 0 ? siteSettings.badges : defaultBadges
+  const badgesLayout: BadgesLayout = siteSettings?.badges_layout ?? 'row'
+  const badgesGap = siteSettings?.badges_gap ?? 8
+  const badgesOffsetY = siteSettings?.badges_offset_y ?? 0
   // "Acompanhar meu pedido" exige login — sem sessão, abre o toggle de
   // entrar/criar conta em vez de ir direto pra /consultar.
   const [showAuthModal, setShowAuthModal] = useState(false)
-
-  useEffect(() => {
-    api.storeStatus.get().then(setStoreStatus).catch(() => setStoreStatus(null))
-    api.siteSettings
-      .get()
-      .then((s) => {
-        if (s.badges.length > 0) setBadges(s.badges)
-        setBadgesLayout(s.badges_layout)
-        setBadgesGap(s.badges_gap)
-        setBadgesOffsetY(s.badges_offset_y)
-      })
-      .catch(() => {})
-  }, [])
 
   const openState = storeStatus ? getStoreOpenState(storeStatus) : null
   const closed = !!openState && !openState.open
@@ -306,10 +334,12 @@ export default function Landing() {
         </motion.div>
 
         {/* Botão do Maps — fora da lista de badges, sempre embaixo de
-            tudo (é link de verdade, não item editável). */}
+            tudo (é link de verdade, não item editável). Em modo demo, o
+            endereço vira um exemplo genérico — o endereço real da loja
+            Sunset não faz sentido pra uma vitrine de exemplo. */}
         <a
           href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-            'Rua Rosa de Paula Barbosa, 16 - José Américo de Almeida, João Pessoa - PB'
+            isDemoModeActive() ? 'Avenida Central, 500 - Centro, João Pessoa - PB' : 'Rua Rosa de Paula Barbosa, 16 - José Américo de Almeida, João Pessoa - PB'
           )}`}
           target="_blank"
           rel="noopener noreferrer"
@@ -318,7 +348,9 @@ export default function Landing() {
           <svg xmlns="http://www.w3.org/2000/svg" className="arr-2" viewBox="0 0 24 24">
             <path d="M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z" />
           </svg>
-          <span className="text">📍 R. Rosa de Paula Barbosa, 16 - José Américo de Almeida. João Pessoa - PB</span>
+          <span className="text">
+            📍 {isDemoModeActive() ? 'Avenida Central, 500 - Centro. João Pessoa - PB' : 'R. Rosa de Paula Barbosa, 16 - José Américo de Almeida. João Pessoa - PB'}
+          </span>
           <span className="circle" />
           <svg xmlns="http://www.w3.org/2000/svg" className="arr-1" viewBox="0 0 24 24">
             <path d="M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z" />
@@ -327,24 +359,9 @@ export default function Landing() {
       </section>
 
       <section className="relative z-10 max-w-2xl mx-auto px-6 sm:px-10 pb-16 flex flex-col gap-2">
-        {[
-          {
-            title: 'Atualizações direto no seu WhatsApp',
-            desc: 'Confirmado, pronto, saiu pra entrega — você acompanha cada etapa sem precisar ficar recarregando a tela.',
-            graphic: <LandingWhatsAppCard />,
-          },
-          {
-            title: 'Acompanhe a entrega em tempo real',
-            desc: 'Assim que seu pedido sai, você vê o trajeto do motoboy no mapa, ao vivo, até chegar na sua porta.',
-            graphic: <LiveTrackingMapMock />,
-            solid: true,
-          },
-          {
-            title: 'Cupons exclusivos de fidelidade',
-            desc: 'Participe das campanhas e ganhe cupons de desconto e de frete grátis só pra quem já é nosso cliente.',
-            graphic: <CouponTicketCard />,
-          },
-        ].map((f, i) => (
+        {(isDemoModeActive() ? FEATURE_CARDS_UFERSIN : FEATURE_CARDS_SUNSET)
+          .map((f, i) => ({ ...f, graphic: [<LandingWhatsAppCard key="a" />, <LiveTrackingMapMock key="b" />, <CouponTicketCard key="c" />][i] }))
+          .map((f, i) => (
           <motion.div
             key={f.title}
             initial={{ opacity: 0, y: 20 }}

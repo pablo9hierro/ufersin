@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Loader2, Lock, X } from 'lucide-react'
 import BirthdateInput from './checkout/BirthdateInput'
 import Logo from './ui/Logo'
-import { api, ApiError } from '../lib/api'
+import { ApiError } from '../lib/apiError'
+import { authService } from '../services/authService'
 import { useCustomer } from '../store/customer'
 import { useCustomerAuth } from '../store/customerAuth'
 
@@ -63,7 +64,7 @@ export default function CustomerAuthModal({
     }
     setLoading(true)
     try {
-      const result = await api.customerAuth.login(`55${digits}`, loginPassword)
+      const result = await authService.customer.login(`55${digits}`, loginPassword)
       auth.login(result.token, result.customer)
       onSuccess()
     } catch (err) {
@@ -98,7 +99,7 @@ export default function CustomerAuthModal({
     }
     setLoading(true)
     try {
-      const result = await api.customerAuth.register({
+      const result = await authService.customer.register({
         whatsapp: `55${digits}`,
         password: regPassword,
         name: regName,

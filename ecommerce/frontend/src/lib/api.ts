@@ -2,6 +2,7 @@ import { useAdminAuth } from '../store/adminAuth'
 import { useVendedorAuth } from '../store/vendedorAuth'
 import { useMotoboyAuth } from '../store/motoboyAuth'
 import { ApiError } from './apiError'
+import { isDemoModeActive } from './demoMode'
 import { localApi } from './localApi'
 import { supabasePublicApi } from './supabasePublicApi'
 import { supabase } from './supabaseClient'
@@ -41,7 +42,7 @@ import type {
   StoreHourDay,
   Vendedor,
   VendedorRelatorio,
-} from './types'
+} from '../types'
 
 // Ainda usado só pro login admin/motoboy e Pix, que continuam no backend
 // Rust (Railway) até a migração de auth/Pix pra Supabase Auth/Edge Functions.
@@ -238,6 +239,8 @@ const remoteApi = {
           p_category_id: payload.category_id ?? null,
           p_active: payload.active ?? true,
           p_barcode: payload.barcode ?? null,
+          p_cost_price: payload.cost_price ?? null,
+          p_low_stock_threshold: payload.low_stock_threshold ?? null,
         }),
       update: (id: string, payload: Partial<Product>) =>
         rpc<Product>('admin_update_product', {
@@ -251,6 +254,8 @@ const remoteApi = {
           p_category_id: payload.category_id ?? null,
           p_active: payload.active ?? true,
           p_barcode: payload.barcode ?? null,
+          p_cost_price: payload.cost_price ?? null,
+          p_low_stock_threshold: payload.low_stock_threshold ?? null,
         }),
       delete: (id: string) => rpc<void>('admin_delete_product', { p_token: adminToken(), p_id: id }),
       // Upload de imagem vai direto pra Vercel Edge Function (frontend/api/upload-image.ts),
@@ -961,6 +966,8 @@ const remoteApi = {
       payment_method: PaymentMethod
       customer_name?: string
       customer_whatsapp?: string
+      discount_type?: 'percent' | 'fixed'
+      discount_value?: number
     }) =>
       rpc<Order>('pdv_create_sale', {
         p_token: adminToken(),
@@ -968,6 +975,8 @@ const remoteApi = {
         p_payment_method: payload.payment_method,
         p_customer_name: payload.customer_name || null,
         p_customer_whatsapp: payload.customer_whatsapp || null,
+        p_discount_type: payload.discount_type ?? null,
+        p_discount_value: payload.discount_value ?? null,
       }),
     // Único disparo de WhatsApp da venda de balcão (o "obrigado pela
     // compra") — nunca passa pelo passo a passo de pedido online, e sai
@@ -1032,6 +1041,18 @@ const remoteApi = {
   },
 }
 
-export const api = USE_LOCAL_DB ? localApi : remoteApi
+// Fora do modo demo, o dispatch é fixo (decidido uma vez, no load do
+// módulo) — igual sempre foi. Dentro dele, `api.xxx` passa a resolver pro
+// localApi a cada acesso (Proxy, não um valor congelado), porque o modo
+// demo liga DEPOIS que este módulo já carregou (ver demoMode.ts) — um
+// `const` normal já teria decidido remoteApi antes da flag existir.
+export const api: typeof remoteApi = USE_LOCAL_DB
+  ? localApi
+  : new Proxy(remoteApi, {
+      get(target, prop, receiver) {
+        const impl = isDemoModeActive() ? localApi : target
+        return Reflect.get(impl, prop, receiver)
+      },
+    })
 
 export { ApiError }

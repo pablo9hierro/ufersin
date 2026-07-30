@@ -79,12 +79,21 @@ GRANT EXECUTE ON FUNCTION sunset.admin_delete_category(text, text) TO anon, auth
 -- 2. Produtos
 -- ─────────────────────────────────────────────────────
 
+-- Custo de aquisição (pra calcular estoque valorizado a custo + markup)
+-- e ponto de reposição (quantidade em estoque que, ao ser atingida,
+-- coloca o produto na lista "precisa repor" do /admin/produtos). Ambas
+-- opcionais -- produto sem esses dados preenchidos simplesmente não
+-- entra nos totais/nunca aparece como "precisa repor".
+ALTER TABLE sunset.products ADD COLUMN IF NOT EXISTS cost_price double precision;
+ALTER TABLE sunset.products ADD COLUMN IF NOT EXISTS low_stock_threshold bigint;
+
 CREATE OR REPLACE FUNCTION sunset._product_json(p_id text)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = sunset, public, extensions AS $$
   SELECT jsonb_build_object(
     'id', p.id, 'name', p.name, 'description', p.description, 'price', p.price,
     'quantity', p.quantity, 'image_url', p.image_url, 'category_id', p.category_id,
-    'category_name', c.name, 'active', (p.active <> 0)
+    'category_name', c.name, 'active', (p.active <> 0),
+    'cost_price', p.cost_price, 'low_stock_threshold', p.low_stock_threshold
   )
   FROM sunset.products p
   LEFT JOIN sunset.categories c ON c.id = p.category_id
@@ -118,9 +127,16 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION sunset.admin_get_product(text, text) TO anon, authenticated;
 
+-- DROP explícito da assinatura antiga antes do CREATE OR REPLACE --
+-- adicionar parâmetros no fim faria o Postgres tratar como uma NOVA
+-- função sobrecarregada (overload) em vez de substituir a antiga, o
+-- que deixaria as duas coexistindo e o PostgREST sem saber qual RPC
+-- escolher.
+DROP FUNCTION IF EXISTS sunset.admin_create_product(text, text, text, double precision, bigint, text, text, boolean);
 CREATE OR REPLACE FUNCTION sunset.admin_create_product(
   p_token text, p_name text, p_description text, p_price double precision,
-  p_quantity bigint, p_image_url text, p_category_id text, p_active boolean DEFAULT true
+  p_quantity bigint, p_image_url text, p_category_id text, p_active boolean DEFAULT true,
+  p_cost_price double precision DEFAULT NULL, p_low_stock_threshold bigint DEFAULT NULL
 )
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = sunset, public, extensions AS $$
 DECLARE
@@ -130,24 +146,27 @@ BEGIN
   IF trim(p_name) = '' THEN
     RAISE EXCEPTION 'name is required';
   END IF;
-  INSERT INTO sunset.products (id, name, description, price, quantity, image_url, category_id, active)
+  INSERT INTO sunset.products (id, name, description, price, quantity, image_url, category_id, active, cost_price, low_stock_threshold)
     VALUES (v_id, p_name, p_description, p_price, p_quantity, p_image_url, p_category_id,
-      CASE WHEN p_active THEN 1 ELSE 0 END);
+      CASE WHEN p_active THEN 1 ELSE 0 END, p_cost_price, p_low_stock_threshold);
   RETURN sunset._product_json(v_id);
 END;
 $$;
-GRANT EXECUTE ON FUNCTION sunset.admin_create_product(text, text, text, double precision, bigint, text, text, boolean) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION sunset.admin_create_product(text, text, text, double precision, bigint, text, text, boolean, double precision, bigint) TO anon, authenticated;
 
+DROP FUNCTION IF EXISTS sunset.admin_update_product(text, text, text, text, double precision, bigint, text, text, boolean);
 CREATE OR REPLACE FUNCTION sunset.admin_update_product(
   p_token text, p_id text, p_name text, p_description text, p_price double precision,
-  p_quantity bigint, p_image_url text, p_category_id text, p_active boolean DEFAULT true
+  p_quantity bigint, p_image_url text, p_category_id text, p_active boolean DEFAULT true,
+  p_cost_price double precision DEFAULT NULL, p_low_stock_threshold bigint DEFAULT NULL
 )
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = sunset, public, extensions AS $$
 BEGIN
   PERFORM sunset._require_admin(p_token);
   UPDATE sunset.products SET
     name = p_name, description = p_description, price = p_price, quantity = p_quantity,
-    image_url = p_image_url, category_id = p_category_id, active = CASE WHEN p_active THEN 1 ELSE 0 END
+    image_url = p_image_url, category_id = p_category_id, active = CASE WHEN p_active THEN 1 ELSE 0 END,
+    cost_price = p_cost_price, low_stock_threshold = p_low_stock_threshold
   WHERE id = p_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'product not found';
@@ -155,7 +174,7 @@ BEGIN
   RETURN sunset._product_json(p_id);
 END;
 $$;
-GRANT EXECUTE ON FUNCTION sunset.admin_update_product(text, text, text, text, double precision, bigint, text, text, boolean) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION sunset.admin_update_product(text, text, text, text, double precision, bigint, text, text, boolean, double precision, bigint) TO anon, authenticated;
 
 CREATE OR REPLACE FUNCTION sunset.admin_delete_product(p_token text, p_id text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = sunset, public, extensions AS $$

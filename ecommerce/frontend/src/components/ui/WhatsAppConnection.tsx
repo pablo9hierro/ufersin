@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Smartphone, Unplug } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
-import type { EvolutionConnect } from '../../lib/types'
+import type { EvolutionConnect } from '../../types'
 
 // O Baileys/Evolution API expira e troca o QR sozinho no servidor a cada
 // ~20-30s, independente de qualquer chamada do frontend. Sem repolling, a

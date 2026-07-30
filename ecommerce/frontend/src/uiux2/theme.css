@@ -1,0 +1,211 @@
+/*
+ * Componentes NATIVOS da Ufersin -- pasta própria (src/uiux2/), escolhida
+ * no seletor de estilo (DemoPaletteSwitcher) como alternativa ao clone
+ * recolorido do Sunset. Clone FIXO da identidade visual real da Ufersin/
+ * Rodoletas (ver ufersin/frontend/src/index.css, o CSS do próprio SaaS):
+ * fundo quase-preto, cartões em azul-petróleo escuro, gradiente azul→
+ * roxo→rosa em botões/destaques, tipografia Poppins. Fundo/superfície/
+ * texto são SEMPRE fixos -- nunca lêem --color-son-* e --background da
+ * paleta branca antiga.
+ *
+ * A ÚNICA coisa recolorível pelo lojista é o trio de acento (azul/roxo/
+ * rosa aqui) -- via --tenant-accent-1/2/3, calculado algoritmicamente a
+ * partir de 1-2 cores escolhidas (ver lib/colorHarmony.ts + DemoBrandScope
+ * em App.tsx) e aplicado no :root. Sem tenant color definido, cai no
+ * fallback (a cor fixa desta linha). Troca as 3 cores de marca preservando
+ * 100% da técnica (fundo/superfície fixos, gradiente só entre vizinhos,
+ * glass) -- nunca um "despeje cru" da cor escolhida.
+ */
+.u2-page {
+  --uf-black: #06070d;
+  --uf-surface: #10131f;
+  --uf-surface-light: #1a1f33;
+  --uf-blue: var(--tenant-accent-1, #4d7cff);
+  --uf-purple: var(--tenant-accent-2, #8b5cf6);
+  --uf-pink: var(--tenant-accent-3, #ec4899);
+  --uf-silver: #eef0fa;
+  --uf-silver-dim: #97a0c2;
+
+  position: relative;
+  background: var(--uf-black);
+  color: var(--uf-silver);
+  color-scheme: dark;
+  min-height: 100vh;
+  font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+.u2-page ::selection {
+  background: var(--uf-purple);
+  color: #fff;
+}
+
+/* Mesh de fundo (3 blobs radiais borrados, parados) -- mesmo recurso do
+   Hero do site real da Ufersin (uf-mesh em ufersin/frontend/src/index.css).
+   Escopado a um container local com position:relative (ex.: hero da
+   Landing), nunca fixo na página inteira -- decoração pontual no topo,
+   igual ao uso original, sem risco de tampar conteúdo/menus/modais. */
+.u2-mesh {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.u2-mesh-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(110px);
+}
+.u2-mesh-blob-a {
+  width: 26rem;
+  height: 26rem;
+  top: -9rem;
+  left: -7rem;
+  background: var(--uf-blue);
+  opacity: 0.32;
+}
+.u2-mesh-blob-b {
+  width: 22rem;
+  height: 22rem;
+  top: -4rem;
+  right: -6rem;
+  background: var(--uf-purple);
+  opacity: 0.3;
+}
+.u2-mesh-blob-c {
+  width: 20rem;
+  height: 20rem;
+  top: 6rem;
+  left: 40%;
+  background: var(--uf-pink);
+  opacity: 0.16;
+}
+
+/* Toda superfície "flutuando" sobre o canvas quase-preto -- cartões,
+   cabeçalho, barra inferior, dropdowns -- usa a MESMA superfície escura
+   (--uf-surface) com borda de 1px branca bem sutil (linguagem "glass" da
+   Ufersin real, ver .uf-glass) + sombra de elevação, nunca um recorte
+   branco/cru colado sem contexto. */
+.u2-surface {
+  background: var(--uf-surface);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 8px 22px -6px rgba(0, 0, 0, 0.55);
+}
+.u2-card {
+  background: var(--uf-surface);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 8px 22px -6px rgba(0, 0, 0, 0.55);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.u2-card:hover,
+.u2-card:active {
+  background: var(--uf-surface-light);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Barra de navegação inferior (fixa no rodapé) precisa da sombra
+   apontando pra CIMA -- a sombra padrão do .u2-surface aponta pra baixo
+   (fica fora da tela, embaixo da barra, invisível). */
+.u2-surface-bottom-bar {
+  box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.25), 0 -10px 22px -8px rgba(0, 0, 0, 0.55);
+}
+
+/* Botão circular flutuante sobre imagem (ex.: coração de favorito em cima
+   da foto do produto) -- "glass" de verdade (translúcido + blur), igual
+   .uf-glass do site real, pra funcionar sobre qualquer foto de produto. */
+.u2-fab {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25), 0 6px 16px -4px rgba(0, 0, 0, 0.5);
+}
+
+/* Botão primário: gradiente azul→roxo, idêntico ao .btn-primary do painel
+   real da Ufersin -- é O elemento mais reconhecível da marca. */
+.u2-btn-primary {
+  background: linear-gradient(135deg, var(--uf-blue), var(--uf-purple));
+  color: #fff;
+  border-radius: 14px;
+  font-weight: 700;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.u2-btn-primary:hover {
+  opacity: 0.92;
+}
+.u2-btn-primary:active {
+  transform: scale(0.98);
+}
+.u2-btn-primary:disabled {
+  opacity: 0.5;
+}
+.u2-btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--uf-silver);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.u2-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Badge/chip -- usado tanto pra contador do carrinho quanto pra selos de
+   categoria/ícone (ex.: destaques da Home, presente dos Cupons). Gradiente
+   azul→roxo sólido, mesmo tratamento dos círculos numerados (1, 2, 3...)
+   do "como funciona" do site real -- o elemento mais "ícone de marca"
+   que a Ufersin tem, reaproveitado aqui como selo padrão. */
+.u2-badge {
+  background: linear-gradient(135deg, var(--uf-blue), var(--uf-purple));
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.u2-accent {
+  color: var(--uf-blue);
+}
+.u2-dim {
+  color: var(--uf-silver-dim);
+}
+
+/* Texto/ícone direto no canvas (.u2-page), fora de qualquer .u2-card/
+   .u2-surface. Como o fundo agora é FIXO (--uf-black, nunca a paleta
+   branca do tenant), o contraste já é garantido por design -- não precisa
+   mais de cálculo de luminância (--on-background). Mantidas como classes
+   próprias (usadas em vários pontos) só que resolvendo pras mesmas cores
+   fixas de texto. */
+.u2-oncanvas {
+  color: var(--uf-silver);
+}
+.u2-oncanvas-dim {
+  color: var(--uf-silver-dim);
+}
+.u2-oncanvas-accent {
+  color: var(--uf-blue);
+  font-weight: 800;
+}
+
+/* Texto com gradiente azul→rosa (background-clip: text) -- o "uf-text" do
+   site real, usado SÓ em texto de verdade (nunca em ícone SVG: clip de
+   background em cima de currentColor apagaria qualquer stroke). Aplicado
+   pontualmente no destaque do título da Home e na wordmark do cabeçalho. */
+.u2-gradient-text {
+  background: linear-gradient(135deg, var(--uf-blue), var(--uf-pink));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  font-weight: 800;
+}
+
+.u2-navitem {
+  color: var(--uf-silver-dim);
+  border-radius: 10px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.u2-navitem.is-active {
+  color: var(--uf-blue);
+  background: rgba(77, 124, 255, 0.12);
+}

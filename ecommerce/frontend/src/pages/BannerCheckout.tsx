@@ -5,9 +5,12 @@ import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import LocationPicker from '../components/checkout/LocationPicker'
 import BirthdateInput from '../components/checkout/BirthdateInput'
-import { api, ApiError } from '../lib/api'
-import type { CouponPreview } from '../lib/supabasePublicApi'
-import type { DiscountType, PaymentMethod, Product, Promotion, ShippingEstimate } from '../lib/types'
+import { ApiError } from '../lib/apiError'
+import { promotionService } from '../services/promotionService'
+import { productService } from '../services/productService'
+import { couponService } from '../services/couponService'
+import { orderService } from '../services/orderService'
+import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, ShippingEstimate } from '../types'
 import { useBannerCart } from '../store/bannerCart'
 import { useCustomer } from '../store/customer'
 
@@ -51,7 +54,7 @@ export default function BannerCheckout() {
       setLoading(false)
       return
     }
-    Promise.all([api.promotions.get(bannerCart.promotionId), api.products.list()])
+    Promise.all([promotionService.get(bannerCart.promotionId), productService.list()])
       .then(([p, prods]) => {
         setPromotion(p)
         setProducts(prods)
@@ -93,7 +96,7 @@ export default function BannerCheckout() {
     setCouponChecking(true)
     try {
       const digits = customer.whatsapp.replace(/\D/g, '')
-      const result = await api.coupons.validate(couponInput.trim(), promotion.id, customer.birthdate, digits ? `55${digits}` : undefined)
+      const result = await couponService.validate(couponInput.trim(), promotion.id, customer.birthdate, digits ? `55${digits}` : undefined)
       setAppliedCoupon(result)
     } catch (e) {
       setAppliedCoupon(null)
@@ -134,7 +137,7 @@ export default function BannerCheckout() {
 
     setSubmitting(true)
     try {
-      const order = await api.orders.create({
+      const order = await orderService.create({
         customer_name: customer.name.trim(),
         customer_whatsapp: `55${digits}`,
         customer_birthdate: customer.birthdate,
@@ -150,7 +153,7 @@ export default function BannerCheckout() {
         promotion_id: promotion.id,
       })
       bannerCart.clear()
-      api.orders.notifyCreated(order.id).catch(() => {})
+      orderService.notifyCreated(order.id).catch(() => {})
       if (paymentMethod === 'pix') {
         navigate(`/pagamento/${order.id}`)
       } else {

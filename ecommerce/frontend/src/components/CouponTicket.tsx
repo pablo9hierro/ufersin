@@ -1,4 +1,4 @@
-import type { CouponKind, DiscountType } from '../lib/types'
+import type { CouponKind, DiscountType } from '../types'
 import TicketCardVisual from './coupon/TicketCardVisual'
 
 function currency(v: number) {

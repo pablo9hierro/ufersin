@@ -8,8 +8,9 @@ import CartFab from '../../components/CartFab'
 import CouponTicket from '../../components/CouponTicket'
 import CouponHistoryTicket from '../../components/CouponHistoryTicket'
 import CouponSlot from '../../components/coupon/CouponSlot'
-import { api, ApiError } from '../../lib/api'
-import type { ClaimedCoupon, CustomerCoupons } from '../../lib/types'
+import { ApiError } from '../../lib/apiError'
+import { couponService } from '../../services/couponService'
+import type { ClaimedCoupon, CustomerCoupons } from '../../types'
 import { useCustomerAuth } from '../../store/customerAuth'
 
 type Tab = 'ativos' | 'inativos' | 'historico'
@@ -33,16 +34,16 @@ export default function CuponsCliente() {
 
   useEffect(() => {
     if (!token) return
-    api.customerAuth
-      .listCoupons(token)
+    couponService
+      .listMine(token)
       .then(setData)
       .finally(() => setLoading(false))
   }, [token])
 
   const checkHasClaimable = () => {
     if (!token) return
-    api.customerAuth
-      .hasClaimableCoupon(token)
+    couponService
+      .hasClaimable(token)
       .then(setHasClaimable)
       .catch(() => setHasClaimable(false))
   }
@@ -100,8 +101,8 @@ export default function CuponsCliente() {
     setRevealError(null)
     setPreviewCoupon(null)
     setRevealStage('pulling')
-    api.customerAuth
-      .peekClaimableCoupon(token)
+    couponService
+      .peekClaimable(token)
       .then((c) => {
         setPreviewCoupon(c)
         window.setTimeout(() => setRevealStage('revealed'), 2000)
@@ -115,8 +116,8 @@ export default function CuponsCliente() {
   const handleConfirmClaim = () => {
     if (!token || revealStage !== 'revealed') return
     setRevealStage('claiming')
-    api.customerAuth
-      .claimCoupon(token)
+    couponService
+      .claim(token)
       .then((claimed) => {
         // ClaimedCoupon não tem created_at (o RPC não devolve) -- os
         // outros itens de "active" têm, então sintetiza com "agora"

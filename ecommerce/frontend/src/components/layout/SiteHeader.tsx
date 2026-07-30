@@ -6,6 +6,7 @@ import WhatsAppFab from '../WhatsAppFab'
 import CustomerAuthModal from '../CustomerAuthModal'
 import { useCart } from '../../store/cart'
 import { useCustomerAuth } from '../../store/customerAuth'
+import { brandName } from '../../lib/demoMode'
 
 // O logo clicável (header > div > a > img) foi retirado de todas as
 // páginas de cliente a pedido — só sobra o "Voltar" do lado esquerdo.
@@ -60,7 +61,7 @@ export default function SiteHeader({
         </div>
         <div className="sunset-nav-slot sunset-nav-slot-center">
           <Link to="/" className="sunset-brand-btn" aria-label="Página inicial">
-            <span>Sunset Tabas</span>
+            <span>{brandName()}</span>
           </Link>
         </div>
         <div className="sunset-nav-slot sunset-nav-slot-end">

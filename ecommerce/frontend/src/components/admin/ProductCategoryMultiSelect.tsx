@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Folder, Package, Search, X } from 'lucide-react'
-import type { Category, Product } from '../../lib/types'
+import type { Category, Product } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`

@@ -4,6 +4,7 @@ mod error;
 mod gateway;
 mod mercadopago;
 mod routes;
+mod seed;
 mod state;
 
 use std::str::FromStr;
@@ -104,6 +105,8 @@ async fn main() -> anyhow::Result<()> {
         ecommerce_internal_key: Arc::new(ecommerce_internal_key),
     };
 
+    seed::seed_demo_subscriber(&state).await?;
+
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:5174".to_string())
         .split(',')
@@ -128,7 +131,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/me", get(routes::me::me))
         .route("/api/me/plano", post(routes::me::mudar_plano))
         .route("/api/me/cancelar", post(routes::me::cancelar))
-        .route("/api/onboarding", post(routes::onboarding::onboarding))
+        .route(
+            "/api/onboarding",
+            post(routes::onboarding::onboarding).put(routes::onboarding::editar_onboarding),
+        )
+        .route("/api/public/tenant-config/{slug}", get(routes::onboarding::tenant_config))
         .route("/api/webhooks/abacatepay", post(routes::webhooks::abacatepay_webhook))
         .layer(cors)
         .layer(TraceLayer::new_for_http())

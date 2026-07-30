@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { PageDecorationElement } from '../../lib/types'
+import type { PageDecorationElement } from '../../types'
 
 // Baseado em Uiverse.io by SelfMadeSystem (ver fire-element.html) — a
 // referência usa a função CSS mod() pra derivar --b/--bmod6 de --n

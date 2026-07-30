@@ -4,6 +4,7 @@ import { Heart, History, LogIn, LogOut, Menu, Tag, UserPlus } from 'lucide-react
 import WhatsAppFab from '../WhatsAppFab'
 import CustomerAuthModal from '../CustomerAuthModal'
 import { useCustomerAuth } from '../../store/customerAuth'
+import { brandName } from '../../lib/demoMode'
 
 // Mesmo navbar de /catalogo (moldura sunset-nav-bar), só que com
 // conteúdo próprio da landing: menu / nome da marca no estilo
@@ -137,7 +138,7 @@ export default function BrandHeader() {
         </div>
         <div className="sunset-nav-slot sunset-nav-slot-center">
           <div className="sunset-brand-btn">
-            <span>Sunset Tabas</span>
+            <span>{brandName()}</span>
           </div>
         </div>
         <div className="sunset-nav-slot sunset-nav-slot-end">

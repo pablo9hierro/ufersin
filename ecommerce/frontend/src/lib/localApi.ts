@@ -62,7 +62,7 @@ import type {
   TopProduct,
   Vendedor,
   VendedorRelatorio,
-} from './types'
+} from '../types'
 
 function notifyLocal(phone: string, message: string) {
   console.info(`[demo] WhatsApp para ${phone}: ${message}`)
@@ -711,7 +711,7 @@ async function customerHasClaimableCoupon(token: string): Promise<boolean> {
 // vezes o cliente recarregar a página da raspadinha, sem gastar cupom
 // nenhum. Resgate de verdade só acontece em customerClaimCoupon, chamada
 // apenas quando ele termina de raspar.
-async function customerPeekClaimableCoupon(token: string): Promise<import('./types').ClaimedCoupon> {
+async function customerPeekClaimableCoupon(token: string): Promise<import('../types').ClaimedCoupon> {
   const db = loadDb()
   const c = db.customers.find((x) => x.id === customerIdFromToken(token))
   const whatsapp = c?.whatsapp ?? ''
@@ -738,7 +738,7 @@ async function customerPeekClaimableCoupon(token: string): Promise<import('./typ
   }
 }
 
-async function customerClaimCoupon(token: string): Promise<import('./types').ClaimedCoupon> {
+async function customerClaimCoupon(token: string): Promise<import('../types').ClaimedCoupon> {
   const db = loadDb()
   const c = db.customers.find((x) => x.id === customerIdFromToken(token))
   const whatsapp = c?.whatsapp ?? ''
@@ -769,7 +769,7 @@ async function customerClaimCoupon(token: string): Promise<import('./types').Cla
   }
 }
 
-async function customerListCoupons(token: string): Promise<import('./types').CustomerCoupons> {
+async function customerListCoupons(token: string): Promise<import('../types').CustomerCoupons> {
   const db = loadDb()
   const customerId = customerIdFromToken(token)
   const c = db.customers.find((x) => x.id === customerId)
@@ -864,6 +864,9 @@ async function createProduct(payload: Partial<Product>): Promise<Product> {
     image_url: payload.image_url ?? null,
     category_id: payload.category_id ?? null,
     active: payload.active ?? true,
+    barcode: payload.barcode ?? null,
+    cost_price: payload.cost_price ?? null,
+    low_stock_threshold: payload.low_stock_threshold ?? null,
   }
   db.products.push(product)
   saveDb(db)
@@ -881,6 +884,9 @@ async function updateProduct(id: string, payload: Partial<Product>): Promise<Pro
   product.image_url = payload.image_url ?? null
   product.category_id = payload.category_id ?? null
   product.active = payload.active ?? true
+  product.barcode = payload.barcode ?? null
+  product.cost_price = payload.cost_price ?? null
+  product.low_stock_threshold = payload.low_stock_threshold ?? null
   saveDb(db)
   return productDto(db, product)
 }
@@ -974,13 +980,13 @@ function avgDeliveryMinutes(orders: Order[]): number {
   return Math.round((durations.reduce((a, b) => a + b, 0) / durations.length) * 10) / 10
 }
 
-async function motoboyPending(id: string): Promise<import('./types').MotoboyPending> {
+async function motoboyPending(id: string): Promise<import('../types').MotoboyPending> {
   const db = loadDb()
   const { orderIds, amount } = pendingForMotoboy(db, id)
   return { pending_amount: amount, pending_deliveries: orderIds.length || null }
 }
 
-async function payMotoboy(id: string, paymentMethod: PaymentMethod): Promise<import('./types').MotoboySettlement> {
+async function payMotoboy(id: string, paymentMethod: PaymentMethod): Promise<import('../types').MotoboySettlement> {
   const db = loadDb()
   const { orderIds, amount } = pendingForMotoboy(db, id)
   if (amount <= 0) throw new ApiError(400, 'motoboy has nothing pending to pay')
@@ -1116,7 +1122,7 @@ async function createCoupon(payload: {
   starts_at?: string
   expires_at?: string
   max_uses?: number
-  product_discounts?: import('./types').ProductDiscount[]
+  product_discounts?: import('../types').ProductDiscount[]
   message_template?: string
   bday_customer_days_before?: number
   bday_store_date?: string
@@ -1178,7 +1184,7 @@ async function updateCoupon(
     discount_value?: number
     shipping_discount_type?: 'percent' | 'fixed'
     shipping_discount_value?: number
-    product_discounts?: import('./types').ProductDiscount[]
+    product_discounts?: import('../types').ProductDiscount[]
     message_template?: string
     bday_customer_days_before?: number
     bday_store_date?: string
@@ -1241,7 +1247,7 @@ async function updateTargetedCoupon(
     discount_value?: number
     shipping_discount_type?: 'percent' | 'fixed'
     shipping_discount_value?: number
-    product_discounts?: import('./types').ProductDiscount[]
+    product_discounts?: import('../types').ProductDiscount[]
   }
 ): Promise<Coupon> {
   const db = loadDb()
@@ -1290,7 +1296,7 @@ async function createTargetedCoupon(payload: {
   discount_value?: number
   shipping_discount_type?: 'percent' | 'fixed'
   shipping_discount_value?: number
-  product_discounts?: import('./types').ProductDiscount[]
+  product_discounts?: import('../types').ProductDiscount[]
   description?: string
 }): Promise<Coupon> {
   const db = loadDb()
@@ -1361,7 +1367,7 @@ async function adminListCouponGrants(couponId: string): Promise<CouponGrant[]> {
 
 // ---------- segmentações do CRM (admin) ----------
 
-async function adminListSegments(): Promise<import('./types').CrmSegment[]> {
+async function adminListSegments(): Promise<import('../types').CrmSegment[]> {
   const db = loadDb()
   return [...(db.segments ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at))
 }
@@ -1369,12 +1375,12 @@ async function adminListSegments(): Promise<import('./types').CrmSegment[]> {
 async function createSegment(payload: {
   name: string
   description?: string
-  filter_criteria: import('./types').CrmFilterCriteria
-}): Promise<import('./types').CrmSegment> {
+  filter_criteria: import('../types').CrmFilterCriteria
+}): Promise<import('../types').CrmSegment> {
   const db = loadDb()
   db.segments = db.segments ?? []
   if (!payload.name.trim()) throw new ApiError(400, 'name is required')
-  const segment: import('./types').CrmSegment = {
+  const segment: import('../types').CrmSegment = {
     id: uid(),
     name: payload.name.trim(),
     description: payload.description?.trim() || null,
@@ -1388,8 +1394,8 @@ async function createSegment(payload: {
 
 async function updateSegment(
   id: string,
-  payload: { name: string; description?: string; filter_criteria: import('./types').CrmFilterCriteria }
-): Promise<import('./types').CrmSegment> {
+  payload: { name: string; description?: string; filter_criteria: import('../types').CrmFilterCriteria }
+): Promise<import('../types').CrmSegment> {
   const db = loadDb()
   const segment = (db.segments ?? []).find((s) => s.id === id)
   if (!segment) throw new ApiError(404, 'segment not found')
@@ -1418,7 +1424,7 @@ async function deleteSegment(id: string): Promise<void> {
 
 // ---------- campanhas (segmento + cupom exclusivo) ----------
 
-function campanhaExtraCoupons(db: LocalDb, campanhaId: string): import('./types').CrmCampanhaExtraCoupon[] {
+function campanhaExtraCoupons(db: LocalDb, campanhaId: string): import('../types').CrmCampanhaExtraCoupon[] {
   return (db.campanhaExtraCoupons ?? [])
     .filter((ec) => ec.campanha_id === campanhaId)
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -1435,10 +1441,10 @@ function campanhaExtraCoupons(db: LocalDb, campanhaId: string): import('./types'
           }
         : null
     })
-    .filter((x): x is import('./types').CrmCampanhaExtraCoupon => !!x)
+    .filter((x): x is import('../types').CrmCampanhaExtraCoupon => !!x)
 }
 
-async function adminListCampanhaCoupons(segmentId: string): Promise<import('./types').CrmCampanhaCoupon[]> {
+async function adminListCampanhaCoupons(segmentId: string): Promise<import('../types').CrmCampanhaCoupon[]> {
   const db = loadDb()
   return (db.campanhaCoupons ?? [])
     .filter((c) => c.segment_id === segmentId)
@@ -1451,12 +1457,12 @@ async function adminListCampanhaCoupons(segmentId: string): Promise<import('./ty
 // separados depois, cada um pelo próprio subcard.
 async function createCampanha(payload: {
   segment_id: string
-  orientation: import('./types').CampanhaOrientation
+  orientation: import('../types').CampanhaOrientation
   name: string
   description?: string
   starts_at?: string
   ends_at?: string
-}): Promise<import('./types').CrmCampanhaCoupon> {
+}): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   db.segments = db.segments ?? []
   db.campanhaCoupons = db.campanhaCoupons ?? []
@@ -1496,9 +1502,9 @@ async function createCampanha(payload: {
 // critério ainda").
 async function setCampanhaGatilho(
   id: string,
-  triggerCriteria: import('./types').CrmFilterCriteria | null,
+  triggerCriteria: import('../types').CrmFilterCriteria | null,
   description?: string
-): Promise<import('./types').CrmCampanhaCoupon> {
+): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const row = (db.campanhaCoupons ?? []).find((c) => c.id === id)
   if (!row) throw new ApiError(404, 'campanha not found')
@@ -1524,9 +1530,9 @@ async function setCampanhaGatilho(
 // "Encerrar por evento" da campanha inteira — null limpa.
 async function setCampanhaEndCriteria(
   id: string,
-  endCriteria: import('./types').CrmFilterCriteria | null,
+  endCriteria: import('../types').CrmFilterCriteria | null,
   description?: string
-): Promise<import('./types').CrmCampanhaCoupon> {
+): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const row = (db.campanhaCoupons ?? []).find((c) => c.id === id)
   if (!row) throw new ApiError(404, 'campanha not found')
@@ -1537,7 +1543,7 @@ async function setCampanhaEndCriteria(
 }
 
 // Desvincula o cupom principal (volta pra "aguardando cupom").
-async function deleteCampanhaPrimaryCoupon(id: string): Promise<import('./types').CrmCampanhaCoupon> {
+async function deleteCampanhaPrimaryCoupon(id: string): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const row = (db.campanhaCoupons ?? []).find((c) => c.id === id)
   if (!row) throw new ApiError(404, 'campanha not found')
@@ -1550,8 +1556,8 @@ async function deleteCampanhaPrimaryCoupon(id: string): Promise<import('./types'
 // "Encerrar por evento" de UM cupom extra — null limpa.
 async function setExtraCouponEndCriteria(
   id: string,
-  endCriteria: import('./types').CrmFilterCriteria | null
-): Promise<import('./types').CrmCampanhaCoupon> {
+  endCriteria: import('../types').CrmFilterCriteria | null
+): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const ec = (db.campanhaExtraCoupons ?? []).find((x) => x.id === id)
   if (!ec) throw new ApiError(404, 'extra coupon not found')
@@ -1562,7 +1568,7 @@ async function setExtraCouponEndCriteria(
   return { ...campanha, extra_coupons: campanhaExtraCoupons(db, campanha.id) }
 }
 
-async function deactivateCampanhaExtraCoupon(id: string): Promise<import('./types').CrmCampanhaCoupon> {
+async function deactivateCampanhaExtraCoupon(id: string): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const ec = (db.campanhaExtraCoupons ?? []).find((x) => x.id === id)
   if (!ec) throw new ApiError(404, 'extra coupon not found')
@@ -1624,7 +1630,7 @@ async function setCampanhaCouponSchedule(
   id: string,
   delayDays: number | null,
   hour: number | null
-): Promise<import('./types').CrmCampanhaCoupon> {
+): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const row = (db.campanhaCoupons ?? []).find((c) => c.id === id)
   if (!row) throw new ApiError(404, 'campanha not found')
@@ -1663,7 +1669,7 @@ async function deleteCampanhaCoupon(id: string): Promise<void> {
 
 // Liga/desliga a campanha inteira — junto com ela o cupom exclusivo por
 // trás (não existe on/off separado só do cupom de uma campanha).
-async function toggleCampanhaCoupon(id: string, active: boolean): Promise<import('./types').CrmCampanhaCoupon> {
+async function toggleCampanhaCoupon(id: string, active: boolean): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const row = (db.campanhaCoupons ?? []).find((c) => c.id === id)
   if (!row) throw new ApiError(404, 'campanha coupon not found')
@@ -1690,10 +1696,10 @@ async function updateCampanhaCoupon(
     discount_value?: number
     shipping_discount_type?: 'percent' | 'fixed'
     shipping_discount_value?: number
-    product_discounts?: import('./types').ProductDiscount[]
+    product_discounts?: import('../types').ProductDiscount[]
     description?: string
   }
-): Promise<import('./types').CrmCampanhaCoupon> {
+): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const row = (db.campanhaCoupons ?? []).find((c) => c.id === id)
   if (!row) throw new ApiError(404, 'campanha coupon not found')
@@ -1744,7 +1750,7 @@ async function createCampanhaExtraCoupon(
     discount_value?: number
     shipping_discount_type?: 'percent' | 'fixed'
     shipping_discount_value?: number
-    product_discounts?: import('./types').ProductDiscount[]
+    product_discounts?: import('../types').ProductDiscount[]
     customer_whatsapps?: string[]
     description?: string
   }
@@ -1831,7 +1837,7 @@ async function deleteCampanhaExtraCoupon(id: string): Promise<void> {
 async function updateCampanhaCadastro(
   id: string,
   payload: { name: string; description?: string; starts_at?: string; ends_at?: string }
-): Promise<import('./types').CrmCampanhaCoupon> {
+): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const row = (db.campanhaCoupons ?? []).find((c) => c.id === id)
   if (!row) throw new ApiError(404, 'campanha not found')
@@ -1859,10 +1865,10 @@ async function updateCampanhaExtraCoupon(
     discount_value?: number
     shipping_discount_type?: 'percent' | 'fixed'
     shipping_discount_value?: number
-    product_discounts?: import('./types').ProductDiscount[]
+    product_discounts?: import('../types').ProductDiscount[]
     description?: string
   }
-): Promise<import('./types').CrmCampanhaCoupon> {
+): Promise<import('../types').CrmCampanhaCoupon> {
   const db = loadDb()
   const ec = (db.campanhaExtraCoupons ?? []).find((x) => x.id === id)
   if (!ec) throw new ApiError(404, 'extra coupon not found')
@@ -1907,14 +1913,14 @@ async function createPromotion(payload: {
   subtitle?: string
   image_url: string
   product_ids: string[]
-  promotion_type: import('./types').PromotionType
+  promotion_type: import('../types').PromotionType
   discount_type?: 'percent' | 'fixed'
   discount_value?: number
   shipping_discount_type?: 'percent' | 'fixed'
   shipping_discount_value?: number
   starts_at?: string
   expires_at?: string
-  product_discounts?: import('./types').ProductDiscount[]
+  product_discounts?: import('../types').ProductDiscount[]
 }): Promise<Promotion> {
   const db = loadDb()
   db.promotions = db.promotions ?? []
@@ -1960,7 +1966,7 @@ async function updatePromotion(
     subtitle?: string
     image_url: string
     product_ids: string[]
-    promotion_type: import('./types').PromotionType
+    promotion_type: import('../types').PromotionType
     discount_type?: 'percent' | 'fixed'
     discount_value?: number
     shipping_discount_type?: 'percent' | 'fixed'
@@ -1968,7 +1974,7 @@ async function updatePromotion(
     active: boolean
     starts_at?: string
     expires_at?: string
-    product_discounts?: import('./types').ProductDiscount[]
+    product_discounts?: import('../types').ProductDiscount[]
   }
 ): Promise<Promotion> {
   const db = loadDb()
@@ -2028,12 +2034,14 @@ async function pdvCreateSale(payload: {
   payment_method: PaymentMethod
   customer_name?: string
   customer_whatsapp?: string
+  discount_type?: 'percent' | 'fixed'
+  discount_value?: number
 }): Promise<Order> {
   if (!payload.items.length) throw new ApiError(400, 'sale must have at least one item')
   const db = loadDb()
   const actor = pdvActorFromToken()
 
-  let total = 0
+  let subtotal = 0
   const items: OrderItem[] = []
   for (const item of payload.items) {
     if (item.quantity <= 0) throw new ApiError(400, 'item quantity must be positive')
@@ -2041,13 +2049,22 @@ async function pdvCreateSale(payload: {
     if (!product) throw new ApiError(400, `product ${item.product_id} not found`)
     if (!product.active) throw new ApiError(400, `product ${product.name} is not available`)
     if (product.quantity < item.quantity) throw new ApiError(400, `insufficient stock for product ${product.name}`)
-    total += product.price * item.quantity
+    subtotal += product.price * item.quantity
     items.push({ product_id: product.id, product_name: product.name, unit_price: product.price, quantity: item.quantity })
   }
   for (const item of payload.items) {
     const product = db.products.find((p) => p.id === item.product_id)!
     product.quantity -= item.quantity
   }
+
+  // Desconto manual opcional do vendedor no ato da venda -- nunca um
+  // cupom de verdade, só abate o total desta venda específica. Sempre
+  // travado entre 0 e o subtotal, nunca deixa o total negativo.
+  let discount = 0
+  if (payload.discount_type === 'percent') discount = (subtotal * (payload.discount_value ?? 0)) / 100
+  else if (payload.discount_type === 'fixed') discount = payload.discount_value ?? 0
+  discount = Math.min(Math.max(discount, 0), subtotal)
+  const total = subtotal - discount
 
   const order: Order = {
     id: uid(),
@@ -2061,6 +2078,7 @@ async function pdvCreateSale(payload: {
     status: 'concluido',
     shipping_price: 0,
     total,
+    discount_amount: discount,
     motoboy_id: null,
     items,
     created_at: nowIso(),
@@ -2263,10 +2281,14 @@ async function savePageDecoration(
   return updated
 }
 
+// 00:00-23:59 todo dia -- em modo local/demo não faz sentido a loja
+// aparecer "fechada" por causa de que horas são agora na máquina de quem
+// tá testando (era 09-18, reportado que a demo caía em "loja fechada"
+// fora desse intervalo).
 const DEFAULT_STORE_HOURS: StoreHourDay[] = Array.from({ length: 7 }, (_, day_of_week) => ({
   day_of_week,
   is_open: true,
-  intervals: [{ opens_at: '09:00', closes_at: '18:00' }],
+  intervals: [{ opens_at: '00:00', closes_at: '23:59' }],
 }))
 
 async function getStoreStatus(): Promise<StoreStatus> {
@@ -2369,11 +2391,11 @@ async function financeiro(): Promise<FinanceiroSummary> {
   }
 }
 
-async function financeiroTimeseries(days = 30): Promise<import('./types').FinanceiroTimeseriesPoint[]> {
+async function financeiroTimeseries(days = 30): Promise<import('../types').FinanceiroTimeseriesPoint[]> {
   const db = loadDb()
   const paid = db.orders.filter((o) => o.payment_status === 'pago')
   const n = Math.max(1, Math.min(days, 180))
-  const points: import('./types').FinanceiroTimeseriesPoint[] = []
+  const points: import('../types').FinanceiroTimeseriesPoint[] = []
   for (let i = n - 1; i >= 0; i--) {
     const day = new Date()
     day.setHours(0, 0, 0, 0)
@@ -2399,13 +2421,13 @@ async function financeiroTimeseries(days = 30): Promise<import('./types').Financ
 // Modo demo não tem uma tabela de clientes separada (o pedido já embute
 // nome/whatsapp) — agrupa direto pelos pedidos. birthdate não é rastreado
 // localmente, sempre null aqui (só existe de verdade no Supabase).
-async function adminCrmCustomers(): Promise<import('./types').CrmCustomer[]> {
+async function adminCrmCustomers(): Promise<import('../types').CrmCustomer[]> {
   const db = loadDb()
-  const byWhatsapp = new Map<string, import('./types').CrmCustomer>()
+  const byWhatsapp = new Map<string, import('../types').CrmCustomer>()
   for (const o of db.orders) {
     if (!o.customer_whatsapp) continue
     const existing = byWhatsapp.get(o.customer_whatsapp)
-    const entry: import('./types').CrmCustomer = existing ?? {
+    const entry: import('../types').CrmCustomer = existing ?? {
       id: o.customer_whatsapp,
       name: o.customer_name,
       whatsapp: o.customer_whatsapp,
@@ -2443,7 +2465,7 @@ async function adminCrmCustomers(): Promise<import('./types').CrmCustomer[]> {
   return Array.from(byWhatsapp.values()).sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function motoboyFinanceiro(): Promise<import('./types').MotoboyFinanceiro> {
+async function motoboyFinanceiro(): Promise<import('../types').MotoboyFinanceiro> {
   const db = loadDb()
   const delivered = db.orders.filter(
     (o) => o.motoboy_id === FAKE_MOTOBOY_ID && o.status === 'concluido' && o.delivery_type === 'entrega'

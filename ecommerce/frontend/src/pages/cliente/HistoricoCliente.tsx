@@ -5,8 +5,9 @@ import SiteHeader from '../../components/layout/SiteHeader'
 import PageTransition from '../../components/layout/PageTransition'
 import CartFab from '../../components/CartFab'
 import { StatusBadge } from '../../components/ui/Badge'
-import { api } from '../../lib/api'
-import type { Order, Product } from '../../lib/types'
+import { orderService } from '../../services/orderService'
+import { productService } from '../../services/productService'
+import type { Order, Product } from '../../types'
 import { useCustomerAuth } from '../../store/customerAuth'
 import { useCart } from '../../store/cart'
 
@@ -24,8 +25,8 @@ export default function HistoricoCliente() {
 
   useEffect(() => {
     if (!token) return
-    api.customerAuth
-      .listOrders(token)
+    orderService
+      .listMine(token)
       .then(setOrders)
       .finally(() => setLoading(false))
   }, [token])
@@ -40,7 +41,7 @@ export default function HistoricoCliente() {
     setBuyingAgainId(order.id)
     setBuyAgainError(null)
     try {
-      const products = await api.products.list()
+      const products = await productService.list()
       const productById = new Map(products.map((p) => [p.id, p]))
       const available: { product: Product; quantity: number }[] = []
       const unavailable: string[] = []

@@ -15,18 +15,16 @@ import { useMotoboyAuth } from '../../src/store/motoboyAuth'
 // Isso não é pego pelo teste unitário de tests/unit/auth-isolation.test.ts,
 // que testa as stores isoladas — aqui é o fluxo completo tela→store.
 //
-// A classe ApiError é declarada DENTRO da factory (não importada de fora)
-// porque vi.mock é hoisted pro topo do arquivo — referenciar uma variável
-// importada no nível do módulo aqui dispara "Cannot access before
-// initialization".
-vi.mock('../../src/lib/api', () => {
-  class ApiError extends Error {
-    status: number
-    constructor(status: number, message: string) {
-      super(message)
-      this.status = status
-    }
-  }
+// AdminLogin/FuncionarioLogin importam ApiError de lib/apiError (não mais
+// de lib/api, ver src/ARCHITECTURE.md) — vi.importActual busca a classe
+// REAL desse módulo (não mockado) pra usar aqui dentro, garantindo que o
+// erro lançado por este mock seja `instanceof` a MESMA classe que a tela
+// compara no catch. Precisa ser vi.importActual (não um import de nível de
+// módulo) porque vi.mock é hoisted pro topo do arquivo — referenciar uma
+// variável importada no nível do módulo aqui dispara "Cannot access
+// before initialization".
+vi.mock('../../src/lib/api', async () => {
+  const { ApiError } = await vi.importActual<typeof import('../../src/lib/apiError')>('../../src/lib/apiError')
   return {
     ApiError,
     api: {

@@ -8,9 +8,9 @@ import CartFab from '../../components/CartFab'
 import ProductDetailModal, { PromoPriceBlock, PromoRibbon, currency } from '../../components/ProductDetailModal'
 import FavoriteHeartButton from '../../components/FavoriteHeartButton'
 import ConfirmRemoveDialog from '../../components/ConfirmRemoveDialog'
-import { api } from '../../lib/api'
-import type { Product } from '../../lib/types'
-import type { PromotionalProduct } from '../../lib/supabasePublicApi'
+import { favoriteService } from '../../services/favoriteService'
+import { couponService } from '../../services/couponService'
+import type { Product, PromotionalProduct } from '../../types'
 import { useCart } from '../../store/cart'
 import { useCustomerAuth } from '../../store/customerAuth'
 
@@ -29,7 +29,7 @@ export default function FavoritosCliente() {
 
   useEffect(() => {
     if (!token) return
-    Promise.all([api.customerAuth.listFavorites(token), api.coupons.listPromotionalProducts().catch(() => [])])
+    Promise.all([favoriteService.list(token), couponService.listPromotionalProducts().catch(() => [])])
       .then(([favs, promo]) => {
         setProducts(favs)
         setPromos(promo)
@@ -49,8 +49,8 @@ export default function FavoritosCliente() {
     if (!token || !pendingRemove) return
     const product = pendingRemove
     setPendingRemove(null)
-    api.customerAuth
-      .toggleFavorite(token, product.id)
+    favoriteService
+      .toggle(token, product.id)
       .then(() => {
         setProducts((prev) => prev.filter((p) => p.id !== product.id))
         setDetailProduct((cur) => (cur?.id === product.id ? null : cur))
