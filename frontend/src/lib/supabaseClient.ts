@@ -1,17 +1,22 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim()
+const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim()
 
-if (!url || !anonKey) {
-  console.warn('VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY não configuradas — login/cadastro do lojista vão falhar.')
+/** false = build/deploy sem as envs do Supabase. Landing e páginas públicas
+ * continuam renderizando; login/cadastro falham com mensagem clara. */
+export const supabaseConfigured = Boolean(url && anonKey)
+
+if (!supabaseConfigured) {
+  console.warn(
+    'VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY não configuradas — login/cadastro do lojista vão falhar. Configure no dashboard da Vercel (Project → Settings → Environment Variables).',
+  )
 }
 
-// Mesmo projeto Supabase usado pelo motor de e-commerce (ver
-// ecommerce/frontend/src/lib/supabaseClient.ts), mas este client só fala
-// com `.auth` -- nunca lê/escreve tabela nenhuma direto, então não precisa
-// (nem deve) apontar pra um schema específico como `ufersin`/`sunset`.
-// `auth.users` é global ao projeto (ver ARQUITETURA.md §2b), por isso é
-// seguro reaproveitar o mesmo projeto Supabase só pra autenticação do
-// lojista sem vazar nada entre Sunset/VRTech/Ufersin.
-export const supabase = createClient(url ?? '', anonKey ?? '')
+// createClient() joga "supabaseUrl is required" se a URL vier vazia e
+// derruba o SPA inteiro (tela preta). Placeholder inerte só pra o módulo
+// carregar; nunca use isso pra auth real.
+export const supabase: SupabaseClient = createClient(
+  url || 'https://placeholder.supabase.co',
+  anonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder',
+)
