@@ -2,11 +2,10 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Lock, ShoppingBag, Users2 } from 'lucide-react'
 import type { PlanoCode } from '../lib/api'
+import { demoLojaUrl } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 const PLAN_NAMES: Record<PlanoCode, string> = { essential: 'Essential', management: 'Management', premium: 'Premium' }
-
-const ECOMMERCE_FRONTEND_URL = import.meta.env.VITE_ECOMMERCE_FRONTEND_URL || 'http://localhost:5173'
 
 interface AreaDef {
   key: 'vitrine' | 'admin' | 'motoboy' | 'vendedor'
@@ -53,7 +52,7 @@ export default function DemoPlano() {
   // ecommerce/frontend/src/lib/demoMode.ts.
   const handleClick = (area: AreaDef) => {
     if (area.comingSoon || !isUnlocked(area)) return
-    window.open(`${ECOMMERCE_FRONTEND_URL}/demo-entrar?role=${area.key}&plano=${planoCode}`, '_blank', 'noopener,noreferrer')
+    window.open(`${demoLojaUrl()}/demo-entrar?role=${area.key}&plano=${planoCode}`, '_blank', 'noopener,noreferrer')
   }
 
   return (
