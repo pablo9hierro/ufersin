@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { LayoutDashboard, MousePointerClick, Play, Smartphone, Store } from 'lucide-react'
 
@@ -29,7 +29,7 @@ export default function Demo() {
         >
           <span className="uf-eyebrow mb-4">Demonstração</span>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mt-4">
-            Veja a <span className="uf-text">Rodoletas</span> por dentro
+            Veja a <span className="uf-text">Resolutoo</span> por dentro
           </h2>
           <p className="mt-4 text-uf-silver-dim max-w-xl mx-auto">
             Quer mexer de verdade? Testa o painel mockado e vê o que cada plano libera.

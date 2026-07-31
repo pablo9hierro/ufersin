@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -122,7 +122,7 @@ export default function Dashboard() {
       <header className="border-b border-white/5 px-5 py-5">
         <div className="uf-container flex items-center justify-between">
           <Link to="/" className="text-lg font-black uf-text">
-            Rodoletas
+            Resolutoo
           </Link>
           <div className="flex items-center gap-4">
             <Link to="/meu-plano" className="btn-ghost text-sm">
@@ -291,7 +291,7 @@ export default function Dashboard() {
                     Entrar no painel da loja
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
-                  <p className="text-[11px] text-uf-silver-dim mt-2">Use o mesmo e-mail e senha da sua conta Rodoletas.</p>
+                  <p className="text-[11px] text-uf-silver-dim mt-2">Use o mesmo e-mail e senha da sua conta Resolutoo.</p>
                 </>
               ) : (
                 <p className="text-sm text-uf-silver-dim">Sua loja ainda não foi configurada — finalize a assinatura e o onboarding primeiro.</p>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Menu, X } from 'lucide-react'
@@ -43,7 +43,7 @@ export default function Navbar() {
     >
       <nav className="uf-container flex items-center justify-between px-5 py-4">
         <Link to="/" className="text-xl font-black tracking-tight" onClick={() => setMenuOpen(false)}>
-          <span className="uf-text">Rodoletas</span>
+          <span className="uf-text">Resolutoo</span>
         </Link>
 
         <div className="hidden md:flex items-center gap-7">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Loader2, MailCheck, Rocket, RotateCw } from 'lucide-react'
@@ -208,7 +208,7 @@ export default function Cadastro() {
       >
         <div className="text-center mb-8">
           <Link to="/" className="text-2xl font-black uf-text">
-            Rodoletas
+            Resolutoo
           </Link>
           <p className="text-uf-silver-dim text-sm mt-2">
             {plano ? 'Crie sua conta pra assinar o plano abaixo.' : 'Sua loja online completa, pronta em dias — não em meses.'}

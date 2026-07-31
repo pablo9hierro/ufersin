@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+﻿import { motion } from 'framer-motion'
 import { ArrowRight, PlayCircle, Sparkles } from 'lucide-react'
 
 const fadeUp = {
@@ -79,7 +79,7 @@ export default function Hero() {
               </span>
             ))}
           </span>
-          lojistas já rodando com a Rodoletas
+          lojistas já rodando com a Resolutoo
         </motion.div>
       </div>
 

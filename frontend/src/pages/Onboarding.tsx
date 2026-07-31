@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, CreditCard, ImagePlus, Loader2, MessageCircle, Palette, QrCode, Rocket, Store } from 'lucide-react'
@@ -263,7 +263,7 @@ export default function Onboarding() {
                     placeholder="minha-loja"
                   />
                   <p className="text-[11px] text-uf-silver-dim mt-1">
-                    Sua loja vai ficar em <span className="text-uf-silver">{slugify(slug) || 'minha-loja'}.rodoletas.app</span>
+                    Sua loja vai ficar em <span className="text-uf-silver">{slugify(slug) || 'minha-loja'}.resolutoo.com</span>
                   </p>
                 </div>
 

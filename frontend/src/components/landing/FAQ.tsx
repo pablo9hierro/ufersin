@@ -1,11 +1,11 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 
 const QUESTIONS = [
   {
     q: 'Preciso saber programar ou ter equipe de tecnologia?',
-    a: 'Não. A Rodoletas já entrega sua loja pronta — catálogo, checkout, Pix e WhatsApp configurados. Você só cuida do seu negócio.',
+    a: 'Não. A Resolutoo já entrega sua loja pronta — catálogo, checkout, Pix e WhatsApp configurados. Você só cuida do seu negócio.',
   },
   {
     q: 'Posso trocar de plano depois?',
@@ -17,7 +17,7 @@ const QUESTIONS = [
   },
   {
     q: 'Minha loja fica no meu próprio domínio?',
-    a: 'Sua loja recebe um subdomínio Rodoletas automaticamente (ex: sualoja.rodoletas.app). Domínio próprio é um recurso que estamos preparando.',
+    a: 'Sua loja recebe um subdomínio Resolutoo automaticamente (ex: sualoja.resolutoo.com). Domínio próprio é um recurso que estamos preparando.',
   },
   {
     q: 'Posso cancelar quando quiser?',

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Loader2, Rocket } from 'lucide-react'
@@ -76,7 +76,7 @@ export default function CompletarConta() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <Link to="/" className="text-2xl font-black uf-text">
-            Rodoletas
+            Resolutoo
           </Link>
           <p className="text-uf-silver-dim text-sm mt-2">E-mail confirmado! Só falta completar os dados da loja.</p>
           {session?.user?.email && (

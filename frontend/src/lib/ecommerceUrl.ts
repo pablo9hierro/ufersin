@@ -1,4 +1,4 @@
-function isLocalHost(hostname: string): boolean {
+﻿function isLocalHost(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1'
 }
 
@@ -8,7 +8,7 @@ function looksLikeLocalUrl(url: string): boolean {
 
 /** Vitrine/admin mockados da demo pública (`/demo`).
  * Local → ecommerce em :5173. Produção → mesmo domínio sob `/loja`
- * (build embutido no deploy da Rodoletas).
+ * (build embutido no deploy da Resolutoo).
  * Se a env de produção ainda apontar pra localhost (misconfig comum),
  * ignora e usa `/loja`. */
 export function demoLojaUrl(): string {

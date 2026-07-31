@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { KeyRound, Loader2 } from 'lucide-react'
@@ -46,7 +46,7 @@ export default function RedefinirSenha() {
       >
         <div className="text-center mb-8">
           <Link to="/" className="text-2xl font-black uf-text">
-            Rodoletas
+            Resolutoo
           </Link>
           <p className="text-uf-silver-dim text-sm mt-2">Escolha sua nova senha.</p>
         </div>

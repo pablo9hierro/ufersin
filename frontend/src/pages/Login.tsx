@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { LogIn, Loader2 } from 'lucide-react'
@@ -70,7 +70,7 @@ export default function Login() {
       >
         <div className="text-center mb-8">
           <Link to="/" className="text-2xl font-black uf-text">
-            Rodoletas
+            Resolutoo
           </Link>
           <p className="text-uf-silver-dim text-sm mt-2">
             {plano ? `Entre pra assinar o plano ${PLAN_MAP[plano].name}.` : 'Entre no seu painel de assinante.'}

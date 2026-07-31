@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, CreditCard, ExternalLink, Loader2, Save, Sparkles } from 'lucide-react'
@@ -194,7 +194,7 @@ export default function MeuPlano() {
               Entrar no painel
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
-            <p className="text-[11px] text-uf-silver-dim mt-2">Mesmo e-mail e senha da conta Rodoletas.</p>
+            <p className="text-[11px] text-uf-silver-dim mt-2">Mesmo e-mail e senha da conta Resolutoo.</p>
           </section>
         )}
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Check, Loader2 } from 'lucide-react'
@@ -30,7 +30,7 @@ export default function Planos() {
       <div className="uf-container relative z-10">
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="text-center mb-12">
           <Link to="/" className="text-2xl font-black uf-text">
-            Rodoletas
+            Resolutoo
           </Link>
           <h1 className="text-3xl sm:text-4xl font-black mt-4">Escolha seu plano</h1>
           <p className="mt-3 text-uf-silver-dim max-w-xl mx-auto">Sua conta já está criada — falta só escolher o plano e a forma de pagamento.</p>

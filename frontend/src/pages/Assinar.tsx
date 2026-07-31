@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { CreditCard, Loader2, QrCode, Rocket } from 'lucide-react'
@@ -68,7 +68,7 @@ export default function Assinar() {
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <Link to="/" className="text-2xl font-black uf-text">
-            Rodoletas
+            Resolutoo
           </Link>
           <p className="text-uf-silver-dim text-sm mt-2">Escolha o ciclo e como pagar.</p>
         </div>

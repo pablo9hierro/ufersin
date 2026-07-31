@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+﻿import { motion } from 'framer-motion'
 import { BadgePercent, LayoutGrid, MessageCircle, QrCode, ShoppingCart, Users2 } from 'lucide-react'
 
 const FEATURES = [
@@ -59,7 +59,7 @@ export default function Features() {
             Tudo que sua loja precisa, <span className="uf-text">em um só lugar</span>
           </h2>
           <p className="mt-4 text-uf-silver-dim max-w-xl mx-auto">
-            Nada de juntar cinco ferramentas diferentes. A Rodoletas já vem com o que uma loja online
+            Nada de juntar cinco ferramentas diferentes. A Resolutoo já vem com o que uma loja online
             de verdade precisa pra vender.
           </p>
         </motion.div>

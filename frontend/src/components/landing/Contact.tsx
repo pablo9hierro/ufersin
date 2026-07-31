@@ -1,9 +1,9 @@
-import { motion } from 'framer-motion'
+﻿import { motion } from 'framer-motion'
 import { Mail, MessageCircle } from 'lucide-react'
 
-// TODO: substituir pelo WhatsApp/e-mail reais da Rodoletas antes de publicar.
+// TODO: substituir pelo WhatsApp/e-mail reais da Resolutoo antes de publicar.
 const WHATSAPP = import.meta.env.VITE_CONTACT_WHATSAPP || '5500000000000'
-const EMAIL = import.meta.env.VITE_CONTACT_EMAIL || 'contato@rodoletas.com'
+const EMAIL = import.meta.env.VITE_CONTACT_EMAIL || 'contato@resolutoo.com'
 
 export default function Contact() {
   return (
@@ -26,7 +26,7 @@ export default function Contact() {
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <a
-                href={`https://api.whatsapp.com/send/?phone=${WHATSAPP}&text=Oi! Tenho uma dúvida sobre a Rodoletas.`}
+                href={`https://api.whatsapp.com/send/?phone=${WHATSAPP}&text=Oi! Tenho uma dúvida sobre a Resolutoo.`}
                 target="_blank"
                 rel="noreferrer"
                 className="btn-primary px-6 py-3 text-sm w-full sm:w-auto"

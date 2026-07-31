@@ -1,4 +1,4 @@
-/** URL canônica do frontend Rodoletas — usada nos links de e-mail do
+﻿/** URL canônica do frontend Resolutoo — usada nos links de e-mail do
  * Supabase Auth (confirmação / reset). Em produção NÃO pode cair em
  * localhost: o Site URL do dashboard Supabase também precisa apontar
  * pra https://resolutoo.com (Authentication → URL Configuration). */

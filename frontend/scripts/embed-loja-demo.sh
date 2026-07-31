@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Empacota o frontend do motor (ecommerce/) sob frontend/public/loja
-# pra a demo da Rodoletas abrir as vitrines mockadas no mesmo domínio
+# pra a demo da Resolutoo abrir as vitrines mockadas no mesmo domínio
 # de produção (…/loja/demo-entrar), sem depender de localhost:5173.
 set -euo pipefail
 # Resolvido a partir do caminho do próprio script (não do cwd) pra
