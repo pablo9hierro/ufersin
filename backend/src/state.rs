@@ -1,15 +1,16 @@
 use sqlx::PgPool;
 use std::sync::Arc;
 
+use crate::jwks::JwksVerifier;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub http: reqwest::Client,
-    /// JWT secret compartilhado do projeto Supabase (Settings -> API -> JWT
-    /// Settings) -- usado só pra VERIFICAR localmente os tokens que o
-    /// Supabase Auth emite pro lojista, nunca pra emitir token nenhum
-    /// daqui (ver auth.rs::AuthSubscriber).
-    pub supabase_jwt_secret: Arc<String>,
+    /// Verifica localmente os tokens que o Supabase Auth emite pro lojista
+    /// contra o JWKS público do projeto (chave assimétrica, ver jwks.rs) —
+    /// nunca emite token nenhum daqui (ver auth.rs::AuthSubscriber).
+    pub supabase_jwks: Arc<JwksVerifier>,
     /// None = modo mock (sem cobrança de verdade, só pra testar o fluxo
     /// sem uma conta Mercado Pago com o produto de assinaturas aprovado).
     pub mp_token: Arc<Option<String>>,
