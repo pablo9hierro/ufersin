@@ -31,7 +31,7 @@ pub struct OnboardingInput {
     #[serde(default = "default_forma_pagamento")]
     pub forma_pagamento: String, // 'manual' | 'plataforma'
     #[serde(default)]
-    pub plataforma_pagamento: Option<String>, // 'mercado_pago' | 'pagbank' | 'abacate_pay'
+    pub plataforma_pagamento: Option<String>, // 'mercado_pago' | 'abacate_pay'
     #[serde(default)]
     pub plataforma_credenciais: Option<serde_json::Value>,
 }
@@ -201,10 +201,10 @@ fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
     }
     if body.forma_pagamento == "plataforma" {
         match body.plataforma_pagamento.as_deref() {
-            Some("mercado_pago") | Some("pagbank") | Some("abacate_pay") => {}
+            Some("mercado_pago") | Some("abacate_pay") => {}
             _ => {
                 return Err(AppError::BadRequest(
-                    "escolha uma plataforma de pagamento (mercado_pago, pagbank ou abacate_pay) ou marque cobrança manual".to_string(),
+                    "escolha uma plataforma de pagamento (mercado_pago ou abacate_pay) ou marque cobrança manual".to_string(),
                 ))
             }
         }
@@ -272,6 +272,13 @@ pub async fn editar_onboarding(
     if let Some(fp) = &body.forma_pagamento {
         if !matches!(fp.as_str(), "manual" | "plataforma") {
             return Err(AppError::BadRequest("forma_pagamento deve ser 'manual' ou 'plataforma'".to_string()));
+        }
+    }
+    if let Some(pp) = &body.plataforma_pagamento {
+        if !matches!(pp.as_str(), "mercado_pago" | "abacate_pay") {
+            return Err(AppError::BadRequest(
+                "plataforma_pagamento deve ser 'mercado_pago' ou 'abacate_pay'".to_string(),
+            ));
         }
     }
 

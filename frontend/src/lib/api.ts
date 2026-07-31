@@ -74,7 +74,7 @@ export interface StatusAssinatura {
 }
 
 export type FormaPagamento = 'manual' | 'plataforma'
-export type PlataformaPagamento = 'mercado_pago' | 'pagbank' | 'abacate_pay'
+export type PlataformaPagamento = 'mercado_pago' | 'abacate_pay'
 export type TipoDocumento = 'cnpj' | 'cpf'
 
 export interface MeResponse {
