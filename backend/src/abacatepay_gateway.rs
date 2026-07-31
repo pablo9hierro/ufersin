@@ -80,8 +80,8 @@ fn product_name(plan_code: &str, cycle: BillingCycle) -> String {
         other => other,
     };
     match cycle {
-        BillingCycle::Mensal => format!("Rodoletas {plan} — mensal"),
-        BillingCycle::Semestral => format!("Rodoletas {plan} — semestral (−5%)"),
+        BillingCycle::Mensal => format!("Resolutoo {plan} — mensal"),
+        BillingCycle::Semestral => format!("Resolutoo {plan} — semestral (−5%)"),
     }
 }
 
@@ -210,55 +210,86 @@ pub async fn create_subscription(
 ) -> Result<GatewayCharge, AppError> {
     match state.abacatepay_token.as_ref().as_ref() {
         Some(token) => {
+            let sandbox = is_sandbox_key(token);
             let prefer_card = matches!(method, PaymentMethod::Cartao | PaymentMethod::CartaoParcelado);
-            // Homologação AbacatePay frequentemente só libera PIX — tenta CARD e cai pra PIX.
-            let first = if prefer_card { ["CARD"] } else { ["PIX"] };
-            match create_subscription_checkout(
-                state,
-                token,
-                plan_code,
-                amount_reais,
-                cycle,
-                payer_email,
-                external_reference,
-                &first,
-            )
-            .await
-            {
-                Ok(charge) => Ok(charge),
-                Err(e) if prefer_card && is_card_unavailable_error(&e) => {
-                    tracing::warn!("abacatepay CARD unavailable for store — falling back to PIX subscription checkout");
-                    create_subscription_checkout(
-                        state,
-                        token,
-                        plan_code,
-                        amount_reais,
-                        cycle,
-                        payer_email,
-                        external_reference,
-                        &["PIX"],
-                    )
-                    .await
+            // Ordem: método pedido → o outro → (só sandbox) mock local com "Simular pagamento".
+            let order = if prefer_card {
+                ["CARD", "PIX"]
+            } else {
+                ["PIX", "CARD"]
+            };
+
+            let mut last_err: Option<AppError> = None;
+            for method_name in order {
+                let methods = [method_name];
+                match create_subscription_checkout(
+                    state,
+                    token,
+                    plan_code,
+                    amount_reais,
+                    cycle,
+                    payer_email,
+                    external_reference,
+                    &methods,
+                )
+                .await
+                {
+                    Ok(charge) => return Ok(charge),
+                    Err(e) if is_method_unavailable_error(&e) => {
+                        tracing::warn!(
+                            "abacatepay method {method_name} unavailable — trying next fallback: {}",
+                            err_message(&e)
+                        );
+                        last_err = Some(e);
+                    }
+                    Err(e) => {
+                        last_err = Some(e);
+                        break;
+                    }
                 }
-                Err(e) => Err(e),
             }
+
+            if sandbox {
+                tracing::warn!(
+                    "abacatepay homolog store has no CARD/PIX automático — using local sandbox mock so checkout can proceed via Simular pagamento. last_err={:?}",
+                    last_err
+                );
+                return Ok(sandbox_mock_charge(state, external_reference));
+            }
+
+            Err(last_err.unwrap_or_else(|| {
+                AppError::BadRequest(
+                    "AbacatePay recusou o checkout. Ative Pix/Cartão na loja AbacatePay ou use chave de produção."
+                        .to_string(),
+                )
+            }))
         }
-        None => Ok(GatewayCharge {
-            external_id: format!("mock-abacatepay-{}", uuid::Uuid::new_v4()),
-            checkout_url: Some(completion_url(state, external_reference)),
-            pix_qr_code: None,
-            pix_qr_base64: None,
-            sandbox: true,
-        }),
+        None => Ok(sandbox_mock_charge(state, external_reference)),
     }
 }
 
-fn is_card_unavailable_error(err: &AppError) -> bool {
-    let msg = match err {
+fn sandbox_mock_charge(state: &AppState, external_reference: &str) -> GatewayCharge {
+    GatewayCharge {
+        external_id: format!("mock-abacatepay-{}", uuid::Uuid::new_v4()),
+        checkout_url: Some(completion_url(state, external_reference)),
+        pix_qr_code: None,
+        pix_qr_base64: None,
+        sandbox: true,
+    }
+}
+
+fn err_message(err: &AppError) -> &str {
+    match err {
         AppError::BadRequest(m) | AppError::Internal(m) | AppError::Unauthorized(m) | AppError::NotFound(m) => m.as_str(),
-    };
-    let lower = msg.to_ascii_lowercase();
-    lower.contains("card is not available") || lower.contains("cartão") && lower.contains("não dispon")
+    }
+}
+
+fn is_method_unavailable_error(err: &AppError) -> bool {
+    let lower = err_message(err).to_ascii_lowercase();
+    lower.contains("not available for this store")
+        || lower.contains("não dispon")
+        || lower.contains("pix automático")
+        || lower.contains("card is not available")
 }
 
 async fn create_subscription_checkout(

@@ -149,8 +149,8 @@ export default function Assinar() {
             Assinar e configurar pagamento
           </button>
           <p className="text-[11px] text-uf-silver-dim text-center">
-            Checkout seguro AbacatePay ({metodo === 'pix' ? 'Pix' : 'cartão'}). Se o cartão não estiver ativo na loja
-            AbacatePay, usamos Pix automaticamente. Em homologação, a próxima tela tem “Simular pagamento”.
+            Checkout AbacatePay ({metodo === 'pix' ? 'Pix' : 'cartão'}). Em homologação (chave abc_dev_), se a loja
+            AbacatePay ainda não tiver Pix/Cartão liberados, você cai direto em “Simular pagamento”.
           </p>
         </form>
       </motion.div>
