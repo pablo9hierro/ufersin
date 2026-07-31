@@ -92,14 +92,24 @@ pub async fn assinar_plano(
     )
     .await?;
 
+    // Homologação (mock-*): libera assinatura na hora — senão o onboarding
+    // trava em "pagamento ainda não foi confirmado" se o usuário pular o botão.
+    let (status, onboarding) = if charge.sandbox && charge.external_id.starts_with("mock-") {
+        ("ativo", "aguardando_onboarding")
+    } else {
+        ("pendente", "aguardando_pagamento")
+    };
+
     sqlx::query(
-        "UPDATE subscribers SET plan_code = $1, gateway = $2, valor_mensal = $3, billing_cycle = $4, status = 'pendente', \
-         onboarding_status = 'aguardando_pagamento', mp_preapproval_id = $5, updated_at = now() WHERE id = $6",
+        "UPDATE subscribers SET plan_code = $1, gateway = $2, valor_mensal = $3, billing_cycle = $4, status = $5, \
+         onboarding_status = $6, mp_preapproval_id = $7, updated_at = now() WHERE id = $8",
     )
     .bind(&body.plano)
     .bind(gateway_kind)
     .bind(monthly)
     .bind(cycle.as_str())
+    .bind(status)
+    .bind(onboarding)
     .bind(&charge.external_id)
     .bind(&claims.sub)
     .execute(&state.pool)
