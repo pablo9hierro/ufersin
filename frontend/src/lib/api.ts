@@ -69,11 +69,14 @@ export interface AssinaturaCriada {
   checkout_url: string | null
   pix_qr_code: string | null
   pix_qr_base64: string | null
+  /** Homologação AbacatePay — permite simular pagamento. */
+  sandbox?: boolean
 }
 
 export interface StatusAssinatura {
   status: 'sem_assinatura' | 'pendente' | 'ativo' | 'pausado' | 'cancelado'
   onboarding_status: 'aguardando_pagamento' | 'aguardando_onboarding' | 'provisionado'
+  sandbox?: boolean
 }
 
 export type FormaPagamento = 'manual' | 'plataforma'
@@ -154,6 +157,8 @@ export const api = {
 
   assinarPlano: (input: AssinarPlanoInput) => request<AssinaturaCriada>('/api/assinaturas', { method: 'POST', body: JSON.stringify(input) }),
   statusAssinatura: (id: string) => request<StatusAssinatura>(`/api/assinaturas/${id}/status`),
+  simularPagamento: () =>
+    request<StatusAssinatura>('/api/assinaturas/simular-pagamento', { method: 'POST', body: '{}' }),
 
   me: () => request<MeResponse>('/api/me'),
   mudarPlano: (novo_plano: PlanoCode) =>

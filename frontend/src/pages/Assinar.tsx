@@ -44,7 +44,13 @@ export default function Assinar() {
     setLoading(true)
     try {
       const result = await api.assinarPlano({ plano, metodo, ciclo })
-      if (result.checkout_url) {
+      // Homologação: vai pra /obrigado com botão "Simular pagamento" (e link do checkout real).
+      // Produção: redireciona direto ao checkout AbacatePay.
+      if (result.sandbox) {
+        const q = new URLSearchParams({ id: result.id })
+        if (result.checkout_url) q.set('checkout', result.checkout_url)
+        navigate(`/obrigado?${q.toString()}`)
+      } else if (result.checkout_url) {
         window.location.href = result.checkout_url
       } else {
         navigate(`/obrigado?id=${result.id}`)
@@ -142,9 +148,8 @@ export default function Assinar() {
             Assinar e configurar pagamento
           </button>
           <p className="text-[11px] text-uf-silver-dim text-center">
-            {metodo === 'cartao'
-              ? 'Você será redirecionado ao checkout seguro da AbacatePay pra autorizar a cobrança recorrente.'
-              : 'Você vai receber um QR Code Pix na próxima tela (cobrança do período escolhido).'}
+            Você será redirecionado ao checkout seguro da AbacatePay pra autorizar a cobrança recorrente
+            {metodo === 'pix' ? ' via Pix' : ' no cartão'}. Em homologação, a tela seguinte tem “Simular pagamento”.
           </p>
         </form>
       </motion.div>

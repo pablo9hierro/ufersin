@@ -41,13 +41,13 @@ pub struct AssinaturaCriada {
     pub checkout_url: Option<String>,
     pub pix_qr_code: Option<String>,
     pub pix_qr_base64: Option<String>,
+    /// Homologação AbacatePay (`abc_dev_`) — front pode oferecer "Simular pagamento".
+    pub sandbox: bool,
 }
 
-/// Atrela um plano à conta já existente (criada via POST /api/auth/bootstrap
-/// depois do supabase.auth.signUp/signInWithPassword) e dispara a cobrança
-/// recorrente no gateway escolhido. Exige login — cadastro de conta e
-/// escolha de plano são dois passos separados agora (ver ARQUITETURA.md
-/// §6): isto não cria mais a linha em `subscribers`, só a atualiza.
+/// Atrela um plano à conta já existente e dispara a cobrança recorrente.
+/// Permite retry quando status é `pendente` / `cancelado` / `sem_assinatura`
+/// (bloqueia só `ativo` e `pausado`).
 pub async fn assinar_plano(
     State(state): State<AppState>,
     AuthSubscriber(claims): AuthSubscriber,
@@ -59,14 +59,15 @@ pub async fn assinar_plano(
     let cycle = BillingCycle::parse(&body.ciclo)
         .ok_or_else(|| AppError::BadRequest("ciclo inválido — use mensal ou semestral".to_string()))?;
 
-    let row: Option<(String, String, String)> = sqlx::query_as("SELECT loja_nome, email, status FROM subscribers WHERE id = $1")
-        .bind(&claims.sub)
-        .fetch_optional(&state.pool)
-        .await?;
+    let row: Option<(String, String, String)> =
+        sqlx::query_as("SELECT loja_nome, email, status FROM subscribers WHERE id = $1")
+            .bind(&claims.sub)
+            .fetch_optional(&state.pool)
+            .await?;
     let (loja_nome, email, status) =
         row.ok_or_else(|| AppError::NotFound("conta não encontrada — finalize o cadastro primeiro".to_string()))?;
-    if matches!(status.as_str(), "ativo" | "pendente" | "pausado") {
-        return Err(AppError::BadRequest("essa conta já tem uma assinatura em andamento".to_string()));
+    if matches!(status.as_str(), "ativo" | "pausado") {
+        return Err(AppError::BadRequest("essa conta já tem uma assinatura ativa".to_string()));
     }
 
     let monthly = plan_monthly_price(&body.plano, state.valor_padrao);
@@ -109,6 +110,7 @@ pub async fn assinar_plano(
         checkout_url: charge.checkout_url,
         pix_qr_code: charge.pix_qr_code,
         pix_qr_base64: charge.pix_qr_base64,
+        sandbox: charge.sandbox,
     }))
 }
 
@@ -116,17 +118,17 @@ pub async fn assinar_plano(
 pub struct StatusAssinatura {
     pub status: String,
     pub onboarding_status: String,
+    pub sandbox: bool,
 }
 
 /// O front chama isso em polling depois de redirecionar o lojista pro
 /// checkout — quando o gateway confirma o pagamento, o status muda de
-/// "pendente" pra "ativo" (consultado ao vivo na API do gateway, não fica
-/// esperando webhook). Sem auth de propósito — funciona no meio do
-/// redirect de volta do checkout hospedado do gateway.
+/// "pendente" pra "ativo".
 pub async fn status_assinatura(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<StatusAssinatura>, AppError> {
+    let sandbox = gateway::sandbox_mode(&state);
     let row: Option<(Option<String>, String, Option<String>, String)> =
         sqlx::query_as("SELECT mp_preapproval_id, status, gateway, onboarding_status FROM subscribers WHERE id = $1")
             .bind(&id)
@@ -137,14 +139,18 @@ pub async fn status_assinatura(
         row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
 
     let (Some(preapproval_id), Some(gateway_kind)) = (preapproval_id, gateway_kind) else {
-        return Ok(Json(StatusAssinatura { status: status_atual, onboarding_status }));
+        return Ok(Json(StatusAssinatura {
+            status: status_atual,
+            onboarding_status,
+            sandbox,
+        }));
     };
 
     let gw_status = gateway::get_status(&state, &gateway_kind, &preapproval_id).await?;
     let novo_status = match gw_status.as_str() {
-        "authorized" | "PAID" => "ativo",
-        "paused" => "pausado",
-        "cancelled" => "cancelado",
+        "authorized" | "PAID" | "ACTIVE" | "active" | "paid" | "COMPLETED" | "completed" => "ativo",
+        "paused" | "PAUSED" => "pausado",
+        "cancelled" | "CANCELLED" | "canceled" => "cancelado",
         _ => "pendente",
     };
 
@@ -163,5 +169,68 @@ pub async fn status_assinatura(
             .await?;
     }
 
-    Ok(Json(StatusAssinatura { status: novo_status.to_string(), onboarding_status: novo_onboarding.to_string() }))
+    Ok(Json(StatusAssinatura {
+        status: novo_status.to_string(),
+        onboarding_status: novo_onboarding.to_string(),
+        sandbox,
+    }))
+}
+
+/// Homologação: marca a assinatura como paga sem cobrança real.
+/// Só funciona com chave `abc_dev_` / mock.
+pub async fn simular_pagamento(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<StatusAssinatura>, AppError> {
+    if !gateway::sandbox_mode(&state) {
+        return Err(AppError::BadRequest(
+            "simulação só disponível em homologação (chave abc_dev_)".to_string(),
+        ));
+    }
+
+    let row: Option<(Option<String>, String, Option<String>, String)> =
+        sqlx::query_as("SELECT mp_preapproval_id, status, gateway, onboarding_status FROM subscribers WHERE id = $1")
+            .bind(&claims.sub)
+            .fetch_optional(&state.pool)
+            .await?;
+
+    let (preapproval_id, status_atual, gateway_kind, onboarding_status) =
+        row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
+
+    if status_atual == "ativo" {
+        return Ok(Json(StatusAssinatura {
+            status: "ativo".to_string(),
+            onboarding_status,
+            sandbox: true,
+        }));
+    }
+    if !matches!(status_atual.as_str(), "pendente" | "sem_assinatura" | "cancelado") {
+        return Err(AppError::BadRequest(format!(
+            "não é possível simular pagamento com status '{status_atual}'"
+        )));
+    }
+
+    if let (Some(ext_id), Some(gw)) = (preapproval_id.as_ref(), gateway_kind.as_ref()) {
+        let _ = gateway::simulate_payment(&state, gw, ext_id).await;
+    }
+
+    let novo_onboarding = if onboarding_status == "aguardando_pagamento" || onboarding_status.is_empty() {
+        "aguardando_onboarding"
+    } else {
+        onboarding_status.as_str()
+    };
+
+    sqlx::query(
+        "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, updated_at = now() WHERE id = $2",
+    )
+    .bind(novo_onboarding)
+    .bind(&claims.sub)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(StatusAssinatura {
+        status: "ativo".to_string(),
+        onboarding_status: novo_onboarding.to_string(),
+        sandbox: true,
+    }))
 }

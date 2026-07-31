@@ -13,10 +13,12 @@ use crate::state::AppState;
 pub struct GatewayCharge {
     pub external_id: String,
     /// Redirect-based checkout (Mercado Pago hosted checkout, AbacatePay
-    /// card checkout). None when the charge is PIX-only (QR code instead).
+    /// card/pix checkout). None when the charge is PIX-only (QR code instead).
     pub checkout_url: Option<String>,
     pub pix_qr_code: Option<String>,
     pub pix_qr_base64: Option<String>,
+    /// true = chave de homologação / mock — front pode mostrar "Simular pagamento".
+    pub sandbox: bool,
 }
 
 /// PIX, cartão (à vista) e cartão parcelado — o spec pede suporte aos três;
@@ -106,13 +108,22 @@ pub async fn create_subscription(
             // período como transaction_amount único por ciclo (ainda mensal
             // no MP — o valor já vem ajustado pelo caller).
             let r = mercadopago::create_subscription(state, reason, payer_email, amount_reais, external_reference).await?;
+            let sandbox = r.preapproval_id.starts_with("mock-");
             Ok(GatewayCharge {
                 external_id: r.preapproval_id,
                 checkout_url: Some(r.init_point),
                 pix_qr_code: None,
                 pix_qr_base64: None,
+                sandbox,
             })
         }
+    }
+}
+
+pub fn sandbox_mode(state: &AppState) -> bool {
+    match resolve_gateway_kind(state) {
+        "abacatepay" => abacatepay_gateway::sandbox_mode(state),
+        _ => state.mp_token.is_none(),
     }
 }
 
@@ -134,5 +145,12 @@ pub async fn cancel(state: &AppState, gateway: &str, external_id: &str) {
     };
     if let Err(e) = result {
         tracing::warn!("gateway cancel failed (proceeding with local cancellation anyway): {e:?}");
+    }
+}
+
+pub async fn simulate_payment(state: &AppState, gateway: &str, external_id: &str) -> Result<(), AppError> {
+    match gateway {
+        "abacatepay" => abacatepay_gateway::simulate_payment(state, external_id).await,
+        _ => Ok(()), // mock MP — ativação local basta
     }
 }

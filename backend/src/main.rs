@@ -119,6 +119,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/bootstrap", post(routes::auth::bootstrap))
         .route("/api/assinaturas", post(routes::assinatura::assinar_plano))
         .route("/api/assinaturas/{id}/status", get(routes::assinatura::status_assinatura))
+        .route(
+            "/api/assinaturas/simular-pagamento",
+            post(routes::assinatura::simular_pagamento),
+        )
         .route("/api/me", get(routes::me::me))
         .route("/api/me/plano", post(routes::me::mudar_plano))
         .route("/api/me/cancelar", post(routes::me::cancelar))

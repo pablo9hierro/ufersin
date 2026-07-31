@@ -7,21 +7,29 @@ use crate::error::AppError;
 use crate::gateway::{BillingCycle, GatewayCharge, PaymentMethod};
 use crate::state::AppState;
 
-// Cobrança da assinatura do lojista com a Rodoletas via AbacatePay.
-// - Cartão: Checkout de assinatura recorrente (API v2 /subscriptions/create)
-//   com produto MONTHLY ou SEMIANNUALLY.
-// - Pix: QR Code avulso (API v1 /pixQrCode/create) no valor do período —
-//   a AbacatePay ainda não faz recorrência Pix nesta integração.
+// Cobrança da assinatura do lojista via AbacatePay API v2.
+// Chaves `abc_dev_*` (homologação) NÃO funcionam na v1 — usamos só v2.
+// Cartão e Pix: checkout de assinatura recorrente (/subscriptions/create)
+// com produto MONTHLY ou SEMIANNUALLY.
 
-const BASE_V1: &str = "https://api.abacatepay.com/v1";
 const BASE_V2: &str = "https://api.abacatepay.com/v2";
 
-/// Cache em memória dos product ids AbacatePay já criados nesta execução
-/// (externalId -> product id público). Evita recriar produto a cada assinatura.
 static PRODUCT_CACHE: std::sync::OnceLock<RwLock<HashMap<String, String>>> = std::sync::OnceLock::new();
 
 fn product_cache() -> &'static RwLock<HashMap<String, String>> {
     PRODUCT_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+pub fn is_sandbox_key(token: &str) -> bool {
+    let t = token.trim();
+    t.starts_with("abc_dev_") || t.contains("_dev_") || t.starts_with("abc_test_")
+}
+
+pub fn sandbox_mode(state: &AppState) -> bool {
+    match state.abacatepay_token.as_ref().as_ref() {
+        Some(t) => is_sandbox_key(t),
+        None => true, // sem chave = mock local
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,16 +49,6 @@ struct AbacateProduct {
 struct AbacateBilling {
     id: String,
     url: Option<String>,
-    status: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AbacatePixData {
-    id: String,
-    #[serde(rename = "brCode")]
-    br_code: Option<String>,
-    #[serde(rename = "brCodeBase64")]
-    br_code_base64: Option<String>,
     status: Option<String>,
 }
 
@@ -75,6 +73,36 @@ fn product_name(plan_code: &str, cycle: BillingCycle) -> String {
     match cycle {
         BillingCycle::Mensal => format!("Rodoletas {plan} — mensal"),
         BillingCycle::Semestral => format!("Rodoletas {plan} — semestral (−5%)"),
+    }
+}
+
+fn site_origin(state: &AppState) -> String {
+    // BACK_URL tipicamente é https://resolutoo.com/obrigado — extrai origem.
+    let raw = state.back_url.as_str().trim();
+    if raw.is_empty() {
+        return "https://resolutoo.com".to_string();
+    }
+    // scheme://host[:port]/path...
+    if let Some(rest) = raw
+        .strip_prefix("https://")
+        .or_else(|| raw.strip_prefix("http://"))
+    {
+        let hostport = rest.split('/').next().unwrap_or("");
+        if !hostport.is_empty() {
+            let scheme = if raw.starts_with("https://") { "https" } else { "http" };
+            return format!("{scheme}://{hostport}");
+        }
+    }
+    "https://resolutoo.com".to_string()
+}
+
+fn completion_url(state: &AppState, external_reference: &str) -> String {
+    if state.back_url.is_empty() {
+        format!("{}/obrigado?id={external_reference}", site_origin(state))
+    } else if state.back_url.contains('?') {
+        format!("{}&id={external_reference}", state.back_url.as_str())
+    } else {
+        format!("{}?id={external_reference}", state.back_url.as_str())
     }
 }
 
@@ -112,22 +140,20 @@ async fn ensure_product(
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
     if !status.is_success() {
-        // Produto já existe — tenta listar e achar pelo externalId.
-        if text.contains("already") || text.contains("existe") || status.as_u16() == 409 {
-            if let Some(id) = find_product_by_external_id(state, token, &external_id).await? {
-                product_cache().write().await.insert(external_id, id.clone());
-                return Ok(id);
-            }
+        if let Some(id) = find_product_by_external_id(state, token, &external_id).await? {
+            product_cache().write().await.insert(external_id, id.clone());
+            return Ok(id);
         }
         tracing::error!("abacatepay product create failed: {status} {text}");
-        return Err(AppError::Internal("failed to create abacatepay product".to_string()));
+        return Err(AppError::Internal(format!(
+            "falha ao criar produto AbacatePay ({status}). Verifique permissões da chave (PRODUCT:CREATE)."
+        )));
     }
 
     let parsed: AbacateEnvelope<AbacateProduct> = serde_json::from_str(&text)
         .map_err(|e| AppError::Internal(format!("abacatepay product parse error: {e}")))?;
     if let Some(err) = parsed.error {
-        tracing::error!("abacatepay product error: {err}");
-        return Err(AppError::Internal("abacatepay rejected the product".to_string()));
+        return Err(AppError::Internal(format!("abacatepay rejected the product: {err}")));
     }
     let data = parsed
         .data
@@ -165,7 +191,7 @@ async fn find_product_by_external_id(
 
 pub async fn create_subscription(
     state: &AppState,
-    reason: &str,
+    _reason: &str,
     payer_email: &str,
     plan_code: &str,
     amount_reais: f64,
@@ -173,28 +199,35 @@ pub async fn create_subscription(
     external_reference: &str,
     method: PaymentMethod,
 ) -> Result<GatewayCharge, AppError> {
-    match state.abacatepay_token.as_ref() {
-        Some(token) => match method {
-            PaymentMethod::Pix => create_pix_charge(state, token, reason, amount_reais, external_reference).await,
-            PaymentMethod::Cartao | PaymentMethod::CartaoParcelado => {
-                create_card_subscription(state, token, plan_code, amount_reais, cycle, payer_email, external_reference)
-                    .await
-            }
-        },
+    match state.abacatepay_token.as_ref().as_ref() {
+        Some(token) => {
+            let methods = match method {
+                PaymentMethod::Pix => vec!["PIX"],
+                PaymentMethod::Cartao | PaymentMethod::CartaoParcelado => vec!["CARD"],
+            };
+            create_subscription_checkout(
+                state,
+                token,
+                plan_code,
+                amount_reais,
+                cycle,
+                payer_email,
+                external_reference,
+                &methods,
+            )
+            .await
+        }
         None => Ok(GatewayCharge {
             external_id: format!("mock-abacatepay-{}", uuid::Uuid::new_v4()),
-            checkout_url: Some(format!(
-                "{}/obrigado?id={}&mock=1",
-                state.back_url.trim_end_matches("/obrigado").trim_end_matches('/'),
-                external_reference
-            )),
-            pix_qr_code: Some("00020126580014BR.GOV.BCB.PIX0136MOCK-NAO-USAR-PARA-PAGAR6304ABCD".to_string()),
+            checkout_url: Some(completion_url(state, external_reference)),
+            pix_qr_code: None,
             pix_qr_base64: None,
+            sandbox: true,
         }),
     }
 }
 
-async fn create_card_subscription(
+async fn create_subscription_checkout(
     state: &AppState,
     token: &str,
     plan_code: &str,
@@ -202,24 +235,19 @@ async fn create_card_subscription(
     cycle: BillingCycle,
     payer_email: &str,
     external_reference: &str,
+    methods: &[&str],
 ) -> Result<GatewayCharge, AppError> {
     let product_id = ensure_product(state, token, plan_code, cycle, amount_reais).await?;
-    let completion = if state.back_url.is_empty() {
-        format!("https://resolutoo.com/obrigado?id={external_reference}")
-    } else if state.back_url.contains('?') {
-        format!("{}&id={external_reference}", state.back_url)
-    } else {
-        format!("{}?id={external_reference}", state.back_url)
-    };
-    let return_url = completion
-        .split('?')
-        .next()
-        .unwrap_or("https://resolutoo.com/obrigado")
-        .replace("/obrigado", "/assinar");
+    let completion = completion_url(state, external_reference);
+    let return_url = format!(
+        "{}/assinar?plano={plan_code}&ciclo={}",
+        site_origin(state),
+        cycle.as_str()
+    );
 
     let body = json!({
         "items": [{ "id": product_id, "quantity": 1 }],
-        "methods": ["CARD"],
+        "methods": methods,
         "externalId": external_reference,
         "completionUrl": completion,
         "returnUrl": return_url,
@@ -243,7 +271,9 @@ async fn create_card_subscription(
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         tracing::error!("abacatepay subscription create failed: {status} {text}");
-        return Err(AppError::Internal("failed to create abacatepay subscription".to_string()));
+        return Err(AppError::Internal(format!(
+            "falha ao criar checkout AbacatePay ({status}). Confira a chave e permissões CHECKOUT/SUBSCRIPTION."
+        )));
     }
 
     let parsed: AbacateEnvelope<AbacateBilling> = resp
@@ -252,7 +282,7 @@ async fn create_card_subscription(
         .map_err(|e| AppError::Internal(format!("abacatepay subscription parse error: {e}")))?;
     if let Some(err) = parsed.error {
         tracing::error!("abacatepay subscription error: {err}");
-        return Err(AppError::Internal("abacatepay rejected the subscription".to_string()));
+        return Err(AppError::Internal(format!("abacatepay rejected the subscription: {err}")));
     }
     let data = parsed
         .data
@@ -263,56 +293,7 @@ async fn create_card_subscription(
         checkout_url: data.url,
         pix_qr_code: None,
         pix_qr_base64: None,
-    })
-}
-
-async fn create_pix_charge(
-    state: &AppState,
-    token: &str,
-    reason: &str,
-    amount_reais: f64,
-    external_reference: &str,
-) -> Result<GatewayCharge, AppError> {
-    let amount_centavos = (amount_reais * 100.0).round() as i64;
-    let body = json!({
-        "amount": amount_centavos,
-        "expiresIn": 3600,
-        "description": reason,
-        "externalId": external_reference,
-    });
-    let resp = state
-        .http
-        .post(format!("{BASE_V1}/pixQrCode/create"))
-        .bearer_auth(token)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("abacatepay request failed: {e}")))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("abacatepay create pix failed: {status} {text}");
-        return Err(AppError::Internal("failed to create abacatepay charge".to_string()));
-    }
-
-    let parsed: AbacateEnvelope<AbacatePixData> = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("abacatepay parse error: {e}")))?;
-    if let Some(err) = parsed.error {
-        tracing::error!("abacatepay returned an error: {err}");
-        return Err(AppError::Internal("abacatepay rejected the charge".to_string()));
-    }
-    let data = parsed
-        .data
-        .ok_or_else(|| AppError::Internal("abacatepay response missing data".to_string()))?;
-
-    Ok(GatewayCharge {
-        external_id: data.id,
-        checkout_url: None,
-        pix_qr_code: data.br_code,
-        pix_qr_base64: data.br_code_base64,
+        sandbox: is_sandbox_key(token),
     })
 }
 
@@ -326,30 +307,9 @@ pub async fn get_status(state: &AppState, external_id: &str) -> Result<String, A
         .as_ref()
         .ok_or_else(|| AppError::Internal("abacatepay not configured".to_string()))?;
 
-    // Checkout de assinatura (bill_*) — API v2.
-    if external_id.starts_with("bill_") {
-        let resp = state
-            .http
-            .get(format!("{BASE_V2}/subscriptions/get"))
-            .bearer_auth(token)
-            .query(&[("id", external_id)])
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("abacatepay request failed: {e}")))?;
-        if !resp.status().is_success() {
-            return Err(AppError::Internal("failed to fetch abacatepay subscription status".to_string()));
-        }
-        let parsed: AbacateEnvelope<AbacateBilling> = resp
-            .json()
-            .await
-            .map_err(|e| AppError::Internal(format!("abacatepay parse error: {e}")))?;
-        return Ok(parsed.data.and_then(|d| d.status).unwrap_or_else(|| "PENDING".to_string()));
-    }
-
-    // Pix avulso — API v1.
     let resp = state
         .http
-        .get(format!("{BASE_V1}/pixQrCode/check"))
+        .get(format!("{BASE_V2}/subscriptions/get"))
         .bearer_auth(token)
         .query(&[("id", external_id)])
         .send()
@@ -357,9 +317,26 @@ pub async fn get_status(state: &AppState, external_id: &str) -> Result<String, A
         .map_err(|e| AppError::Internal(format!("abacatepay request failed: {e}")))?;
 
     if !resp.status().is_success() {
-        return Err(AppError::Internal("failed to fetch abacatepay charge status".to_string()));
+        // Fallback: checkout avulso / transparent
+        let resp2 = state
+            .http
+            .get(format!("{BASE_V2}/checkouts/get"))
+            .bearer_auth(token)
+            .query(&[("id", external_id)])
+            .send()
+            .await;
+        if let Ok(r) = resp2 {
+            if r.status().is_success() {
+                let parsed: AbacateEnvelope<AbacateBilling> = r
+                    .json()
+                    .await
+                    .map_err(|e| AppError::Internal(format!("abacatepay parse error: {e}")))?;
+                return Ok(parsed.data.and_then(|d| d.status).unwrap_or_else(|| "PENDING".to_string()));
+            }
+        }
+        return Err(AppError::Internal("failed to fetch abacatepay subscription status".to_string()));
     }
-    let parsed: AbacateEnvelope<AbacatePixData> = resp
+    let parsed: AbacateEnvelope<AbacateBilling> = resp
         .json()
         .await
         .map_err(|e| AppError::Internal(format!("abacatepay parse error: {e}")))?;
@@ -367,7 +344,7 @@ pub async fn get_status(state: &AppState, external_id: &str) -> Result<String, A
 }
 
 pub async fn cancel(state: &AppState, external_id: &str) -> Result<(), AppError> {
-    if external_id.starts_with("mock-") || !external_id.starts_with("bill_") {
+    if external_id.starts_with("mock-") {
         return Ok(());
     }
     let Some(token) = state.abacatepay_token.as_ref().as_ref() else {
@@ -388,7 +365,46 @@ pub async fn cancel(state: &AppState, external_id: &str) -> Result<(), AppError>
     Ok(())
 }
 
-/// Webhook da AbacatePay (billing.paid / subscription events).
+/// Em homologação (chave abc_dev_): tenta simular na AbacatePay e/ou libera localmente.
+pub async fn simulate_payment(state: &AppState, external_id: &str) -> Result<(), AppError> {
+    if external_id.starts_with("mock-") {
+        return Ok(());
+    }
+    let Some(token) = state.abacatepay_token.as_ref().as_ref() else {
+        return Ok(());
+    };
+    if !is_sandbox_key(token) {
+        return Err(AppError::BadRequest(
+            "simulação de pagamento só está disponível com chave de homologação (abc_dev_)".to_string(),
+        ));
+    }
+
+    // Best-effort — endpoints de simulate variam; se falhar, o caller ainda
+    // pode ativar localmente em sandbox.
+    for path in [
+        format!("{BASE_V2}/subscriptions/simulate-payment"),
+        format!("{BASE_V2}/checkouts/simulate-payment"),
+        format!("{BASE_V2}/transparents/simulate-payment"),
+    ] {
+        let resp = state
+            .http
+            .post(&path)
+            .bearer_auth(token)
+            .json(&json!({ "id": external_id }))
+            .send()
+            .await;
+        if let Ok(r) = resp {
+            if r.status().is_success() {
+                tracing::info!("abacatepay simulate ok via {path}");
+                return Ok(());
+            }
+            let text = r.text().await.unwrap_or_default();
+            tracing::warn!("abacatepay simulate {path}: {text}");
+        }
+    }
+    Ok(())
+}
+
 pub async fn handle_webhook(payload: &serde_json::Value) -> Option<(String, String)> {
     let event = payload.get("event").and_then(|v| v.as_str())?;
     let external_id = payload
@@ -398,7 +414,13 @@ pub async fn handle_webhook(payload: &serde_json::Value) -> Option<(String, Stri
         .or_else(|| payload.get("data")?.get("billing")?.get("id").and_then(|v| v.as_str()))?
         .to_string();
     let status = match event {
-        "billing.paid" | "pixQrCode.paid" | "subscription.paid" | "checkout.paid" => "PAID",
+        "billing.paid"
+        | "pixQrCode.paid"
+        | "subscription.paid"
+        | "checkout.paid"
+        | "checkout.completed"
+        | "transparent.completed"
+        | "subscription.activated" => "PAID",
         _ => return None,
     };
     Some((external_id, status.to_string()))
