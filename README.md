@@ -82,9 +82,11 @@ chamada de provisionamento entre os dois backends.
 Login/cadastro do lojista usam o Auth nativo do Supabase (ver
 `ARQUITETURA.md` §6) — sem isso, nenhuma rota autenticada funciona:
 
-- `backend/.env`: `SUPABASE_JWT_SECRET` (Dashboard do projeto Supabase ->
-  Settings -> API -> JWT Settings -> "JWT Secret"). O backend faz panic no
-  boot se essa variável estiver vazia, de propósito.
+- `backend/.env`: `SUPABASE_URL` (ex: `https://<project-ref>.supabase.co`).
+  O backend usa isso só pra buscar o JWKS público do projeto (Dashboard ->
+  Settings -> API -> JWT Keys) e verificar os tokens — não precisa de
+  nenhum secret. Faz panic no boot se essa variável estiver vazia, de
+  propósito.
 - `frontend/.env`: `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (mesmo
   projeto). No Dashboard desse projeto, configure Authentication -> URL
   Configuration com o Site URL/Redirect URLs cobrindo

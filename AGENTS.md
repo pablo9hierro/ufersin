@@ -43,7 +43,7 @@ Planos: Essential R$60 · Management R$250 · Premium R$350 (espelhados em `ecom
 ## Auth do lojista
 
 - **Só** Supabase Auth e-mail+senha (`signUp` / `signInWithPassword`) — sem Google OAuth.
-- Backend Rust só valida o JWT (`SUPABASE_JWT_SECRET`); senha no bootstrap vira Argon2 pro handoff do admin do tenant.
+- Backend Rust só valida o JWT contra o JWKS público do projeto (`SUPABASE_URL`, chave assimétrica ES256 — ver `backend/src/jwks.rs`); senha no bootstrap vira Argon2 pro handoff do admin do tenant.
 
 ## O que o agente deve fazer
 
