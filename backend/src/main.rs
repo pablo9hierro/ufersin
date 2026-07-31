@@ -2,6 +2,7 @@ mod abacatepay_gateway;
 mod auth;
 mod error;
 mod gateway;
+mod jwks;
 mod mercadopago;
 mod routes;
 mod state;
@@ -30,13 +31,12 @@ async fn main() -> anyhow::Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set (Postgres connection string — local por enquanto, ver docker-compose.yml)");
 
-    let supabase_jwt_secret = env_trimmed("SUPABASE_JWT_SECRET");
-    if supabase_jwt_secret.is_empty() {
+    let supabase_url = env_trimmed("SUPABASE_URL");
+    if supabase_url.is_empty() {
         panic!(
-            "SUPABASE_JWT_SECRET must be set — copy it from the Supabase dashboard \
-             (Settings -> API -> JWT Settings -> JWT Secret). Without it, every \
-             authenticated request fails with 401, since it's the only thing that \
-             lets this backend verify tokens issued by Supabase Auth."
+            "SUPABASE_URL must be set (e.g. https://<project-ref>.supabase.co) — used to fetch \
+             the project's public JWKS (Settings -> API -> JWT Keys) and verify tokens issued by \
+             Supabase Auth. Without it, every authenticated request fails with 401."
         );
     }
 
@@ -86,10 +86,13 @@ async fn main() -> anyhow::Result<()> {
 
     sqlx::migrate!("./migrations").run(&pool).await?;
 
+    let http = reqwest::Client::new();
+    let supabase_jwks = jwks::JwksVerifier::new(&supabase_url, http.clone());
+
     let state = AppState {
         pool,
-        http: reqwest::Client::new(),
-        supabase_jwt_secret: Arc::new(supabase_jwt_secret),
+        http,
+        supabase_jwks: Arc::new(supabase_jwks),
         mp_token: Arc::new(mp_token),
         abacatepay_token: Arc::new(abacatepay_token),
         valor_padrao,
@@ -112,6 +115,7 @@ async fn main() -> anyhow::Result<()> {
         .allow_headers(tower_http::cors::Any);
 
     let app = Router::new()
+        .route("/health", get(|| async { "ok" }))
         .route("/api/auth/bootstrap", post(routes::auth::bootstrap))
         .route("/api/assinaturas", post(routes::assinatura::assinar_plano))
         .route("/api/assinaturas/{id}/status", get(routes::assinatura::status_assinatura))

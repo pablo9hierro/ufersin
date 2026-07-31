@@ -2,7 +2,7 @@ use argon2::password_hash::{rand_core::OsRng, SaltString};
 use argon2::{Argon2, PasswordHasher};
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use jsonwebtoken::{decode, decode_header, Validation};
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
@@ -30,10 +30,10 @@ pub fn hash_password(password: &str) -> Result<String, AppError> {
 }
 
 /// Extractor: exige um JWT válido emitido pelo Supabase (assinante
-/// logado). Verificado localmente via o JWT secret compartilhado do
-/// projeto Supabase (HS256) — nunca consulta o banco do Supabase pra
-/// validar a sessão, os dois backends são serviços/bancos totalmente
-/// separados.
+/// logado). Verificado localmente contra o JWKS público do projeto
+/// Supabase (chave assimétrica, ver jwks.rs) — nunca consulta o banco do
+/// Supabase pra validar a sessão, os dois backends são serviços/bancos
+/// totalmente separados.
 pub struct AuthSubscriber(pub SupabaseClaims);
 
 impl FromRequestParts<AppState> for AuthSubscriber {
@@ -48,12 +48,19 @@ impl FromRequestParts<AppState> for AuthSubscriber {
         let token = header
             .strip_prefix("Bearer ")
             .ok_or_else(|| AppError::Unauthorized("invalid authorization header".to_string()))?;
-        let data = decode::<SupabaseClaims>(
-            token,
-            &DecodingKey::from_secret(state.supabase_jwt_secret.as_bytes()),
-            &Validation::default(),
-        )
-        .map_err(|_| AppError::Unauthorized("invalid or expired token".to_string()))?;
+        let kid = decode_header(token)
+            .map_err(|_| AppError::Unauthorized("invalid token header".to_string()))?
+            .kid
+            .ok_or_else(|| AppError::Unauthorized("token missing kid".to_string()))?;
+        let (decoding_key, algorithm) = state.supabase_jwks.decoding_key_for(&kid).await?;
+        let mut validation = Validation::new(algorithm);
+        // O `aud` do Supabase é sempre "authenticated" pra usuário logado,
+        // mas não validamos aqui pra não acoplar nesse detalhe interno —
+        // `exp` (checado por padrão) já garante que o token é uma sessão
+        // viva emitida pelo Supabase Auth deste projeto.
+        validation.validate_aud = false;
+        let data = decode::<SupabaseClaims>(token, &decoding_key, &validation)
+            .map_err(|_| AppError::Unauthorized("invalid or expired token".to_string()))?;
         Ok(AuthSubscriber(data.claims))
     }
 }

@@ -81,7 +81,7 @@ sincronização contínua depois disso).
 
 | Quem | Onde mora a conta | Como autentica hoje |
 |---|---|---|
-| Lojista *assinante* (Rodoletas) | `subscribers` (Postgres local 5434) + `auth.users` (Supabase, projeto-global) | **Auth nativo do Supabase** (e-mail+senha com confirmação real por link) — o backend Rust só VERIFICA o JWT que o Supabase emite (`SUPABASE_JWT_SECRET`, HS256), nunca autentica ninguém sozinho. Ver §6. |
+| Lojista *assinante* (Rodoletas) | `subscribers` (Postgres local 5434) + `auth.users` (Supabase, projeto-global) | **Auth nativo do Supabase** (e-mail+senha com confirmação real por link) — o backend Rust só VERIFICA o JWT que o Supabase emite, contra o JWKS público do projeto (`SUPABASE_URL`, chave assimétrica ES256), nunca autentica ninguém sozinho. Ver §6. |
 | Admin/motoboy/vendedor da loja (motor) | `ufersin.admins`/`motoboys`/etc (Supabase) | Tokens opaquos em tabela `sessions` própria + `crypt()`/bcrypt via pgcrypto (`sunset_admin_auth.sql`) — **não usa `auth.users` do Supabase de propósito** |
 | Cliente final da loja (motor) | `ufersin.customers` (Supabase) | Mesmo padrão de sessão própria, código de recuperação por WhatsApp |
 
@@ -167,10 +167,13 @@ distintas:
 é um serviço Rust totalmente separado, com seu próprio Postgres (§2a). Não
 dá pra "logar contra a mesma sessão" porque são dois bancos sem link. A
 solução é o backend Rust **verificar independentemente a assinatura do JWT
-que o Supabase emite** (HS256 com o *JWT secret* legado do projeto —
-Settings → API → JWT Settings no dashboard Supabase — via env var nova
-`SUPABASE_JWT_SECRET`), sem nunca precisar consultar o banco do Supabase
-pra validar sessão.
+que o Supabase emite**, buscando a chave pública certa (por `kid`) no JWKS
+do projeto (`https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json`,
+endpoint público, sem segredo nenhum — ver `backend/src/jwks.rs` e env var
+`SUPABASE_URL`), sem nunca precisar consultar o banco do Supabase pra
+validar sessão. O projeto usa o sistema novo de "JWT Signing Keys" do
+Supabase (chave assimétrica ES256), não mais o HS256 *legacy shared
+secret*.
 
 Simplificação central: **`subscribers.id` passa a SER o `sub` (uuid) do
 usuário Supabase**, em vez de um uuid gerado localmente. Isso significa que
@@ -181,9 +184,10 @@ todo o código existente (`me.rs`, `onboarding.rs`, `assinatura.rs` já usam
 ### O que mudou no backend (`ufersin/backend`)
 
 - `auth.rs`: `AuthSubscriber` extractor passa a decodificar o JWT do
-  Supabase (chave = `SUPABASE_JWT_SECRET`) em vez do JWT custom. Login,
-  verificação de e-mail e redefinição de senha **saem do backend** — viram
-  chamadas diretas do frontend pro Supabase (`supabase.auth.*`).
+  Supabase (chave pública buscada no JWKS via `jwks.rs`, por `kid`) em vez
+  do JWT custom. Login, verificação de e-mail e redefinição de senha
+  **saem do backend** — viram chamadas diretas do frontend pro Supabase
+  (`supabase.auth.*`).
 - Migration nova: `plan_code`/`valor_mensal`/`gateway` viram `NULL`able
   (conta pode existir sem plano); `password_hash` continua existindo, mas
   passa a ser preenchido a partir da senha em texto puro que o frontend
@@ -260,8 +264,8 @@ updateUser`).
 Autenticação de toda rota privada: header `Authorization: Bearer <jwt do
 Supabase>` — `lib/api.ts::request()` lê de `authStore.getToken()`, que
 agora espelha `supabase.auth.getSession()` em vez de um token custom em
-localStorage; o backend verifica a assinatura com `SUPABASE_JWT_SECRET`
-(`auth.rs::AuthSubscriber`).
+localStorage; o backend verifica a assinatura contra o JWKS do projeto
+(`auth.rs::AuthSubscriber` + `jwks.rs`).
 
 ## 8. O que fica de fora, de propósito
 
