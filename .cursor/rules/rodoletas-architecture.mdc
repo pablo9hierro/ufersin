@@ -1,0 +1,33 @@
+---
+description: Arquitetura e contexto do monorepo Rodoletas (ufersin)
+alwaysApply: true
+---
+
+# Rodoletas / ufersin
+
+Plataforma SaaS que vende o motor multi-tenant em `ecommerce/`. Não é uma loja.
+
+## Pastas
+
+- `backend/` + `frontend/` — Rodoletas (assinatura, landing, onboarding) — portas 8081 / 5174
+- `ecommerce/` — motor de loja multi-tenant (produto vendido) — portas 8080 / 5173
+- `supabase/` — reservado; ainda não usado por este app
+
+## Integração crítica
+
+Onboarding Rodoletas chama `POST /internal/provision-tenant` no motor.
+`ECOMMERCE_INTERNAL_KEY` (Rodoletas) deve ser igual a `INTERNAL_API_KEY` (motor).
+Só o hash Argon2 é compartilhado — senha em texto nunca trafega.
+
+## Não fazer
+
+- Tratar Rodoletas como se fosse o e-commerce / loja
+- Assumir Supabase ativo aqui (Postgres local via docker-compose)
+- Portar mudanças deste repo de volta pro Sunset/vrtech originais
+- “Corrigir” Fase 1B (`ecommerce/supabase/*.sql`) sem pedido explícito — risco de vazamento entre tenants
+- Inventar SSO; hoje é mesmo e-mail/senha entre contas
+- Reintroduzir login Google / `signInWithOAuth` — auth do lojista é só e-mail+senha via Supabase Auth
+
+## Branches
+
+`dev` → `demo` → `main`. Ver `BRANCHING.md`. Docs: `README.md`, `AGENTS.md`, `ecommerce/README-TENANCY.md`.

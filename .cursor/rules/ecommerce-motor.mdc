@@ -1,0 +1,29 @@
+---
+description: Motor multi-tenant ecommerce (cópia do Sunset)
+globs: ecommerce/**/*
+alwaysApply: false
+---
+
+# Motor `ecommerce/`
+
+Cópia do Sunset Tabas retrofitada para multi-tenant. É o que a Rodoletas vende.
+
+## Já pronto (Fase 1A)
+
+- Tenancy em `backend/migrations/0005_tenancy.sql` (orgs, tenants, plans, features, subscriptions…)
+- Handlers filtram por `tenant_id`; login exige `tenant_slug`; JWT carrega `tenant_id`
+- Features: enum + `require_feature(...)` — um código, sem builds por plano
+- Branding por tenant (`whatsapp_instance`, `pickup_address`), não env global
+- Provisionamento interno: `POST /internal/provision-tenant` (`routes/internal.rs`)
+
+## Fase 1B (pendente — não “consertar” de passagem)
+
+- `ecommerce/supabase/*.sql` ainda single-tenant (RPCs do frontend)
+- Admin login no frontend ainda usa `supabase.rpc('admin_login')`, não o JWT Rust tenant-aware
+- Handlers com `NOTE (Fase 1B pendente)` dependem de RPCs ainda não portadas
+
+## Banco local
+
+Postgres docker na porta 5433. Seed cria tenant demo `sunset-tabas` (Premium).
+
+Leia `ecommerce/README-TENANCY.md` antes de mudar isolamento de tenant.

@@ -1,0 +1,26 @@
+---
+description: Convenções do backend SaaS Rodoletas (Rust/Axum)
+globs: backend/**/*
+alwaysApply: false
+---
+
+# Backend Rodoletas (`backend/`)
+
+Rust + Axum + SQLx. Porta 8081. Postgres local: `docker compose up -d` (porta 5434).
+
+## Rotas principais
+
+- Auth / conta: `src/routes/auth.rs`, `me.rs`
+- Assinatura + planos: `assinatura.rs`
+- Onboarding → provisiona tenant no motor: `onboarding.rs`
+- Webhooks de pagamento: `webhooks.rs`
+- Gateways: `gateway.rs`, `mercadopago.rs`, `abacatepay_gateway.rs`
+
+## Convenções
+
+- Sem tokens de pagamento no `.env` → mock (não cobrar de verdade)
+- Provisionamento: reutilizar hash Argon2; nunca enviar senha em claro ao motor
+- Upgrade/downgrade de plano ainda não sincroniza cobrança real no gateway (TODO em `me.rs`)
+- E-mail/SMS de verificação ainda só loga o código no console
+
+Ao mudar onboarding ou chaves internas, espelhar `INTERNAL_API_KEY` no motor (`ecommerce/backend`).
