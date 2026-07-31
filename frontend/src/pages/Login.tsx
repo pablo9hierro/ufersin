@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { LogIn, Loader2 } from 'lucide-react'
-import { supabase } from '../lib/supabaseClient'
+import { supabase, supabaseConfigured } from '../lib/supabaseClient'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { translateAuthError } from '../lib/authErrors'
 import { PLAN_MAP } from '../lib/plans'
@@ -28,6 +28,10 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    if (!supabaseConfigured) {
+      setError('Login indisponível: configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY na Vercel.')
+      return
+    }
     if (!email.includes('@') || senha.length === 0) {
       setError('Informe e-mail e senha.')
       return

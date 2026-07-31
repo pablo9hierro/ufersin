@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase } from './supabaseClient'
+import { supabase, supabaseConfigured } from './supabaseClient'
 
 // Espelha a sessão do Supabase Auth (ver ARQUITETURA.md §6) em vez de um
 // token custom em localStorage — o Supabase já persiste/renova a sessão
@@ -14,17 +14,23 @@ function emit() {
   listeners.forEach((l) => l())
 }
 
-supabase.auth.getSession().then(({ data }) => {
-  session = data.session
-  ready = true
-  emit()
-})
+if (supabaseConfigured) {
+  supabase.auth.getSession().then(({ data }) => {
+    session = data.session
+    ready = true
+    emit()
+  })
 
-supabase.auth.onAuthStateChange((_event, s) => {
-  session = s
+  supabase.auth.onAuthStateChange((_event, s) => {
+    session = s
+    ready = true
+    emit()
+  })
+} else {
+  // Sem envs do Supabase o SPA ainda sobe (landing etc.); auth fica
+  // permanentemente "pronta" e deslogada.
   ready = true
-  emit()
-})
+}
 
 export const authStore = {
   getSession: () => session,
