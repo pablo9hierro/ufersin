@@ -25,6 +25,15 @@ pub fn is_sandbox_key(token: &str) -> bool {
     t.starts_with("abc_dev_") || t.contains("_dev_") || t.starts_with("abc_test_")
 }
 
+fn extract_abacate_error_message(body: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    match v.get("error") {
+        Some(serde_json::Value::String(s)) => Some(s.clone()),
+        Some(other) => Some(other.to_string()),
+        None => None,
+    }
+}
+
 pub fn sandbox_mode(state: &AppState) -> bool {
     match state.abacatepay_token.as_ref().as_ref() {
         Some(t) => is_sandbox_key(t),
@@ -201,11 +210,10 @@ pub async fn create_subscription(
 ) -> Result<GatewayCharge, AppError> {
     match state.abacatepay_token.as_ref().as_ref() {
         Some(token) => {
-            let methods = match method {
-                PaymentMethod::Pix => vec!["PIX"],
-                PaymentMethod::Cartao | PaymentMethod::CartaoParcelado => vec!["CARD"],
-            };
-            create_subscription_checkout(
+            let prefer_card = matches!(method, PaymentMethod::Cartao | PaymentMethod::CartaoParcelado);
+            // Homologação AbacatePay frequentemente só libera PIX — tenta CARD e cai pra PIX.
+            let first = if prefer_card { ["CARD"] } else { ["PIX"] };
+            match create_subscription_checkout(
                 state,
                 token,
                 plan_code,
@@ -213,9 +221,27 @@ pub async fn create_subscription(
                 cycle,
                 payer_email,
                 external_reference,
-                &methods,
+                &first,
             )
             .await
+            {
+                Ok(charge) => Ok(charge),
+                Err(e) if prefer_card && is_card_unavailable_error(&e) => {
+                    tracing::warn!("abacatepay CARD unavailable for store — falling back to PIX subscription checkout");
+                    create_subscription_checkout(
+                        state,
+                        token,
+                        plan_code,
+                        amount_reais,
+                        cycle,
+                        payer_email,
+                        external_reference,
+                        &["PIX"],
+                    )
+                    .await
+                }
+                Err(e) => Err(e),
+            }
         }
         None => Ok(GatewayCharge {
             external_id: format!("mock-abacatepay-{}", uuid::Uuid::new_v4()),
@@ -225,6 +251,14 @@ pub async fn create_subscription(
             sandbox: true,
         }),
     }
+}
+
+fn is_card_unavailable_error(err: &AppError) -> bool {
+    let msg = match err {
+        AppError::BadRequest(m) | AppError::Internal(m) | AppError::Unauthorized(m) | AppError::NotFound(m) => m.as_str(),
+    };
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("card is not available") || lower.contains("cartão") && lower.contains("não dispon")
 }
 
 async fn create_subscription_checkout(
@@ -271,9 +305,15 @@ async fn create_subscription_checkout(
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         tracing::error!("abacatepay subscription create failed: {status} {text}");
-        return Err(AppError::Internal(format!(
-            "falha ao criar checkout AbacatePay ({status}). Confira a chave e permissões CHECKOUT/SUBSCRIPTION."
-        )));
+        let api_err = extract_abacate_error_message(&text);
+        if status.as_u16() == 400 {
+            return Err(AppError::BadRequest(api_err.unwrap_or_else(|| {
+                "AbacatePay recusou o checkout. Tente Pix ou ative Cartão no painel AbacatePay.".to_string()
+            })));
+        }
+        return Err(AppError::Internal(api_err.unwrap_or_else(|| {
+            format!("falha ao criar checkout AbacatePay ({status})")
+        })));
     }
 
     let parsed: AbacateEnvelope<AbacateBilling> = resp
@@ -282,7 +322,8 @@ async fn create_subscription_checkout(
         .map_err(|e| AppError::Internal(format!("abacatepay subscription parse error: {e}")))?;
     if let Some(err) = parsed.error {
         tracing::error!("abacatepay subscription error: {err}");
-        return Err(AppError::Internal(format!("abacatepay rejected the subscription: {err}")));
+        let msg = err.as_str().map(|s| s.to_string()).unwrap_or_else(|| err.to_string());
+        return Err(AppError::BadRequest(format!("abacatepay: {msg}")));
     }
     let data = parsed
         .data

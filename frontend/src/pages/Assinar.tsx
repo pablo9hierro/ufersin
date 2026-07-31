@@ -21,7 +21,8 @@ export default function Assinar() {
   const initialCiclo: BillingCycle = cicloParam === 'semestral' ? 'semestral' : 'mensal'
 
   const [ciclo, setCiclo] = useState<BillingCycle>(initialCiclo)
-  const [metodo, setMetodo] = useState<MetodoPagamento>('cartao')
+  // Homologação AbacatePay costuma ter só PIX liberado — cartão cai pra PIX no backend.
+  const [metodo, setMetodo] = useState<MetodoPagamento>('pix')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -148,8 +149,8 @@ export default function Assinar() {
             Assinar e configurar pagamento
           </button>
           <p className="text-[11px] text-uf-silver-dim text-center">
-            Você será redirecionado ao checkout seguro da AbacatePay pra autorizar a cobrança recorrente
-            {metodo === 'pix' ? ' via Pix' : ' no cartão'}. Em homologação, a tela seguinte tem “Simular pagamento”.
+            Checkout seguro AbacatePay ({metodo === 'pix' ? 'Pix' : 'cartão'}). Se o cartão não estiver ativo na loja
+            AbacatePay, usamos Pix automaticamente. Em homologação, a próxima tela tem “Simular pagamento”.
           </p>
         </form>
       </motion.div>
