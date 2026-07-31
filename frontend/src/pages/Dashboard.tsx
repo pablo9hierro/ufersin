@@ -18,7 +18,7 @@ import {
 import { api, ApiError, type MeResponse, type PlanoCode } from '../lib/api'
 import { authStore, useAuthReady, useEmailConfirmed, useIsAuthenticated } from '../lib/authStore'
 import { PLAN_MAP } from '../lib/plans'
-import { ecommerceFrontendUrl } from '../lib/ecommerceUrl'
+import { storeAdminLoginUrl } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 
@@ -283,7 +283,7 @@ export default function Dashboard() {
                     Sua loja: <span className="font-semibold">{me.dominio}</span>
                   </p>
                   <a
-                    href={`${ecommerceFrontendUrl()}/admin/login?tenant=${me.slug}&email=${encodeURIComponent(me.email)}`}
+                    href={storeAdminLoginUrl(me.slug!, me.email)}
                     target="_blank"
                     rel="noreferrer"
                     className="btn-primary text-xs px-3 py-2.5 inline-flex"

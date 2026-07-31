@@ -121,6 +121,21 @@ async function callVercelPixApi(path: string, orderId: string): Promise<Order> {
 function adminToken() {
   return useAdminAuth.getState().token ?? useVendedorAuth.getState().token ?? undefined
 }
+
+/** JWT do motor (login multi-tenant via Railway). Sessão opaca do Supabase
+ * RPC é hex sem pontos — com JWT, CRUD admin vai pro Rust isolado por tenant. */
+function isRailwayAdminJwt(token: string | null | undefined = adminToken()): boolean {
+  if (!token) return false
+  const parts = token.split('.')
+  return parts.length === 3 && parts.every((p) => p.length > 0)
+}
+
+async function railwayAdmin<T>(
+  path: string,
+  options: RequestInit & { token?: string } = {}
+): Promise<T> {
+  return request<T>(path, { ...options, token: options.token ?? adminToken() })
+}
 // motoboy tem sessão própria (useMotoboyAuth, chave de localStorage
 // separada de admin/vendedor) — nunca se sobrescreve com a sessão dos
 // outros dois, mesmo com todos logados ao mesmo tempo em
@@ -167,11 +182,17 @@ const remoteApi = {
         body: JSON.stringify({ order_id: orderId }),
       }),
   },
-  // Login fala direto com o Supabase (RPC sunset.admin_login/motoboy_login —
-  // ver supabase/sunset_admin_auth.sql), sem passar pelo Railway. O token
-  // retornado é uma sessão opaca guardada em sunset.sessions, não um JWT.
+  // Login: com tenant_slug (link do dashboard Resolutoo) → motor Railway
+  // (Argon2 + JWT com tenant_id). Sem slug → RPC Supabase legada (Sunset).
   auth: {
-    adminLogin: async (email: string, password: string) => {
+    adminLogin: async (email: string, password: string, tenantSlug?: string) => {
+      const slug = tenantSlug?.trim()
+      if (slug) {
+        return request<{ token: string; name: string }>('/api/auth/admin/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password, tenant_slug: slug }),
+        })
+      }
       const { data, error } = await supabase.rpc('admin_login', { p_email: email, p_password: password })
       if (error) throw new ApiError(401, 'Credenciais inválidas.')
       return data as { token: string; name: string }
@@ -217,51 +238,106 @@ const remoteApi = {
     peekClaimableCoupon: supabasePublicApi.customerAuth.peekClaimableCoupon,
     claimCoupon: supabasePublicApi.customerAuth.claimCoupon,
   },
-  // CRUD do admin e fila do motoboy falam direto com o Supabase via RPC
-  // (ver supabase/sunset_admin_crud.sql), passando o token de
-  // sunset.sessions como primeiro parâmetro em vez de header Authorization.
+  // CRUD do admin: JWT Railway (Resolutoo multi-tenant) → /api/admin/*;
+  // sessão Supabase (Sunset legado / schema single-tenant) → RPCs.
   admin: {
     categories: {
-      list: () => rpc<Category[]>('admin_list_categories', { p_token: adminToken() }),
-      create: (name: string) => rpc<Category>('admin_create_category', { p_token: adminToken(), p_name: name }),
-      delete: (id: string) => rpc<void>('admin_delete_category', { p_token: adminToken(), p_id: id }),
+      list: () =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<Category[]>('/api/admin/categories')
+          : rpc<Category[]>('admin_list_categories', { p_token: adminToken() }),
+      create: (name: string) =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<Category>('/api/admin/categories', {
+              method: 'POST',
+              body: JSON.stringify({ name }),
+            })
+          : rpc<Category>('admin_create_category', { p_token: adminToken(), p_name: name }),
+      delete: (id: string) =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<void>(`/api/admin/categories/${id}`, { method: 'DELETE' })
+          : rpc<void>('admin_delete_category', { p_token: adminToken(), p_id: id }),
     },
     products: {
-      list: () => rpc<Product[]>('admin_list_products', { p_token: adminToken() }),
+      list: () =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<Product[]>('/api/admin/products')
+          : rpc<Product[]>('admin_list_products', { p_token: adminToken() }),
       create: (payload: Partial<Product>) =>
-        rpc<Product>('admin_create_product', {
-          p_token: adminToken(),
-          p_name: payload.name,
-          p_description: payload.description ?? null,
-          p_price: payload.price,
-          p_quantity: payload.quantity,
-          p_image_url: payload.image_url ?? null,
-          p_category_id: payload.category_id ?? null,
-          p_active: payload.active ?? true,
-          p_barcode: payload.barcode ?? null,
-          p_cost_price: payload.cost_price ?? null,
-          p_low_stock_threshold: payload.low_stock_threshold ?? null,
-        }),
+        isRailwayAdminJwt()
+          ? railwayAdmin<Product>('/api/admin/products', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: payload.name,
+                description: payload.description ?? null,
+                price: payload.price,
+                quantity: payload.quantity,
+                image_url: payload.image_url ?? null,
+                category_id: payload.category_id ?? null,
+                active: payload.active ?? true,
+              }),
+            })
+          : rpc<Product>('admin_create_product', {
+              p_token: adminToken(),
+              p_name: payload.name,
+              p_description: payload.description ?? null,
+              p_price: payload.price,
+              p_quantity: payload.quantity,
+              p_image_url: payload.image_url ?? null,
+              p_category_id: payload.category_id ?? null,
+              p_active: payload.active ?? true,
+              p_barcode: payload.barcode ?? null,
+              p_cost_price: payload.cost_price ?? null,
+              p_low_stock_threshold: payload.low_stock_threshold ?? null,
+            }),
       update: (id: string, payload: Partial<Product>) =>
-        rpc<Product>('admin_update_product', {
-          p_token: adminToken(),
-          p_id: id,
-          p_name: payload.name,
-          p_description: payload.description ?? null,
-          p_price: payload.price,
-          p_quantity: payload.quantity,
-          p_image_url: payload.image_url ?? null,
-          p_category_id: payload.category_id ?? null,
-          p_active: payload.active ?? true,
-          p_barcode: payload.barcode ?? null,
-          p_cost_price: payload.cost_price ?? null,
-          p_low_stock_threshold: payload.low_stock_threshold ?? null,
-        }),
-      delete: (id: string) => rpc<void>('admin_delete_product', { p_token: adminToken(), p_id: id }),
-      // Upload de imagem vai direto pra Vercel Edge Function (frontend/api/upload-image.ts),
-      // que grava no Supabase Storage com a service_role key — não depende
-      // mais do backend Rust/Railway (só o WhatsApp gateway continua lá).
+        isRailwayAdminJwt()
+          ? railwayAdmin<Product>(`/api/admin/products/${id}`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                name: payload.name,
+                description: payload.description ?? null,
+                price: payload.price,
+                quantity: payload.quantity,
+                image_url: payload.image_url ?? null,
+                category_id: payload.category_id ?? null,
+                active: payload.active ?? true,
+              }),
+            })
+          : rpc<Product>('admin_update_product', {
+              p_token: adminToken(),
+              p_id: id,
+              p_name: payload.name,
+              p_description: payload.description ?? null,
+              p_price: payload.price,
+              p_quantity: payload.quantity,
+              p_image_url: payload.image_url ?? null,
+              p_category_id: payload.category_id ?? null,
+              p_active: payload.active ?? true,
+              p_barcode: payload.barcode ?? null,
+              p_cost_price: payload.cost_price ?? null,
+              p_low_stock_threshold: payload.low_stock_threshold ?? null,
+            }),
+      delete: (id: string) =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<void>(`/api/admin/products/${id}`, { method: 'DELETE' })
+          : rpc<void>('admin_delete_product', { p_token: adminToken(), p_id: id }),
+      // Upload: JWT → Railway; sessão Supabase → Edge Function Vercel.
       uploadImage: async (file: File) => {
+        if (isRailwayAdminJwt()) {
+          const form = new FormData()
+          form.append('file', file)
+          const res = await fetch(`${API_BASE}/api/admin/products/upload-image`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${adminToken()}` },
+            body: form,
+          })
+          if (!res.ok) {
+            const text = await res.text().catch(() => '')
+            throw new ApiError(res.status, text || 'Falha ao enviar imagem.')
+          }
+          return (await res.json()) as { url: string }
+        }
         const url = `/api/upload-image`
         let res: Response
         try {
@@ -298,28 +374,56 @@ const remoteApi = {
       },
     },
     motoboys: {
-      list: () => rpc<Motoboy[]>('admin_list_motoboys', { p_token: adminToken() }),
+      list: () =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<Motoboy[]>('/api/admin/motoboys')
+          : rpc<Motoboy[]>('admin_list_motoboys', { p_token: adminToken() }),
       create: (payload: { name: string; phone: string; email: string; password: string; whatsapp?: string }) =>
-        rpc<Motoboy>('admin_create_motoboy', {
-          p_token: adminToken(),
-          p_name: payload.name,
-          p_phone: payload.phone,
-          p_email: payload.email,
-          p_password: payload.password,
-          p_whatsapp: payload.whatsapp || null,
-        }),
+        isRailwayAdminJwt()
+          ? railwayAdmin<Motoboy>('/api/admin/motoboys', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: payload.name,
+                phone: payload.phone,
+                email: payload.email,
+                password: payload.password,
+                active: true,
+              }),
+            })
+          : rpc<Motoboy>('admin_create_motoboy', {
+              p_token: adminToken(),
+              p_name: payload.name,
+              p_phone: payload.phone,
+              p_email: payload.email,
+              p_password: payload.password,
+              p_whatsapp: payload.whatsapp || null,
+            }),
       update: (id: string, payload: Partial<Motoboy> & { password?: string }) =>
-        rpc<Motoboy>('admin_update_motoboy', {
-          p_token: adminToken(),
-          p_id: id,
-          p_name: payload.name,
-          p_phone: payload.phone,
-          p_email: payload.email,
-          p_password: payload.password || null,
-          p_active: payload.active ?? true,
-          p_whatsapp: payload.whatsapp ?? null,
-        }),
-      delete: (id: string) => rpc<void>('admin_delete_motoboy', { p_token: adminToken(), p_id: id }),
+        isRailwayAdminJwt()
+          ? railwayAdmin<Motoboy>(`/api/admin/motoboys/${id}`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                name: payload.name,
+                phone: payload.phone,
+                email: payload.email,
+                password: payload.password,
+                active: payload.active ?? true,
+              }),
+            })
+          : rpc<Motoboy>('admin_update_motoboy', {
+              p_token: adminToken(),
+              p_id: id,
+              p_name: payload.name,
+              p_phone: payload.phone,
+              p_email: payload.email,
+              p_password: payload.password || null,
+              p_active: payload.active ?? true,
+              p_whatsapp: payload.whatsapp ?? null,
+            }),
+      delete: (id: string) =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<void>(`/api/admin/motoboys/${id}`, { method: 'DELETE' })
+          : rpc<void>('admin_delete_motoboy', { p_token: adminToken(), p_id: id }),
       // null = nunca teve senha definida depois dessa feature existir (conta
       // criada antes da migration) — a UI trata como "defina uma senha nova
       // pra poder visualizar".
@@ -616,14 +720,27 @@ const remoteApi = {
         }),
     },
     orders: {
-      list: (status?: string) => rpc<Order[]>('admin_list_orders', { p_token: adminToken(), p_status: status ?? null }),
+      list: (status?: string) =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<Order[]>(
+              status ? `/api/admin/orders?status=${encodeURIComponent(status)}` : '/api/admin/orders'
+            )
+          : rpc<Order[]>('admin_list_orders', { p_token: adminToken(), p_status: status ?? null }),
       updateStatus: (id: string, status: string, paymentConfirmed?: boolean) =>
-        rpc<Order>('admin_update_order_status', {
-          p_token: adminToken(),
-          p_order_id: id,
-          p_status: status,
-          p_payment_confirmed: paymentConfirmed ?? null,
-        }),
+        isRailwayAdminJwt()
+          ? railwayAdmin<Order>(`/api/admin/orders/${id}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                status,
+                payment_confirmed: paymentConfirmed ?? null,
+              }),
+            })
+          : rpc<Order>('admin_update_order_status', {
+              p_token: adminToken(),
+              p_order_id: id,
+              p_status: status,
+              p_payment_confirmed: paymentConfirmed ?? null,
+            }),
       // Backend Rust monta o texto (varia por entrega/retirada) e manda pelo
       // WhatsApp da loja.
       notifyReady: (orderId: string) =>
@@ -643,7 +760,10 @@ const remoteApi = {
         }),
     },
     financeiro: {
-      get: () => rpc<FinanceiroSummary>('admin_financeiro', { p_token: adminToken() }),
+      get: () =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<FinanceiroSummary>('/api/admin/financeiro')
+          : rpc<FinanceiroSummary>('admin_financeiro', { p_token: adminToken() }),
       timeseries: (days?: number) =>
         rpc<FinanceiroTimeseriesPoint[]>('admin_financeiro_timeseries', { p_token: adminToken(), p_days: days ?? 30 }),
     },

@@ -190,7 +190,7 @@ async fn main() -> anyhow::Result<()> {
     // to local dev plus the production domain this project deploys to.
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
         .unwrap_or_else(|_| {
-            "http://localhost:5173,https://sunset-tabas.vercel.app".to_string()
+            "http://localhost:5173,https://resolutoo.com,https://www.resolutoo.com,https://sunset-tabas.vercel.app".to_string()
         })
         .split(',')
         .filter(|s| !s.trim().is_empty())

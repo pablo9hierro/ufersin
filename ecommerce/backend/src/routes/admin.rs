@@ -4,7 +4,7 @@ use axum::Json;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::auth::{hash_password, AdminUser, SunsetAdminOrVendedorSession, SunsetAdminSession};
+use crate::auth::{hash_password, AdminTenant, AdminUser};
 use crate::error::AppError;
 use crate::features::{self, Feature};
 use crate::models::{
@@ -216,7 +216,7 @@ pub async fn update_product(
 /// write stays server-side.
 pub async fn upload_product_image(
     State(state): State<AppState>,
-    _admin: SunsetAdminSession,
+    _admin: AdminTenant,
     mut multipart: Multipart,
 ) -> Result<Json<serde_json::Value>, AppError> {
     while let Some(field) = multipart
@@ -593,14 +593,14 @@ pub struct NotifyOrderInput {
 /// delivery_type.
 pub async fn notify_order_ready(
     State(state): State<AppState>,
-    session: SunsetAdminOrVendedorSession,
+    admin: AdminTenant,
     Json(input): Json<NotifyOrderInput>,
 ) -> Result<StatusCode, AppError> {
-    features::require_feature(&state.pool, &session.tenant_id, Feature::Whatsapp).await?;
-    let store = tenant::load_tenant(&state.pool, &session.tenant_id).await?;
-    let mut tx = tenant::tenant_tx(&state.pool, &session.tenant_id).await?;
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &admin.tenant_id).await?;
     let Some(order) =
-        crate::orders_common::fetch_order_row(&mut *tx, &session.tenant_id, &input.order_id).await?
+        crate::orders_common::fetch_order_row(&mut *tx, &admin.tenant_id, &input.order_id).await?
     else {
         return Err(AppError::NotFound("order not found".to_string()));
     };
@@ -638,18 +638,18 @@ pub struct NotifyCouponGrantInput {
 /// the client can't spoof the discount text.
 pub async fn notify_coupon_grant(
     State(state): State<AppState>,
-    session: SunsetAdminSession,
+    admin: AdminTenant,
     Json(input): Json<NotifyCouponGrantInput>,
 ) -> Result<StatusCode, AppError> {
-    features::require_feature(&state.pool, &session.tenant_id, Feature::Cupons).await?;
-    let store = tenant::load_tenant(&state.pool, &session.tenant_id).await?;
-    let mut tx = tenant::tenant_tx(&state.pool, &session.tenant_id).await?;
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Cupons).await?;
+    let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &admin.tenant_id).await?;
 
     let coupon: Option<(String, String, Option<String>, Option<f64>, i64)> = sqlx::query_as(
         "SELECT code, kind, discount_type, discount_value, notify_customers FROM sunset.coupons \
          WHERE tenant_id = $1 AND id = $2",
     )
-    .bind(&session.tenant_id)
+    .bind(&admin.tenant_id)
     .bind(&input.coupon_id)
     .fetch_optional(&mut *tx)
     .await
@@ -679,7 +679,7 @@ pub async fn notify_coupon_grant(
          LEFT JOIN sunset.customers c ON c.whatsapp = g.customer_whatsapp AND c.tenant_id = g.tenant_id
          WHERE g.tenant_id = $1 AND g.coupon_id = $2",
     )
-    .bind(&session.tenant_id)
+    .bind(&admin.tenant_id)
     .bind(&input.coupon_id)
     .fetch_all(&mut *tx)
     .await
@@ -706,37 +706,32 @@ pub async fn notify_coupon_grant(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ---------- WhatsApp (Evolution API) ----------
-//
-// Admin auth here uses SunsetAdminSession (checks sunset.sessions directly),
-// not the JWT AdminUser above — the frontend's admin login moved to a
-// Supabase RPC session, but these 3 routes still need to live in Rust
-// because they touch the Evolution API key, which must stay off the browser.
+// Admin auth: JWT (Resolutoo) ou sessão sunset (legado) via AdminTenant.
 
 pub async fn whatsapp_status(
     State(state): State<AppState>,
-    session: SunsetAdminSession,
+    admin: AdminTenant,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    features::require_feature(&state.pool, &session.tenant_id, Feature::Whatsapp).await?;
-    let store = tenant::load_tenant(&state.pool, &session.tenant_id).await?;
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
     Ok(Json(whatsapp::connection_status(&state, &store.whatsapp_instance).await?))
 }
 
 pub async fn whatsapp_connect(
     State(state): State<AppState>,
-    session: SunsetAdminSession,
+    admin: AdminTenant,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    features::require_feature(&state.pool, &session.tenant_id, Feature::Whatsapp).await?;
-    let store = tenant::load_tenant(&state.pool, &session.tenant_id).await?;
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
     Ok(Json(whatsapp::connect(&state, &store.whatsapp_instance).await?))
 }
 
 pub async fn whatsapp_logout(
     State(state): State<AppState>,
-    session: SunsetAdminSession,
+    admin: AdminTenant,
 ) -> Result<StatusCode, AppError> {
-    features::require_feature(&state.pool, &session.tenant_id, Feature::Whatsapp).await?;
-    let store = tenant::load_tenant(&state.pool, &session.tenant_id).await?;
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
     whatsapp::logout(&state, &store.whatsapp_instance).await?;
     Ok(StatusCode::NO_CONTENT)
 }

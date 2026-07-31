@@ -89,7 +89,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
 
     let row = row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
     let metodo_pagamento = row.gateway.as_deref().map(|g| if g == "abacatepay" { "Pix" } else { "Cartão de crédito" }.to_string());
-    let dominio = row.slug.as_ref().map(|s| format!("{s}.rodoletas.app"));
+    let dominio = row.slug.as_ref().map(|s| format!("resolutoo.com/loja/?tenant={s}"));
 
     Ok(Json(MeResponse {
         id: row.id,

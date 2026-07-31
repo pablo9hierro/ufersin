@@ -5,7 +5,7 @@ import { ArrowLeft, CreditCard, ExternalLink, Loader2, Save, Sparkles } from 'lu
 import { api, ApiError, type FormaPagamento, type MeResponse, type PlanoCode, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { PLAN_MAP } from '../lib/plans'
-import { ecommerceFrontendUrl } from '../lib/ecommerceUrl'
+import { storeAdminLoginUrl } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
@@ -159,7 +159,7 @@ export default function MeuPlano() {
   const canEditOnboarding = me.onboarding_status === 'provisionado'
   const panelUrl =
     me.onboarding_status === 'provisionado' && me.slug
-      ? `${ecommerceFrontendUrl()}/admin/login?tenant=${me.slug}&email=${encodeURIComponent(me.email)}`
+      ? storeAdminLoginUrl(me.slug, me.email)
       : null
 
   return (

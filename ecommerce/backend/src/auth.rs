@@ -101,6 +101,31 @@ impl FromRequestParts<AppState> for AdminUser {
     }
 }
 
+/// Admin autenticado via JWT (Resolutoo multi-tenant) **ou** sessão opaca
+/// `sunset.sessions` (Sunset legado). Só devolve o `tenant_id` — suficiente
+/// pras rotas de WhatsApp/upload que não precisam do subject.
+pub struct AdminTenant {
+    pub tenant_id: String,
+}
+
+impl FromRequestParts<AppState> for AdminTenant {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        if let Ok(AdminUser(claims)) = AdminUser::from_request_parts(parts, state).await {
+            return Ok(AdminTenant {
+                tenant_id: claims.tenant_id,
+            });
+        }
+        let SunsetAdminSession { tenant_id, .. } =
+            SunsetAdminSession::from_request_parts(parts, state).await?;
+        Ok(AdminTenant { tenant_id })
+    }
+}
+
 /// Extractor: requires a valid Bearer token matching a row in
 /// sunset.sessions — the Postgres-native session system the Supabase-facing
 /// frontend uses now (NOT the JWT system above). Used only by routes that
