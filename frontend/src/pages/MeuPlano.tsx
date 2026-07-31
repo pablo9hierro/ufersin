@@ -9,7 +9,6 @@ import { PLAN_MAP } from '../lib/plans'
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
   { value: 'mercado_pago', label: 'Mercado Pago' },
-  { value: 'pagbank', label: 'PagBank' },
   { value: 'abacate_pay', label: 'AbacatePay' },
 ]
 
