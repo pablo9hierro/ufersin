@@ -4,7 +4,6 @@ mod error;
 mod gateway;
 mod mercadopago;
 mod routes;
-mod seed;
 mod state;
 
 use std::str::FromStr;
@@ -13,7 +12,6 @@ use std::sync::Arc;
 use axum::http::HeaderValue;
 use axum::routing::{get, post};
 use axum::Router;
-use rand::Rng;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -24,13 +22,6 @@ fn env_trimmed(name: &str) -> String {
     std::env::var(name).unwrap_or_default().trim().to_string()
 }
 
-fn random_secret() -> String {
-    let mut rng = rand::thread_rng();
-    (0..48)
-        .map(|_| rng.sample(rand::distributions::Alphanumeric) as char)
-        .collect()
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
@@ -39,13 +30,15 @@ async fn main() -> anyhow::Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set (Postgres connection string — local por enquanto, ver docker-compose.yml)");
 
-    let jwt_secret = match std::env::var("JWT_SECRET") {
-        Ok(s) if !s.is_empty() => s,
-        _ => {
-            tracing::warn!("JWT_SECRET not set — generating a random secret for this run (tokens won't survive a restart)");
-            random_secret()
-        }
-    };
+    let supabase_jwt_secret = env_trimmed("SUPABASE_JWT_SECRET");
+    if supabase_jwt_secret.is_empty() {
+        panic!(
+            "SUPABASE_JWT_SECRET must be set — copy it from the Supabase dashboard \
+             (Settings -> API -> JWT Settings -> JWT Secret). Without it, every \
+             authenticated request fails with 401, since it's the only thing that \
+             lets this backend verify tokens issued by Supabase Auth."
+        );
+    }
 
     let mp_token = std::env::var("MP_ACCESS_TOKEN")
         .ok()
@@ -96,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         pool,
         http: reqwest::Client::new(),
-        jwt_secret: Arc::new(jwt_secret),
+        supabase_jwt_secret: Arc::new(supabase_jwt_secret),
         mp_token: Arc::new(mp_token),
         abacatepay_token: Arc::new(abacatepay_token),
         valor_padrao,
@@ -104,8 +97,6 @@ async fn main() -> anyhow::Result<()> {
         ecommerce_internal_url: Arc::new(ecommerce_internal_url),
         ecommerce_internal_key: Arc::new(ecommerce_internal_key),
     };
-
-    seed::seed_demo_subscriber(&state).await?;
 
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:5174".to_string())
@@ -121,13 +112,9 @@ async fn main() -> anyhow::Result<()> {
         .allow_headers(tower_http::cors::Any);
 
     let app = Router::new()
-        .route("/api/assinaturas", post(routes::assinatura::criar_assinatura))
+        .route("/api/auth/bootstrap", post(routes::auth::bootstrap))
+        .route("/api/assinaturas", post(routes::assinatura::assinar_plano))
         .route("/api/assinaturas/{id}/status", get(routes::assinatura::status_assinatura))
-        .route("/api/auth/login", post(routes::auth::login))
-        .route("/api/auth/verificar-email", post(routes::auth::verificar_email))
-        .route("/api/auth/reenviar-verificacao", post(routes::auth::reenviar_verificacao))
-        .route("/api/auth/esqueci-senha", post(routes::auth::esqueci_senha))
-        .route("/api/auth/redefinir-senha", post(routes::auth::redefinir_senha))
         .route("/api/me", get(routes::me::me))
         .route("/api/me/plano", post(routes::me::mudar_plano))
         .route("/api/me/cancelar", post(routes::me::cancelar))

@@ -89,7 +89,7 @@ pub async fn onboarding(
         ));
     }
 
-    let row: Option<(String, String, String, Option<String>, Option<String>, String, String)> = sqlx::query_as(
+    let row: Option<(String, String, String, Option<String>, Option<String>, Option<String>, String)> = sqlx::query_as(
         "SELECT loja_nome, responsavel_nome, email, password_hash, tenant_id, plan_code, status FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
@@ -107,6 +107,9 @@ pub async fn onboarding(
     if let Some(tenant_id) = tenant_id_atual {
         return Ok(Json(OnboardingOutput { tenant_id, slug: body.slug, admin_login_hint: email }));
     }
+    let Some(plan_code) = plan_code else {
+        return Err(AppError::Internal("assinante sem plano — assine um plano antes do onboarding".to_string()));
+    };
 
     let slug = body.slug.trim().to_lowercase();
     if slug.is_empty() || !slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {

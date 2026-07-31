@@ -13,11 +13,10 @@ struct SubscriberRow {
     responsavel_nome: String,
     whatsapp: String,
     email: String,
-    email_verified: bool,
-    plan_code: String,
-    valor_mensal: f64,
+    plan_code: Option<String>,
+    valor_mensal: Option<f64>,
     status: String,
-    gateway: String,
+    gateway: Option<String>,
     slug: Option<String>,
     onboarding_status: String,
     tenant_id: Option<String>,
@@ -41,12 +40,14 @@ pub struct MeResponse {
     pub responsavel_nome: String,
     pub whatsapp: String,
     pub email: String,
-    pub email_verified: bool,
-    pub plano: String,
-    pub valor_mensal: f64,
+    /// `null` = conta criada mas ainda sem plano escolhido (ver
+    /// ARQUITETURA.md §6) — o front mostra a tela de escolher plano nesse
+    /// caso, em vez da seção de gerenciar plano.
+    pub plano: Option<String>,
+    pub valor_mensal: Option<f64>,
     pub status: String,
-    pub gateway: String,
-    pub metodo_pagamento: String,
+    pub gateway: Option<String>,
+    pub metodo_pagamento: Option<String>,
     pub slug: Option<String>,
     pub dominio: Option<String>,
     pub onboarding_status: String,
@@ -73,7 +74,7 @@ pub struct MeResponse {
 
 pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<MeResponse>, AppError> {
     let row: Option<SubscriberRow> = sqlx::query_as(
-        "SELECT id, loja_nome, responsavel_nome, whatsapp, email, email_verified, plan_code, valor_mensal,
+        "SELECT id, loja_nome, responsavel_nome, whatsapp, email, plan_code, valor_mensal,
                 status, gateway, slug, onboarding_status, tenant_id, created_at,
                 categoria, endereco, logo_url, cor_principal, documento, tipo_documento,
                 vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento
@@ -84,7 +85,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
     .await?;
 
     let row = row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
-    let metodo_pagamento = if row.gateway == "abacatepay" { "Pix" } else { "Cartão de crédito" };
+    let metodo_pagamento = row.gateway.as_deref().map(|g| if g == "abacatepay" { "Pix" } else { "Cartão de crédito" }.to_string());
     let dominio = row.slug.as_ref().map(|s| format!("{s}.rodoletas.app"));
 
     Ok(Json(MeResponse {
@@ -93,12 +94,11 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         responsavel_nome: row.responsavel_nome,
         whatsapp: row.whatsapp,
         email: row.email,
-        email_verified: row.email_verified,
         plano: row.plan_code,
         valor_mensal: row.valor_mensal,
         status: row.status,
         gateway: row.gateway,
-        metodo_pagamento: metodo_pagamento.to_string(),
+        metodo_pagamento,
         slug: row.slug,
         dominio,
         onboarding_status: row.onboarding_status,
@@ -137,6 +137,14 @@ pub async fn mudar_plano(
     if !matches!(body.novo_plano.as_str(), "essential" | "management" | "premium") {
         return Err(AppError::BadRequest("plano inválido".to_string()));
     }
+    let row: Option<(Option<String>,)> = sqlx::query_as("SELECT plan_code FROM subscribers WHERE id = $1")
+        .bind(&claims.sub)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((Some(_plano_atual),)) = row else {
+        return Err(AppError::BadRequest("assine um plano antes de trocar".to_string()));
+    };
+
     sqlx::query("UPDATE subscribers SET plan_code = $1, updated_at = now() WHERE id = $2")
         .bind(&body.novo_plano)
         .bind(&claims.sub)
@@ -146,11 +154,14 @@ pub async fn mudar_plano(
 }
 
 pub async fn cancelar(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<serde_json::Value>, AppError> {
-    let row: Option<(String, Option<String>)> = sqlx::query_as("SELECT gateway, mp_preapproval_id FROM subscribers WHERE id = $1")
+    let row: Option<(Option<String>, Option<String>)> = sqlx::query_as("SELECT gateway, mp_preapproval_id FROM subscribers WHERE id = $1")
         .bind(&claims.sub)
         .fetch_optional(&state.pool)
         .await?;
     let (gw, external_id) = row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
+    let Some(gw) = gw else {
+        return Err(AppError::BadRequest("nenhuma assinatura pra cancelar".to_string()));
+    };
 
     if let Some(external_id) = external_id {
         gateway::cancel(&state, &gw, &external_id).await;

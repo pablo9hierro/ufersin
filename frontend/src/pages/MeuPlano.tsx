@@ -3,9 +3,9 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, CreditCard, Loader2, Save, Sparkles } from 'lucide-react'
 import { api, ApiError, type FormaPagamento, type MeResponse, type PlanoCode, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
-import { useIsAuthenticated } from '../lib/authStore'
+import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
+import { PLAN_MAP } from '../lib/plans'
 
-const PLAN_NAMES: Record<PlanoCode, string> = { essential: 'Essential', management: 'Management', premium: 'Premium' }
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
   { value: 'mercado_pago', label: 'Mercado Pago' },
@@ -17,6 +17,7 @@ const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
 // re-provisiona o tenant, só atualiza os campos — ver PUT /api/onboarding)
 // + trocar de plano (upgrade/downgrade, já existente via api.mudarPlano).
 export default function MeuPlano() {
+  const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
   const navigate = useNavigate()
   const [me, setMe] = useState<MeResponse | null>(null)
@@ -59,6 +60,13 @@ export default function MeuPlano() {
       .finally(() => setLoading(false))
   }, [isAuthenticated])
 
+  if (!ready) {
+    return (
+      <main className="min-h-screen bg-uf-black flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+      </main>
+    )
+  }
   if (!isAuthenticated) return <Navigate to="/login" replace />
 
   const handleSave = async (e: React.FormEvent) => {
@@ -119,6 +127,7 @@ export default function MeuPlano() {
     )
   }
 
+  if (!me.plano) return <Navigate to="/planos" replace />
   if (me.onboarding_status !== 'provisionado') return <Navigate to="/onboarding" replace />
 
   return (
@@ -134,12 +143,12 @@ export default function MeuPlano() {
 
         <section className="uf-glass rounded-2xl p-6 mb-6">
           <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
-            <Sparkles className="w-4 h-4" /> Plano atual: {PLAN_NAMES[me.plano]}
+            <Sparkles className="w-4 h-4" /> Plano atual: {PLAN_MAP[me.plano].name}
           </h2>
           <div className="flex flex-wrap gap-2">
             {PLAN_ORDER.filter((p) => p !== me.plano).map((p) => (
               <button key={p} onClick={() => handleMudarPlano(p)} disabled={busyPlano} className="btn-secondary text-xs px-3 py-2">
-                Mudar pra {PLAN_NAMES[p]}
+                Mudar pra {PLAN_MAP[p].name}
               </button>
             ))}
           </div>

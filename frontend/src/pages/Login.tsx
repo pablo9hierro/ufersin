@@ -1,16 +1,30 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { LogIn, Loader2 } from 'lucide-react'
-import { api, ApiError } from '../lib/api'
-import { authStore } from '../lib/authStore'
+import { supabase } from '../lib/supabaseClient'
+import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
+import { translateAuthError } from '../lib/authErrors'
+import { PLAN_MAP } from '../lib/plans'
+import type { PlanoCode } from '../lib/api'
+import GoogleButton from '../components/GoogleButton'
 
 export default function Login() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const ready = useAuthReady()
+  const isAuthenticated = useIsAuthenticated()
+  const planoParam = searchParams.get('plano') as PlanoCode | null
+  const plano: PlanoCode | null = planoParam && planoParam in PLAN_MAP ? planoParam : null
+
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  if (ready && isAuthenticated) {
+    return <Navigate to={plano ? `/assinar?plano=${plano}` : '/dashboard'} replace />
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -21,11 +35,11 @@ export default function Login() {
     }
     setLoading(true)
     try {
-      const result = await api.login({ email: email.trim(), senha })
-      authStore.setToken(result.token)
-      navigate('/dashboard')
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
+      if (signInError) throw signInError
+      navigate(plano ? `/assinar?plano=${plano}` : '/dashboard')
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Não foi possível entrar. Tente novamente.')
+      setError(e instanceof Error ? translateAuthError(e.message) : 'Não foi possível entrar. Tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -44,7 +58,16 @@ export default function Login() {
           <Link to="/" className="text-2xl font-black uf-text">
             Rodoletas
           </Link>
-          <p className="text-uf-silver-dim text-sm mt-2">Entre no seu painel de assinante.</p>
+          <p className="text-uf-silver-dim text-sm mt-2">
+            {plano ? `Entre pra assinar o plano ${PLAN_MAP[plano].name}.` : 'Entre no seu painel de assinante.'}
+          </p>
+        </div>
+
+        <GoogleButton plano={plano} className="mb-4" />
+        <div className="flex items-center gap-3 mb-4">
+          <div className="h-px flex-1 bg-white/10" />
+          <span className="text-[11px] text-uf-silver-dim">ou com e-mail</span>
+          <div className="h-px flex-1 bg-white/10" />
         </div>
 
         <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 space-y-4">
@@ -68,7 +91,7 @@ export default function Login() {
             <Link to="/esqueci-senha" className="text-uf-silver-dim hover:text-uf-silver">
               Esqueci minha senha
             </Link>
-            <Link to="/cadastro" className="text-uf-silver-dim hover:text-uf-silver">
+            <Link to={plano ? `/cadastro?plano=${plano}` : '/cadastro'} className="text-uf-silver-dim hover:text-uf-silver">
               Criar conta
             </Link>
           </div>

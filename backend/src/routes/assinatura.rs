@@ -1,7 +1,7 @@
 use axum::{extract::Path, extract::State, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::{generate_code, hash_password, make_token};
+use crate::auth::AuthSubscriber;
 use crate::error::AppError;
 use crate::gateway::{self, PaymentMethod};
 use crate::state::AppState;
@@ -20,19 +20,10 @@ fn plan_price(code: &str, default_price: f64) -> f64 {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct NovaAssinatura {
-    pub loja_nome: String,
-    pub responsavel_nome: String,
-    pub whatsapp: String,
-    pub email: String,
-    pub senha: String,
-    #[serde(default = "default_plan")]
+pub struct AssinarPlanoInput {
     pub plano: String,
     #[serde(default = "default_method")]
     pub metodo: PaymentMethod,
-}
-fn default_plan() -> String {
-    "essential".to_string()
 }
 fn default_method() -> PaymentMethod {
     PaymentMethod::Cartao
@@ -41,84 +32,54 @@ fn default_method() -> PaymentMethod {
 #[derive(Debug, Serialize)]
 pub struct AssinaturaCriada {
     pub id: String,
-    pub token: String,
     pub checkout_url: Option<String>,
     pub pix_qr_code: Option<String>,
     pub pix_qr_base64: Option<String>,
 }
 
-/// Cria a conta do lojista (cadastro) + a assinatura recorrente no gateway
-/// escolhido, e devolve tanto o link de checkout hospedado (cartão) quanto
-/// o QR Pix (quando aplicável) pra o front decidir o que mostrar. Emite
-/// token na hora — o lojista já fica "logado" mesmo antes de confirmar
-/// e-mail/pagamento, pra não travar o fluxo Landing -> Checkout ->
-/// Onboarding atrás de um login separado.
-pub async fn criar_assinatura(
+/// Atrela um plano à conta já existente (criada via POST /api/auth/bootstrap
+/// depois do supabase.auth.signUp/signInWithPassword) e dispara a cobrança
+/// recorrente no gateway escolhido. Exige login — cadastro de conta e
+/// escolha de plano são dois passos separados agora (ver ARQUITETURA.md
+/// §6): isto não cria mais a linha em `subscribers`, só a atualiza.
+pub async fn assinar_plano(
     State(state): State<AppState>,
-    Json(body): Json<NovaAssinatura>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<AssinarPlanoInput>,
 ) -> Result<Json<AssinaturaCriada>, AppError> {
-    if body.loja_nome.trim().is_empty() || body.responsavel_nome.trim().is_empty() {
-        return Err(AppError::BadRequest("nome da loja e do responsável são obrigatórios".to_string()));
+    if !valid_plan(&body.plano) {
+        return Err(AppError::BadRequest("plano inválido".to_string()));
     }
-    if !body.email.contains('@') {
-        return Err(AppError::BadRequest("e-mail inválido".to_string()));
-    }
-    if body.senha.len() < 8 {
-        return Err(AppError::BadRequest("a senha precisa ter pelo menos 8 caracteres".to_string()));
-    }
-    let plano = if valid_plan(&body.plano) { body.plano.as_str() } else { "essential" };
 
-    let existing: Option<(String,)> = sqlx::query_as("SELECT id FROM subscribers WHERE lower(email) = lower($1)")
-        .bind(body.email.trim())
+    let row: Option<(String, String, String)> = sqlx::query_as("SELECT loja_nome, email, status FROM subscribers WHERE id = $1")
+        .bind(&claims.sub)
         .fetch_optional(&state.pool)
         .await?;
-    if existing.is_some() {
-        return Err(AppError::BadRequest("já existe uma conta com esse e-mail — faça login".to_string()));
+    let (loja_nome, email, status) =
+        row.ok_or_else(|| AppError::NotFound("conta não encontrada — finalize o cadastro primeiro".to_string()))?;
+    if matches!(status.as_str(), "ativo" | "pendente" | "pausado") {
+        return Err(AppError::BadRequest("essa conta já tem uma assinatura em andamento".to_string()));
     }
 
-    let id = uuid::Uuid::new_v4().to_string();
-    let password_hash = hash_password(&body.senha)?;
-    let valor = plan_price(plano, state.valor_padrao);
-    let verification_code = generate_code();
+    let valor = plan_price(&body.plano, state.valor_padrao);
     let gateway_kind = gateway::resolve_gateway_kind(&state);
+    let reason = format!("Assinatura Rodoletas ({}) — {}", body.plano, loja_nome.trim());
+    let charge = gateway::create_subscription(&state, gateway_kind, &reason, email.trim(), valor, &claims.sub, body.metodo).await?;
 
     sqlx::query(
-        "INSERT INTO subscribers
-            (id, loja_nome, responsavel_nome, whatsapp, email, password_hash, plan_code, gateway,
-             valor_mensal, status, verification_code, verification_expires_at, onboarding_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pendente', $10, now() + interval '30 minutes', 'aguardando_pagamento')",
+        "UPDATE subscribers SET plan_code = $1, gateway = $2, valor_mensal = $3, status = 'pendente', \
+         onboarding_status = 'aguardando_pagamento', mp_preapproval_id = $4, updated_at = now() WHERE id = $5",
     )
-    .bind(&id)
-    .bind(body.loja_nome.trim())
-    .bind(body.responsavel_nome.trim())
-    .bind(body.whatsapp.trim())
-    .bind(body.email.trim())
-    .bind(&password_hash)
-    .bind(plano)
+    .bind(&body.plano)
     .bind(gateway_kind)
     .bind(valor)
-    .bind(&verification_code)
+    .bind(&charge.external_id)
+    .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
 
-    // TODO Fase 3: sem provedor de e-mail/SMS configurado ainda — o código
-    // só é logado por enquanto (mesmo mock já usado em outras partes desta
-    // base de código pra Pix/WhatsApp sem credencial configurada).
-    tracing::info!("[verificação de e-mail — MOCK] {}: código {}", body.email.trim(), verification_code);
-
-    let reason = format!("Assinatura Rodoletas ({plano}) — {}", body.loja_nome.trim());
-    let charge = gateway::create_subscription(&state, gateway_kind, &reason, body.email.trim(), valor, &id, body.metodo).await?;
-
-    sqlx::query("UPDATE subscribers SET mp_preapproval_id = $1, updated_at = now() WHERE id = $2")
-        .bind(&charge.external_id)
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
-
-    let token = make_token(&state.jwt_secret, &id, body.email.trim());
     Ok(Json(AssinaturaCriada {
-        id,
-        token,
+        id: claims.sub,
         checkout_url: charge.checkout_url,
         pix_qr_code: charge.pix_qr_code,
         pix_qr_base64: charge.pix_qr_base64,
@@ -134,12 +95,13 @@ pub struct StatusAssinatura {
 /// O front chama isso em polling depois de redirecionar o lojista pro
 /// checkout — quando o gateway confirma o pagamento, o status muda de
 /// "pendente" pra "ativo" (consultado ao vivo na API do gateway, não fica
-/// esperando webhook).
+/// esperando webhook). Sem auth de propósito — funciona no meio do
+/// redirect de volta do checkout hospedado do gateway.
 pub async fn status_assinatura(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<StatusAssinatura>, AppError> {
-    let row: Option<(Option<String>, String, String, String)> =
+    let row: Option<(Option<String>, String, Option<String>, String)> =
         sqlx::query_as("SELECT mp_preapproval_id, status, gateway, onboarding_status FROM subscribers WHERE id = $1")
             .bind(&id)
             .fetch_optional(&state.pool)
@@ -148,7 +110,7 @@ pub async fn status_assinatura(
     let (preapproval_id, status_atual, gateway_kind, onboarding_status) =
         row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
 
-    let Some(preapproval_id) = preapproval_id else {
+    let (Some(preapproval_id), Some(gateway_kind)) = (preapproval_id, gateway_kind) else {
         return Ok(Json(StatusAssinatura { status: status_atual, onboarding_status }));
     };
 

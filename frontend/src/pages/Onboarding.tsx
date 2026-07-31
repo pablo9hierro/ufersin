@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, CreditCard, ImagePlus, Loader2, MessageCircle, Palette, QrCode, Rocket, Store } from 'lucide-react'
 import { api, ApiError, type FormaPagamento, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
-import { useIsAuthenticated } from '../lib/authStore'
+import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 
 const CATEGORIAS = ['Alimentação', 'Moda', 'Beleza', 'Casa & decoração', 'Eletrônicos', 'Pet shop', 'Outro']
 const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
@@ -47,6 +47,7 @@ function formatDocumento(tipo: TipoDocumento, value: string) {
 // continuam na etapa 1 -- ainda necessários pro funcionamento da loja,
 // só reorganizados junto dos campos novos.
 export default function Onboarding() {
+  const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
   const navigate = useNavigate()
 
@@ -75,6 +76,13 @@ export default function Onboarding() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
+  if (!ready) {
+    return (
+      <main className="min-h-screen bg-uf-black flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+      </main>
+    )
+  }
   if (!isAuthenticated) return <Navigate to="/login" replace />
 
   const handleNomeChange = (v: string) => {

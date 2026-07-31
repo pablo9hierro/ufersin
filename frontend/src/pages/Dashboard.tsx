@@ -16,9 +16,9 @@ import {
   XCircle,
 } from 'lucide-react'
 import { api, ApiError, type MeResponse, type PlanoCode } from '../lib/api'
-import { authStore, useIsAuthenticated } from '../lib/authStore'
+import { authStore, useAuthReady, useEmailConfirmed, useIsAuthenticated } from '../lib/authStore'
+import { PLAN_MAP } from '../lib/plans'
 
-const PLAN_NAMES: Record<PlanoCode, string> = { essential: 'Essential', management: 'Management', premium: 'Premium' }
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
@@ -26,12 +26,15 @@ const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   pendente: { label: 'Pagamento pendente', className: 'bg-amber-400/15 text-amber-300' },
   pausado: { label: 'Pausado', className: 'bg-amber-400/15 text-amber-300' },
   cancelado: { label: 'Cancelado', className: 'bg-red-400/15 text-red-300' },
+  sem_assinatura: { label: 'Sem plano', className: 'bg-white/10 text-uf-silver-dim' },
 }
 
 const ECOMMERCE_FRONTEND_URL = import.meta.env.VITE_ECOMMERCE_FRONTEND_URL || 'http://localhost:5173'
 
 export default function Dashboard() {
+  const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
+  const emailConfirmed = useEmailConfirmed()
   const navigate = useNavigate()
   const [me, setMe] = useState<MeResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -47,10 +50,17 @@ export default function Dashboard() {
       .finally(() => setLoading(false))
   }, [isAuthenticated])
 
+  if (!ready) {
+    return (
+      <main className="min-h-screen bg-uf-black flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+      </main>
+    )
+  }
   if (!isAuthenticated) return <Navigate to="/login" replace />
 
-  const handleLogout = () => {
-    authStore.setToken(null)
+  const handleLogout = async () => {
+    await authStore.signOut()
     navigate('/')
   }
 
@@ -110,9 +120,11 @@ export default function Dashboard() {
             Rodoletas
           </Link>
           <div className="flex items-center gap-4">
-            <Link to="/meu-plano" className="btn-ghost text-sm">
-              Meu plano
-            </Link>
+            {me.plano && (
+              <Link to="/meu-plano" className="btn-ghost text-sm">
+                Meu plano
+              </Link>
+            )}
             <button onClick={handleLogout} className="btn-ghost text-sm">
               <LogOut className="w-4 h-4" />
               Sair
@@ -131,7 +143,7 @@ export default function Dashboard() {
             Assinante desde {new Date(me.assinante_desde).toLocaleDateString('pt-BR')}
           </p>
 
-          {!me.email_verified && (
+          {emailConfirmed === false && (
             <div className="uf-glass rounded-2xl p-4 mb-6 flex items-center gap-3 border-amber-400/20">
               <ShieldAlert className="w-5 h-5 text-amber-300 shrink-0" />
               <p className="text-sm flex-1">Confirme seu e-mail pra manter sua conta segura.</p>
@@ -141,7 +153,21 @@ export default function Dashboard() {
             </div>
           )}
 
-          {me.status === 'ativo' && me.onboarding_status !== 'provisionado' && (
+          {!me.plano && (
+            <div className="uf-glass rounded-2xl p-5 mb-6 flex flex-wrap items-center gap-4 border-uf-blue/30">
+              <Sparkles className="w-6 h-6 text-uf-blue shrink-0" />
+              <div className="flex-1 min-w-[200px]">
+                <p className="font-semibold text-sm">Sua conta está pronta! Falta só escolher um plano.</p>
+                <p className="text-xs text-uf-silver-dim mt-0.5">Essential, Management ou Premium — leva menos de um minuto.</p>
+              </div>
+              <Link to="/planos" className="btn-primary px-4 py-2.5 text-sm shrink-0">
+                Escolher plano
+                <ArrowUpRight className="w-4 h-4" />
+              </Link>
+            </div>
+          )}
+
+          {me.plano && me.status === 'ativo' && me.onboarding_status !== 'provisionado' && (
             <div className="uf-glass rounded-2xl p-5 mb-6 flex flex-wrap items-center gap-4 border-uf-blue/30">
               <Sparkles className="w-6 h-6 text-uf-blue shrink-0" />
               <div className="flex-1 min-w-[200px]">
@@ -162,31 +188,43 @@ export default function Dashboard() {
               <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
                 <Sparkles className="w-4 h-4" /> Plano atual
               </h2>
-              <p className="text-2xl font-black mb-1">{PLAN_NAMES[me.plano]}</p>
-              <p className="text-sm text-uf-silver-dim mb-5">R$ {me.valor_mensal.toFixed(2)}/mês</p>
-              <div className="flex flex-wrap gap-2">
-                {PLAN_ORDER.filter((p) => p !== me.plano).map((p) => (
-                  <button key={p} onClick={() => handleMudarPlano(p)} disabled={busy} className="btn-secondary text-xs px-3 py-2">
-                    Mudar pra {PLAN_NAMES[p]}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] text-uf-silver-dim mt-4">Próxima cobrança: {me.proxima_cobranca ?? 'consulte seu gateway de pagamento'}</p>
+              {me.plano ? (
+                <>
+                  <p className="text-2xl font-black mb-1">{PLAN_MAP[me.plano].name}</p>
+                  <p className="text-sm text-uf-silver-dim mb-5">R$ {(me.valor_mensal ?? 0).toFixed(2)}/mês</p>
+                  <div className="flex flex-wrap gap-2">
+                    {PLAN_ORDER.filter((p) => p !== me.plano).map((p) => (
+                      <button key={p} onClick={() => handleMudarPlano(p)} disabled={busy} className="btn-secondary text-xs px-3 py-2">
+                        Mudar pra {PLAN_MAP[p].name}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-uf-silver-dim mt-4">Próxima cobrança: {me.proxima_cobranca ?? 'consulte seu gateway de pagamento'}</p>
+                </>
+              ) : (
+                <p className="text-sm text-uf-silver-dim">Nenhum plano escolhido ainda.</p>
+              )}
             </section>
 
             <section className="uf-glass rounded-2xl p-6">
               <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
                 <CreditCard className="w-4 h-4" /> Pagamento
               </h2>
-              <p className="text-sm mb-1">
-                Método: <span className="font-semibold">{me.metodo_pagamento}</span>
-              </p>
-              <p className="text-sm text-uf-silver-dim mb-5">Gateway: {me.gateway === 'abacatepay' ? 'AbacatePay' : 'Mercado Pago'}</p>
-              {me.status !== 'cancelado' && (
-                <button onClick={handleCancelar} disabled={busy} className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  Cancelar assinatura
-                </button>
+              {me.metodo_pagamento ? (
+                <>
+                  <p className="text-sm mb-1">
+                    Método: <span className="font-semibold">{me.metodo_pagamento}</span>
+                  </p>
+                  <p className="text-sm text-uf-silver-dim mb-5">Gateway: {me.gateway === 'abacatepay' ? 'AbacatePay' : 'Mercado Pago'}</p>
+                  {me.status !== 'cancelado' && (
+                    <button onClick={handleCancelar} disabled={busy} className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Cancelar assinatura
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-uf-silver-dim">Nenhuma cobrança configurada ainda.</p>
               )}
             </section>
 

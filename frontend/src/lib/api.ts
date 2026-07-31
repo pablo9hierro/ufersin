@@ -25,9 +25,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   } catch {
     throw new ApiError(0, 'Não foi possível conectar ao servidor. Verifique sua internet ou tente novamente em instantes.')
   }
-  if (res.status === 401) {
-    authStore.setToken(null)
-  }
+  // Nota: um 401 aqui não implica sessão Supabase inválida (pode ser só
+  // "conta ainda não fez bootstrap") — quem decide deslogar é o Supabase
+  // (expiração/refresh falho), não esta camada.
   if (!res.ok) {
     let message = `Erro ${res.status}`
     try {
@@ -45,36 +45,32 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export type PlanoCode = 'essential' | 'management' | 'premium'
 export type MetodoPagamento = 'pix' | 'cartao' | 'cartao_parcelado'
 
-export interface NovaAssinaturaInput {
+export interface BootstrapInput {
   loja_nome: string
   responsavel_nome: string
   whatsapp: string
-  email: string
-  senha: string
+  /** Ausente pra quem se cadastrou via Google OAuth — não existe senha nesse caso. */
+  senha?: string
+}
+export interface BootstrapOutput {
+  id: string
+  ja_existia: boolean
+}
+
+export interface AssinarPlanoInput {
   plano: PlanoCode
   metodo: MetodoPagamento
 }
-
 export interface AssinaturaCriada {
   id: string
-  token: string
   checkout_url: string | null
   pix_qr_code: string | null
   pix_qr_base64: string | null
 }
 
 export interface StatusAssinatura {
-  status: 'pendente' | 'ativo' | 'pausado' | 'cancelado'
+  status: 'sem_assinatura' | 'pendente' | 'ativo' | 'pausado' | 'cancelado'
   onboarding_status: 'aguardando_pagamento' | 'aguardando_onboarding' | 'provisionado'
-}
-
-export interface LoginInput {
-  email: string
-  senha: string
-}
-export interface LoginResponse {
-  token: string
-  loja_nome: string
 }
 
 export type FormaPagamento = 'manual' | 'plataforma'
@@ -87,12 +83,12 @@ export interface MeResponse {
   responsavel_nome: string
   whatsapp: string
   email: string
-  email_verified: boolean
-  plano: PlanoCode
-  valor_mensal: number
-  status: 'pendente' | 'ativo' | 'pausado' | 'cancelado'
-  gateway: string
-  metodo_pagamento: string
+  /** `null` = conta criada, ainda sem plano escolhido — mostrar CTA pra /planos. */
+  plano: PlanoCode | null
+  valor_mensal: number | null
+  status: 'sem_assinatura' | 'pendente' | 'ativo' | 'pausado' | 'cancelado'
+  gateway: string | null
+  metodo_pagamento: string | null
   slug: string | null
   dominio: string | null
   onboarding_status: 'aguardando_pagamento' | 'aguardando_onboarding' | 'provisionado'
@@ -150,18 +146,10 @@ export interface EditOnboardingInput {
 }
 
 export const api = {
-  criarAssinatura: (input: NovaAssinaturaInput) =>
-    request<AssinaturaCriada>('/api/assinaturas', { method: 'POST', body: JSON.stringify(input) }),
-  statusAssinatura: (id: string) => request<StatusAssinatura>(`/api/assinaturas/${id}/status`),
+  bootstrap: (input: BootstrapInput) => request<BootstrapOutput>('/api/auth/bootstrap', { method: 'POST', body: JSON.stringify(input) }),
 
-  login: (input: LoginInput) => request<LoginResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
-  verificarEmail: (codigo: string) =>
-    request<{ email_verified: boolean }>('/api/auth/verificar-email', { method: 'POST', body: JSON.stringify({ codigo }) }),
-  reenviarVerificacao: () => request<{ sent: boolean }>('/api/auth/reenviar-verificacao', { method: 'POST' }),
-  esqueciSenha: (email: string) =>
-    request<{ sent: boolean }>('/api/auth/esqueci-senha', { method: 'POST', body: JSON.stringify({ email }) }),
-  redefinirSenha: (input: { email: string; codigo: string; nova_senha: string }) =>
-    request<{ reset: boolean }>('/api/auth/redefinir-senha', { method: 'POST', body: JSON.stringify(input) }),
+  assinarPlano: (input: AssinarPlanoInput) => request<AssinaturaCriada>('/api/assinaturas', { method: 'POST', body: JSON.stringify(input) }),
+  statusAssinatura: (id: string) => request<StatusAssinatura>(`/api/assinaturas/${id}/status`),
 
   me: () => request<MeResponse>('/api/me'),
   mudarPlano: (novo_plano: PlanoCode) =>

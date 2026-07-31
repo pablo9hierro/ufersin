@@ -5,7 +5,11 @@ use std::sync::Arc;
 pub struct AppState {
     pub pool: PgPool,
     pub http: reqwest::Client,
-    pub jwt_secret: Arc<String>,
+    /// JWT secret compartilhado do projeto Supabase (Settings -> API -> JWT
+    /// Settings) -- usado só pra VERIFICAR localmente os tokens que o
+    /// Supabase Auth emite pro lojista, nunca pra emitir token nenhum
+    /// daqui (ver auth.rs::AuthSubscriber).
+    pub supabase_jwt_secret: Arc<String>,
     /// None = modo mock (sem cobrança de verdade, só pra testar o fluxo
     /// sem uma conta Mercado Pago com o produto de assinaturas aprovado).
     pub mp_token: Arc<Option<String>>,

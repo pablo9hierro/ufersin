@@ -1,54 +1,45 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Loader2, MailCheck, RotateCw } from 'lucide-react'
-import { api, ApiError } from '../lib/api'
-import { useIsAuthenticated } from '../lib/authStore'
+import { supabase } from '../lib/supabaseClient'
+import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
+import { translateAuthError } from '../lib/authErrors'
 
+/** Confirmação de e-mail é 100% do Supabase agora (link real por e-mail,
+ * não código de 6 dígitos) -- esta tela só existe pra quem está logado com
+ * uma sessão ainda não confirmada e quer reenviar o link (ver
+ * ARQUITETURA.md §6). */
 export default function VerificarEmail() {
-  const navigate = useNavigate()
+  const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
-  const [codigo, setCodigo] = useState('')
-  const [loading, setLoading] = useState(false)
+  const session = useSession()
   const [resending, setResending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resent, setResent] = useState(false)
 
-  if (!isAuthenticated) {
+  if (!ready) {
     return (
-      <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 text-center">
-        <div>
-          <p className="text-uf-silver-dim mb-4">Você precisa estar logado pra verificar o e-mail.</p>
-          <Link to="/login" className="btn-primary px-5 py-2.5 inline-flex">
-            Entrar
-          </Link>
-        </div>
+      <main className="min-h-screen bg-uf-black flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
       </main>
     )
   }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
-    try {
-      await api.verificarEmail(codigo.trim())
-      navigate('/dashboard')
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Código inválido ou expirado.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (session?.user.email_confirmed_at) return <Navigate to="/dashboard" replace />
 
   const handleReenviar = async () => {
     setResending(true)
     setError(null)
+    setResent(false)
     try {
-      await api.reenviarVerificacao()
+      const email = session?.user.email
+      if (!email) throw new Error('conta sem e-mail associado')
+      const { error: resendError } = await supabase.auth.resend({ type: 'signup', email })
+      if (resendError) throw resendError
       setResent(true)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Não foi possível reenviar o código.')
+      setError(e instanceof Error ? translateAuthError(e.message) : 'Não foi possível reenviar o e-mail.')
     } finally {
       setResending(false)
     }
@@ -65,31 +56,15 @@ export default function VerificarEmail() {
       >
         <MailCheck className="w-10 h-10 text-uf-blue mx-auto mb-4" />
         <h1 className="text-xl font-black mb-2">Confirme seu e-mail</h1>
-        <p className="text-sm text-uf-silver-dim mb-6">Digite o código de 6 dígitos que enviamos pro seu e-mail.</p>
+        <p className="text-sm text-uf-silver-dim mb-6">
+          Clique no link que enviamos pra <span className="text-uf-silver">{session?.user.email}</span>.
+        </p>
 
-        <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 space-y-4 text-left">
-          <input
-            className="input-field text-center tracking-[0.4em] font-bold text-lg"
-            value={codigo}
-            onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            inputMode="numeric"
-            placeholder="000000"
-            maxLength={6}
-          />
-          {error && <p className="error-msg text-center">{error}</p>}
-          <button type="submit" disabled={loading || codigo.length !== 6} className="btn-primary w-full py-3">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MailCheck className="w-4 h-4" />}
-            Confirmar
-          </button>
-        </form>
+        {error && <p className="error-msg text-center mb-4">{error}</p>}
 
-        <button
-          onClick={handleReenviar}
-          disabled={resending}
-          className="btn-ghost text-xs mt-5 mx-auto"
-        >
-          {resending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
-          {resent ? 'Código reenviado' : 'Reenviar código'}
+        <button onClick={handleReenviar} disabled={resending} className="btn-primary px-5 py-2.5 inline-flex mx-auto">
+          {resending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
+          {resent ? 'E-mail reenviado' : 'Reenviar e-mail'}
         </button>
 
         <p className="text-xs text-uf-silver-dim mt-6">

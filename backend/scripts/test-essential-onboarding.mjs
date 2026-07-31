@@ -16,13 +16,48 @@
 // /meu-plano usa) trocando um campo e conferindo que o tenant-config
 // muda também.
 //
-// Uso: node scripts/test-essential-onboarding.mjs
+// Uso: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/test-essential-onboarding.mjs
 // (precisa dos 2 backends + o Postgres do ufersin/backend já rodando)
-
+//
+// Desde que o cadastro/login do lojista passou a usar o Auth nativo do
+// Supabase (ver ARQUITETURA.md §6), este script não pode mais criar a
+// conta só chamando o backend Rodoletas -- precisa de uma conta real no
+// projeto Supabase. Usa a Admin API (service_role, NUNCA a anon key) pra
+// criar cada usuário de teste já com e-mail confirmado (sem isso o
+// backend recusaria o bootstrap por falta de sessão utilizável) e emitir
+// um access_token via password grant -- mesmo JWT que o frontend usaria.
 import { execSync } from 'node:child_process'
 
 const RODOLETAS_API = process.env.RODOLETAS_API_URL || 'http://localhost:8081'
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY (Dashboard -> Settings -> API) antes de rodar este script.')
+  process.exit(1)
+}
 const RUN_ID = Date.now().toString(36)
+
+async function criarUsuarioSupabaseDeTeste(email, senha) {
+  const criado = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({ email, password: senha, email_confirm: true }),
+  })
+  if (!criado.ok) throw new Error(`admin/users -> ${criado.status}: ${await criado.text()}`)
+
+  const login = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_SERVICE_ROLE_KEY },
+    body: JSON.stringify({ email, password: senha }),
+  })
+  if (!login.ok) throw new Error(`token?grant_type=password -> ${login.status}: ${await login.text()}`)
+  const { access_token } = await login.json()
+  return access_token
+}
 
 const PLATAFORMAS = ['mercado_pago', 'pagbank', 'abacate_pay']
 
@@ -85,21 +120,18 @@ async function runPermutation(perm, index) {
   const email = `essential-test-${suffix}@teste.local`
   const slug = `essential-test-${suffix}`
 
-  // 1. Cadastro (login >> a conta já nasce "logada", ver criar_assinatura).
-  const assinatura = await req('POST', '/api/assinaturas', {
-    loja_nome: `Loja Teste ${suffix}`,
-    responsavel_nome: 'Responsável Teste',
-    whatsapp: '5583999990000',
-    email,
-    senha: 'senha12345',
-    plano: 'essential',
-    metodo: 'pix',
-  })
+  // 1. Conta real no Supabase Auth (e-mail já confirmado, ver comentário acima).
+  const senha = 'senha12345'
+  const token = await criarUsuarioSupabaseDeTeste(email, senha)
 
-  // 2. Assinar >> confirmar pagamento (bypass do gateway, ver comentário acima).
+  // 2. Bootstrap (cria a linha em `subscribers`, sem plano ainda).
+  await req('POST', '/api/auth/bootstrap', { loja_nome: `Loja Teste ${suffix}`, responsavel_nome: 'Responsável Teste', whatsapp: '5583999990000', senha }, token)
+
+  // 3. Assinar o plano Essential + confirmar pagamento (bypass do gateway, ver comentário acima).
+  const assinatura = await req('POST', '/api/assinaturas', { plano: 'essential', metodo: 'pix' }, token)
   confirmarPagamentoNoBanco(assinatura.id)
 
-  // 3. Onboarding com a combinação desta permutação.
+  // 4. Onboarding com a combinação desta permutação.
   const credenciais = perm.forma_pagamento === 'plataforma' ? { token: `mock-cred-${suffix}` } : undefined
   const onboardingOut = await req(
     'POST',
@@ -119,11 +151,11 @@ async function runPermutation(perm, index) {
       plataforma_pagamento: perm.plataforma_pagamento ?? undefined,
       plataforma_credenciais: credenciais,
     },
-    assinatura.token
+    token
   )
   if (!onboardingOut.tenant_id) throw new Error('onboarding não devolveu tenant_id (provision-tenant falhou?)')
 
-  // 4. "Site funcionando de acordo com o onboarding" -- o que o
+  // 5. "Site funcionando de acordo com o onboarding" -- o que o
   //    ecommerce/frontend consulta pra aplicar o gating.
   const config = await req('GET', `/api/public/tenant-config/${slug}`)
   assertEqual(config.vender_externamente, perm.vender_externamente, `${label}: tenant-config.vender_externamente`)
@@ -132,21 +164,21 @@ async function runPermutation(perm, index) {
   assertEqual(config.plataforma_pagamento, perm.plataforma_pagamento, `${label}: tenant-config.plataforma_pagamento`)
   assertEqual(config.plano, 'essential', `${label}: tenant-config.plano`)
 
-  // 5. Confere que o /api/me autenticado bate com o mesmo dado (dupla checagem,
+  // 6. Confere que o /api/me autenticado bate com o mesmo dado (dupla checagem,
   //    caminho usado por /meu-plano pra pré-preencher o formulário).
-  const me = await req('GET', '/api/me', undefined, assinatura.token)
+  const me = await req('GET', '/api/me', undefined, token)
   assertEqual(me.vender_externamente, perm.vender_externamente, `${label}: me.vender_externamente`)
   assertEqual(me.whatsapp_habilitado, perm.whatsapp_habilitado, `${label}: me.whatsapp_habilitado`)
   assertEqual(me.forma_pagamento, perm.forma_pagamento, `${label}: me.forma_pagamento`)
   assertEqual(me.onboarding_status, 'provisionado', `${label}: me.onboarding_status`)
 
-  // 6. Edição pós-onboarding (o que /meu-plano usa) -- inverte
+  // 7. Edição pós-onboarding (o que /meu-plano usa) -- inverte
   //    vender_externamente e confirma que o tenant-config muda também.
-  await req('PUT', '/api/onboarding', { vender_externamente: !perm.vender_externamente }, assinatura.token)
+  await req('PUT', '/api/onboarding', { vender_externamente: !perm.vender_externamente }, token)
   const configDepoisEdicao = await req('GET', `/api/public/tenant-config/${slug}`)
   assertEqual(configDepoisEdicao.vender_externamente, !perm.vender_externamente, `${label}: tenant-config após PUT (edição)`)
   // volta como estava, pra não confundir uma checagem futura no mesmo slug
-  await req('PUT', '/api/onboarding', { vender_externamente: perm.vender_externamente }, assinatura.token)
+  await req('PUT', '/api/onboarding', { vender_externamente: perm.vender_externamente }, token)
 
   return { label, slug, tenant_id: onboardingOut.tenant_id }
 }

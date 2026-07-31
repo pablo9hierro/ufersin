@@ -1,0 +1,115 @@
+import { useState } from 'react'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { CreditCard, Loader2, QrCode, Rocket } from 'lucide-react'
+import { api, ApiError, type MetodoPagamento, type PlanoCode } from '../lib/api'
+import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
+import { PLAN_MAP } from '../lib/plans'
+
+/** Passo final do fluxo de assinatura -- só o método de pagamento, já
+ * autenticado (conta e plano já foram decididos antes, ver Cadastro/Login/
+ * Planos). Equivalente à segunda metade do antigo /cadastro. */
+export default function Assinar() {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const ready = useAuthReady()
+  const isAuthenticated = useIsAuthenticated()
+
+  const planoParam = searchParams.get('plano') as PlanoCode | null
+  const plano: PlanoCode | null = planoParam && planoParam in PLAN_MAP ? planoParam : null
+
+  const [metodo, setMetodo] = useState<MetodoPagamento>('cartao')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!ready) {
+    return (
+      <main className="min-h-screen bg-uf-black flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+      </main>
+    )
+  }
+  if (!isAuthenticated) return <Navigate to={plano ? `/login?plano=${plano}` : '/login'} replace />
+  if (!plano) return <Navigate to="/planos" replace />
+
+  const planInfo = PLAN_MAP[plano]
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      const result = await api.assinarPlano({ plano, metodo })
+      if (result.checkout_url) {
+        window.location.href = result.checkout_url
+      } else {
+        navigate(`/obrigado?id=${result.id}`)
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível iniciar a assinatura. Tente novamente.')
+      setLoading(false)
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 py-16 relative">
+      <div className="uf-mesh" />
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md relative z-10">
+        <div className="text-center mb-8">
+          <Link to="/" className="text-2xl font-black uf-text">
+            Rodoletas
+          </Link>
+          <p className="text-uf-silver-dim text-sm mt-2">Só falta escolher como pagar.</p>
+        </div>
+
+        <div className="uf-glass rounded-2xl p-6 mb-6 text-center">
+          <p className="text-xs text-uf-silver-dim mb-1">Plano {planInfo.name}</p>
+          <p className="text-3xl font-black uf-text">R$ {planInfo.price}/mês</p>
+          <Link to="/planos" className="text-[11px] text-uf-silver-dim hover:text-uf-silver underline mt-1 inline-block">
+            trocar plano
+          </Link>
+        </div>
+
+        <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 space-y-4">
+          <div>
+            <label className="label">Forma de pagamento</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setMetodo('cartao')}
+                className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm border transition-colors ${
+                  metodo === 'cartao' ? 'border-uf-blue bg-white/5' : 'border-white/10 text-uf-silver-dim'
+                }`}
+              >
+                <CreditCard className="w-4 h-4" />
+                Cartão
+              </button>
+              <button
+                type="button"
+                onClick={() => setMetodo('pix')}
+                className={`flex items-center justify-center gap-2 rounded-xl py-3 text-sm border transition-colors ${
+                  metodo === 'pix' ? 'border-uf-blue bg-white/5' : 'border-white/10 text-uf-silver-dim'
+                }`}
+              >
+                <QrCode className="w-4 h-4" />
+                Pix
+              </button>
+            </div>
+          </div>
+
+          {error && <p className="error-msg">{error}</p>}
+
+          <button type="submit" disabled={loading} className="btn-primary w-full py-3.5">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
+            Assinar e configurar pagamento
+          </button>
+          <p className="text-[11px] text-uf-silver-dim text-center">
+            {metodo === 'cartao'
+              ? 'Você será redirecionado ao checkout seguro pra autorizar a cobrança recorrente.'
+              : 'Você vai receber um QR Code Pix na próxima tela.'}
+          </p>
+        </form>
+      </motion.div>
+    </main>
+  )
+}

@@ -15,9 +15,14 @@ supabase/      (não usado ainda por este app — reservado pra integração fut
 
 ## Fluxo completo
 
+Cadastro/login usam o Auth nativo do Supabase (e-mail+senha com
+confirmação de e-mail de verdade, ou Google) e são separados da escolha de
+plano — ver `ARQUITETURA.md` §6 pro desenho completo.
+
 ```
-Landing (/) -> Escolher plano (#planos) -> Cadastro (/cadastro, é o checkout)
-  -> Pagamento (Pix ou cartão) -> /obrigado (polling de status)
+Landing (/) -> Escolher plano (#planos) -> /cadastro?plano=X (conta + plano já atrelado)
+  OU Landing -> /cadastro (conta sem plano) -> Dashboard -> /planos -> /assinar?plano=X
+  -> /assinar (forma de pagamento) -> Pagamento (Pix ou cartão) -> /obrigado (polling de status)
   -> Onboarding (/onboarding) -> POST /internal/provision-tenant no motor
   -> Dashboard (/dashboard) -> "Entrar no painel da loja" (ecommerce/frontend)
 ```
@@ -74,6 +79,18 @@ Copie `backend/.env.example` -> `backend/.env` e `frontend/.env.example` ->
 `INTERNAL_API_KEY` (em `ecommerce/backend/.env`) — é a chave que autoriza a
 chamada de provisionamento entre os dois backends.
 
+Login/cadastro do lojista usam o Auth nativo do Supabase (ver
+`ARQUITETURA.md` §6) — sem isso, nenhuma rota autenticada funciona:
+
+- `backend/.env`: `SUPABASE_JWT_SECRET` (Dashboard do projeto Supabase ->
+  Settings -> API -> JWT Settings -> "JWT Secret"). O backend faz panic no
+  boot se essa variável estiver vazia, de propósito.
+- `frontend/.env`: `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (mesmo
+  projeto). No Dashboard desse projeto, configure Authentication -> URL
+  Configuration com o Site URL/Redirect URLs cobrindo
+  `http://localhost:5174/**` (e o domínio de produção), e habilite
+  "Confirm email" em Authentication -> Settings.
+
 ## Deploy
 
 - **Frontend**: Vercel — `.github/workflows/deploy-vercel.yml` já faz deploy
@@ -96,5 +113,7 @@ chamada de provisionamento entre os dois backends.
 - Sincronizar upgrade/downgrade de plano com o valor cobrado de verdade no
   gateway (hoje só troca o plano localmente — ver o TODO em
   `backend/src/routes/me.rs`).
-- Envio real de e-mail/SMS pra verificação de conta e recuperação de senha
-  (hoje só loga o código no console do backend).
+- Quem se cadastra via Google OAuth não tem senha nenhuma pra repassar pro
+  admin do tenant no provisionamento — primeiro acesso ao painel da loja
+  exige "esqueci minha senha" por lá (ver `ARQUITETURA.md` §6, "Limitação
+  conhecida e aceita").

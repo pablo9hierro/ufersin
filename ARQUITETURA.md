@@ -5,6 +5,10 @@ trabalhando neste repo, ex. Cursor). Reflete o estado real do código nesta
 data — não é aspiracional. Onde alguma coisa está pela metade ou é uma
 decisão consciente de deixar pra depois, isso está marcado explicitamente.
 
+**Nota de versão:** a Auth nativa do Supabase descrita no §6 já está
+implementada (não é mais "próximo passo") — o texto documenta o desenho
+porque explica o *porquê* das decisões, mas o código já reflete isso.
+
 ## 1. O que é isto
 
 **Rodoletas** é o SaaS que vende **Ufersin**: um motor de e-commerce
@@ -77,7 +81,7 @@ sincronização contínua depois disso).
 
 | Quem | Onde mora a conta | Como autentica hoje |
 |---|---|---|
-| Lojista *assinante* (Rodoletas) | `subscribers` (Postgres local 5434) | JWT custom (`jsonwebtoken`), senha em Argon2, código de verificação de e-mail **mockado** (só loga no console, nunca envia e-mail de verdade) — ver `backend/src/auth.rs` |
+| Lojista *assinante* (Rodoletas) | `subscribers` (Postgres local 5434) + `auth.users` (Supabase, projeto-global) | **Auth nativo do Supabase** (e-mail+senha com confirmação real por link, ou Google OAuth) — o backend Rust só VERIFICA o JWT que o Supabase emite (`SUPABASE_JWT_SECRET`, HS256), nunca autentica ninguém sozinho. Ver §6. |
 | Admin/motoboy/vendedor da loja (motor) | `ufersin.admins`/`motoboys`/etc (Supabase) | Tokens opaquos em tabela `sessions` própria + `crypt()`/bcrypt via pgcrypto (`sunset_admin_auth.sql`) — **não usa `auth.users` do Supabase de propósito** |
 | Cliente final da loja (motor) | `ufersin.customers` (Supabase) | Mesmo padrão de sessão própria, código de recuperação por WhatsApp |
 
@@ -89,19 +93,18 @@ verdade (ver limitação documentada em `ecommerce/README-TENANCY.md`).
 
 ## 4. `subscribers` — a tabela central da Rodoletas
 
-Schema atual (`backend/migrations/0001..0003`), campos principais:
+Schema atual (`backend/migrations/0001..0004`), campos principais:
 
 ```
-id                 text PK (uuid)
+id                 text PK -- é o MESMO uuid do usuário no auth.users do Supabase (ver §6)
 loja_nome, responsavel_nome, whatsapp, email
-password_hash      Argon2 (auth.rs::hash_password)
-email_verified, verification_code, verification_expires_at
-reset_code, reset_expires_at
-plan_code          'essential' | 'management' | 'premium'  -- NOT NULL hoje
-valor_mensal       double precision
-gateway            'mercadopago' | 'abacatepay'
+password_hash      Argon2 (auth.rs::hash_password) -- NULL pra quem entrou via Google, só
+                    serve pro handoff de admin do tenant, nunca autentica o subscriber
+plan_code          'essential' | 'management' | 'premium' | NULL  -- NULL até assinar um plano
+valor_mensal       double precision | NULL
+gateway            'mercadopago' | 'abacatepay' | NULL
 mp_preapproval_id  -- id da cobrança recorrente no gateway
-status             'pendente' | 'ativo' | 'pausado' | 'cancelado'
+status             'sem_assinatura' | 'pendente' | 'ativo' | 'pausado' | 'cancelado'
 onboarding_status  'aguardando_pagamento' | 'aguardando_onboarding' | 'provisionado'
 tenant_id          -- preenchido só depois do provisionamento
 categoria, endereco, logo_url, cor_principal, banner_url, slug
@@ -110,38 +113,40 @@ vender_externamente, whatsapp_habilitado boolean
 forma_pagamento 'manual'|'plataforma', plataforma_pagamento, plataforma_credenciais jsonb
 ```
 
-Hoje **uma linha só nasce em `POST /api/assinaturas`** (`assinatura.rs::criar_assinatura`),
-que faz TUDO de uma vez: valida form, cria a linha, já com plano e método de
-pagamento escolhidos, chama o gateway (Mercado Pago/AbacatePay) e devolve o
-checkout. Isso é exatamente o que o próximo passo (§6) separa em duas
-etapas.
+Uma linha nasce em `POST /api/auth/bootstrap` (sem plano), e só ganha
+`plan_code`/`valor_mensal`/`gateway` depois, em `POST /api/assinaturas`
+(que virou "assinar um plano numa conta que já existe", não mais "criar
+conta + assinar" — ver §6).
 
 ## 5. Fluxo ponta a ponta hoje
 
 ```
 Landing (/) → Pricing card "Assinar {plano}" → /cadastro?plano={plano}
-  → preenche loja/responsável/whatsapp/email/senha/método de pagamento
-  → POST /api/assinaturas   (cria subscriber JÁ COM plano + já dispara cobrança)
-  → recebe token custom, authStore.setToken()
+  → preenche loja/responsável/whatsapp/email/senha → supabase.auth.signUp()
+  → (se "Confirm email" pedir) /verifica o e-mail via link real → /auth/callback
+  → POST /api/auth/bootstrap (cria a linha em `subscribers`, SEM plano)
+  → /assinar?plano={plano} (escolhe Pix/cartão) → POST /api/assinaturas
+     (atrela o plano + dispara cobrança no gateway)
   → checkout_url (cartão) ou tela de Pix
   → /obrigado?id=...  (polling em GET /api/assinaturas/{id}/status)
   → status vira "ativo" → /onboarding (2 etapas: empresa+documento / pagamento+whatsapp)
   → POST /api/onboarding → chama POST /internal/provision-tenant no motor
      (cria Organization+Tenant+Subscription+Admin, reaproveitando o hash de senha)
   → /dashboard
-  → "Entrar no painel da loja" → ecommerce/frontend/admin (mesmo email/senha)
+  → "Entrar no painel da loja" → ecommerce/frontend/admin (mesmo email/senha,
+     exceto quem entrou via Google — ver §6 "Limitação conhecida")
 ```
 
-Login de quem já é assinante: `/login` → `POST /api/auth/login` → mesmo
-token custom.
+Cadastro/login **sem** plano atrelado (entrada padrão de `/cadastro` e
+`/login`, sem `?plano=`): mesmo signUp/bootstrap acima, mas cai em
+`/planos` (escolher plano) em vez de ir direto pro pagamento — a conta já
+existe e pode ficar em `status = 'sem_assinatura'` indefinidamente.
 
-**Problema que motivou o próximo passo:** hoje é impossível criar uma conta
-Rodoletas *sem* já estar no meio de uma assinatura de plano — cadastro e
-assinatura são o mesmo passo, o mesmo formulário, a mesma chamada. Isso
-trava fluxos como "criar conta, decidir o plano depois" ou "logar numa
-conta já existente sem plano nenhum".
+Login de quem já é assinante: `/login` → `supabase.auth.signInWithPassword`
+→ `/dashboard` (ou `/assinar?plano=X` se veio de um card de plano
+deslogado).
 
-## 6. Próximo passo (em andamento): Supabase Auth nativo pro lojista
+## 6. Auth nativa do Supabase pro lojista (implementado)
 
 **Objetivo:** o login/cadastro do lojista (antes de assinar) passa a usar
 Auth nativo do Supabase (e-mail+senha com confirmação de e-mail de
@@ -174,7 +179,7 @@ usuário Supabase**, em vez de um uuid gerado localmente. Isso significa que
 todo o código existente (`me.rs`, `onboarding.rs`, `assinatura.rs` já usam
 `claims.sub` como chave primária) — só troca *quem emite e assina* o JWT.
 
-### O que muda no backend (`ufersin/backend`)
+### O que mudou no backend (`ufersin/backend`)
 
 - `auth.rs`: `AuthSubscriber` extractor passa a decodificar o JWT do
   Supabase (chave = `SUPABASE_JWT_SECRET`) em vez do JWT custom. Login,
@@ -215,7 +220,7 @@ recuperação de senha de lá) em vez de reaproveitar credencial. Isso é uma
 limitação pré-existente do modelo "SSO por cópia de hash" (§3), não algo
 que este passo piora — só fica mais visível pro caso Google.
 
-### O que muda no frontend (`ufersin/frontend`)
+### O que mudou no frontend (`ufersin/frontend`)
 
 - `lib/supabaseClient.ts` novo (client `@supabase/supabase-js`, sem schema
   customizado — só usa `.auth`, nunca fala com tabela nenhuma direto).
@@ -236,6 +241,9 @@ que este passo piora — só fica mais visível pro caso Google.
 - `/auth/callback` (nova): landing do link de confirmação de e-mail e do
   redirect de OAuth. Dispara `POST /api/auth/bootstrap` quando aplicável e
   roteia pra `/assinar?plano=X` ou `/planos`.
+- `/completar-cadastro` (nova): só pra quem loga via Google pela primeira
+  vez e ainda não tem linha em `subscribers` — pede loja/responsável/
+  WhatsApp (sem senha, não existe nesse fluxo) e chama o bootstrap.
 - `/verificar-email`: deixa de pedir código de 6 dígitos — vira só
   "confira seu e-mail" + botão "reenviar" (`supabase.auth.resend`).
 - `/esqueci-senha`: chama `supabase.auth.resetPasswordForEmail`; nova rota
@@ -246,18 +254,11 @@ que este passo piora — só fica mais visível pro caso Google.
 
 ## 7. Contrato atual com o frontend (`ufersin/frontend/src/lib/api.ts`)
 
-Estado ANTES do passo do §6 (documentado aqui pra servir de diff quando a
-mudança for aplicada):
-
 ```ts
-POST /api/assinaturas          → cria subscriber JÁ com plano, devolve token
-GET  /api/assinaturas/:id/status
-POST /api/auth/login           → devolve token custom
-POST /api/auth/verificar-email
-POST /api/auth/reenviar-verificacao
-POST /api/auth/esqueci-senha
-POST /api/auth/redefinir-senha
-GET  /api/me                   → plano/valor_mensal sempre presentes
+POST /api/auth/bootstrap       → cria a linha em subscribers (sem plano), idempotente
+POST /api/assinaturas          → atrela plano+método a uma conta já existente, dispara cobrança
+GET  /api/assinaturas/:id/status   (público, sem auth — usado durante o redirect do checkout)
+GET  /api/me                   → plano/valor_mensal/gateway são Option (null = sem plano ainda)
 POST /api/me/plano
 POST /api/me/cancelar
 POST /api/onboarding
@@ -266,17 +267,16 @@ GET  /api/public/tenant-config/:slug   (público, sem auth)
 POST /api/webhooks/abacatepay
 ```
 
-Autenticação de toda rota privada: header `Authorization: Bearer <jwt
-custom>`, emitido por `auth.rs::make_token`, checado por
-`AuthSubscriber` (mesmo secret `JWT_SECRET` local).
+Login, confirmação de e-mail e redefinição de senha **não são rotas deste
+backend** — são chamadas diretas do frontend pro Supabase
+(`supabase.auth.signUp/signInWithPassword/resend/resetPasswordForEmail/
+updateUser/signInWithOAuth`).
 
-Depois do §6, os cinco endpoints de `/api/auth/*` somem (viram chamadas
-diretas `supabase.auth.*` no frontend), `POST /api/assinaturas` muda de
-assinatura (não cria mais conta) e ganha um irmão novo,
-`POST /api/auth/bootstrap`. O header `Authorization` passa a levar o JWT
-emitido pelo Supabase em vez do custom — `lib/api.ts::request()` não muda
-(já lê de `authStore.getToken()` de forma agnóstica), só o que `authStore`
-devolve muda de fonte.
+Autenticação de toda rota privada: header `Authorization: Bearer <jwt do
+Supabase>` — `lib/api.ts::request()` lê de `authStore.getToken()`, que
+agora espelha `supabase.auth.getSession()` em vez de um token custom em
+localStorage; o backend verifica a assinatura com `SUPABASE_JWT_SECRET`
+(`auth.rs::AuthSubscriber`).
 
 ## 8. O que fica de fora, de propósito
 
