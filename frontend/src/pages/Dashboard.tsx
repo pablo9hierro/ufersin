@@ -45,9 +45,15 @@ export default function Dashboard() {
     api
       .me()
       .then(setMe)
-      .catch((e) => setError(e instanceof ApiError ? e.message : 'Não foi possível carregar seus dados.'))
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 404) {
+          navigate('/completar-conta', { replace: true })
+          return
+        }
+        setError(e instanceof ApiError ? e.message : 'Não foi possível carregar seus dados.')
+      })
       .finally(() => setLoading(false))
-  }, [isAuthenticated])
+  }, [isAuthenticated, navigate])
 
   if (!ready) {
     return (
@@ -119,9 +125,12 @@ export default function Dashboard() {
             Rodoletas
           </Link>
           <div className="flex items-center gap-4">
-            {me.plano && (
-              <Link to="/meu-plano" className="btn-ghost text-sm">
-                Meu plano
+            <Link to="/meu-plano" className="btn-ghost text-sm">
+              Meu plano
+            </Link>
+            {!me.plano && (
+              <Link to="/planos" className="btn-primary text-sm px-3 py-2">
+                Assinar
               </Link>
             )}
             <button onClick={handleLogout} className="btn-ghost text-sm">
@@ -153,16 +162,31 @@ export default function Dashboard() {
           )}
 
           {!me.plano && (
-            <div className="uf-glass rounded-2xl p-5 mb-6 flex flex-wrap items-center gap-4 border-uf-blue/30">
-              <Sparkles className="w-6 h-6 text-uf-blue shrink-0" />
-              <div className="flex-1 min-w-[200px]">
-                <p className="font-semibold text-sm">Sua conta está pronta! Falta só escolher um plano.</p>
-                <p className="text-xs text-uf-silver-dim mt-0.5">Essential, Management ou Premium — leva menos de um minuto.</p>
+            <div className="space-y-4 mb-6">
+              <div className="uf-glass rounded-2xl p-5 flex flex-wrap items-center gap-4 border-uf-blue/30">
+                <Sparkles className="w-6 h-6 text-uf-blue shrink-0" />
+                <div className="flex-1 min-w-[200px]">
+                  <p className="font-semibold text-sm">Sua conta está pronta! Falta só escolher um plano.</p>
+                  <p className="text-xs text-uf-silver-dim mt-0.5">Você já está logado — assinar agora é só um passo.</p>
+                </div>
+                <Link to="/planos" className="btn-primary px-4 py-2.5 text-sm shrink-0">
+                  Ver planos
+                  <ArrowUpRight className="w-4 h-4" />
+                </Link>
               </div>
-              <Link to="/planos" className="btn-primary px-4 py-2.5 text-sm shrink-0">
-                Escolher plano
-                <ArrowUpRight className="w-4 h-4" />
-              </Link>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {PLAN_ORDER.map((code) => (
+                  <Link
+                    key={code}
+                    to={`/assinar?plano=${code}`}
+                    className="uf-glass uf-glass-hover rounded-2xl p-4 block"
+                  >
+                    <p className="font-bold text-sm">{PLAN_MAP[code].name}</p>
+                    <p className="text-lg font-black uf-text mt-1">R$ {PLAN_MAP[code].price}/mês</p>
+                    <p className="text-[11px] text-uf-silver-dim mt-2">Assinar agora →</p>
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
 

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { KeyRound, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { translateAuthError } from '../lib/authErrors'
+import PasswordField from '../components/PasswordField'
 
 /** Landing do link de "esqueci minha senha" -- o supabase-js já estabelece
  * uma sessão de recuperação a partir do token na URL sozinho
@@ -51,16 +52,13 @@ export default function RedefinirSenha() {
         </div>
 
         <form onSubmit={handleRedefinir} className="uf-glass rounded-2xl p-6 space-y-4">
-          <div>
-            <label className="label">Nova senha</label>
-            <input
-              className="input-field"
-              value={novaSenha}
-              onChange={(e) => setNovaSenha(e.target.value)}
-              type="password"
-              placeholder="Pelo menos 8 caracteres"
-            />
-          </div>
+          <PasswordField
+            label="Nova senha"
+            value={novaSenha}
+            onChange={setNovaSenha}
+            placeholder="Pelo menos 8 caracteres"
+            autoComplete="new-password"
+          />
           {error && <p className="error-msg">{error}</p>}
           <button type="submit" disabled={loading} className="btn-primary w-full py-3">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}

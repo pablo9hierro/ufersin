@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, CreditCard, Loader2, Save, Sparkles } from 'lucide-react'
+import { ArrowLeft, CreditCard, ExternalLink, Loader2, Save, Sparkles } from 'lucide-react'
 import { api, ApiError, type FormaPagamento, type MeResponse, type PlanoCode, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { PLAN_MAP } from '../lib/plans'
+import { ecommerceFrontendUrl } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
@@ -55,9 +56,15 @@ export default function MeuPlano() {
         setFormaPagamento(m.forma_pagamento)
         setPlataformaPagamento(m.plataforma_pagamento ?? 'mercado_pago')
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : 'Não foi possível carregar seus dados.'))
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 404) {
+          navigate('/completar-conta', { replace: true })
+          return
+        }
+        setError(e instanceof ApiError ? e.message : 'Não foi possível carregar seus dados.')
+      })
       .finally(() => setLoading(false))
-  }, [isAuthenticated])
+  }, [isAuthenticated, navigate])
 
   if (!ready) {
     return (
@@ -126,8 +133,34 @@ export default function MeuPlano() {
     )
   }
 
-  if (!me.plano) return <Navigate to="/planos" replace />
-  if (me.onboarding_status !== 'provisionado') return <Navigate to="/onboarding" replace />
+  if (!me.plano) {
+    return (
+      <main className="min-h-screen bg-uf-black text-uf-silver px-5 py-16 relative">
+        <div className="uf-mesh" />
+        <div className="max-w-2xl mx-auto relative z-10">
+          <button onClick={() => navigate('/dashboard')} className="btn-ghost text-sm mb-6">
+            <ArrowLeft className="w-4 h-4" /> Voltar ao painel
+          </button>
+          <h1 className="text-2xl font-black mb-2">Meu plano</h1>
+          <p className="text-sm text-uf-silver-dim mb-8">Você ainda não assinou — escolha um plano pra liberar a loja.</p>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {PLAN_ORDER.map((code) => (
+              <Link key={code} to={`/assinar?plano=${code}`} className="uf-glass uf-glass-hover rounded-2xl p-4 block">
+                <p className="font-bold text-sm">{PLAN_MAP[code].name}</p>
+                <p className="text-lg font-black uf-text mt-1">R$ {PLAN_MAP[code].price}/mês</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  const canEditOnboarding = me.onboarding_status === 'provisionado'
+  const panelUrl =
+    me.onboarding_status === 'provisionado' && me.slug
+      ? `${ecommerceFrontendUrl()}/admin/login?tenant=${me.slug}&email=${encodeURIComponent(me.email)}`
+      : null
 
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver px-5 py-16 relative">
@@ -138,12 +171,13 @@ export default function MeuPlano() {
         </button>
 
         <h1 className="text-2xl sm:text-3xl font-black mb-1">Meu plano</h1>
-        <p className="text-sm text-uf-silver-dim mb-8">Edite os dados da sua loja a qualquer momento, ou troque de plano.</p>
+        <p className="text-sm text-uf-silver-dim mb-8">Gerencie sua assinatura, os dados da loja e o acesso ao painel.</p>
 
         <section className="uf-glass rounded-2xl p-6 mb-6">
           <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
             <Sparkles className="w-4 h-4" /> Plano atual: {PLAN_MAP[me.plano].name}
           </h2>
+          <p className="text-sm text-uf-silver-dim mb-4">Status: {me.status} · R$ {(me.valor_mensal ?? 0).toFixed(2)}/mês</p>
           <div className="flex flex-wrap gap-2">
             {PLAN_ORDER.filter((p) => p !== me.plano).map((p) => (
               <button key={p} onClick={() => handleMudarPlano(p)} disabled={busyPlano} className="btn-secondary text-xs px-3 py-2">
@@ -153,8 +187,29 @@ export default function MeuPlano() {
           </div>
         </section>
 
-        <form onSubmit={handleSave} className="uf-glass rounded-2xl p-6 space-y-4">
-          <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Dados da loja</h2>
+        {panelUrl && (
+          <section className="uf-glass rounded-2xl p-6 mb-6">
+            <h2 className="font-bold mb-3 text-sm text-uf-silver-dim uppercase tracking-wide">Painel da loja</h2>
+            <a href={panelUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm px-4 py-2.5 inline-flex">
+              Entrar no painel
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <p className="text-[11px] text-uf-silver-dim mt-2">Mesmo e-mail e senha da conta Rodoletas.</p>
+          </section>
+        )}
+
+        {!canEditOnboarding && (
+          <div className="uf-glass rounded-2xl p-5 mb-6 border-uf-blue/30">
+            <p className="font-semibold text-sm mb-1">Onboarding ainda não finalizado</p>
+            <p className="text-xs text-uf-silver-dim mb-3">Complete a configuração inicial pra liberar a edição contínua e o painel da loja.</p>
+            <Link to="/onboarding" className="btn-primary text-sm px-4 py-2.5 inline-flex">
+              Continuar onboarding
+            </Link>
+          </div>
+        )}
+
+        <form onSubmit={handleSave} className={`uf-glass rounded-2xl p-6 space-y-4 ${!canEditOnboarding ? 'opacity-60 pointer-events-none' : ''}`}>
+          <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Dados da loja (onboarding)</h2>
 
           <div>
             <label className="label">Documento</label>

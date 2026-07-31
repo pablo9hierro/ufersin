@@ -5,6 +5,8 @@ import { LogIn, Loader2 } from 'lucide-react'
 import { supabase, supabaseConfigured } from '../lib/supabaseClient'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { translateAuthError } from '../lib/authErrors'
+import { clearAuthFailures, getAuthLockMessage, recordAuthFailure } from '../lib/authRateLimit'
+import PasswordField from '../components/PasswordField'
 import { PLAN_MAP } from '../lib/plans'
 import type { BillingCycle, PlanoCode } from '../lib/api'
 
@@ -29,6 +31,11 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    const locked = getAuthLockMessage()
+    if (locked) {
+      setError(locked)
+      return
+    }
     if (!supabaseConfigured) {
       setError('Login indisponível: configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY na Vercel.')
       return
@@ -41,9 +48,12 @@ export default function Login() {
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
       if (signInError) throw signInError
+      clearAuthFailures()
       navigate(plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/dashboard')
     } catch (e) {
-      setError(e instanceof Error ? translateAuthError(e.message) : 'Não foi possível entrar. Tente novamente.')
+      const msg = e instanceof Error ? e.message : 'Não foi possível entrar. Tente novamente.'
+      recordAuthFailure()
+      setError(getAuthLockMessage() || translateAuthError(msg))
     } finally {
       setLoading(false)
     }
@@ -72,10 +82,7 @@ export default function Login() {
             <label className="label">E-mail</label>
             <input className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="voce@exemplo.com" />
           </div>
-          <div>
-            <label className="label">Senha</label>
-            <input className="input-field" value={senha} onChange={(e) => setSenha(e.target.value)} type="password" placeholder="••••••••" />
-          </div>
+          <PasswordField label="Senha" value={senha} onChange={setSenha} placeholder="••••••••" />
 
           {error && <p className="error-msg">{error}</p>}
 

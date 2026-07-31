@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Loader2, MailCheck } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { translateAuthError } from '../lib/authErrors'
+import { authRedirectUrl } from '../lib/siteUrl'
 
 export default function EsqueciSenha() {
   const [email, setEmail] = useState('')
@@ -21,7 +22,7 @@ export default function EsqueciSenha() {
     setLoading(true)
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/redefinir-senha`,
+        redirectTo: authRedirectUrl('/redefinir-senha'),
       })
       if (resetError) throw resetError
       setSent(true)

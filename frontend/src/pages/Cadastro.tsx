@@ -1,15 +1,20 @@
-import { useState } from 'react'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Loader2, MailCheck, Rocket, RotateCw } from 'lucide-react'
 import { api } from '../lib/api'
 import { supabase } from '../lib/supabaseClient'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { translateAuthError } from '../lib/authErrors'
+import { clearAuthFailures, getAuthLockMessage, recordAuthFailure } from '../lib/authRateLimit'
+import { finishSignupAfterConfirm } from '../lib/finishSignup'
+import { PENDING_SIGNUP_KEY } from '../lib/pendingSignup'
+import { authRedirectUrl } from '../lib/siteUrl'
+import PasswordField from '../components/PasswordField'
 import { formatBRL, PLAN_MAP, priceForCycle } from '../lib/plans'
 import type { BillingCycle, PlanoCode } from '../lib/api'
 
-export const PENDING_SIGNUP_KEY = 'rodoletas_pending_signup'
+export { PENDING_SIGNUP_KEY }
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -39,14 +44,59 @@ export default function Cadastro() {
   const [error, setError] = useState<string | null>(null)
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false)
   const [resending, setResending] = useState(false)
+  const [finishing, setFinishing] = useState(false)
+  const finishingRef = useRef(false)
 
-  if (ready && isAuthenticated) {
-    return <Navigate to={plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/planos'} replace />
-  }
+  // Se já tem sessão (ex.: F5 depois de confirmar o e-mail no celular),
+  // conclui bootstrap e manda pro dashboard / assinar.
+  useEffect(() => {
+    if (!ready || !isAuthenticated || finishingRef.current) return
+    finishingRef.current = true
+    setFinishing(true)
+    ;(async () => {
+      try {
+        const dest = await finishSignupAfterConfirm()
+        navigate(dest, { replace: true })
+      } catch (e) {
+        finishingRef.current = false
+        setFinishing(false)
+        setError(e instanceof Error ? translateAuthError(e.message) : 'Não foi possível continuar.')
+        if (awaitingConfirmation) setAwaitingConfirmation(true)
+      }
+    })()
+  }, [ready, isAuthenticated, navigate, awaitingConfirmation])
+
+  // Na tela "confirme seu e-mail", fica checando se a sessão apareceu
+  // (confirmou noutro aparelho) — F5 ou foco na aba também revalida.
+  useEffect(() => {
+    if (!awaitingConfirmation) return
+    const tick = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (data.session && !finishingRef.current) {
+        // o effect de isAuthenticated cuida do resto
+        await supabase.auth.refreshSession()
+      }
+    }
+    const id = window.setInterval(tick, 4000)
+    const onFocus = () => {
+      void tick()
+    }
+    window.addEventListener('focus', onFocus)
+    void tick()
+    return () => {
+      window.clearInterval(id)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [awaitingConfirmation])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    const locked = getAuthLockMessage()
+    if (locked) {
+      setError(locked)
+      return
+    }
 
     if (!lojaNome.trim() || !responsavelNome.trim()) {
       setError('Informe o nome da loja e do responsável.')
@@ -71,28 +121,30 @@ export default function Cadastro() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password: senha,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        options: { emailRedirectTo: authRedirectUrl('/auth/callback') },
       })
       if (signUpError) throw signUpError
 
-      const pending = { loja_nome: lojaNome.trim(), responsavel_nome: responsavelNome.trim(), whatsapp: `55${digits}`, senha, plano }
+      const pending = { loja_nome: lojaNome.trim(), responsavel_nome: responsavelNome.trim(), whatsapp: `55${digits}`, senha, plano, ciclo }
 
       if (data.session) {
-        // "Confirm email" desligado nesse projeto Supabase -- já tem sessão, segue direto.
         await api.bootstrap({
           loja_nome: pending.loja_nome,
           responsavel_nome: pending.responsavel_nome,
           whatsapp: pending.whatsapp,
           senha,
         })
-        navigate(plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/planos')
+        clearAuthFailures()
+        navigate(plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/dashboard')
       } else {
-        // Precisa clicar no link de confirmação primeiro -- o bootstrap acontece em /auth/callback.
-        localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({ ...pending, ciclo }))
+        localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify(pending))
+        clearAuthFailures()
         setAwaitingConfirmation(true)
       }
     } catch (e) {
-      setError(e instanceof Error ? translateAuthError(e.message) : 'Não foi possível criar sua conta. Tente novamente.')
+      const msg = e instanceof Error ? e.message : 'Não foi possível criar sua conta. Tente novamente.'
+      recordAuthFailure()
+      setError(getAuthLockMessage() || translateAuthError(msg))
     } finally {
       setLoading(false)
     }
@@ -102,7 +154,11 @@ export default function Cadastro() {
     setResending(true)
     setError(null)
     try {
-      const { error: resendError } = await supabase.auth.resend({ type: 'signup', email: email.trim() })
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: { emailRedirectTo: authRedirectUrl('/auth/callback') },
+      })
       if (resendError) throw resendError
     } catch (e) {
       setError(e instanceof Error ? translateAuthError(e.message) : 'Não foi possível reenviar o e-mail.')
@@ -111,7 +167,7 @@ export default function Cadastro() {
     }
   }
 
-  if (!ready) {
+  if (!ready || finishing) {
     return (
       <main className="min-h-screen bg-uf-black flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
@@ -130,6 +186,7 @@ export default function Cadastro() {
             Enviamos um link de confirmação pra <span className="text-uf-silver">{email.trim()}</span>. Clique nele pra continuar
             {plano ? ` e assinar o plano ${PLAN_MAP[plano].name}` : ''}.
           </p>
+          <p className="text-xs text-uf-silver-dim mb-4">Já confirmou? Atualize a página (F5) ou volte a esta aba — a gente te leva pro painel.</p>
           {error && <p className="error-msg mb-4">{error}</p>}
           <button onClick={handleResend} disabled={resending} className="btn-ghost text-xs mx-auto">
             {resending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
@@ -202,17 +259,14 @@ export default function Cadastro() {
             <label className="label">E-mail *</label>
             <input className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="voce@exemplo.com" />
           </div>
-          <div>
-            <label className="label">Senha *</label>
-            <input
-              className="input-field"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              type="password"
-              placeholder="Pelo menos 8 caracteres"
-            />
-            <p className="text-[11px] text-uf-silver-dim mt-1">É com ela que você entra no seu painel e na sua loja.</p>
-          </div>
+          <PasswordField
+            label="Senha *"
+            value={senha}
+            onChange={setSenha}
+            placeholder="Pelo menos 8 caracteres"
+            autoComplete="new-password"
+            hint="É com ela que você entra no seu painel e na sua loja."
+          />
 
           {error && <p className="error-msg">{error}</p>}
 

@@ -13,6 +13,7 @@ import Assinar from './pages/Assinar'
 import Dashboard from './pages/Dashboard'
 import Onboarding from './pages/Onboarding'
 import MeuPlano from './pages/MeuPlano'
+import CompletarConta from './pages/CompletarConta'
 import Obrigado from './pages/Obrigado'
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
       <Route path="/planos" element={<Planos />} />
       <Route path="/assinar" element={<Assinar />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/completar-conta" element={<CompletarConta />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/meu-plano" element={<MeuPlano />} />
       <Route path="/obrigado" element={<Obrigado />} />

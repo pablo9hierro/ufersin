@@ -1,18 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, XCircle } from 'lucide-react'
-import { api, ApiError } from '../lib/api'
+import { ApiError } from '../lib/api'
 import { supabase } from '../lib/supabaseClient'
-import { PENDING_SIGNUP_KEY } from './Cadastro'
-
-interface PendingSignup {
-  loja_nome: string
-  responsavel_nome: string
-  whatsapp: string
-  senha: string
-  plano: string | null
-  ciclo?: string | null
-}
+import { finishSignupAfterConfirm } from '../lib/finishSignup'
 
 /** Landing do link de confirmação de e-mail depois do cadastro. O
  * supabase-js já processa o token/code da URL sozinho (detectSessionInUrl,
@@ -26,36 +17,23 @@ export default function AuthCallback() {
     if (ran.current) return
     ran.current = true
     ;(async () => {
+      // Espera um pouco o supabase processar o hash/code da URL.
+      for (let i = 0; i < 20; i++) {
+        const { data } = await supabase.auth.getSession()
+        if (data.session) break
+        await new Promise((r) => setTimeout(r, 150))
+      }
       const { data } = await supabase.auth.getSession()
       if (!data.session) {
         setError('Não foi possível confirmar sua sessão. O link pode ter expirado — tente entrar novamente.')
         return
       }
 
-      const pendingRaw = localStorage.getItem(PENDING_SIGNUP_KEY)
-      if (pendingRaw) {
-        localStorage.removeItem(PENDING_SIGNUP_KEY)
-        try {
-          const pending = JSON.parse(pendingRaw) as PendingSignup
-          await api.bootstrap({
-            loja_nome: pending.loja_nome,
-            responsavel_nome: pending.responsavel_nome,
-            whatsapp: pending.whatsapp,
-            senha: pending.senha,
-          })
-          const ciclo = pending.ciclo === 'semestral' ? 'semestral' : 'mensal'
-          navigate(pending.plano ? `/assinar?plano=${pending.plano}&ciclo=${ciclo}` : '/planos', { replace: true })
-        } catch (e) {
-          setError(e instanceof ApiError ? e.message : 'Não foi possível concluir seu cadastro.')
-        }
-        return
-      }
-
       try {
-        await api.me()
-        navigate('/dashboard', { replace: true })
-      } catch {
-        navigate('/cadastro', { replace: true })
+        const dest = await finishSignupAfterConfirm()
+        navigate(dest, { replace: true })
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'Não foi possível concluir seu cadastro.')
       }
     })()
   }, [navigate])
@@ -65,7 +43,10 @@ export default function AuthCallback() {
       <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 text-center">
         <div>
           <XCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
-          <p className="text-uf-silver-dim">{error}</p>
+          <p className="text-uf-silver-dim mb-4">{error}</p>
+          <a href="/login" className="btn-primary text-sm px-4 py-2 inline-flex">
+            Ir pro login
+          </a>
         </div>
       </main>
     )

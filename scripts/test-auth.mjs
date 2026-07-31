@@ -24,7 +24,7 @@ const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pZ2trcnd6eWtwenRyYWtiZmlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NjI2OTQsImV4cCI6MjA5MTUzODY5NH0.0bEy_WikqnfPU9eV7wusSb757dhiTiK5D2KeDSWyJTo'
 
 const stamp = Date.now()
-const email = `auth-test-${stamp}@rodoletas.test`
+const email = `auth.test.${stamp}@gmail.com`
 const password = `TestAuth!${stamp}Aa`
 const results = []
 
