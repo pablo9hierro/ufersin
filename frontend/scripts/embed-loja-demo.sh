@@ -3,9 +3,14 @@
 # pra a demo da Rodoletas abrir as vitrines mockadas no mesmo domínio
 # de produção (…/loja/demo-entrar), sem depender de localhost:5173.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Resolvido a partir do caminho do próprio script (não do cwd) pra
+# funcionar tanto invocado como `bash scripts/embed-loja-demo.sh` de
+# dentro de frontend/ (GitHub Actions) quanto de qualquer outro lugar.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+FRONTEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$(cd "$FRONTEND_DIR/.." && pwd)"
 LOJA_SRC="$ROOT/ecommerce/frontend"
-LOJA_OUT="$ROOT/frontend/public/loja"
+LOJA_OUT="$FRONTEND_DIR/public/loja"
 
 echo "→ Building ecommerce frontend with base=/loja/"
 cd "$LOJA_SRC"
