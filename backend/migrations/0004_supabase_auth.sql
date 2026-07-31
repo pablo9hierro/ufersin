@@ -32,10 +32,8 @@ ALTER TABLE subscribers DROP COLUMN reset_code;
 ALTER TABLE subscribers DROP COLUMN reset_expires_at;
 
 -- `password_hash` continua existindo — não pra autenticar o subscriber
--- (isso é 100% Supabase agora), só pra continuar alimentando
--- `admin_password_hash` no handoff de POST /internal/provision-tenant
--- (ver onboarding.rs). Populado a partir da senha em texto puro que o
--- frontend manda uma única vez em POST /api/auth/bootstrap, logo depois
--- do supabase.auth.signUp(). Fica NULL pra quem se cadastra via Google
--- OAuth (não existe senha nenhuma pra repassar nesse caso — ver
--- ARQUITETURA.md §6 "Limitação conhecida e aceita").
+-- (isso é 100% Supabase Auth e-mail+senha agora), só pra continuar
+-- alimentando `admin_password_hash` no handoff de
+-- POST /internal/provision-tenant (ver onboarding.rs). Populado a partir
+-- da senha em texto puro que o frontend manda uma única vez em
+-- POST /api/auth/bootstrap, logo depois do supabase.auth.signUp().

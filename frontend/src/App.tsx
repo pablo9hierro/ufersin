@@ -3,7 +3,6 @@ import Landing from './pages/Landing'
 import Demo from './pages/Demo'
 import DemoPlano from './pages/DemoPlano'
 import Cadastro from './pages/Cadastro'
-import CompletarCadastro from './pages/CompletarCadastro'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
 import EsqueciSenha from './pages/EsqueciSenha'
@@ -23,7 +22,6 @@ export default function App() {
       <Route path="/demo" element={<Demo />} />
       <Route path="/demo/:plano" element={<DemoPlano />} />
       <Route path="/cadastro" element={<Cadastro />} />
-      <Route path="/completar-cadastro" element={<CompletarCadastro />} />
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/esqueci-senha" element={<EsqueciSenha />} />

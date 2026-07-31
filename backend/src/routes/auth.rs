@@ -10,11 +10,10 @@ pub struct BootstrapInput {
     pub loja_nome: String,
     pub responsavel_nome: String,
     pub whatsapp: String,
-    /// Ausente pra quem se cadastra via Google OAuth — não existe senha
-    /// nenhuma nesse caso, então `password_hash` fica NULL (ver
-    /// ARQUITETURA.md §6 "Limitação conhecida e aceita").
-    #[serde(default)]
-    pub senha: Option<String>,
+    /// Senha em texto puro — só usada pra gerar `password_hash` Argon2
+    /// pro handoff do admin do tenant (nunca autentica o subscriber;
+    /// isso é 100% Supabase Auth e-mail+senha).
+    pub senha: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -49,10 +48,10 @@ pub async fn bootstrap(
         .email
         .clone()
         .ok_or_else(|| AppError::BadRequest("conta Supabase sem e-mail associado".to_string()))?;
-    let password_hash = match body.senha {
-        Some(senha) if senha.len() >= 8 => Some(hash_password(&senha)?),
-        Some(_) => return Err(AppError::BadRequest("a senha precisa ter pelo menos 8 caracteres".to_string())),
-        None => None,
+    let password_hash = if body.senha.len() >= 8 {
+        hash_password(&body.senha)?
+    } else {
+        return Err(AppError::BadRequest("a senha precisa ter pelo menos 8 caracteres".to_string()));
     };
 
     sqlx::query(

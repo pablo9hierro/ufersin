@@ -16,8 +16,8 @@ supabase/      (não usado ainda por este app — reservado pra integração fut
 ## Fluxo completo
 
 Cadastro/login usam o Auth nativo do Supabase (e-mail+senha com
-confirmação de e-mail de verdade, ou Google) e são separados da escolha de
-plano — ver `ARQUITETURA.md` §6 pro desenho completo.
+confirmação de e-mail de verdade) e são separados da escolha de plano —
+ver `ARQUITETURA.md` §6 pro desenho completo.
 
 ```
 Landing (/) -> Escolher plano (#planos) -> /cadastro?plano=X (conta + plano já atrelado)
@@ -113,7 +113,3 @@ Login/cadastro do lojista usam o Auth nativo do Supabase (ver
 - Sincronizar upgrade/downgrade de plano com o valor cobrado de verdade no
   gateway (hoje só troca o plano localmente — ver o TODO em
   `backend/src/routes/me.rs`).
-- Quem se cadastra via Google OAuth não tem senha nenhuma pra repassar pro
-  admin do tenant no provisionamento — primeiro acesso ao painel da loja
-  exige "esqueci minha senha" por lá (ver `ARQUITETURA.md` §6, "Limitação
-  conhecida e aceita").

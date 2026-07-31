@@ -7,7 +7,6 @@ import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { translateAuthError } from '../lib/authErrors'
 import { PLAN_MAP } from '../lib/plans'
 import type { PlanoCode } from '../lib/api'
-import GoogleButton from '../components/GoogleButton'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -61,13 +60,6 @@ export default function Login() {
           <p className="text-uf-silver-dim text-sm mt-2">
             {plano ? `Entre pra assinar o plano ${PLAN_MAP[plano].name}.` : 'Entre no seu painel de assinante.'}
           </p>
-        </div>
-
-        <GoogleButton plano={plano} className="mb-4" />
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-px flex-1 bg-white/10" />
-          <span className="text-[11px] text-uf-silver-dim">ou com e-mail</span>
-          <div className="h-px flex-1 bg-white/10" />
         </div>
 
         <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 space-y-4">

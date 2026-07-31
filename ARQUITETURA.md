@@ -81,7 +81,7 @@ sincronização contínua depois disso).
 
 | Quem | Onde mora a conta | Como autentica hoje |
 |---|---|---|
-| Lojista *assinante* (Rodoletas) | `subscribers` (Postgres local 5434) + `auth.users` (Supabase, projeto-global) | **Auth nativo do Supabase** (e-mail+senha com confirmação real por link, ou Google OAuth) — o backend Rust só VERIFICA o JWT que o Supabase emite (`SUPABASE_JWT_SECRET`, HS256), nunca autentica ninguém sozinho. Ver §6. |
+| Lojista *assinante* (Rodoletas) | `subscribers` (Postgres local 5434) + `auth.users` (Supabase, projeto-global) | **Auth nativo do Supabase** (e-mail+senha com confirmação real por link) — o backend Rust só VERIFICA o JWT que o Supabase emite (`SUPABASE_JWT_SECRET`, HS256), nunca autentica ninguém sozinho. Ver §6. |
 | Admin/motoboy/vendedor da loja (motor) | `ufersin.admins`/`motoboys`/etc (Supabase) | Tokens opaquos em tabela `sessions` própria + `crypt()`/bcrypt via pgcrypto (`sunset_admin_auth.sql`) — **não usa `auth.users` do Supabase de propósito** |
 | Cliente final da loja (motor) | `ufersin.customers` (Supabase) | Mesmo padrão de sessão própria, código de recuperação por WhatsApp |
 
@@ -98,8 +98,8 @@ Schema atual (`backend/migrations/0001..0004`), campos principais:
 ```
 id                 text PK -- é o MESMO uuid do usuário no auth.users do Supabase (ver §6)
 loja_nome, responsavel_nome, whatsapp, email
-password_hash      Argon2 (auth.rs::hash_password) -- NULL pra quem entrou via Google, só
-                    serve pro handoff de admin do tenant, nunca autentica o subscriber
+password_hash      Argon2 (auth.rs::hash_password) -- só serve pro handoff de admin do
+                    tenant, nunca autentica o subscriber (isso é Supabase Auth)
 plan_code          'essential' | 'management' | 'premium' | NULL  -- NULL até assinar um plano
 valor_mensal       double precision | NULL
 gateway            'mercadopago' | 'abacatepay' | NULL
@@ -133,8 +133,7 @@ Landing (/) → Pricing card "Assinar {plano}" → /cadastro?plano={plano}
   → POST /api/onboarding → chama POST /internal/provision-tenant no motor
      (cria Organization+Tenant+Subscription+Admin, reaproveitando o hash de senha)
   → /dashboard
-  → "Entrar no painel da loja" → ecommerce/frontend/admin (mesmo email/senha,
-     exceto quem entrou via Google — ver §6 "Limitação conhecida")
+  → "Entrar no painel da loja" → ecommerce/frontend/admin (mesmo email/senha)
 ```
 
 Cadastro/login **sem** plano atrelado (entrada padrão de `/cadastro` e
@@ -150,8 +149,8 @@ deslogado).
 
 **Objetivo:** o login/cadastro do lojista (antes de assinar) passa a usar
 Auth nativo do Supabase (e-mail+senha com confirmação de e-mail de
-verdade — não mais o código mockado — e opcionalmente Google OAuth),
-**e** separar duas entradas distintas:
+verdade — não mais o código mockado), **e** separar duas entradas
+distintas:
 
 1. **Cadastro/login genérico** (`/cadastro`, `/login` sem `?plano=`) — cria
    a conta, SEM plano nenhum atrelado. Estado novo do subscriber:
@@ -209,17 +208,6 @@ todo o código existente (`me.rs`, `onboarding.rs`, `assinatura.rs` já usam
 - `onboarding.rs`, `webhooks.rs`, `gateway.rs`: lógica interna não muda,
   só o extractor de auth por baixo.
 
-### Limitação conhecida e aceita: Google OAuth não tem senha pra repassar
-
-O handoff de senha pro admin do tenant (§3) depende de ter a senha em
-texto puro no momento do cadastro — isso só existe no fluxo e-mail+senha.
-Quem entra por Google não tem senha nenhuma pra repassar. Solução adotada:
-`password_hash` fica `NULL` nesse caso, e o primeiro acesso ao painel da
-loja (`ecommerce/frontend/admin`) exige "definir senha" (fluxo de
-recuperação de senha de lá) em vez de reaproveitar credencial. Isso é uma
-limitação pré-existente do modelo "SSO por cópia de hash" (§3), não algo
-que este passo piora — só fica mais visível pro caso Google.
-
 ### O que mudou no frontend (`ufersin/frontend`)
 
 - `lib/supabaseClient.ts` novo (client `@supabase/supabase-js`, sem schema
@@ -238,12 +226,9 @@ que este passo piora — só fica mais visível pro caso Google.
 - `/assinar` (nova): só a metade final do `Cadastro` de hoje (escolher
   método de pagamento + confirmar) — chama `POST /api/assinaturas` já
   autenticado.
-- `/auth/callback` (nova): landing do link de confirmação de e-mail e do
-  redirect de OAuth. Dispara `POST /api/auth/bootstrap` quando aplicável e
-  roteia pra `/assinar?plano=X` ou `/planos`.
-- `/completar-cadastro` (nova): só pra quem loga via Google pela primeira
-  vez e ainda não tem linha em `subscribers` — pede loja/responsável/
-  WhatsApp (sem senha, não existe nesse fluxo) e chama o bootstrap.
+- `/auth/callback` (nova): landing do link de confirmação de e-mail.
+  Dispara `POST /api/auth/bootstrap` quando aplicável e roteia pra
+  `/assinar?plano=X` ou `/planos`.
 - `/verificar-email`: deixa de pedir código de 6 dígitos — vira só
   "confira seu e-mail" + botão "reenviar" (`supabase.auth.resend`).
 - `/esqueci-senha`: chama `supabase.auth.resetPasswordForEmail`; nova rota
@@ -270,7 +255,7 @@ POST /api/webhooks/abacatepay
 Login, confirmação de e-mail e redefinição de senha **não são rotas deste
 backend** — são chamadas diretas do frontend pro Supabase
 (`supabase.auth.signUp/signInWithPassword/resend/resetPasswordForEmail/
-updateUser/signInWithOAuth`).
+updateUser`).
 
 Autenticação de toda rota privada: header `Authorization: Bearer <jwt do
 Supabase>` — `lib/api.ts::request()` lê de `authStore.getToken()`, que

@@ -4,7 +4,6 @@ import { Loader2, XCircle } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { supabase } from '../lib/supabaseClient'
 import { PENDING_SIGNUP_KEY } from './Cadastro'
-import { PENDING_PLANO_KEY } from '../components/GoogleButton'
 
 interface PendingSignup {
   loja_nome: string
@@ -14,8 +13,7 @@ interface PendingSignup {
   plano: string | null
 }
 
-/** Landing única pra dois casos: (1) clique no link de confirmação de
- * e-mail depois do cadastro, (2) volta do redirect OAuth do Google. O
+/** Landing do link de confirmação de e-mail depois do cadastro. O
  * supabase-js já processa o token/code da URL sozinho (detectSessionInUrl,
  * padrão true) — só falta decidir pra onde mandar o lojista. */
 export default function AuthCallback() {
@@ -51,16 +49,11 @@ export default function AuthCallback() {
         return
       }
 
-      // Login (e-mail confirmado em outra aba, ou volta do OAuth do Google).
-      const pendingPlano = localStorage.getItem(PENDING_PLANO_KEY)
-      localStorage.removeItem(PENDING_PLANO_KEY)
       try {
         await api.me()
-        navigate(pendingPlano ? `/assinar?plano=${pendingPlano}` : '/dashboard', { replace: true })
+        navigate('/dashboard', { replace: true })
       } catch {
-        // Primeiro login via Google, sem conta Rodoletas ainda -- falta
-        // completar loja/responsável/WhatsApp (não tem senha pra hand-off).
-        navigate(pendingPlano ? `/completar-cadastro?plano=${pendingPlano}` : '/completar-cadastro', { replace: true })
+        navigate('/cadastro', { replace: true })
       }
     })()
   }, [navigate])

@@ -49,8 +49,8 @@ export interface BootstrapInput {
   loja_nome: string
   responsavel_nome: string
   whatsapp: string
-  /** Ausente pra quem se cadastrou via Google OAuth — não existe senha nesse caso. */
-  senha?: string
+  /** Senha em texto puro — vira Argon2 no backend só pro handoff do admin do tenant. */
+  senha: string
 }
 export interface BootstrapOutput {
   id: string
