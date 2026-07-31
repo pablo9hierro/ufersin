@@ -5,8 +5,14 @@ name: Deploy Rodoletas (Vercel)
 # pro Railway; ver ecommerce/README-TENANCY.md pro mesmo raciocínio já
 # aplicado ao motor de e-commerce).
 #
-# Antes do build, embute ecommerce/frontend sob /loja pra a demo pública
-# (/demo → vitrine/admin mockados) funcionar em produção sem localhost.
+# O embed do ecommerce/frontend sob /loja (pra a demo pública funcionar em
+# produção sem localhost) mora no `buildCommand` de frontend/vercel.json,
+# não num step separado aqui — a Vercel também tem integração nativa de
+# Git nesse projeto que builda e publica em paralelo a este workflow
+# (ganhando a corrida às vezes, por ser mais rápida). Se o embed fosse só
+# um step deste workflow, o deploy nativo da Vercel sempre serviria /loja
+# quebrado (fallback pro SPA raiz). Rodando dentro do buildCommand, os
+# dois caminhos de deploy embutem a demo do mesmo jeito.
 #
 # Setup necessário (uma vez só, feito pelo Pablo, não por este workflow):
 #   1. `vercel link` dentro de frontend/ (ou criar o projeto pelo dashboard
@@ -45,9 +51,6 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             ecommerce/frontend/package-lock.json
-      - name: Embed loja demo under /loja
-        run: bash scripts/embed-loja-demo.sh
-        working-directory: frontend
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
       - name: Pull Vercel environment info
