@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { CreditCard, Loader2, QrCode, Rocket } from 'lucide-react'
-import { api, ApiError, type MetodoPagamento, type PlanoCode } from '../lib/api'
+import { api, ApiError, type BillingCycle, type MetodoPagamento, type PlanoCode } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
-import { PLAN_MAP } from '../lib/plans'
+import { formatBRL, PLAN_MAP, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
 
 /** Passo final do fluxo de assinatura -- só o método de pagamento, já
  * autenticado (conta e plano já foram decididos antes, ver Cadastro/Login/
@@ -17,7 +17,10 @@ export default function Assinar() {
 
   const planoParam = searchParams.get('plano') as PlanoCode | null
   const plano: PlanoCode | null = planoParam && planoParam in PLAN_MAP ? planoParam : null
+  const cicloParam = searchParams.get('ciclo') as BillingCycle | null
+  const initialCiclo: BillingCycle = cicloParam === 'semestral' ? 'semestral' : 'mensal'
 
+  const [ciclo, setCiclo] = useState<BillingCycle>(initialCiclo)
   const [metodo, setMetodo] = useState<MetodoPagamento>('cartao')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,17 +32,18 @@ export default function Assinar() {
       </main>
     )
   }
-  if (!isAuthenticated) return <Navigate to={plano ? `/login?plano=${plano}` : '/login'} replace />
+  if (!isAuthenticated) return <Navigate to={plano ? `/login?plano=${plano}&ciclo=${ciclo}` : '/login'} replace />
   if (!plano) return <Navigate to="/planos" replace />
 
   const planInfo = PLAN_MAP[plano]
+  const charged = priceForCycle(planInfo.price, ciclo)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
     try {
-      const result = await api.assinarPlano({ plano, metodo })
+      const result = await api.assinarPlano({ plano, metodo, ciclo })
       if (result.checkout_url) {
         window.location.href = result.checkout_url
       } else {
@@ -59,18 +63,52 @@ export default function Assinar() {
           <Link to="/" className="text-2xl font-black uf-text">
             Rodoletas
           </Link>
-          <p className="text-uf-silver-dim text-sm mt-2">Só falta escolher como pagar.</p>
+          <p className="text-uf-silver-dim text-sm mt-2">Escolha o ciclo e como pagar.</p>
         </div>
 
         <div className="uf-glass rounded-2xl p-6 mb-6 text-center">
           <p className="text-xs text-uf-silver-dim mb-1">Plano {planInfo.name}</p>
-          <p className="text-3xl font-black uf-text">R$ {planInfo.price}/mês</p>
+          {ciclo === 'mensal' ? (
+            <p className="text-3xl font-black uf-text">R$ {formatBRL(planInfo.price)}/mês</p>
+          ) : (
+            <>
+              <p className="text-3xl font-black uf-text">R$ {formatBRL(charged)}/semestre</p>
+              <p className="text-xs text-emerald-400 mt-1">
+                {Math.round(SEMESTRAL_DISCOUNT * 100)}% de desconto · equiv. R$ {formatBRL(charged / 6)}/mês
+              </p>
+            </>
+          )}
           <Link to="/planos" className="text-[11px] text-uf-silver-dim hover:text-uf-silver underline mt-1 inline-block">
             trocar plano
           </Link>
         </div>
 
         <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 space-y-4">
+          <div>
+            <label className="label">Ciclo de cobrança</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setCiclo('mensal')}
+                className={`rounded-xl py-3 text-sm border transition-colors ${
+                  ciclo === 'mensal' ? 'border-uf-blue bg-white/5' : 'border-white/10 text-uf-silver-dim'
+                }`}
+              >
+                Mensal
+              </button>
+              <button
+                type="button"
+                onClick={() => setCiclo('semestral')}
+                className={`rounded-xl py-3 text-sm border transition-colors ${
+                  ciclo === 'semestral' ? 'border-uf-blue bg-white/5' : 'border-white/10 text-uf-silver-dim'
+                }`}
+              >
+                Semestral
+                <span className="block text-[10px] text-emerald-400 mt-0.5">−{Math.round(SEMESTRAL_DISCOUNT * 100)}% off</span>
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="label">Forma de pagamento</label>
             <div className="grid grid-cols-2 gap-3">
@@ -105,8 +143,8 @@ export default function Assinar() {
           </button>
           <p className="text-[11px] text-uf-silver-dim text-center">
             {metodo === 'cartao'
-              ? 'Você será redirecionado ao checkout seguro pra autorizar a cobrança recorrente.'
-              : 'Você vai receber um QR Code Pix na próxima tela.'}
+              ? 'Você será redirecionado ao checkout seguro da AbacatePay pra autorizar a cobrança recorrente.'
+              : 'Você vai receber um QR Code Pix na próxima tela (cobrança do período escolhido).'}
           </p>
         </form>
       </motion.div>

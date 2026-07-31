@@ -11,6 +11,7 @@ interface PendingSignup {
   whatsapp: string
   senha: string
   plano: string | null
+  ciclo?: string | null
 }
 
 /** Landing do link de confirmação de e-mail depois do cadastro. O
@@ -42,7 +43,8 @@ export default function AuthCallback() {
             whatsapp: pending.whatsapp,
             senha: pending.senha,
           })
-          navigate(pending.plano ? `/assinar?plano=${pending.plano}` : '/planos', { replace: true })
+          const ciclo = pending.ciclo === 'semestral' ? 'semestral' : 'mensal'
+          navigate(pending.plano ? `/assinar?plano=${pending.plano}&ciclo=${ciclo}` : '/planos', { replace: true })
         } catch (e) {
           setError(e instanceof ApiError ? e.message : 'Não foi possível concluir seu cadastro.')
         }

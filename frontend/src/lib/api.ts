@@ -44,6 +44,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export type PlanoCode = 'essential' | 'management' | 'premium'
 export type MetodoPagamento = 'pix' | 'cartao' | 'cartao_parcelado'
+export type BillingCycle = 'mensal' | 'semestral'
 
 export interface BootstrapInput {
   loja_nome: string
@@ -60,6 +61,8 @@ export interface BootstrapOutput {
 export interface AssinarPlanoInput {
   plano: PlanoCode
   metodo: MetodoPagamento
+  /** mensal (default) | semestral (6 meses com 5% de desconto). */
+  ciclo?: BillingCycle
 }
 export interface AssinaturaCriada {
   id: string
@@ -86,6 +89,7 @@ export interface MeResponse {
   /** `null` = conta criada, ainda sem plano escolhido — mostrar CTA pra /planos. */
   plano: PlanoCode | null
   valor_mensal: number | null
+  billing_cycle: BillingCycle
   status: 'sem_assinatura' | 'pendente' | 'ativo' | 'pausado' | 'cancelado'
   gateway: string | null
   metodo_pagamento: string | null

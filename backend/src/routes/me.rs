@@ -15,6 +15,7 @@ struct SubscriberRow {
     email: String,
     plan_code: Option<String>,
     valor_mensal: Option<f64>,
+    billing_cycle: String,
     status: String,
     gateway: Option<String>,
     slug: Option<String>,
@@ -45,6 +46,7 @@ pub struct MeResponse {
     /// caso, em vez da seção de gerenciar plano.
     pub plano: Option<String>,
     pub valor_mensal: Option<f64>,
+    pub billing_cycle: String,
     pub status: String,
     pub gateway: Option<String>,
     pub metodo_pagamento: Option<String>,
@@ -75,6 +77,7 @@ pub struct MeResponse {
 pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<MeResponse>, AppError> {
     let row: Option<SubscriberRow> = sqlx::query_as(
         "SELECT id, loja_nome, responsavel_nome, whatsapp, email, plan_code, valor_mensal,
+                COALESCE(billing_cycle, 'mensal') as billing_cycle,
                 status, gateway, slug, onboarding_status, tenant_id, created_at,
                 categoria, endereco, logo_url, cor_principal, documento, tipo_documento,
                 vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento
@@ -96,6 +99,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         email: row.email,
         plano: row.plan_code,
         valor_mensal: row.valor_mensal,
+        billing_cycle: row.billing_cycle,
         status: row.status,
         gateway: row.gateway,
         metodo_pagamento,

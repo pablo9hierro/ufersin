@@ -9,8 +9,15 @@ const MESSAGES: Record<string, string> = {
   'Password should be at least 6 characters': 'A senha precisa ter pelo menos 8 caracteres.',
   'Signup requires a valid password': 'Informe uma senha válida.',
   'For security purposes, you can only request this after some seconds.': 'Aguarde alguns segundos antes de tentar de novo.',
+  'Failed to fetch': 'Não foi possível conectar ao servidor de autenticação. Tente de novo em instantes.',
+  'NetworkError when attempting to fetch resource.': 'Falha de rede ao autenticar. Verifique sua conexão.',
 }
 
 export function translateAuthError(message: string) {
-  return MESSAGES[message] ?? message
+  if (MESSAGES[message]) return MESSAGES[message]
+  const lower = message.toLowerCase()
+  if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed')) {
+    return MESSAGES['Failed to fetch']
+  }
+  return message
 }

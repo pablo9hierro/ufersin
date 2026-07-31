@@ -3,14 +3,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthSubscriber;
 use crate::error::AppError;
-use crate::gateway::{self, PaymentMethod};
+use crate::gateway::{self, BillingCycle, PaymentMethod};
 use crate::state::AppState;
 
 fn valid_plan(code: &str) -> bool {
     matches!(code, "essential" | "management" | "premium")
 }
 
-fn plan_price(code: &str, default_price: f64) -> f64 {
+fn plan_monthly_price(code: &str, default_price: f64) -> f64 {
     match code {
         "essential" => 60.0,
         "management" => 250.0,
@@ -24,9 +24,15 @@ pub struct AssinarPlanoInput {
     pub plano: String,
     #[serde(default = "default_method")]
     pub metodo: PaymentMethod,
+    /// mensal (default) | semestral (6 meses com 5% de desconto).
+    #[serde(default = "default_cycle")]
+    pub ciclo: String,
 }
 fn default_method() -> PaymentMethod {
     PaymentMethod::Cartao
+}
+fn default_cycle() -> String {
+    "mensal".to_string()
 }
 
 #[derive(Debug, Serialize)]
@@ -50,6 +56,8 @@ pub async fn assinar_plano(
     if !valid_plan(&body.plano) {
         return Err(AppError::BadRequest("plano inválido".to_string()));
     }
+    let cycle = BillingCycle::parse(&body.ciclo)
+        .ok_or_else(|| AppError::BadRequest("ciclo inválido — use mensal ou semestral".to_string()))?;
 
     let row: Option<(String, String, String)> = sqlx::query_as("SELECT loja_nome, email, status FROM subscribers WHERE id = $1")
         .bind(&claims.sub)
@@ -61,18 +69,36 @@ pub async fn assinar_plano(
         return Err(AppError::BadRequest("essa conta já tem uma assinatura em andamento".to_string()));
     }
 
-    let valor = plan_price(&body.plano, state.valor_padrao);
+    let monthly = plan_monthly_price(&body.plano, state.valor_padrao);
+    let valor = gateway::charge_amount(monthly, cycle);
     let gateway_kind = gateway::resolve_gateway_kind(&state);
-    let reason = format!("Assinatura Rodoletas ({}) — {}", body.plano, loja_nome.trim());
-    let charge = gateway::create_subscription(&state, gateway_kind, &reason, email.trim(), valor, &claims.sub, body.metodo).await?;
+    let reason = format!(
+        "Assinatura Rodoletas ({}/{}) — {}",
+        body.plano,
+        cycle.as_str(),
+        loja_nome.trim()
+    );
+    let charge = gateway::create_subscription(
+        &state,
+        gateway_kind,
+        &reason,
+        email.trim(),
+        &body.plano,
+        valor,
+        cycle,
+        &claims.sub,
+        body.metodo,
+    )
+    .await?;
 
     sqlx::query(
-        "UPDATE subscribers SET plan_code = $1, gateway = $2, valor_mensal = $3, status = 'pendente', \
-         onboarding_status = 'aguardando_pagamento', mp_preapproval_id = $4, updated_at = now() WHERE id = $5",
+        "UPDATE subscribers SET plan_code = $1, gateway = $2, valor_mensal = $3, billing_cycle = $4, status = 'pendente', \
+         onboarding_status = 'aguardando_pagamento', mp_preapproval_id = $5, updated_at = now() WHERE id = $6",
     )
     .bind(&body.plano)
     .bind(gateway_kind)
-    .bind(valor)
+    .bind(monthly)
+    .bind(cycle.as_str())
     .bind(&charge.external_id)
     .bind(&claims.sub)
     .execute(&state.pool)

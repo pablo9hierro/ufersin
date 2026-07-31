@@ -6,8 +6,8 @@ import { api } from '../lib/api'
 import { supabase } from '../lib/supabaseClient'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { translateAuthError } from '../lib/authErrors'
-import { PLAN_MAP } from '../lib/plans'
-import type { PlanoCode } from '../lib/api'
+import { formatBRL, PLAN_MAP, priceForCycle } from '../lib/plans'
+import type { BillingCycle, PlanoCode } from '../lib/api'
 
 export const PENDING_SIGNUP_KEY = 'rodoletas_pending_signup'
 
@@ -26,6 +26,8 @@ export default function Cadastro() {
   const isAuthenticated = useIsAuthenticated()
   const planoParam = searchParams.get('plano') as PlanoCode | null
   const plano: PlanoCode | null = planoParam && planoParam in PLAN_MAP ? planoParam : null
+  const cicloParam = searchParams.get('ciclo') as BillingCycle | null
+  const ciclo: BillingCycle = cicloParam === 'semestral' ? 'semestral' : 'mensal'
   const planInfo = plano ? PLAN_MAP[plano] : null
 
   const [lojaNome, setLojaNome] = useState('')
@@ -39,7 +41,7 @@ export default function Cadastro() {
   const [resending, setResending] = useState(false)
 
   if (ready && isAuthenticated) {
-    return <Navigate to={plano ? `/assinar?plano=${plano}` : '/planos'} replace />
+    return <Navigate to={plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/planos'} replace />
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -83,10 +85,10 @@ export default function Cadastro() {
           whatsapp: pending.whatsapp,
           senha,
         })
-        navigate(plano ? `/assinar?plano=${plano}` : '/planos')
+        navigate(plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/planos')
       } else {
         // Precisa clicar no link de confirmação primeiro -- o bootstrap acontece em /auth/callback.
-        localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify(pending))
+        localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({ ...pending, ciclo }))
         setAwaitingConfirmation(true)
       }
     } catch (e) {
@@ -159,7 +161,11 @@ export default function Cadastro() {
         {planInfo && (
           <div className="uf-glass rounded-2xl p-6 mb-6 text-center">
             <p className="text-xs text-uf-silver-dim mb-1">Plano {planInfo.name}</p>
-            <p className="text-3xl font-black uf-text">R$ {planInfo.price}/mês</p>
+            <p className="text-3xl font-black uf-text">
+              {ciclo === 'mensal'
+                ? `R$ ${formatBRL(planInfo.price)}/mês`
+                : `R$ ${formatBRL(priceForCycle(planInfo.price, 'semestral'))}/semestre (−5%)`}
+            </p>
             <Link to="/#planos" className="text-[11px] text-uf-silver-dim hover:text-uf-silver underline mt-1 inline-block">
               trocar plano
             </Link>
@@ -216,7 +222,7 @@ export default function Cadastro() {
           </button>
           <p className="text-xs text-center text-uf-silver-dim">
             Já tem conta?{' '}
-            <Link to={plano ? `/login?plano=${plano}` : '/login'} className="text-uf-silver font-semibold hover:underline">
+            <Link to={plano ? `/login?plano=${plano}&ciclo=${ciclo}` : '/login'} className="text-uf-silver font-semibold hover:underline">
               Entrar
             </Link>
           </p>

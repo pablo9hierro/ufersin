@@ -21,9 +21,8 @@ pub struct GatewayCharge {
 
 /// PIX, cartão (à vista) e cartão parcelado — o spec pede suporte aos três;
 /// qual deles um gateway realmente honra depende do gateway (Mercado Pago
-/// preapproval aqui só faz cartão recorrente; AbacatePay é PIX-first).
-/// Existe pra a intenção do lojista via o formulário de checkout, mesmo
-/// enquanto nem todo gateway consegue atender todas as três ainda.
+/// preapproval aqui só faz cartão recorrente; AbacatePay é PIX-first no
+/// avulso e CARD no checkout de assinatura recorrente).
 #[derive(Debug, Clone, Copy, Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PaymentMethod {
@@ -32,11 +31,43 @@ pub enum PaymentMethod {
     CartaoParcelado,
 }
 
-/// Qual gateway processa a assinatura — hoje só "mercadopago" está
-/// realmente ligado (é o que já funciona em produção); "abacatepay" existe
-/// como camada preparada e roda em modo mock até ter credencial de
-/// verdade (mesmo padrão mock/real já usado no motor de e-commerce pro
-/// Pix do cliente final — ver ecommerce/backend/src/abacatepay.rs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BillingCycle {
+    Mensal,
+    Semestral,
+}
+
+impl BillingCycle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Mensal => "mensal",
+            Self::Semestral => "semestral",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "mensal" => Some(Self::Mensal),
+            "semestral" => Some(Self::Semestral),
+            _ => None,
+        }
+    }
+}
+
+/// Desconto de 5% no total do semestre (6 × mensal × 0.95).
+pub const SEMESTRAL_DISCOUNT: f64 = 0.05;
+
+/// Valor cobrado por ciclo: mensal = preço cheio; semestral = 6 meses − 5%.
+pub fn charge_amount(monthly_price: f64, cycle: BillingCycle) -> f64 {
+    match cycle {
+        BillingCycle::Mensal => monthly_price,
+        BillingCycle::Semestral => ((monthly_price * 6.0) * (1.0 - SEMESTRAL_DISCOUNT) * 100.0).round() / 100.0,
+    }
+}
+
+/// Qual gateway processa a assinatura — AbacatePay tem prioridade quando a
+/// chave está configurada; senão cai no Mercado Pago.
 pub fn resolve_gateway_kind(state: &AppState) -> &'static str {
     if state.abacatepay_token.is_some() {
         "abacatepay"
@@ -50,14 +81,31 @@ pub async fn create_subscription(
     gateway: &str,
     reason: &str,
     payer_email: &str,
-    valor_mensal: f64,
+    plan_code: &str,
+    amount_reais: f64,
+    cycle: BillingCycle,
     external_reference: &str,
     method: PaymentMethod,
 ) -> Result<GatewayCharge, AppError> {
     match gateway {
-        "abacatepay" => abacatepay_gateway::create_subscription(state, reason, payer_email, valor_mensal, external_reference, method).await,
+        "abacatepay" => {
+            abacatepay_gateway::create_subscription(
+                state,
+                reason,
+                payer_email,
+                plan_code,
+                amount_reais,
+                cycle,
+                external_reference,
+                method,
+            )
+            .await
+        }
         _ => {
-            let r = mercadopago::create_subscription(state, reason, payer_email, valor_mensal, external_reference).await?;
+            // Mercado Pago preapproval é mensal; semestral cobra o valor do
+            // período como transaction_amount único por ciclo (ainda mensal
+            // no MP — o valor já vem ajustado pelo caller).
+            let r = mercadopago::create_subscription(state, reason, payer_email, amount_reais, external_reference).await?;
             Ok(GatewayCharge {
                 external_id: r.preapproval_id,
                 checkout_url: Some(r.init_point),

@@ -1,4 +1,4 @@
-import type { PlanoCode } from './api'
+import type { BillingCycle, PlanoCode } from './api'
 
 export interface PlanInfo {
   code: PlanoCode
@@ -8,6 +8,9 @@ export interface PlanInfo {
   features: string[]
   highlight?: boolean
 }
+
+/** Desconto aplicado no total do semestre (6 × mensal). */
+export const SEMESTRAL_DISCOUNT = 0.05
 
 // Fonte única dos 3 planos — usada pela Pricing da Landing e por /planos
 // (escolha pós-login). Mesmos planos/preços do motor de e-commerce
@@ -37,4 +40,26 @@ export const PLANS: PlanInfo[] = [
   },
 ]
 
-export const PLAN_MAP: Record<PlanoCode, PlanInfo> = Object.fromEntries(PLANS.map((p) => [p.code, p])) as Record<PlanoCode, PlanInfo>
+export const PLAN_MAP: Record<PlanoCode, PlanInfo> = Object.fromEntries(PLANS.map((p) => [p.code, p])) as Record<
+  PlanoCode,
+  PlanInfo
+>
+
+export const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
+export const PLAN_NAMES: Record<PlanoCode, string> = {
+  essential: 'Essential',
+  management: 'Management',
+  premium: 'Premium',
+}
+
+/** Valor cobrado no ciclo escolhido. Semestral = 6 meses com 5% off. */
+export function priceForCycle(monthly: number, cycle: BillingCycle): number {
+  if (cycle === 'semestral') {
+    return Math.round(monthly * 6 * (1 - SEMESTRAL_DISCOUNT) * 100) / 100
+  }
+  return monthly
+}
+
+export function formatBRL(value: number): string {
+  return value.toLocaleString('pt-BR', { minimumFractionDigits: value % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })
+}

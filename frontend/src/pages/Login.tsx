@@ -6,7 +6,7 @@ import { supabase, supabaseConfigured } from '../lib/supabaseClient'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { translateAuthError } from '../lib/authErrors'
 import { PLAN_MAP } from '../lib/plans'
-import type { PlanoCode } from '../lib/api'
+import type { BillingCycle, PlanoCode } from '../lib/api'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -15,6 +15,7 @@ export default function Login() {
   const isAuthenticated = useIsAuthenticated()
   const planoParam = searchParams.get('plano') as PlanoCode | null
   const plano: PlanoCode | null = planoParam && planoParam in PLAN_MAP ? planoParam : null
+  const ciclo: BillingCycle = searchParams.get('ciclo') === 'semestral' ? 'semestral' : 'mensal'
 
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
@@ -22,7 +23,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
 
   if (ready && isAuthenticated) {
-    return <Navigate to={plano ? `/assinar?plano=${plano}` : '/dashboard'} replace />
+    return <Navigate to={plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/dashboard'} replace />
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,7 +41,7 @@ export default function Login() {
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
       if (signInError) throw signInError
-      navigate(plano ? `/assinar?plano=${plano}` : '/dashboard')
+      navigate(plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/dashboard')
     } catch (e) {
       setError(e instanceof Error ? translateAuthError(e.message) : 'Não foi possível entrar. Tente novamente.')
     } finally {
