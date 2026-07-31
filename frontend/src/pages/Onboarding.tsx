@@ -9,7 +9,6 @@ const CATEGORIAS = ['Alimentação', 'Moda', 'Beleza', 'Casa & decoração', 'El
 const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
 const PLATAFORMAS: { value: PlataformaPagamento; label: string; credField: string }[] = [
   { value: 'mercado_pago', label: 'Mercado Pago', credField: 'Access Token' },
-  { value: 'pagbank', label: 'PagBank', credField: 'Token de integração' },
   { value: 'abacate_pay', label: 'AbacatePay', credField: 'Chave de API' },
 ]
 

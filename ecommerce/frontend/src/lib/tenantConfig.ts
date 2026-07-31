@@ -17,7 +17,7 @@ export interface TenantConfig {
   vender_externamente: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: 'manual' | 'plataforma'
-  plataforma_pagamento: 'mercado_pago' | 'pagbank' | 'abacate_pay' | null
+  plataforma_pagamento: 'mercado_pago' | 'abacate_pay' | null
 }
 
 const DEFAULT_CONFIG: TenantConfig = {
