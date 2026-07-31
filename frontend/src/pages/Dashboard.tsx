@@ -18,6 +18,7 @@ import {
 import { api, ApiError, type MeResponse, type PlanoCode } from '../lib/api'
 import { authStore, useAuthReady, useEmailConfirmed, useIsAuthenticated } from '../lib/authStore'
 import { PLAN_MAP } from '../lib/plans'
+import { ecommerceFrontendUrl } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 
@@ -28,8 +29,6 @@ const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   cancelado: { label: 'Cancelado', className: 'bg-red-400/15 text-red-300' },
   sem_assinatura: { label: 'Sem plano', className: 'bg-white/10 text-uf-silver-dim' },
 }
-
-const ECOMMERCE_FRONTEND_URL = import.meta.env.VITE_ECOMMERCE_FRONTEND_URL || 'http://localhost:5173'
 
 export default function Dashboard() {
   const ready = useAuthReady()
@@ -260,7 +259,7 @@ export default function Dashboard() {
                     Sua loja: <span className="font-semibold">{me.dominio}</span>
                   </p>
                   <a
-                    href={`${ECOMMERCE_FRONTEND_URL}/admin/login?tenant=${me.slug}&email=${encodeURIComponent(me.email)}`}
+                    href={`${ecommerceFrontendUrl()}/admin/login?tenant=${me.slug}&email=${encodeURIComponent(me.email)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="btn-primary text-xs px-3 py-2.5 inline-flex"

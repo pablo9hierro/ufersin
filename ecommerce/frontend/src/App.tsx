@@ -184,8 +184,11 @@ function StyleAware({
 }
 
 export default function App() {
+  // Vite define BASE_URL a partir de `base` no vite.config — em produção
+  // embutido sob /loja fica "/loja/"; local fica "/".
+  const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || undefined
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <DemoBrandScope />
       <CustomerBackdrop />
       <CustomerPageDecorations />

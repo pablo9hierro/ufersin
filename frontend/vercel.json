@@ -2,5 +2,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/loja", "destination": "/loja/index.html" },
+    { "source": "/loja/(.*)", "destination": "/loja/index.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
