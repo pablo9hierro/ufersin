@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "bash scripts/embed-loja-demo.sh && npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
