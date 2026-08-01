@@ -42,3 +42,15 @@ export const FinanceiroSummarySchema = z.object({
   avg_delivery_minutes: z.number(),
 })
 export type FinanceiroSummary = z.infer<typeof FinanceiroSummarySchema>
+
+/** Custo + lucro no intervalo. custo = Σ qty × cost_price dos produtos. */
+export const LucroSummarySchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  receita: z.number(),
+  custo: z.number(),
+  lucro: z.number(),
+  orders_count: z.number(),
+  incomplete_cost: z.boolean(),
+})
+export type LucroSummary = z.infer<typeof LucroSummarySchema>

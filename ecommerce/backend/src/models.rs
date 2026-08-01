@@ -28,6 +28,8 @@ pub struct ProductRow {
     #[allow(dead_code)]
     pub created_at: String,
     pub category_name: Option<String>,
+    pub cost_price: Option<f64>,
+    pub low_stock_threshold: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -41,6 +43,8 @@ pub struct ProductDto {
     pub category_id: Option<String>,
     pub category_name: Option<String>,
     pub active: bool,
+    pub cost_price: Option<f64>,
+    pub low_stock_threshold: Option<i64>,
 }
 
 impl From<ProductRow> for ProductDto {
@@ -55,6 +59,8 @@ impl From<ProductRow> for ProductDto {
             category_id: r.category_id,
             category_name: r.category_name,
             active: r.active != 0,
+            cost_price: r.cost_price,
+            low_stock_threshold: r.low_stock_threshold,
         }
     }
 }
@@ -69,6 +75,10 @@ pub struct ProductInput {
     pub category_id: Option<String>,
     #[serde(default)]
     pub active: Option<bool>,
+    #[serde(default)]
+    pub cost_price: Option<f64>,
+    #[serde(default)]
+    pub low_stock_threshold: Option<i64>,
 }
 
 // ---------- Motoboys ----------
@@ -281,6 +291,21 @@ pub struct FinanceiroSummary {
     pub motoboys: Vec<serde_json::Value>,
     #[serde(default)]
     pub avg_delivery_minutes: f64,
+}
+
+/// Custo + lucro no intervalo [from, to] (datas ISO YYYY-MM-DD, inclusive).
+/// custo = Σ qty × COALESCE(product.cost_price, 0) nos pedidos pagos;
+/// receita = Σ order.total pagos (site + PDV/balcão); lucro = receita − custo.
+#[derive(Debug, Serialize)]
+pub struct LucroSummary {
+    pub from: String,
+    pub to: String,
+    pub receita: f64,
+    pub custo: f64,
+    pub lucro: f64,
+    pub orders_count: i64,
+    /// true quando algum item vendido não tem cost_price cadastrado.
+    pub incomplete_cost: bool,
 }
 
 // ---------- Horário / status da loja ----------

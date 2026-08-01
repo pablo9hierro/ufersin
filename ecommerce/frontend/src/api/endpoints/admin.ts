@@ -12,6 +12,7 @@ import {
   CrmSegmentSchema,
   FinanceiroSummarySchema,
   FinanceiroTimeseriesPointSchema,
+  LucroSummarySchema,
   MotoboyPendingSchema,
   MotoboySchema,
   MotoboySettlementSchema,
@@ -119,6 +120,7 @@ export const adminEndpoint = {
   financeiro: {
     get: async () => validate(FinanceiroSummarySchema, await api.admin.financeiro.get(), 'admin.financeiro.get'),
     timeseries: async (days?: number) => validateList(FinanceiroTimeseriesPointSchema, await api.admin.financeiro.timeseries(days), 'admin.financeiro.timeseries'),
+    lucro: async (from: string, to: string) => validate(LucroSummarySchema, await api.admin.financeiro.lucro(from, to), 'admin.financeiro.lucro'),
   },
   siteSettings: {
     updateHeroImage: async (imageUrl: string) => api.admin.siteSettings.updateHeroImage(imageUrl),

@@ -8,9 +8,10 @@ use crate::auth::{hash_password, AdminTenant, AdminUser};
 use crate::error::AppError;
 use crate::features::{self, Feature};
 use crate::models::{
-    Category, CategoryInput, FinanceiroSummary, MotoboyDto, MotoboyInput, MotoboyRow, OrderDto,
-    OrderRow, ProductDto, ProductInput, ProductRow, SetStoreHoursInput, SetStoreManualStatusInput,
-    StatusCount, StoreHourDay, StoreHourInterval, StoreStatusDto, TopProduct, UpdateStatusInput,
+    Category, CategoryInput, FinanceiroSummary, LucroSummary, MotoboyDto, MotoboyInput, MotoboyRow,
+    OrderDto, OrderRow, ProductDto, ProductInput, ProductRow, SetStoreHoursInput,
+    SetStoreManualStatusInput, StatusCount, StoreHourDay, StoreHourInterval, StoreStatusDto,
+    TopProduct, UpdateStatusInput,
 };
 use crate::orders_common::row_to_dto;
 use crate::state::AppState;
@@ -150,8 +151,8 @@ pub async fn create_product(
     let id = Uuid::new_v4().to_string();
     let active = input.active.unwrap_or(true);
     sqlx::query(
-        "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active, cost_price, low_stock_threshold) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -162,6 +163,8 @@ pub async fn create_product(
     .bind(&input.image_url)
     .bind(&input.category_id)
     .bind(active as i64)
+    .bind(input.cost_price)
+    .bind(input.low_stock_threshold)
     .execute(&mut *tx)
     .await?;
 
@@ -184,7 +187,8 @@ pub async fn update_product(
     let active = input.active.unwrap_or(true);
     let result = sqlx::query(
         "UPDATE products SET name = $1, description = $2, price = $3, quantity = $4, image_url = $5, \
-         category_id = $6, active = $7 WHERE tenant_id = $8 AND id = $9",
+         category_id = $6, active = $7, cost_price = $8, low_stock_threshold = $9 \
+         WHERE tenant_id = $10 AND id = $11",
     )
     .bind(&input.name)
     .bind(&input.description)
@@ -193,6 +197,8 @@ pub async fn update_product(
     .bind(&input.image_url)
     .bind(&input.category_id)
     .bind(active as i64)
+    .bind(input.cost_price)
+    .bind(input.low_stock_threshold)
     .bind(&claims.tenant_id)
     .bind(&id)
     .execute(&mut *tx)
@@ -584,6 +590,107 @@ pub async fn financeiro(
         total_discount_given: 0.0,
         motoboys: vec![],
         avg_delivery_minutes: 0.0,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LucroQuery {
+    /// YYYY-MM-DD inclusive
+    pub from: String,
+    /// YYYY-MM-DD inclusive
+    pub to: String,
+}
+
+fn valid_iso_date(s: &str) -> bool {
+    if s.len() != 10 {
+        return false;
+    }
+    let b = s.as_bytes();
+    b[4] == b'-'
+        && b[7] == b'-'
+        && b[0..4].iter().all(u8::is_ascii_digit)
+        && b[5..7].iter().all(u8::is_ascii_digit)
+        && b[8..10].iter().all(u8::is_ascii_digit)
+}
+
+/// Custo e lucro no intervalo. Inclui vendas de site e PDV (balcão) —
+/// qualquer pedido com payment_status = 'pago'.
+pub async fn financeiro_lucro(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Query(q): Query<LucroQuery>,
+) -> Result<Json<LucroSummary>, AppError> {
+    if !valid_iso_date(&q.from) || !valid_iso_date(&q.to) {
+        return Err(AppError::BadRequest(
+            "from/to must be YYYY-MM-DD".to_string(),
+        ));
+    }
+    if q.from > q.to {
+        return Err(AppError::BadRequest(
+            "from must be <= to".to_string(),
+        ));
+    }
+
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+
+    // created_at é TEXT (now()::text); cast pra timestamptz cobre o intervalo
+    // inclusivo [from 00:00, to+1day).
+    let receita_row: (f64, i64) = sqlx::query_as(
+        "SELECT COALESCE(SUM(total), 0)::double precision, COUNT(*)::bigint \
+         FROM orders \
+         WHERE tenant_id = $1 AND payment_status = 'pago' \
+           AND created_at::timestamptz >= $2::date \
+           AND created_at::timestamptz < ($3::date + interval '1 day')",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&q.from)
+    .bind(&q.to)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let custo_row: (f64,) = sqlx::query_as(
+        "SELECT COALESCE(SUM(oi.quantity::double precision * COALESCE(p.cost_price, 0)), 0)::double precision \
+         FROM order_items oi \
+         JOIN orders o ON o.id = oi.order_id \
+         LEFT JOIN products p ON p.id = oi.product_id AND p.tenant_id = o.tenant_id \
+         WHERE o.tenant_id = $1 AND o.payment_status = 'pago' \
+           AND o.created_at::timestamptz >= $2::date \
+           AND o.created_at::timestamptz < ($3::date + interval '1 day')",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&q.from)
+    .bind(&q.to)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let incomplete: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::bigint \
+         FROM order_items oi \
+         JOIN orders o ON o.id = oi.order_id \
+         LEFT JOIN products p ON p.id = oi.product_id AND p.tenant_id = o.tenant_id \
+         WHERE o.tenant_id = $1 AND o.payment_status = 'pago' \
+           AND o.created_at::timestamptz >= $2::date \
+           AND o.created_at::timestamptz < ($3::date + interval '1 day') \
+           AND (p.cost_price IS NULL)",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&q.from)
+    .bind(&q.to)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let receita = receita_row.0;
+    let custo = custo_row.0;
+    Ok(Json(LucroSummary {
+        from: q.from,
+        to: q.to,
+        receita,
+        custo,
+        lucro: receita - custo,
+        orders_count: receita_row.1,
+        incomplete_cost: incomplete.0 > 0,
     }))
 }
 

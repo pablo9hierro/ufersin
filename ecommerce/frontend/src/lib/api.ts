@@ -22,6 +22,7 @@ import type {
   EvolutionStatus,
   FinanceiroSummary,
   FinanceiroTimeseriesPoint,
+  LucroSummary,
   Motoboy,
   MotoboyFinanceiro,
   MotoboyPending,
@@ -157,6 +158,41 @@ async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   return data as T
 }
 
+/** Agrega receita/custo/lucro no client (demo local + fallback Supabase). */
+export function computeLucroFromOrders(
+  orders: Order[],
+  products: Product[],
+  from: string,
+  to: string
+): LucroSummary {
+  const costById = new Map(products.map((p) => [p.id, p.cost_price ?? null]))
+  const paid = orders.filter((o) => {
+    if (o.payment_status !== 'pago') return false
+    const day = o.created_at.slice(0, 10)
+    return day >= from && day <= to
+  })
+  let receita = 0
+  let custo = 0
+  let incomplete_cost = false
+  for (const o of paid) {
+    receita += o.total
+    for (const item of o.items) {
+      const cp = costById.get(item.product_id)
+      if (cp == null) incomplete_cost = true
+      custo += item.quantity * (cp ?? 0)
+    }
+  }
+  return {
+    from,
+    to,
+    receita,
+    custo,
+    lucro: receita - custo,
+    orders_count: paid.length,
+    incomplete_cost,
+  }
+}
+
 const remoteApi = {
   // Catálogo, checkout e consulta de pedido falam direto com o Supabase
   // (RLS + RPCs) — ver frontend/src/lib/supabasePublicApi.ts e
@@ -282,6 +318,8 @@ const remoteApi = {
                 image_url: payload.image_url ?? null,
                 category_id: payload.category_id ?? null,
                 active: payload.active ?? true,
+                cost_price: payload.cost_price ?? null,
+                low_stock_threshold: payload.low_stock_threshold ?? null,
               }),
             })
           : rpc<Product>('admin_create_product', {
@@ -309,6 +347,8 @@ const remoteApi = {
                 image_url: payload.image_url ?? null,
                 category_id: payload.category_id ?? null,
                 active: payload.active ?? true,
+                cost_price: payload.cost_price ?? null,
+                low_stock_threshold: payload.low_stock_threshold ?? null,
               }),
             })
           : rpc<Product>('admin_update_product', {
@@ -773,6 +813,19 @@ const remoteApi = {
           : rpc<FinanceiroSummary>('admin_financeiro', { p_token: adminToken() }),
       timeseries: (days?: number) =>
         rpc<FinanceiroTimeseriesPoint[]>('admin_financeiro_timeseries', { p_token: adminToken(), p_days: days ?? 30 }),
+      lucro: async (from: string, to: string): Promise<LucroSummary> => {
+        if (isRailwayAdminJwt()) {
+          return railwayAdmin<LucroSummary>(
+            `/api/admin/financeiro/lucro?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+          )
+        }
+        // Sessão Supabase / fallback: agrega no client a partir de pedidos + custo do catálogo.
+        const [orders, products] = await Promise.all([
+          rpc<Order[]>('admin_list_orders', { p_token: adminToken(), p_status: null }),
+          rpc<Product[]>('admin_list_products', { p_token: adminToken() }),
+        ])
+        return computeLucroFromOrders(orders, products, from, to)
+      },
     },
     siteSettings: {
       updateHeroImage: (imageUrl: string) =>
@@ -807,28 +860,36 @@ const remoteApi = {
         rpc<{ carousel_style: CarouselStyle }>('admin_update_carousel_style', { p_token: adminToken(), p_style: style }),
     },
     storeStatus: {
-      get: () =>
-        isRailwayAdminJwt()
-          ? railwayAdmin<StoreStatus>('/api/admin/store-status')
-          : supabasePublicApi.storeStatus.get(),
-      setHours: (hours: StoreHourDay[]) =>
-        isRailwayAdminJwt()
-          ? railwayAdmin<{ ok: boolean }>('/api/admin/store-hours', {
-              method: 'PUT',
-              body: JSON.stringify({ hours }),
-            })
-          : rpc<{ ok: boolean }>('admin_set_store_hours', { p_token: adminToken(), p_hours: hours }),
-      setManualStatus: (manuallyClosed: boolean, reason?: string) =>
-        isRailwayAdminJwt()
-          ? railwayAdmin<{ ok: boolean }>('/api/admin/store-manual-status', {
-              method: 'PUT',
-              body: JSON.stringify({ manually_closed: manuallyClosed, reason: reason ?? null }),
-            })
-          : rpc<{ ok: boolean }>('admin_set_store_manual_status', {
-              p_token: adminToken(),
-              p_manually_closed: manuallyClosed,
-              p_reason: reason ?? null,
-            }),
+      // Multi-tenant (JWT Railway) NUNCA cai no schema Supabase `ufersin`
+      // — essa schema não existe no projeto atual e gerava
+      // "Invalid schema: ufersin" / 404 em store_hours. Rotas no motor:
+      // GET /api/admin/store-status, PUT store-hours, PUT store-manual-status.
+      get: () => {
+        if (!isRailwayAdminJwt()) return supabasePublicApi.storeStatus.get()
+        return railwayAdmin<StoreStatus>('/api/admin/store-status')
+      },
+      setHours: (hours: StoreHourDay[]) => {
+        if (!isRailwayAdminJwt()) {
+          return rpc<{ ok: boolean }>('admin_set_store_hours', { p_token: adminToken(), p_hours: hours })
+        }
+        return railwayAdmin<{ ok: boolean }>('/api/admin/store-hours', {
+          method: 'PUT',
+          body: JSON.stringify({ hours }),
+        })
+      },
+      setManualStatus: (manuallyClosed: boolean, reason?: string) => {
+        if (!isRailwayAdminJwt()) {
+          return rpc<{ ok: boolean }>('admin_set_store_manual_status', {
+            p_token: adminToken(),
+            p_manually_closed: manuallyClosed,
+            p_reason: reason ?? null,
+          })
+        }
+        return railwayAdmin<{ ok: boolean }>('/api/admin/store-manual-status', {
+          method: 'PUT',
+          body: JSON.stringify({ manually_closed: manuallyClosed, reason: reason ?? null }),
+        })
+      },
     },
     crm: {
       customers: () => rpc<CrmCustomer[]>('admin_crm_customers', { p_token: adminToken() }),

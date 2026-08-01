@@ -2418,6 +2418,36 @@ async function financeiroTimeseries(days = 30): Promise<import('../types').Finan
   return points
 }
 
+async function financeiroLucro(from: string, to: string): Promise<import('../types').LucroSummary> {
+  const db = loadDb()
+  const costById = new Map(db.products.map((p) => [p.id, p.cost_price ?? null]))
+  const paid = db.orders.filter((o) => {
+    if (o.payment_status !== 'pago') return false
+    const day = o.created_at.slice(0, 10)
+    return day >= from && day <= to
+  })
+  let receita = 0
+  let custo = 0
+  let incomplete_cost = false
+  for (const o of paid) {
+    receita += o.total
+    for (const item of o.items) {
+      const cp = costById.get(item.product_id)
+      if (cp == null) incomplete_cost = true
+      custo += item.quantity * (cp ?? 0)
+    }
+  }
+  return {
+    from,
+    to,
+    receita,
+    custo,
+    lucro: receita - custo,
+    orders_count: paid.length,
+    incomplete_cost,
+  }
+}
+
 // Modo demo não tem uma tabela de clientes separada (o pedido já embute
 // nome/whatsapp) — agrupa direto pelos pedidos. birthdate não é rastreado
 // localmente, sempre null aqui (só existe de verdade no Supabase).
@@ -2757,7 +2787,7 @@ export const localApi = {
     shippingSettings: { get: getShippingSettings, update: updateShippingSettings },
     siteSettings: { updateHeroImage, updateBackground, updateSmoke: updateSmokeSettings, updateBadges, updateCarouselStyle },
     storeStatus: { get: getStoreStatus, setHours: setStoreHours, setManualStatus: setStoreManualStatus },
-    financeiro: { get: financeiro, timeseries: financeiroTimeseries },
+    financeiro: { get: financeiro, timeseries: financeiroTimeseries, lucro: financeiroLucro },
     crm: { customers: adminCrmCustomers },
     segments: { list: adminListSegments, create: createSegment, update: updateSegment, delete: deleteSegment },
     campanhaCoupons: {

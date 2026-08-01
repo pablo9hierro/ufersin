@@ -266,7 +266,8 @@ export default function App() {
           <Route path="crm" element={<AdminCrm />} />
           <Route path="promocoes" element={<AdminPromocoes />} />
           <Route path="layout-cliente" element={<AdminLayoutCliente />} />
-          <Route path="financeiro" element={<AdminFinanceiro />} />
+          <Route path="relatorios" element={<AdminFinanceiro />} />
+          <Route path="financeiro" element={<TenantNavigate to="/admin/relatorios" replace />} />
           <Route path="conta" element={<AdminSenha />} />
         </Route>
         <Route path="/funcionarios/vendedor" element={<VendedorLayout />}>

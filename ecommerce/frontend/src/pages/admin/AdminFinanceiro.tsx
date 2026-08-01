@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, Gift, Loader2, Package, Receipt, TrendingDown, TrendingUp, Truck, Wallet, X } from 'lucide-react'
+import {
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Gift,
+  Loader2,
+  Package,
+  Receipt,
+  TrendingDown,
+  TrendingUp,
+  Truck,
+  Wallet,
+  X,
+} from 'lucide-react'
 import Card from '../../components/ui/Card'
 import { StatusBadge } from '../../components/ui/Badge'
 import UsageChart from '../../components/admin/UsageChart'
@@ -8,13 +22,14 @@ import { adminService } from '../../services/adminService'
 import { pdvService } from '../../services/pdvService'
 import { useAdminAuth } from '../../store/adminAuth'
 import { useVendedorAuth } from '../../store/vendedorAuth'
-import { isDemoModeActive, planoIncludes } from '../../lib/demoMode'
-import type { FinanceiroSummary, FinanceiroTimeseriesPoint, Order, VendedorRelatorio } from '../../types'
+import { isDemoModeActive, planoAtLeast, planoIncludes, type PlanoCode } from '../../lib/demoMode'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import type { FinanceiroSummary, FinanceiroTimeseriesPoint, LucroSummary, Order, VendedorRelatorio } from '../../types'
 
-// Cupom/campanha vive atrás do plano Management pra cima — no plano
-// Essential da demo, essas referências não fazem sentido (a loja nem
-// tem como criar cupom/campanha) e ficavam soltas nos relatórios.
-const showCupomCampanha = !isDemoModeActive() || planoIncludes('management')
+function planAllows(required: PlanoCode, demo: boolean, tenantPlano: PlanoCode | undefined): boolean {
+  if (demo) return planoIncludes(required)
+  return planoAtLeast(tenantPlano ?? 'essential', required)
+}
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -24,8 +39,282 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-// Botões tipo aba pra escolher quais funcionários entram na conta —
-// "desempenho geral" soma todo mundo, ou seleciona um/vários indivíduos.
+function isoToday() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function isoMonthStart() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+function formatBrDay(iso: string) {
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
+const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
+const MONTHS = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+]
+
+/** Calendário estilizado (tema admin escuro) — evita `<input type="date">` nativo. */
+function DateRangePicker({
+  from,
+  to,
+  onChange,
+}: {
+  from: string
+  to: string
+  onChange: (from: string, to: string) => void
+}) {
+  const initial = from ? new Date(from + 'T12:00:00') : new Date()
+  const [viewYear, setViewYear] = useState(initial.getFullYear())
+  const [viewMonth, setViewMonth] = useState(initial.getMonth())
+  const [picking, setPicking] = useState<'from' | 'to'>('from')
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay()
+
+  const cells: (number | null)[] = []
+  for (let i = 0; i < firstDow; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+
+  const toIso = (day: number) =>
+    `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+  const select = (day: number) => {
+    const iso = toIso(day)
+    if (picking === 'from') {
+      const nextTo = to && iso > to ? iso : to
+      onChange(iso, nextTo || iso)
+      setPicking('to')
+    } else {
+      if (iso < from) {
+        onChange(iso, from)
+      } else {
+        onChange(from || iso, iso)
+      }
+      setPicking('from')
+    }
+  }
+
+  const inRange = (day: number) => {
+    const iso = toIso(day)
+    return from && to && iso >= from && iso <= to
+  }
+  const isEdge = (day: number) => {
+    const iso = toIso(day)
+    return iso === from || iso === to
+  }
+
+  const prevMonth = () => {
+    if (viewMonth === 0) {
+      setViewYear((y) => y - 1)
+      setViewMonth(11)
+    } else setViewMonth((m) => m - 1)
+  }
+  const nextMonth = () => {
+    if (viewMonth === 11) {
+      setViewYear((y) => y + 1)
+      setViewMonth(0)
+    } else setViewMonth((m) => m + 1)
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-son-surface-light/40 p-4">
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <button
+          type="button"
+          onClick={prevMonth}
+          className="p-1.5 rounded-lg text-son-silver-dim hover:text-white hover:bg-white/5"
+          aria-label="Mês anterior"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <p className="text-sm font-semibold text-white">
+          {MONTHS[viewMonth]} {viewYear}
+        </p>
+        <button
+          type="button"
+          onClick={nextMonth}
+          className="p-1.5 rounded-lg text-son-silver-dim hover:text-white hover:bg-white/5"
+          aria-label="Próximo mês"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {WEEKDAYS.map((w, i) => (
+          <span key={`${w}-${i}`} className="text-[10px] text-center text-son-silver-dim font-medium py-1">
+            {w}
+          </span>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((day, i) =>
+          day == null ? (
+            <span key={`e-${i}`} />
+          ) : (
+            <button
+              key={day}
+              type="button"
+              onClick={() => select(day)}
+              className={`h-8 rounded-lg text-xs font-medium transition-colors ${
+                isEdge(day)
+                  ? 'sunset-bg text-white'
+                  : inRange(day)
+                    ? 'bg-son-pink/20 text-white'
+                    : 'text-son-silver hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {day}
+            </button>
+          )
+        )}
+      </div>
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5 text-xs text-son-silver-dim">
+        <span>
+          {from ? formatBrDay(from) : '—'} → {to ? formatBrDay(to) : '—'}
+        </span>
+        <span className="text-son-silver">
+          {picking === 'from' ? 'Escolha o início' : 'Escolha o fim'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function LucroSection() {
+  const [tab, setTab] = useState<'atual' | 'periodo'>('atual')
+  const [rangeFrom, setRangeFrom] = useState(isoMonthStart)
+  const [rangeTo, setRangeTo] = useState(isoToday)
+  const [data, setData] = useState<LucroSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const queryFrom = tab === 'atual' ? isoMonthStart() : rangeFrom
+  const queryTo = tab === 'atual' ? isoToday() : rangeTo
+
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      adminService.financeiro
+        .lucro(queryFrom, queryTo)
+        .then((r) => {
+          if (!cancelled) {
+            setData(r)
+            setError(null)
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setData(null)
+            setError(e instanceof Error ? e.message : 'Não foi possível carregar o lucro.')
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+    }
+    setLoading(true)
+    load()
+    // Near-real-time no mês atual; no filtro manual só refetch on focus.
+    const interval = tab === 'atual' ? window.setInterval(load, 20_000) : undefined
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      if (interval) clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [queryFrom, queryTo, tab])
+
+  return (
+    <Card className="p-5 mb-6">
+      <div className="flex items-center gap-2 label mb-3">
+        <TrendingUp className="w-3.5 h-3.5" /> Lucro
+      </div>
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        <button
+          type="button"
+          onClick={() => setTab('atual')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+            tab === 'atual' ? 'sunset-bg text-white' : 'bg-son-surface-light text-son-silver-dim'
+          }`}
+        >
+          Custo e lucro atual
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('periodo')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5 ${
+            tab === 'periodo' ? 'sunset-bg text-white' : 'bg-son-surface-light text-son-silver-dim'
+          }`}
+        >
+          <CalendarRange className="w-3.5 h-3.5" /> Por período
+        </button>
+      </div>
+
+      {tab === 'periodo' && (
+        <div className="mb-4 max-w-sm">
+          <DateRangePicker
+            from={rangeFrom}
+            to={rangeTo}
+            onChange={(f, t) => {
+              setRangeFrom(f)
+              setRangeTo(t)
+            }}
+          />
+        </div>
+      )}
+
+      {tab === 'atual' && (
+        <p className="text-xs text-son-silver-dim mb-3">
+          De {formatBrDay(queryFrom)} até hoje · atualiza a cada ~20s
+        </p>
+      )}
+
+      {loading && !data ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="w-5 h-5 animate-spin text-son-pink" />
+        </div>
+      ) : error && !data ? (
+        <p className="text-sm text-son-silver-dim">{error}</p>
+      ) : data ? (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+            <div className="bg-son-surface-light rounded-xl p-3 text-center">
+              <p className="text-xs text-son-silver-dim mb-1">Receita</p>
+              <p className="sunset-text font-black text-xl">{currency(data.receita)}</p>
+            </div>
+            <div className="bg-son-surface-light rounded-xl p-3 text-center">
+              <p className="text-xs text-son-silver-dim mb-1">Custo</p>
+              <p className="font-black text-xl text-amber-300">{currency(data.custo)}</p>
+            </div>
+            <div className="bg-son-surface-light rounded-xl p-3 text-center col-span-2 sm:col-span-1">
+              <p className="text-xs text-son-silver-dim mb-1">Lucro</p>
+              <p className={`font-black text-xl ${data.lucro >= 0 ? 'text-emerald-400' : 'text-son-pink'}`}>
+                {currency(data.lucro)}
+              </p>
+            </div>
+          </div>
+          <p className="text-[11px] text-son-silver-dim leading-relaxed">
+            Custo = soma de (qtd × custo do produto) nos pedidos pagos do período, incluindo PDV.
+            Produtos sem custo cadastrado entram como R$ 0
+            {data.incomplete_cost ? ' — há itens sem custo neste período' : ''}.
+            Lucro = receita − custo.
+          </p>
+        </>
+      ) : null}
+    </Card>
+  )
+}
+
 function StaffTabs({
   names,
   selected,
@@ -187,7 +476,15 @@ function MotoboysSection({ motoboys }: { motoboys: FinanceiroSummary['motoboys']
   )
 }
 
-function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => void }) {
+function OrderDetailModal({
+  order,
+  onClose,
+  showCupomCampanha,
+}: {
+  order: Order
+  onClose: () => void
+  showCupomCampanha: boolean
+}) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="glass rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -231,7 +528,7 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
             <span>Pagamento</span>
             <span className="capitalize">{order.payment_method} · {order.payment_status}</span>
           </div>
-          {(order.discount_amount ?? 0) > 0 || (order.shipping_discount ?? 0) > 0 ? (
+          {showCupomCampanha && ((order.discount_amount ?? 0) > 0 || (order.shipping_discount ?? 0) > 0) ? (
             <div className="flex justify-between text-emerald-400 text-xs">
               <span>Desconto concedido</span>
               <span>-{currency((order.discount_amount ?? 0) + (order.shipping_discount ?? 0))}</span>
@@ -248,13 +545,16 @@ function OrderDetailModal({ order, onClose }: { order: Order; onClose: () => voi
 }
 
 export default function AdminFinanceiro() {
-  // Admin/vendedor têm sessões separadas (useAdminAuth/useVendedorAuth) —
-  // essa tela é compartilhada pelas duas telas de dashboard, então só
-  // resolve qual está ativa pra saber o que mostrar.
   const navigate = useNavigate()
   const adminToken = useAdminAuth((s) => s.token)
   const vendedorToken = useVendedorAuth((s) => s.token)
   const role: 'admin' | 'vendedor' = !adminToken && vendedorToken ? 'vendedor' : 'admin'
+  const demo = isDemoModeActive()
+  const tenantConfig = useTenantConfig()
+  const tenantPlano = tenantConfig?.plano
+  // Management+: cupom/campanha, frete motoboy, tempo médio, faturaria sem desconto.
+  const showManagementMetrics = planAllows('management', demo, tenantPlano)
+
   const [data, setData] = useState<FinanceiroSummary | null>(null)
   const [timeseries, setTimeseries] = useState<FinanceiroTimeseriesPoint[]>([])
   const [loading, setLoading] = useState(role === 'admin')
@@ -267,8 +567,6 @@ export default function AdminFinanceiro() {
     adminService.financeiro
       .get()
       .then((raw) => {
-        // Railway devolve subset; RPCs Supabase devolvem o shape completo.
-        // Normaliza pra nunca crashar a tela (tela verde = uncaught throw).
         setData({
           total_revenue: raw?.total_revenue ?? 0,
           total_orders: raw?.total_orders ?? 0,
@@ -282,18 +580,18 @@ export default function AdminFinanceiro() {
       })
       .catch((e) => {
         setData(null)
-        setLoadError(e instanceof Error ? e.message : 'Não foi possível carregar o financeiro.')
+        setLoadError(e instanceof Error ? e.message : 'Não foi possível carregar os relatórios.')
       })
       .finally(() => setLoading(false))
-    adminService.financeiro.timeseries(30).then(setTimeseries).catch(() => {})
-  }, [role])
+    if (showManagementMetrics) {
+      adminService.financeiro.timeseries(30).then(setTimeseries).catch(() => {})
+    }
+  }, [role, showManagementMetrics])
 
-  // Vendedor só enxerga as próprias vendas de balcão — o resto do
-  // financeiro (receita geral, motoboys, desconto concedido) é admin-only.
   if (role !== 'admin') {
     return (
       <div>
-        <h1 className="text-2xl font-black mb-6">Financeiro</h1>
+        <h1 className="text-2xl font-black mb-6">Relatórios</h1>
         <PdvSalesSection role={role} />
       </div>
     )
@@ -315,10 +613,10 @@ export default function AdminFinanceiro() {
         /missing authorization/i.test(loadError))
     return (
       <div className="py-10 text-center space-y-3">
-        <h1 className="text-2xl font-black">Financeiro</h1>
+        <h1 className="text-2xl font-black">Relatórios</h1>
         <p className="text-sm text-son-silver-dim">
           {sessionDead
-            ? 'Sua sessão expirou. Entre de novo no painel pra ver o financeiro.'
+            ? 'Sua sessão expirou. Entre de novo no painel pra ver os relatórios.'
             : loadError || 'Sem dados ainda.'}
         </p>
         <button
@@ -338,11 +636,14 @@ export default function AdminFinanceiro() {
       </div>
     )
   }
+
   return (
     <div>
-      <h1 className="text-2xl font-black mb-6">Financeiro &amp; relatórios &amp; estatísticas</h1>
+      <h1 className="text-2xl font-black mb-6">Relatórios</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
+      <LucroSection />
+
+      <div className={`grid grid-cols-2 ${showManagementMetrics ? 'sm:grid-cols-3' : ''} gap-4 mb-6`}>
         <Card className="p-5">
           <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
             <Wallet className="w-3.5 h-3.5" /> Receita paga
@@ -355,15 +656,17 @@ export default function AdminFinanceiro() {
           </div>
           <p className="font-black text-2xl text-white">{data.total_orders}</p>
         </Card>
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
-            <Clock className="w-3.5 h-3.5" /> Tempo médio de entrega
-          </div>
-          <p className="font-black text-2xl text-white">
-            {data.avg_delivery_minutes > 0 ? `${data.avg_delivery_minutes.toFixed(1).replace('.', ',')} min` : '—'}
-          </p>
-        </Card>
-        {showCupomCampanha && (
+        {showManagementMetrics && (
+          <Card className="p-5">
+            <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
+              <Clock className="w-3.5 h-3.5" /> Tempo médio de entrega
+            </div>
+            <p className="font-black text-2xl text-white">
+              {data.avg_delivery_minutes > 0 ? `${data.avg_delivery_minutes.toFixed(1).replace('.', ',')} min` : '—'}
+            </p>
+          </Card>
+        )}
+        {showManagementMetrics && (
           <Card className="p-5">
             <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
               <Gift className="w-3.5 h-3.5" /> Concedido em campanha/cupom
@@ -373,15 +676,17 @@ export default function AdminFinanceiro() {
             </p>
           </Card>
         )}
-        <Card className="p-5">
-          <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
-            <TrendingDown className="w-3.5 h-3.5" /> Faturaria sem desconto
-          </div>
-          <p className="font-black text-2xl text-white">{currency(data.total_revenue + data.total_discount_given)}</p>
-        </Card>
+        {showManagementMetrics && (
+          <Card className="p-5">
+            <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
+              <TrendingDown className="w-3.5 h-3.5" /> Faturaria sem desconto
+            </div>
+            <p className="font-black text-2xl text-white">{currency(data.total_revenue + data.total_discount_given)}</p>
+          </Card>
+        )}
       </div>
 
-      {timeseries.length > 0 && (
+      {showManagementMetrics && timeseries.length > 0 && (
         <Card className="p-5 mb-6">
           <UsageChart points={timeseries} />
         </Card>
@@ -421,7 +726,7 @@ export default function AdminFinanceiro() {
         )}
       </Card>
 
-      <MotoboysSection motoboys={data.motoboys} />
+      {showManagementMetrics && <MotoboysSection motoboys={data.motoboys} />}
 
       <div className="mb-6">
         <PdvSalesSection role={role} />
@@ -448,7 +753,13 @@ export default function AdminFinanceiro() {
         </ul>
       </Card>
 
-      {selectedOrder && <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />}
+      {selectedOrder && (
+        <OrderDetailModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+          showCupomCampanha={showManagementMetrics}
+        />
+      )}
     </div>
   )
 }
