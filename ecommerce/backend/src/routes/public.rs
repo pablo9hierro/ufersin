@@ -144,13 +144,10 @@ pub struct NotifyPdvSaleInput {
     pub order_id: String,
 }
 
-/// Venda de balcão (PDV) só manda UMA mensagem — o "obrigado pela compra"
-/// com os itens e o valor — nunca o passo a passo (pedido feito/pronto/
-/// saiu pra entrega) que uma compra online recebe, porque não existe
-/// preparo nem entrega aqui, a venda já nasce concluída. Sempre a partir
-/// do número da PRÓPRIA LOJA (vendedor não tem instância de WhatsApp
-/// própria, diferente do motoboy). Sem WhatsApp informado na venda
-/// (cliente de balcão anônimo), não faz nada — sucesso silencioso.
+/// Confirmação de pagamento no balcão (msg 3): só depois que o pagamento
+/// foi confirmado (dinheiro/cartão/Pix manual no caixa, ou Pix gateway
+/// marcado como pago). Sem WhatsApp no pedido → sucesso silencioso (ainda
+/// marca Pix pendente como pago quando aplicável).
 pub async fn notify_pdv_sale(
     State(state): State<AppState>,
     Json(input): Json<NotifyPdvSaleInput>,
@@ -204,9 +201,10 @@ pub async fn notify_pdv_sale(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Envia o Pix copia-e-cola (ou link de pagamento) da venda de balcão pro
-/// WhatsApp do comprador — só quando o PDV gerou QR e o formulário tinha
-/// telefone preenchido. Texto montado no servidor a partir do pedido.
+/// PDV com WhatsApp + cobrança Pix: duas mensagens em sequência —
+/// (1) resumo do carrinho/total sem EMV; (2) só o Pix copia-e-cola.
+/// Confirmação de pagamento é outra rota (`notify_pdv_sale` /
+/// `refresh_payment`) e só sai depois que o Pix foi pago de verdade.
 pub async fn notify_pdv_pix_charge(
     State(state): State<AppState>,
     Json(input): Json<NotifyPdvSaleInput>,
@@ -216,25 +214,38 @@ pub async fn notify_pdv_pix_charge(
     let Some(order) = fetch_order_row(&mut *tx, &store.id, &input.order_id).await? else {
         return Err(AppError::NotFound("order not found".to_string()));
     };
-    tx.commit().await?;
 
     let digits = whatsapp::digits_only(&order.customer_whatsapp);
     if digits.is_empty() {
+        tx.commit().await?;
         return Ok(StatusCode::NO_CONTENT);
     }
     if order.payment_method != "pix" {
         return Err(AppError::BadRequest("order is not a pix payment".to_string()));
     }
-    let Some(copia) = order.pix_copia_cola.as_deref().filter(|s| !s.is_empty()) else {
+    let Some(copia) = order.pix_copia_cola.clone().filter(|s| !s.is_empty()) else {
         return Err(AppError::BadRequest("pix charge not created yet".to_string()));
     };
 
+    let items = fetch_items(&mut *tx, &store.id, &order.id).await?;
+    tx.commit().await?;
+
+    let itens_texto = items
+        .iter()
+        .map(|i| format!("{}x {}", i.quantity, i.product_name))
+        .collect::<Vec<_>>()
+        .join("\n");
     let total_str = format!("{:.2}", order.total).replace('.', ",");
-    let msg = format!(
-        "Pix da sua compra na {} — R$ {total_str}\n\nCopie e cole no app do banco:\n\n{copia}",
+
+    // Msg 1 — resumo da compra (sem copia-e-cola).
+    let summary = format!(
+        "Compra na {}\n\n{itens_texto}\n\nTotal: R$ {total_str}",
         store.name
     );
-    whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
+    whatsapp::notify(&state, &store.whatsapp_instance, &digits, &summary);
+
+    // Msg 2 — imediatamente depois: só o EMV / copia-e-cola.
+    whatsapp::notify(&state, &store.whatsapp_instance, &digits, &copia);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -294,11 +305,23 @@ pub async fn refresh_payment(
             .await?;
 
         let digits = whatsapp::digits_only(&order.customer_whatsapp);
-        let msg = format!(
-            "Recebemos seu pagamento! Seu pedido #{} já está sendo preparado. 🌇",
-            short_id(&order.id)
-        );
-        whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
+        if !digits.is_empty() {
+            // Msg 3 — só após pagamento confirmado. Balcão: obrigado + total;
+            // online: mensagem de preparo.
+            let msg = if order.delivery_type == "balcao" {
+                let total_str = format!("{:.2}", order.total).replace('.', ",");
+                format!(
+                    "Pagamento confirmado na {}! Total: R$ {total_str}. Obrigado pela compra! 🌇",
+                    store.name
+                )
+            } else {
+                format!(
+                    "Recebemos seu pagamento! Seu pedido #{} já está sendo preparado. 🌇",
+                    short_id(&order.id)
+                )
+            };
+            whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
+        }
     }
 
     let dto = fetch_order_dto(&mut tx, &store.id, &id)

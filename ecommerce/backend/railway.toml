@@ -1,7 +1,7 @@
 ﻿[build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-# Empty = always deploy on git push (non-empty watchPatterns was skipping real src changes).
+# Empty so git pushes always rebuild (non-empty patterns were skipping real src changes).
 watchPatterns = []
 
 [deploy]

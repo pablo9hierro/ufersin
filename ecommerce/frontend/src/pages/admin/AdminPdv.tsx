@@ -60,9 +60,9 @@ export default function AdminPdv() {
   const [customerName, setCustomerName] = useState('')
   const [customerWhatsapp, setCustomerWhatsapp] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro')
-  // "Não gerar QR" — cobrança Pix manual (confirma recebimento). Com
-  // forma_pagamento manual da loja, QR de plataforma não existe: força true.
-  const [skipQrcode, setSkipQrcode] = useState(!plataformaPix)
+  // "Não gerar QR" — unchecked por padrão (gera QR). Só força marcado quando
+  // a loja está em cobrança manual (sem plataforma de Pix).
+  const [skipQrcode, setSkipQrcode] = useState(false)
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent')
   const [discountValue, setDiscountValue] = useState('')
   const [finalizing, setFinalizing] = useState(false)
@@ -71,9 +71,36 @@ export default function AdminPdv() {
 
   const [confirmCashOpen, setConfirmCashOpen] = useState(false)
   const [pixOrder, setPixOrder] = useState<Order | null>(null)
-  const [confirmingPix, setConfirmingPix] = useState(false)
+  const [pixPaidFlash, setPixPaidFlash] = useState(false)
   const [regeneratingPix, setRegeneratingPix] = useState(false)
   const [copiedPix, setCopiedPix] = useState(false)
+
+  // Enquanto o modal Pix estiver aberto, consulta o gateway; ao confirmar
+  // pagamento envia msg 3 (WhatsApp) no backend e fecha o modal.
+  useEffect(() => {
+    if (!pixOrder?.id || pixOrder.payment_status === 'pago') return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const updated = await orderService.refreshPayment(pixOrder.id)
+        if (cancelled) return
+        if (updated.payment_status === 'pago') {
+          setPixPaidFlash(true)
+          setPixOrder(null)
+          setTimeout(() => setPixPaidFlash(false), 4000)
+        } else {
+          setPixOrder(updated)
+        }
+      } catch {
+        // polling best-effort
+      }
+    }
+    const id = window.setInterval(tick, 4000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [pixOrder?.id, pixOrder?.payment_status])
 
   useEffect(() => {
     let cancelled = false
@@ -106,7 +133,8 @@ export default function AdminPdv() {
   }, [])
 
   useEffect(() => {
-    if (!plataformaPix) setSkipQrcode(true)
+    // Desmarcado = gerar QR (plataforma). Marcado forçado só em cobrança manual.
+    setSkipQrcode(!plataformaPix)
   }, [plataformaPix])
 
   // Leitor físico (bip) é um teclado disfarçado — digita o código rapidinho
@@ -318,21 +346,8 @@ export default function AdminPdv() {
     }
   }
 
-  const confirmPixReceived = async () => {
-    if (!pixOrder) return
-    setConfirmingPix(true)
-    try {
-      // Confirmação de recebimento no balcão — marca pago + "obrigado"
-      // (backend ignora WhatsApp vazio).
-      await pdvService.notifySale(pixOrder.id).catch(() => {})
-      setPixOrder(null)
-    } finally {
-      setConfirmingPix(false)
-    }
-  }
-
   const dismissPixModal = () => {
-    if (confirmingPix || regeneratingPix) return
+    if (regeneratingPix) return
     setPixOrder(null)
   }
 
@@ -347,6 +362,7 @@ export default function AdminPdv() {
       }
       setPixOrder(withPix)
       if (withPix.customer_whatsapp?.replace(/\D/g, '')) {
+        // Reenvia msg 1 (resumo) + msg 2 (novo copia-e-cola).
         pdvService.notifyPixCharge(withPix.id).catch(() => {})
       }
     } catch (e) {
@@ -373,6 +389,12 @@ export default function AdminPdv() {
         <div className="mb-6 flex items-center gap-2 bg-emerald-500/15 text-emerald-400 rounded-2xl px-4 py-3 text-sm font-medium">
           <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
           Venda de {currency(success)} finalizada com sucesso!
+        </div>
+      )}
+      {pixPaidFlash && (
+        <div className="mb-6 flex items-center gap-2 bg-emerald-500/15 text-emerald-400 rounded-2xl px-4 py-3 text-sm font-medium">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          Pagamento Pix confirmado!
         </div>
       )}
 
@@ -647,11 +669,11 @@ export default function AdminPdv() {
 
       {pixOrder && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass rounded-2xl p-6 max-w-sm w-full text-center relative">
+          <div className="glass rounded-2xl p-6 max-w-lg w-full text-center relative">
             <button
               type="button"
               onClick={dismissPixModal}
-              disabled={confirmingPix || regeneratingPix}
+              disabled={regeneratingPix}
               className="absolute top-3 right-3 text-son-silver-dim hover:text-white disabled:opacity-40"
               aria-label="Fechar cobrança Pix"
             >
@@ -661,15 +683,16 @@ export default function AdminPdv() {
             <p className="text-sm text-son-silver-dim mb-4">
               Peça ao cliente para escanear o QR ou use o copia-e-cola.
               {pixOrder.customer_whatsapp?.replace(/\D/g, '')
-                ? ' Também enviamos o código no WhatsApp informado.'
+                ? ' Enviamos o resumo e o código no WhatsApp informado.'
                 : ''}
+              {' '}A confirmação chega automaticamente quando o Pix for pago.
             </p>
             <p className="sunset-text font-black text-xl mb-4">{currency(pixOrder.total)}</p>
-            <div className="bg-white rounded-2xl p-3 inline-block mb-4">
+            <div className="bg-white rounded-2xl p-4 inline-block mb-4">
               {pixOrder.pix_copia_cola ? (
-                <QRCodeSVG value={pixOrder.pix_copia_cola} size={200} />
+                <QRCodeSVG value={pixOrder.pix_copia_cola} size={350} />
               ) : (
-                <div className="w-[200px] h-[200px] flex items-center justify-center text-gray-400 text-sm">QR indisponível</div>
+                <div className="w-[350px] h-[350px] flex items-center justify-center text-gray-400 text-sm">QR indisponível</div>
               )}
             </div>
             {pixOrder.pix_copia_cola && (
@@ -681,15 +704,11 @@ export default function AdminPdv() {
             <button
               type="button"
               onClick={regeneratePixCharge}
-              disabled={confirmingPix || regeneratingPix}
-              className="btn-secondary w-full mb-3 text-sm"
+              disabled={regeneratingPix}
+              className="btn-secondary w-full text-sm"
             >
               {regeneratingPix ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
               Gerar nova cobrança
-            </button>
-            <button type="button" onClick={confirmPixReceived} disabled={confirmingPix || regeneratingPix} className="btn-primary w-full py-3">
-              {confirmingPix ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              Pagamento Pix recebido
             </button>
           </div>
         </div>
