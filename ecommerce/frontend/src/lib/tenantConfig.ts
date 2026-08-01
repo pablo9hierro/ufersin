@@ -30,7 +30,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   loja_nome: '',
   plano: 'essential',
   vender_externamente: true,
-  whatsapp_habilitado: true,
+  whatsapp_habilitado: false,
   forma_pagamento: 'manual',
   plataforma_pagamento: null,
   layout_style: 'ufersin',

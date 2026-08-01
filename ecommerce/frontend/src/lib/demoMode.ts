@@ -44,8 +44,8 @@ export function planoIncludes(recurso: PlanoCode): boolean {
 /**
  * Nome da marca na vitrine/admin.
  * - Demo pública → Ufersin
- * - Assinante Resolutoo → loja_nome do onboarding (ex.: Resusu)
- * - Deploy Sunset single-tenant (sem slug) → Sunset Tabas
+ * - Assinante Resolutoo → loja_nome do onboarding
+ * - Sem nome ainda → slug ou "Minha loja" (nunca Sunset Tabas)
  */
 export function brandName(lojaNome?: string | null): string {
   if (isDemoModeActive()) return 'Ufersin'
@@ -55,5 +55,5 @@ export function brandName(lojaNome?: string | null): string {
   if (cached.loja_nome?.trim()) return cached.loja_nome.trim()
   const slug = cached.slug?.trim() || resolveTenantSlug()
   if (slug) return slug
-  return 'Sunset Tabas'
+  return 'Minha loja'
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Clock, Gift, Loader2, Package, Receipt, TrendingDown, TrendingUp, Truck, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import { StatusBadge } from '../../components/ui/Badge'
@@ -250,6 +251,7 @@ export default function AdminFinanceiro() {
   // Admin/vendedor têm sessões separadas (useAdminAuth/useVendedorAuth) —
   // essa tela é compartilhada pelas duas telas de dashboard, então só
   // resolve qual está ativa pra saber o que mostrar.
+  const navigate = useNavigate()
   const adminToken = useAdminAuth((s) => s.token)
   const vendedorToken = useVendedorAuth((s) => s.token)
   const role: 'admin' | 'vendedor' = !adminToken && vendedorToken ? 'vendedor' : 'admin'
@@ -306,12 +308,32 @@ export default function AdminFinanceiro() {
   }
 
   if (!data) {
+    const sessionDead =
+      !!loadError &&
+      (/invalid or expired token/i.test(loadError) ||
+        /unauthorized/i.test(loadError) ||
+        /missing authorization/i.test(loadError))
     return (
       <div className="py-10 text-center space-y-3">
         <h1 className="text-2xl font-black">Financeiro</h1>
-        <p className="text-sm text-son-silver-dim">{loadError || 'Sem dados ainda.'}</p>
-        <button type="button" className="btn-secondary text-sm" onClick={() => window.location.reload()}>
-          Tentar de novo
+        <p className="text-sm text-son-silver-dim">
+          {sessionDead
+            ? 'Sua sessão expirou. Entre de novo no painel pra ver o financeiro.'
+            : loadError || 'Sem dados ainda.'}
+        </p>
+        <button
+          type="button"
+          className="btn-secondary text-sm"
+          onClick={() => {
+            if (sessionDead) {
+              useAdminAuth.getState().logout()
+              navigate('/admin/login', { replace: true })
+              return
+            }
+            window.location.reload()
+          }}
+        >
+          {sessionDead ? 'Entrar de novo' : 'Tentar de novo'}
         </button>
       </div>
     )

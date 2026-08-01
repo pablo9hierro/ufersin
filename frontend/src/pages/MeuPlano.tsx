@@ -103,7 +103,7 @@ export default function MeuPlano() {
         endereco: endereco.trim() || undefined,
         logo_url: logoUrl.trim() || undefined,
         cor_principal: corPrincipal,
-        layout_style: layoutStyle,
+        layout_style: venderExternamente ? layoutStyle : 'ufersin',
         documento: documento.replace(/\D/g, '') || undefined,
         tipo_documento: tipoDocumento,
         vender_externamente: venderExternamente,
@@ -119,8 +119,9 @@ export default function MeuPlano() {
               ...prev,
               loja_nome: nomeLoja.trim(),
               cor_principal: corPrincipal,
-              layout_style: layoutStyle,
+              layout_style: venderExternamente ? layoutStyle : 'ufersin',
               vender_externamente: venderExternamente,
+              whatsapp_habilitado: whatsappHabilitado,
             }
           : prev
       )
@@ -306,15 +307,33 @@ export default function MeuPlano() {
               </div>
             </div>
 
-            <StorefrontStylePicker value={layoutStyle} onChange={setLayoutStyle} lojaNome={nomeLoja} corPrincipal={corPrincipal} />
+            <div className="uf-glass rounded-2xl px-4 py-4 space-y-4 border border-white/10">
+              <div>
+                <p className="label mb-1 flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5" /> Vitrine pra clientes
+                </p>
+                <p className="text-[11px] text-uf-silver-dim leading-snug">
+                  Vai vender pelo site ou só usar o painel/PDV internamente?
+                </p>
+              </div>
 
-            <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-              <input type="checkbox" checked={!venderExternamente} onChange={(e) => setVenderExternamente(!e.target.checked)} className="w-4 h-4 mt-0.5" />
-              <span className="text-xs text-uf-silver-dim">
-                <span className="block text-uf-silver font-semibold mb-0.5">Vender apenas internamente</span>
-                Desativa a vitrine online (catálogo, carrinho, checkout) — só o painel e o PDV continuam disponíveis.
-              </span>
-            </label>
+              <label className="rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer bg-black/20 border border-white/5">
+                <input
+                  type="checkbox"
+                  checked={!venderExternamente}
+                  onChange={(e) => setVenderExternamente(!e.target.checked)}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span className="text-xs text-uf-silver-dim">
+                  <span className="block text-uf-silver font-semibold mb-0.5">Vender apenas pro público interno</span>
+                  Desativa a vitrine online — sem vitrine, a escolha de layout some.
+                </span>
+              </label>
+
+              {venderExternamente && (
+                <StorefrontStylePicker value={layoutStyle} onChange={setLayoutStyle} lojaNome={nomeLoja} corPrincipal={corPrincipal} />
+              )}
+            </div>
           </section>
 
           <section className="uf-glass rounded-2xl p-6 space-y-4">

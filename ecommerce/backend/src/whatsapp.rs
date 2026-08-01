@@ -189,3 +189,35 @@ pub async fn logout(state: &AppState, instance: &str) -> Result<(), crate::error
         .map_err(|e| crate::error::AppError::Internal(format!("evolution api unreachable: {e}")))?;
     evolution_json(resp).await.map(|_| ())
 }
+
+/// Desliga de vez a instância Evolution (logout + delete). Usado quando o
+/// lojista desmarca "notificações por WhatsApp" no onboarding/Meu plano —
+/// o serviço cai junto com o campo na UI de Configurações.
+pub async fn teardown(state: &AppState, instance: &str) -> Result<(), crate::error::AppError> {
+    if state.evolution_api_url.is_empty() || state.evolution_api_key.is_empty() || instance.is_empty() {
+        return Ok(());
+    }
+    let base = state.evolution_api_url.trim_end_matches('/');
+    let _ = logout(state, instance).await;
+    let url = format!("{base}/instance/delete/{instance}");
+    let resp = state
+        .http
+        .delete(&url)
+        .timeout(Duration::from_secs(15))
+        .header("apikey", state.evolution_api_key.as_str())
+        .send()
+        .await;
+    match resp {
+        Ok(r) if r.status().is_success() || r.status().as_u16() == 404 => Ok(()),
+        Ok(r) => {
+            let status = r.status();
+            let body = r.text().await.unwrap_or_default();
+            tracing::warn!("evolution delete instance {instance} returned {status}: {body}");
+            Ok(())
+        }
+        Err(e) => {
+            tracing::warn!("evolution delete instance {instance} failed: {e}");
+            Ok(())
+        }
+    }
+}

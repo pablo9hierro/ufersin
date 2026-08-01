@@ -137,7 +137,7 @@ export default function Onboarding() {
         forma_pagamento: formaPagamento,
         plataforma_pagamento: formaPagamento === 'plataforma' ? plataformaPagamento : undefined,
         plataforma_credenciais: formaPagamento === 'plataforma' ? { token: credencial.trim() } : undefined,
-        layout_style: layoutStyle,
+        layout_style: venderExternamente ? layoutStyle : 'ufersin',
       })
       setDone(true)
       setTimeout(() => navigate('/dashboard'), 2200)
@@ -163,7 +163,12 @@ export default function Onboarding() {
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver px-5 py-16 relative">
       <div className="uf-mesh" />
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="max-w-lg mx-auto relative z-10">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className={`mx-auto relative z-10 ${step === 1 ? 'max-w-2xl' : 'max-w-lg'}`}
+      >
         <div className="text-center mb-8">
           <span className="uf-eyebrow mb-4">Onboarding · Essential</span>
           <h1 className="text-2xl sm:text-3xl font-black mt-4">Configure sua loja</h1>
@@ -174,7 +179,7 @@ export default function Onboarding() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6">
+        <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 sm:p-8">
           <AnimatePresence mode="wait">
             {step === 1 ? (
               <motion.div key="step1" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} className="space-y-4">
@@ -182,7 +187,7 @@ export default function Onboarding() {
                   <label className="label flex items-center gap-1.5">
                     <Store className="w-3.5 h-3.5" /> Nome da empresa *
                   </label>
-                  <input className="input-field" value={nomeLoja} onChange={(e) => handleNomeChange(e.target.value)} placeholder="Ex: Sunset Tabas" />
+                  <input className="input-field" value={nomeLoja} onChange={(e) => handleNomeChange(e.target.value)} placeholder="Ex: Minha Loja" />
                 </div>
 
                 <div>
@@ -272,20 +277,38 @@ export default function Onboarding() {
                   </p>
                 </div>
 
-                <StorefrontStylePicker
-                  value={layoutStyle}
-                  onChange={setLayoutStyle}
-                  lojaNome={nomeLoja}
-                  corPrincipal={corPrincipal}
-                />
+                <div className="uf-glass rounded-2xl px-4 py-4 space-y-4 border border-white/10">
+                  <div>
+                    <p className="label mb-1 flex items-center gap-1.5">
+                      <Palette className="w-3.5 h-3.5" /> Vitrine pra clientes
+                    </p>
+                    <p className="text-[11px] text-uf-silver-dim leading-snug">
+                      Vai vender pelo site (catálogo, carrinho, checkout) ou só usar o painel/PDV internamente?
+                    </p>
+                  </div>
 
-                <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                  <input type="checkbox" checked={!venderExternamente} onChange={(e) => setVenderExternamente(!e.target.checked)} className="w-4 h-4 mt-0.5" />
-                  <span className="text-xs text-uf-silver-dim">
-                    <span className="block text-uf-silver font-semibold mb-0.5">Vender apenas internamente</span>
-                    Marque se você só vai usar o painel e o PDV pro seu próprio controle — a vitrine online (catálogo, carrinho, checkout) fica desativada pros seus clientes.
-                  </span>
-                </label>
+                  <label className="rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer bg-black/20 border border-white/5">
+                    <input
+                      type="checkbox"
+                      checked={!venderExternamente}
+                      onChange={(e) => setVenderExternamente(!e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">Vender apenas pro público interno</span>
+                      Marque se você só vai usar o painel e o PDV — a vitrine online fica desativada. Sem vitrine, não precisa escolher layout.
+                    </span>
+                  </label>
+
+                  {venderExternamente && (
+                    <StorefrontStylePicker
+                      value={layoutStyle}
+                      onChange={setLayoutStyle}
+                      lojaNome={nomeLoja}
+                      corPrincipal={corPrincipal}
+                    />
+                  )}
+                </div>
 
                 {error && <p className="error-msg">{error}</p>}
 

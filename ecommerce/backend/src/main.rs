@@ -318,6 +318,7 @@ async fn main() -> anyhow::Result<()> {
         // routes/internal.rs.
         .route("/internal/health", get(routes::internal::health))
         .route("/internal/provision-tenant", post(routes::internal::provision_tenant))
+        .route("/internal/teardown-whatsapp", post(routes::internal::teardown_whatsapp))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         // Axum's próprio default é 2MB — baixo demais pra banner de campanha

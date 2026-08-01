@@ -27,6 +27,21 @@ function extractPairingCode(data: EvolutionConnect): string | null {
   return data.pairingCode ?? data.code ?? data.qrcode?.pairingCode ?? data.qrcode?.code ?? null
 }
 
+function friendlyWhatsAppError(err: unknown, fallback: string): string {
+  if (!(err instanceof ApiError)) return fallback
+  const m = err.message || ''
+  if (/invalid or expired token|missing authorization|unauthorized/i.test(m)) {
+    return 'Sua sessão expirou. Saia e entre de novo no painel pra conectar o WhatsApp.'
+  }
+  if (/EVOLUTION_API|not configured/i.test(m)) {
+    return 'WhatsApp ainda não está configurado no servidor. Avise o suporte Resolutoo.'
+  }
+  if (/não está disponível no plano/i.test(m)) {
+    return 'WhatsApp não está liberado no plano atual desta loja.'
+  }
+  return m || fallback
+}
+
 export default function WhatsAppConnection({
   api,
 }: {
@@ -52,7 +67,7 @@ export default function WhatsAppConnection({
       setStatus(s)
       return s
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Não foi possível consultar o status.')
+      setError(friendlyWhatsAppError(err, 'Não foi possível consultar o status.'))
       setStatus(null)
       return null
     } finally {
@@ -105,7 +120,7 @@ export default function WhatsAppConnection({
       setQr(data)
       await loadStatus()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Não foi possível gerar o QR code.')
+      setError(friendlyWhatsAppError(err, 'Não foi possível gerar o QR code.'))
     } finally {
       setConnecting(false)
     }
@@ -119,7 +134,7 @@ export default function WhatsAppConnection({
       setQr(null)
       await loadStatus()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Não foi possível desconectar.')
+      setError(friendlyWhatsAppError(err, 'Não foi possível desconectar.'))
     } finally {
       setDisconnecting(false)
     }

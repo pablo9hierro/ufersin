@@ -9,14 +9,14 @@ export const STOREFRONT_STYLES: {
 }[] = [
   {
     key: 'ufersin',
-    label: 'Ufersin',
+    label: 'Ufersin nativo',
     desc: 'Visual limpo e moderno',
     preview: { bg: '#06070d', accent: '#4d7cff', accent2: '#8b5cf6' },
   },
   {
     key: 'burgerbite',
     label: 'BurgerBite',
-    desc: 'Vibrante, pílulas e destaque',
+    desc: 'Onboarding vibrante, pílulas',
     preview: { bg: '#0e0d0d', accent: '#ff3d3d', accent2: '#ff8a00' },
   },
   {

@@ -269,12 +269,14 @@ pub async fn editar_onboarding(
     AuthSubscriber(claims): AuthSubscriber,
     Json(body): Json<EditOnboardingInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let row: Option<(Option<String>, String)> =
-        sqlx::query_as("SELECT tenant_id, status FROM subscribers WHERE id = $1")
-            .bind(&claims.sub)
-            .fetch_optional(&state.pool)
-            .await?;
-    let (tenant_id, status) = row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
+    let row: Option<(Option<String>, String, String, bool)> = sqlx::query_as(
+        "SELECT tenant_id, status, slug, whatsapp_habilitado FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (tenant_id, status, slug, was_whatsapp_on) =
+        row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
     if tenant_id.is_none() {
         return Err(AppError::BadRequest("finalize o onboarding inicial antes de editar".to_string()));
     }
@@ -336,7 +338,41 @@ pub async fn editar_onboarding(
     .execute(&state.pool)
     .await?;
 
+    // Desmarcou WhatsApp depois de ter habilitado → derruba a instância no motor.
+    if body.whatsapp_habilitado == Some(false) && was_whatsapp_on {
+        if let Err(e) = teardown_store_whatsapp(&state, &slug).await {
+            tracing::warn!("teardown-whatsapp for slug {slug} failed (flag already saved): {e:?}");
+        }
+    }
+
     Ok(Json(serde_json::json!({ "updated": true })))
+}
+
+async fn teardown_store_whatsapp(state: &AppState, slug: &str) -> Result<(), AppError> {
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Ok(());
+    }
+    let url = format!(
+        "{}/internal/teardown-whatsapp",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({ "tenant_slug": slug }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("teardown-whatsapp unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!(
+            "teardown-whatsapp failed: {status} {text}"
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]

@@ -88,6 +88,12 @@ async function request<T>(
     } catch {
       // resposta sem corpo JSON
     }
+    // JWT Railway inválido/expirado: limpa sessão local. O shell do admin
+    // só checa se o token existe no localStorage — sem isso o lojista fica
+    // preso em telas tipo /financeiro com "invalid or expired token".
+    if (res.status === 401 && path.startsWith('/api/admin')) {
+      useAdminAuth.getState().logout()
+    }
     throw new ApiError(res.status, message)
   }
   if (res.status === 204) return undefined as T

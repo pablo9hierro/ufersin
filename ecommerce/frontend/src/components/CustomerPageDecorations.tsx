@@ -14,10 +14,8 @@ function pageKeyForPath(pathname: string): PageKey | null {
   return null
 }
 
-// Montado uma vez só (App.tsx, ao lado de CustomerBackdrop) — busca o
-// layout de TODAS as páginas uma vez e escolhe qual mostrar pela rota
-// atual, sem refazer a requisição a cada navegação entre páginas de
-// cliente. Editado pelo admin em /admin/layout-cliente.
+// Montado uma vez só (App.tsx) — busca o layout de TODAS as páginas uma
+// vez e escolhe qual mostrar pela rota atual. Editado em /admin/layout-cliente.
 export default function CustomerPageDecorations() {
   const { pathname } = useLocation()
   const [all, setAll] = useState<PageDecoration[]>([])

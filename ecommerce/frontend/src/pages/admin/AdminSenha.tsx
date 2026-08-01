@@ -255,9 +255,10 @@ function StoreHoursCard() {
 
 export default function AdminSenha() {
   const tenantConfig = useTenantConfig()
-  // null enquanto carrega -- otimista, não pisca escondido pra depois
-  // reaparecer.
-  const whatsappHabilitado = tenantConfig?.whatsapp_habilitado !== false
+  // Só mostra conectar WhatsApp se o onboarding marcou notificações.
+  // Enquanto a config carrega (null), não renderiza — evita flash e
+  // evita chamar Evolution com sessão/flag errada.
+  const whatsappHabilitado = tenantConfig?.whatsapp_habilitado === true
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)

@@ -142,6 +142,34 @@ pub async fn provision_tenant(
     Ok(Json(ProvisionTenantOutput { tenant_id, organization_id: org_id }))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct TeardownWhatsappInput {
+    pub tenant_slug: String,
+}
+
+/// Rodoletas chama quando o lojista desmarca WhatsApp no Meu plano —
+/// derruba a sessão/instância Evolution da loja.
+pub async fn teardown_whatsapp(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<TeardownWhatsappInput>,
+) -> Result<StatusCode, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = input.tenant_slug.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest("tenant_slug obrigatório".to_string()));
+    }
+    let store: Option<(String,)> =
+        sqlx::query_as("SELECT whatsapp_instance FROM tenants WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&state.pool)
+            .await?;
+    if let Some((instance,)) = store {
+        crate::whatsapp::teardown(&state, &instance).await?;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }
