@@ -1,5 +1,5 @@
 # Motor multi-tenant (ecommerce/backend) — mesmo projeto Railway `resolutoo`.
-# (cache-bust: 2026-08-01 connection-events + onboarding-gate — força rebuild após deploy falho)
+# (cache-bust: 2026-08-01 17:13 PDV Pix force)
 FROM rust:1.88-bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
