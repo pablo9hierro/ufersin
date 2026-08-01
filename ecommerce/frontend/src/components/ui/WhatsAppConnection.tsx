@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Loader2, Smartphone, Unplug } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
+import { classifyWaState, extractWaState } from '../../lib/whatsappGate'
 import { emitWhatsAppGateChange } from '../../lib/whatsappGateEvents'
 import type { EvolutionConnect } from '../../types'
 
@@ -12,11 +13,6 @@ import type { EvolutionConnect } from '../../types'
 // si. Repollar garante um QR sempre vivo, em qualquer dispositivo.
 const POLL_STATUS_MS = 4000
 const REFRESH_QR_MS = 25000
-
-function extractState(status: unknown): string {
-  const s = status as { instance?: { state?: string }; state?: string } | null
-  return s?.instance?.state ?? s?.state ?? 'desconhecido'
-}
 
 function extractQrImage(data: EvolutionConnect): string | null {
   const b64 = data.base64 ?? data.qrcode?.base64
@@ -72,15 +68,18 @@ export default function WhatsAppConnection({
     setError(null)
     try {
       const data = await api.status()
-      const s = extractState(data)
+      const s = extractWaState(data)
       setStatus(s)
-      if (s === 'open') {
+      const verdict = classifyWaState(s)
+      // Only emit definitive open/closed — never on connecting / unknown / errors.
+      // Spurious open↔connecting flips were flickering the AdminLayout gate.
+      if (verdict === 'open') {
         if (!wasConnected.current) {
           wasConnected.current = true
           emitWhatsAppGateChange(true)
           onConnected?.()
         }
-      } else if (wasConnected.current) {
+      } else if (verdict === 'closed' && wasConnected.current) {
         wasConnected.current = false
         emitWhatsAppGateChange(false)
       }
@@ -88,6 +87,7 @@ export default function WhatsAppConnection({
     } catch (err) {
       setError(friendlyWhatsAppError(err, 'Não foi possível consultar o status.'))
       setStatus(null)
+      // Do NOT emit disconnect on network/401 blips.
       return null
     } finally {
       setLoadingStatus(false)
@@ -169,7 +169,7 @@ export default function WhatsAppConnection({
   const pairingCode = qr ? extractPairingCode(qr) : null
 
   return (
-    <div className="max-w-sm bg-son-surface border border-white/5 rounded-2xl p-6 space-y-4">
+    <div className="w-full max-w-sm mx-auto bg-son-surface border border-white/10 rounded-2xl p-6 space-y-4 text-left">
       <div className="flex items-center justify-between">
         <span className="text-sm text-son-silver-dim">Status</span>
         {loadingStatus ? (

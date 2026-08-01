@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   ClipboardList,
+  Layers,
   LogOut,
   Megaphone,
   Package,
@@ -18,6 +19,13 @@ import { isDemoModeActive, planoAtLeast, planoIncludes, type PlanoCode } from '.
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { adminService } from '../../services/adminService'
 import { subscribeWhatsAppGateChange } from '../../lib/whatsappGateEvents'
+import {
+  WA_GATE_CONFIRM_STREAK,
+  WA_GATE_POLL_MS,
+  WaGateDebouncer,
+  classifyWaStatusPayload,
+  type WaVerdict,
+} from '../../lib/whatsappGate'
 
 const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requiredPlan: PlanoCode }[] = [
   { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, requiredPlan: 'essential' },
@@ -26,21 +34,14 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requ
   { href: '/admin/motoboys', label: 'Funcionários', icon: Truck, requiredPlan: 'management' },
   { href: '/admin/crm', label: 'CRM', icon: Users, requiredPlan: 'premium' },
   { href: '/admin/promocoes', label: 'Promoções', icon: Megaphone, requiredPlan: 'management' },
+  { href: '/admin/layout-cliente', label: 'Layout', icon: Layers, requiredPlan: 'essential' },
   { href: '/admin/relatorios', label: 'Relatórios', icon: Wallet, requiredPlan: 'essential' },
   { href: '/admin/conta', label: 'Configurações', icon: Settings, requiredPlan: 'essential' },
 ]
 
-/** How often to re-check WA while the panel is unlocked (auto-disconnect). */
-const WA_STATUS_POLL_MS = 8_000
-
 function planAllows(required: PlanoCode, demo: boolean, tenantPlano: PlanoCode | undefined): boolean {
   if (demo) return planoIncludes(required)
   return planoAtLeast(tenantPlano ?? 'essential', required)
-}
-
-function extractWaState(status: unknown): string {
-  const s = status as { instance?: { state?: string }; state?: string } | null
-  return s?.instance?.state ?? s?.state ?? 'desconhecido'
 }
 
 export default function AdminLayout() {
@@ -51,70 +52,137 @@ export default function AdminLayout() {
   const tenantConfig = useTenantConfig()
   const tenantPlano = tenantConfig?.plano
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
-  // Skip WA gate entirely when WhatsApp is disabled for the tenant.
   const whatsappRequired = tenantConfig?.whatsapp_habilitado === true
 
   // null = ainda checando; true = gate ativo; false = liberado
   const [gateLocked, setGateLocked] = useState<boolean | null>(demo ? false : null)
+  const [hoursDone, setHoursDone] = useState(false)
 
-  const recheckGate = useCallback(async () => {
+  const hoursDoneRef = useRef(hoursDone)
+  const gateLockedRef = useRef(gateLocked)
+  const whatsappRequiredRef = useRef(whatsappRequired)
+  const debouncerRef = useRef(new WaGateDebouncer(WA_GATE_CONFIRM_STREAK))
+
+  hoursDoneRef.current = hoursDone
+  gateLockedRef.current = gateLocked
+  whatsappRequiredRef.current = whatsappRequired
+
+  const applyVerdict = useCallback((verdict: Exclude<WaVerdict, 'pending'>, hours: boolean) => {
+    if (!hours) {
+      setGateLocked(true)
+      return
+    }
+    if (!whatsappRequiredRef.current) {
+      setGateLocked(false)
+      return
+    }
+    // Definitive only: open unlocks, closed locks. Never toggle on pending.
+    setGateLocked(verdict !== 'open')
+  }, [])
+
+  /** Initial mount + full re-eval. Waits for a definitive WA reading (no false unlock). */
+  const bootstrapGate = useCallback(async () => {
     if (demo) {
       setGateLocked(false)
       return
     }
-    // Espera tenantConfig pra saber se WhatsApp é obrigatório.
     if (tenantConfig == null) return
+
+    debouncerRef.current.reset()
+
+    // Hours: fail-open if API missing (lojas antigas), fail-closed when false.
+    let hours = true
     try {
       const gate = await adminService.onboardingGate.get()
-      const hoursDone = !!gate.onboarding_hours_done
-      let waOk = !whatsappRequired
-      if (whatsappRequired) {
-        try {
-          waOk = extractWaState(await adminService.whatsapp.status()) === 'open'
-        } catch {
-          waOk = false
-        }
-      }
-      setGateLocked(!(hoursDone && waOk))
+      hours = !!gate.onboarding_hours_done
     } catch {
-      // Se a API falhar, não trava o painel pra lojas já existentes.
-      setGateLocked(false)
+      hours = true
     }
-  }, [demo, tenantConfig, whatsappRequired])
+    setHoursDone(hours)
+
+    if (!hours) {
+      setGateLocked(true)
+      return
+    }
+    if (!whatsappRequired) {
+      setGateLocked(false)
+      return
+    }
+
+    // Keep "Carregando…" until a definitive open/closed — never unlock on blip.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const verdict = classifyWaStatusPayload(await adminService.whatsapp.status())
+        if (verdict === 'pending') {
+          await new Promise((r) => setTimeout(r, 700))
+          continue
+        }
+        applyVerdict(verdict, hours)
+        return
+      } catch {
+        // Network/401 flash — do not lock or unlock; retry.
+        await new Promise((r) => setTimeout(r, 700))
+      }
+    }
+    // Still unsettled after retries: stay locked only if we never unlocked before.
+    // Prefer keeping the loading spinner (null) over a wrong unlock on reload.
+    if (gateLockedRef.current === null) {
+      // Conservative: if WA is required and we couldn't confirm open, show reconnect gate.
+      // User asked gate to survive reload when disconnected — better lock than unlock.
+      setGateLocked(true)
+    }
+  }, [demo, tenantConfig, whatsappRequired, applyVerdict])
 
   useEffect(() => {
-    recheckGate()
-  }, [recheckGate])
+    void bootstrapGate()
+  }, [bootstrapGate])
 
-  // Manual disconnect (Configurações) or status flip from WhatsAppConnection
-  // must re-lock immediately — do not wait for the poll.
+  // Manual disconnect is authoritative (immediate lock). Connected events only hint —
+  // we re-fetch and still require a definitive `open` (no optimistic unlock).
   useEffect(() => {
     if (demo || !whatsappRequired) return
     return subscribeWhatsAppGateChange((connected) => {
       if (!connected) {
-        setGateLocked(true)
+        debouncerRef.current.force('closed')
+        applyVerdict('closed', hoursDoneRef.current)
         return
       }
-      // Reconnected elsewhere — re-evaluate hours + WA together.
-      void recheckGate()
+      // Hint only — confirm with live status (single read is enough after explicit connect).
+      void (async () => {
+        try {
+          const verdict = classifyWaStatusPayload(await adminService.whatsapp.status())
+          if (verdict === 'open') {
+            debouncerRef.current.force('open')
+            applyVerdict('open', hoursDoneRef.current)
+          }
+          // pending/closed: ignore event; poll / gate UI will settle.
+        } catch {
+          /* ignore blip */
+        }
+      })()
     })
-  }, [demo, whatsappRequired, recheckGate])
+  }, [demo, whatsappRequired, applyVerdict])
 
-  // Auto-disconnect: poll while unlocked so the full-screen gate returns
-  // without a full page reload. Also recheck on tab focus.
+  // While unlocked: poll for definitive disconnect only (debounced).
+  // While locked: OnboardingGate owns unlock-on-open; avoid dual poll fight.
   useEffect(() => {
     if (demo || !whatsappRequired || gateLocked !== false) return
 
     const checkWa = async () => {
       try {
-        const s = extractWaState(await adminService.whatsapp.status())
-        if (s !== 'open') setGateLocked(true)
+        const verdict = classifyWaStatusPayload(await adminService.whatsapp.status())
+        const confirmed = debouncerRef.current.observe(verdict)
+        if (confirmed === 'closed') {
+          applyVerdict('closed', hoursDoneRef.current)
+        }
+        // confirmed open while unlocked: no-op
+        // pending: ignore
       } catch {
-        /* ignore transient errors */
+        /* ignore transient errors — do NOT lock */
       }
     }
 
-    const t = setInterval(checkWa, WA_STATUS_POLL_MS)
+    const t = setInterval(checkWa, WA_GATE_POLL_MS)
     const onVisible = () => {
       if (document.visibilityState === 'visible') void checkWa()
     }
@@ -125,7 +193,7 @@ export default function AdminLayout() {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)
     }
-  }, [demo, whatsappRequired, gateLocked])
+  }, [demo, whatsappRequired, gateLocked, applyVerdict])
 
   if (!token) return <Navigate to="/admin/login" state={{ from: location }} replace />
 
@@ -137,12 +205,19 @@ export default function AdminLayout() {
     )
   }
 
-  // Full-screen gate replaces the entire admin shell (all /admin/* routes).
   if (gateLocked) {
     return (
       <OnboardingGate
         whatsappRequired={whatsappRequired}
-        onUnlocked={() => setGateLocked(false)}
+        hoursDone={hoursDone}
+        onHoursSaved={() => {
+          setHoursDone(true)
+          hoursDoneRef.current = true
+        }}
+        onUnlocked={() => {
+          debouncerRef.current.force('open')
+          setGateLocked(false)
+        }}
       />
     )
   }

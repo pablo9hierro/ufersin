@@ -1,6 +1,11 @@
-/** Cross-component signal so AdminLayout can re-lock the etapa 2 gate
- *  immediately when WhatsApp disconnects (manual logout or auto drop),
- *  without waiting for the next status poll. */
+/** Cross-component signal for definitive WhatsApp connect/disconnect.
+ *
+ * Emit ONLY for definitive states (manual logout, Evolution `open` / `close`).
+ * Never emit on `connecting`, unknown, or network errors — that flickered the gate.
+ *
+ * AdminLayout is the single source of truth for locked UI; events are hints
+ * (disconnect → immediate lock; connect → confirm with a live status read).
+ */
 
 export const WA_GATE_EVENT = 'resolutoo:whatsapp-gate'
 
