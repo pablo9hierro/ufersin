@@ -1,9 +1,9 @@
-﻿[build]
-builder = "NIXPACKS"
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 watchPatterns = []
 
 [deploy]
-startCommand = "./target/release/sonset_backend"
 healthcheckPath = "/internal/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
