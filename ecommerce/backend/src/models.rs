@@ -282,3 +282,37 @@ pub struct FinanceiroSummary {
     #[serde(default)]
     pub avg_delivery_minutes: f64,
 }
+
+// ---------- Horário / status da loja ----------
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StoreHourInterval {
+    pub opens_at: String,
+    pub closes_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StoreHourDay {
+    pub day_of_week: i16,
+    pub is_open: bool,
+    pub intervals: Vec<StoreHourInterval>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StoreStatusDto {
+    pub hours: Vec<StoreHourDay>,
+    pub manually_closed: bool,
+    pub manual_closed_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetStoreHoursInput {
+    pub hours: Vec<StoreHourDay>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetStoreManualStatusInput {
+    pub manually_closed: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+}

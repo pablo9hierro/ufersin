@@ -9,7 +9,8 @@ use crate::error::AppError;
 use crate::features::{self, Feature};
 use crate::models::{
     Category, CategoryInput, FinanceiroSummary, MotoboyDto, MotoboyInput, MotoboyRow, OrderDto,
-    OrderRow, ProductDto, ProductInput, ProductRow, StatusCount, TopProduct, UpdateStatusInput,
+    OrderRow, ProductDto, ProductInput, ProductRow, SetStoreHoursInput, SetStoreManualStatusInput,
+    StatusCount, StoreHourDay, StoreHourInterval, StoreStatusDto, TopProduct, UpdateStatusInput,
 };
 use crate::orders_common::row_to_dto;
 use crate::state::AppState;
@@ -737,4 +738,147 @@ pub async fn whatsapp_logout(
     let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
     whatsapp::logout(&state, &store.whatsapp_instance).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------- Horário / status da loja ----------
+
+async fn ensure_default_hours(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+) -> Result<(), AppError> {
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM store_hours WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_one(&mut **tx)
+            .await?;
+    if count.0 > 0 {
+        return Ok(());
+    }
+    let default_intervals = serde_json::json!([{ "opens_at": "09:00", "closes_at": "18:00" }]);
+    for day in 0i16..=6 {
+        sqlx::query(
+            "INSERT INTO store_hours (tenant_id, day_of_week, is_open, intervals) \
+             VALUES ($1, $2, true, $3) ON CONFLICT DO NOTHING",
+        )
+        .bind(tenant_id)
+        .bind(day)
+        .bind(&default_intervals)
+        .execute(&mut **tx)
+        .await?;
+    }
+    sqlx::query(
+        "INSERT INTO store_status (tenant_id, manually_closed) VALUES ($1, false) \
+         ON CONFLICT (tenant_id) DO NOTHING",
+    )
+    .bind(tenant_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_store_status(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<StoreStatusDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    ensure_default_hours(&mut tx, &claims.tenant_id).await?;
+
+    let rows: Vec<(i16, bool, serde_json::Value)> = sqlx::query_as(
+        "SELECT day_of_week, is_open, intervals FROM store_hours \
+         WHERE tenant_id = $1 ORDER BY day_of_week",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let hours: Vec<StoreHourDay> = rows
+        .into_iter()
+        .map(|(day_of_week, is_open, intervals)| {
+            let intervals: Vec<StoreHourInterval> =
+                serde_json::from_value(intervals).unwrap_or_default();
+            StoreHourDay {
+                day_of_week,
+                is_open,
+                intervals,
+            }
+        })
+        .collect();
+
+    let status: (bool, Option<String>) = sqlx::query_as(
+        "SELECT manually_closed, manual_closed_reason FROM store_status WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .unwrap_or((false, None));
+
+    tx.commit().await?;
+    Ok(Json(StoreStatusDto {
+        hours,
+        manually_closed: status.0,
+        manual_closed_reason: status.1,
+    }))
+}
+
+pub async fn set_store_hours(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(body): Json<SetStoreHoursInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    ensure_default_hours(&mut tx, &claims.tenant_id).await?;
+
+    for h in &body.hours {
+        if !(0..=6).contains(&h.day_of_week) {
+            return Err(AppError::BadRequest("day_of_week deve ser 0..6".to_string()));
+        }
+        let intervals = serde_json::to_value(&h.intervals)
+            .map_err(|e| AppError::Internal(format!("intervals json: {e}")))?;
+        sqlx::query(
+            "INSERT INTO store_hours (tenant_id, day_of_week, is_open, intervals) \
+             VALUES ($1, $2, $3, $4) \
+             ON CONFLICT (tenant_id, day_of_week) DO UPDATE SET \
+             is_open = EXCLUDED.is_open, intervals = EXCLUDED.intervals",
+        )
+        .bind(&claims.tenant_id)
+        .bind(h.day_of_week)
+        .bind(h.is_open)
+        .bind(&intervals)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+pub async fn set_store_manual_status(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(body): Json<SetStoreManualStatusInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if body.manually_closed && body.reason.as_deref().unwrap_or("").trim().is_empty() {
+        // Motivo só é obrigatório no front quando fecha no horário aberto;
+        // no backend aceitamos vazio (lojista pode fechar sem mensagem).
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    ensure_default_hours(&mut tx, &claims.tenant_id).await?;
+    let reason = if body.manually_closed {
+        body.reason.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    } else {
+        None
+    };
+    sqlx::query(
+        "INSERT INTO store_status (tenant_id, manually_closed, manual_closed_reason) \
+         VALUES ($1, $2, $3) \
+         ON CONFLICT (tenant_id) DO UPDATE SET \
+         manually_closed = EXCLUDED.manually_closed, \
+         manual_closed_reason = EXCLUDED.manual_closed_reason",
+    )
+    .bind(&claims.tenant_id)
+    .bind(body.manually_closed)
+    .bind(reason)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
 }

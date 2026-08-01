@@ -80,6 +80,9 @@ async fn evolution_json(
 /// Current connection state of the given instance
 /// (`{"instance": {"instanceName": "...", "state": "open"|"connecting"|"close"}}`,
 /// exact shape depends on the Evolution API version).
+///
+/// Instância ainda não criada = desconectado (não erro). O admin clica
+/// Conectar e o `connect` cria a instância + QR.
 pub async fn connection_status(
     state: &AppState,
     instance: &str,
@@ -97,7 +100,29 @@ pub async fn connection_status(
         .send()
         .await
         .map_err(|e| crate::error::AppError::Internal(format!("evolution api unreachable: {e}")))?;
-    evolution_json(resp).await
+
+    let http_status = resp.status();
+    let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+    let msg = body
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let instance_missing = http_status.as_u16() == 404
+        || msg.contains("does not exist")
+        || (msg.contains("not found") && msg.contains("instance"));
+
+    if instance_missing {
+        return Ok(json!({
+            "instance": { "instanceName": instance, "state": "close" }
+        }));
+    }
+    if !http_status.is_success() {
+        return Err(crate::error::AppError::Internal(format!(
+            "evolution api returned {http_status}: {body}"
+        )));
+    }
+    Ok(body)
 }
 
 /// Creates the given instance if it doesn't exist yet (ignored if it already
@@ -118,8 +143,22 @@ pub async fn connect(state: &AppState, instance: &str) -> Result<serde_json::Val
         }))
         .send()
         .await;
-    if let Err(e) = &create_result {
-        tracing::warn!("evolution api instance/create failed (may already exist): {e}");
+    match create_result {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            // 201/200 = criada; 403/409/"already" = já existia — ok nos dois.
+            if !status.is_success()
+                && !body.to_lowercase().contains("already")
+                && status.as_u16() != 403
+                && status.as_u16() != 409
+            {
+                tracing::warn!("evolution api instance/create {instance}: {status} {body}");
+            }
+        }
+        Err(e) => {
+            tracing::warn!("evolution api instance/create failed (may already exist): {e}");
+        }
     }
 
     // Best-effort: point this instance's webhook at us so incoming messages

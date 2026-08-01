@@ -24,10 +24,26 @@ function StoreHoursCard() {
   const [savingManual, setSavingManual] = useState(false)
   const [manualError, setManualError] = useState<string | null>(null)
 
-  const load = () => adminService.storeStatus.get().then((s) => {
-    setStatus(s)
-    setHours(s.hours)
-  })
+  const load = () =>
+    adminService.storeStatus
+      .get()
+      .then((s) => {
+        setStatus(s)
+        setHours(s.hours)
+        setHoursError(null)
+      })
+      .catch((err) => {
+        setHoursError(err instanceof ApiError ? err.message : 'Não foi possível carregar os horários.')
+        // Evita spinner eterno — mostra UI com defaults vazios editáveis.
+        setStatus({ hours: [], manually_closed: false, manual_closed_reason: null })
+        setHours(
+          Array.from({ length: 7 }, (_, day_of_week) => ({
+            day_of_week,
+            is_open: true,
+            intervals: [{ opens_at: '09:00', closes_at: '18:00' }],
+          }))
+        )
+      })
 
   useEffect(() => {
     load()

@@ -137,6 +137,22 @@ pub async fn provision_tenant(
         .execute(&mut *tx)
         .await?;
 
+    let default_intervals = serde_json::json!([{ "opens_at": "09:00", "closes_at": "18:00" }]);
+    for day in 0i16..=6 {
+        sqlx::query(
+            "INSERT INTO store_hours (tenant_id, day_of_week, is_open, intervals) VALUES ($1, $2, true, $3)",
+        )
+        .bind(&tenant_id)
+        .bind(day)
+        .bind(&default_intervals)
+        .execute(&mut *tx)
+        .await?;
+    }
+    sqlx::query("INSERT INTO store_status (tenant_id, manually_closed) VALUES ($1, false)")
+        .bind(&tenant_id)
+        .execute(&mut *tx)
+        .await?;
+
     tx.commit().await?;
 
     Ok(Json(ProvisionTenantOutput { tenant_id, organization_id: org_id }))

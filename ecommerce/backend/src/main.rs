@@ -284,6 +284,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/admin/whatsapp/logout", post(routes::admin::whatsapp_logout))
         .route("/api/admin/whatsapp/notify-order-ready", post(routes::admin::notify_order_ready))
         .route("/api/admin/whatsapp/notify-coupon-grant", post(routes::admin::notify_coupon_grant))
+        .route("/api/admin/store-status", get(routes::admin::get_store_status))
+        .route("/api/admin/store-hours", axum::routing::put(routes::admin::set_store_hours))
+        .route(
+            "/api/admin/store-manual-status",
+            axum::routing::put(routes::admin::set_store_manual_status),
+        )
         // motoboy
         // Otimiza a ordem de entrega do lote via Google Routes (distância
         // real de rua) antes de chamar sunset.motoboy_start_run — quando

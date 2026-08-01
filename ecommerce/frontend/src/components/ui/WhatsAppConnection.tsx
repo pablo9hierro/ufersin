@@ -33,6 +33,9 @@ function friendlyWhatsAppError(err: unknown, fallback: string): string {
   if (/invalid or expired token|missing authorization|unauthorized/i.test(m)) {
     return 'Sua sessão expirou. Saia e entre de novo no painel pra conectar o WhatsApp.'
   }
+  if (/does not exist|instance does not exist/i.test(m)) {
+    return 'Instância ainda não criada — clique em Conectar pra gerar o QR.'
+  }
   if (/EVOLUTION_API|not configured/i.test(m)) {
     return 'WhatsApp ainda não está configurado no servidor. Avise o suporte Resolutoo.'
   }
