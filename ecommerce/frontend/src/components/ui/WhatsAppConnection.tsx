@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, Smartphone, Unplug } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
+import { emitWhatsAppGateChange } from '../../lib/whatsappGateEvents'
 import type { EvolutionConnect } from '../../types'
 
 // O Baileys/Evolution API expira e troca o QR sozinho no servidor a cada
@@ -64,6 +65,7 @@ export default function WhatsAppConnection({
   const [disconnecting, setDisconnecting] = useState(false)
   const [qr, setQr] = useState<EvolutionConnect | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const wasConnected = useRef(false)
 
   const loadStatus = async (): Promise<string | null> => {
     setLoadingStatus(true)
@@ -72,7 +74,16 @@ export default function WhatsAppConnection({
       const data = await api.status()
       const s = extractState(data)
       setStatus(s)
-      if (s === 'open') onConnected?.()
+      if (s === 'open') {
+        if (!wasConnected.current) {
+          wasConnected.current = true
+          emitWhatsAppGateChange(true)
+          onConnected?.()
+        }
+      } else if (wasConnected.current) {
+        wasConnected.current = false
+        emitWhatsAppGateChange(false)
+      }
       return s
     } catch (err) {
       setError(friendlyWhatsAppError(err, 'Não foi possível consultar o status.'))
@@ -140,7 +151,12 @@ export default function WhatsAppConnection({
     try {
       await api.logout()
       setQr(null)
-      await loadStatus()
+      wasConnected.current = false
+      setStatus('close')
+      // Immediate gate re-lock (Configurações logout / manual disconnect).
+      // Do not re-poll status here: a stale "open" would briefly unlock, and
+      // AdminLayout replaces this tree with OnboardingGate on the event.
+      emitWhatsAppGateChange(false)
       onDisconnected?.()
     } catch (err) {
       setError(friendlyWhatsAppError(err, 'Não foi possível desconectar.'))

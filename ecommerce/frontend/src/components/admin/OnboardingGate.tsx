@@ -76,7 +76,7 @@ export default function OnboardingGate({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whatsappRequired])
 
-  // Re-poll WhatsApp while gate is up and WA still required.
+  // Re-poll WhatsApp while gate is up and WA still required (QR scan / auto-reconnect).
   useEffect(() => {
     if (!whatsappRequired || waConnected) return
     const t = setInterval(async () => {
@@ -93,6 +93,23 @@ export default function OnboardingGate({
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [whatsappRequired, waConnected, hoursDone])
+
+  // If WA drops while the hours accordion is still open, keep showing the WA form.
+  useEffect(() => {
+    if (!whatsappRequired || !waConnected) return
+    const t = setInterval(async () => {
+      try {
+        const s = extractState(await adminService.whatsapp.status())
+        if (s !== 'open') {
+          setWaConnected(false)
+          setOpenWa(true)
+        }
+      } catch {
+        /* ignore */
+      }
+    }, 8000)
+    return () => clearInterval(t)
+  }, [whatsappRequired, waConnected])
 
   if (loading) {
     return (

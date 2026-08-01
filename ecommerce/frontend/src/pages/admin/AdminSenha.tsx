@@ -134,7 +134,11 @@ export default function AdminSenha() {
             <WhatsAppConnection
               api={adminService.whatsapp}
               onConnected={loadWaEvents}
-              onDisconnected={loadWaEvents}
+              onDisconnected={() => {
+                // emitWhatsAppGateChange(false) already fired inside WhatsAppConnection;
+                // refresh history — AdminLayout listens and re-locks the full-screen gate.
+                loadWaEvents()
+              }}
             />
             <div className="flex-1 min-w-0 max-w-md bg-son-surface border border-white/5 rounded-2xl p-5">
               <p className="font-semibold text-white text-sm mb-3">Histórico de conexões</p>

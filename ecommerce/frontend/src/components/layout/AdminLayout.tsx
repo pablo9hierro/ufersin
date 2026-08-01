@@ -18,6 +18,7 @@ import { useAdminAuth } from '../../store/adminAuth'
 import { isDemoModeActive, planoAtLeast, planoIncludes, type PlanoCode } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { adminService } from '../../services/adminService'
+import { subscribeWhatsAppGateChange } from '../../lib/whatsappGateEvents'
 
 const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requiredPlan: PlanoCode }[] = [
   { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, requiredPlan: 'essential' },
@@ -30,6 +31,9 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requ
   { href: '/admin/relatorios', label: 'Relatórios', icon: Wallet, requiredPlan: 'essential' },
   { href: '/admin/conta', label: 'Configurações', icon: Settings, requiredPlan: 'essential' },
 ]
+
+/** How often to re-check WA while the panel is unlocked (auto-disconnect). */
+const WA_STATUS_POLL_MS = 8_000
 
 function planAllows(required: PlanoCode, demo: boolean, tenantPlano: PlanoCode | undefined): boolean {
   if (demo) return planoIncludes(required)
@@ -49,6 +53,7 @@ export default function AdminLayout() {
   const tenantConfig = useTenantConfig()
   const tenantPlano = tenantConfig?.plano
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
+  // Skip WA gate entirely when WhatsApp is disabled for the tenant.
   const whatsappRequired = tenantConfig?.whatsapp_habilitado === true
 
   // null = ainda checando; true = gate ativo; false = liberado
@@ -83,18 +88,45 @@ export default function AdminLayout() {
     recheckGate()
   }, [recheckGate])
 
-  // Se WhatsApp desconectar depois, reabre o gate (horas continuam done).
+  // Manual disconnect (Configurações) or status flip from WhatsAppConnection
+  // must re-lock immediately — do not wait for the poll.
+  useEffect(() => {
+    if (demo || !whatsappRequired) return
+    return subscribeWhatsAppGateChange((connected) => {
+      if (!connected) {
+        setGateLocked(true)
+        return
+      }
+      // Reconnected elsewhere — re-evaluate hours + WA together.
+      void recheckGate()
+    })
+  }, [demo, whatsappRequired, recheckGate])
+
+  // Auto-disconnect: poll while unlocked so the full-screen gate returns
+  // without a full page reload. Also recheck on tab focus.
   useEffect(() => {
     if (demo || !whatsappRequired || gateLocked !== false) return
-    const t = setInterval(async () => {
+
+    const checkWa = async () => {
       try {
         const s = extractWaState(await adminService.whatsapp.status())
         if (s !== 'open') setGateLocked(true)
       } catch {
         /* ignore transient errors */
       }
-    }, 30_000)
-    return () => clearInterval(t)
+    }
+
+    const t = setInterval(checkWa, WA_STATUS_POLL_MS)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void checkWa()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
   }, [demo, whatsappRequired, gateLocked])
 
   if (!token) return <Navigate to="/admin/login" state={{ from: location }} replace />
@@ -107,6 +139,7 @@ export default function AdminLayout() {
     )
   }
 
+  // Full-screen gate replaces the entire admin shell (all /admin/* routes).
   if (gateLocked) {
     return (
       <OnboardingGate
