@@ -89,8 +89,17 @@ export const supabasePublicApi = {
     get: async (): Promise<StoreStatus> => {
       const [hoursRes, statusRes] = await Promise.all([
         supabase.from('store_hours').select('day_of_week, is_open, intervals').order('day_of_week'),
-        supabase.from('store_status').select('manually_closed, manual_closed_reason').single(),
+        supabase.from('store_status').select('manually_closed, manual_closed_reason').maybeSingle(),
       ])
+      // Schema/tabela ausente (ex.: "Invalid schema: ufersin") → defaults
+      // editáveis no admin; não mascara como lista vazia silenciosa.
+      if (hoursRes.error) {
+        const msg = hoursRes.error.message || 'store_hours unavailable'
+        if (/invalid schema|does not exist|404|not find/i.test(msg)) {
+          throw new ApiError(404, msg)
+        }
+        throw new ApiError(400, msg)
+      }
       return {
         hours: (hoursRes.data ?? []) as StoreHourDay[],
         manually_closed: !!statusRes.data?.manually_closed,

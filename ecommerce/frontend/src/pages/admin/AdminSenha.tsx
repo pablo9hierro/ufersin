@@ -3,7 +3,7 @@ import { Clock, KeyRound, Loader2, MessageCircle, Plus, Power, Trash2 } from 'lu
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
 import { authService } from '../../services/authService'
-import type { StoreHourDay, StoreStatus } from '../../types'
+import type { StoreHourDay, StoreHourInterval, StoreStatus } from '../../types'
 import { DAY_LABELS, isScheduledOpenNow } from '../../lib/storeHours'
 import WhatsAppConnection from '../../components/ui/WhatsAppConnection'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
@@ -12,41 +12,142 @@ import { useTenantConfig } from '../../hooks/useTenantConfig'
 // por hora cheia, sem minutos.
 const HOUR_OPTIONS = Array.from({ length: 25 }, (_, h) => `${String(h).padStart(2, '0')}:00`)
 
+function defaultHours(): StoreHourDay[] {
+  return Array.from({ length: 7 }, (_, day_of_week) => ({
+    day_of_week,
+    is_open: true,
+    intervals: [{ opens_at: '09:00', closes_at: '18:00' }],
+  }))
+}
+
+function defaultStatus(): StoreStatus {
+  return { hours: defaultHours(), manually_closed: false, manual_closed_reason: null }
+}
+
+/** Normaliza "9:00" / "09:00:00" → "09:00" pra casar com os <select>. */
+function normalizeTime(raw: string | null | undefined): string {
+  if (!raw) return '09:00'
+  const m = String(raw).trim().match(/^(\d{1,2})(?::(\d{2}))?/)
+  if (!m) return '09:00'
+  const h = Math.min(24, Math.max(0, Number(m[1])))
+  return `${String(h).padStart(2, '0')}:00`
+}
+
+function normalizeInterval(iv: StoreHourInterval): StoreHourInterval {
+  return { opens_at: normalizeTime(iv.opens_at), closes_at: normalizeTime(iv.closes_at) }
+}
+
+/** Garante 7 dias (0..6) com intervals válidos — API incompleta ou fallback. */
+function normalizeHours(raw: StoreHourDay[] | null | undefined): StoreHourDay[] {
+  const byDay = new Map<number, StoreHourDay>()
+  for (const h of raw ?? []) {
+    if (h == null || typeof h.day_of_week !== 'number') continue
+    if (h.day_of_week < 0 || h.day_of_week > 6) continue
+    byDay.set(h.day_of_week, {
+      day_of_week: h.day_of_week,
+      is_open: !!h.is_open,
+      intervals: Array.isArray(h.intervals) ? h.intervals.map(normalizeInterval) : [],
+    })
+  }
+  return Array.from({ length: 7 }, (_, day_of_week) => {
+    const existing = byDay.get(day_of_week)
+    if (existing) return existing
+    return { day_of_week, is_open: true, intervals: [{ opens_at: '09:00', closes_at: '18:00' }] }
+  })
+}
+
+/** Mensagens amigáveis — nunca "Erro 404", "Invalid schema: ufersin", etc. */
+function friendlyHoursError(err: unknown, action: 'carregar' | 'salvar' | 'status'): string | null {
+  // Falha ao carregar: UI já tem defaults editáveis — sem banner vermelho.
+  if (action === 'carregar') return null
+
+  const status = err instanceof ApiError ? err.status : undefined
+  const raw = err instanceof ApiError ? err.message : ''
+  const lower = raw.toLowerCase()
+
+  if (status === 404 || status === 502 || status === 503 || status === 0) {
+    return action === 'salvar'
+      ? 'Servidor ainda atualizando. Você pode editar os intervalos; tente salvar de novo em alguns minutos.'
+      : 'Servidor ainda atualizando. Tente de novo em alguns minutos.'
+  }
+  if (
+    lower.includes('invalid schema') ||
+    lower.includes('store_hours') ||
+    lower.includes('does not exist') ||
+    lower.includes('relation') ||
+    /^erro\s*404\b/i.test(raw) ||
+    raw === 'Erro 404'
+  ) {
+    return action === 'salvar'
+      ? 'Horários ainda não disponíveis no servidor. Edite e tente salvar de novo em instantes.'
+      : 'Status da loja ainda não disponível no servidor. Tente de novo em instantes.'
+  }
+  if (status === 401 || lower.includes('unauthorized')) {
+    return 'Sessão expirada — faça login de novo.'
+  }
+  // Evita despejar JSON/técnico no painel.
+  if (!raw || raw.length > 120 || /[{}\[\]`]/.test(raw) || /sql|schema|postgres|stack/i.test(raw)) {
+    return action === 'salvar'
+      ? 'Não foi possível salvar os horários. Tente de novo.'
+      : 'Não foi possível atualizar o status da loja. Tente de novo.'
+  }
+  return raw
+}
+
 function StoreHoursCard() {
   const [status, setStatus] = useState<StoreStatus | null>(null)
   const [hours, setHours] = useState<StoreHourDay[]>([])
   const [savingHours, setSavingHours] = useState(false)
   const [hoursError, setHoursError] = useState<string | null>(null)
   const [hoursSaved, setHoursSaved] = useState(false)
+  const [hoursHint, setHoursHint] = useState<string | null>(null)
 
   const [closeReasonDraft, setCloseReasonDraft] = useState('')
   const [showCloseReasonPrompt, setShowCloseReasonPrompt] = useState(false)
   const [savingManual, setSavingManual] = useState(false)
   const [manualError, setManualError] = useState<string | null>(null)
 
-  const load = () =>
+  const applyLoaded = (s: StoreStatus) => {
+    const normalized = normalizeHours(s.hours)
+    setStatus({ ...s, hours: normalized })
+    setHours(normalized)
+    setHoursError(null)
+    setHoursHint(null)
+  }
+
+  const applyLocalDefaults = (hint?: string | null) => {
+    const s = defaultStatus()
+    setStatus(s)
+    setHours(s.hours)
+    setHoursError(null)
+    setHoursHint(hint ?? null)
+  }
+
+  useEffect(() => {
+    // Timeout de segurança: se a API travar, libera a UI em ≤8s.
+    let settled = false
+    const timer = window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      applyLocalDefaults(null)
+    }, 8000)
+
     adminService.storeStatus
       .get()
       .then((s) => {
-        setStatus(s)
-        setHours(s.hours)
-        setHoursError(null)
+        if (settled) return
+        settled = true
+        window.clearTimeout(timer)
+        applyLoaded(s)
       })
-      .catch((err) => {
-        setHoursError(err instanceof ApiError ? err.message : 'Não foi possível carregar os horários.')
-        // Evita spinner eterno — mostra UI com defaults vazios editáveis.
-        setStatus({ hours: [], manually_closed: false, manual_closed_reason: null })
-        setHours(
-          Array.from({ length: 7 }, (_, day_of_week) => ({
-            day_of_week,
-            is_open: true,
-            intervals: [{ opens_at: '09:00', closes_at: '18:00' }],
-          }))
-        )
+      .catch(() => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(timer)
+        applyLocalDefaults(null)
       })
 
-  useEffect(() => {
-    load()
+    return () => window.clearTimeout(timer)
   }, [])
 
   const patchDay = (day: number, patch: Partial<StoreHourDay>) =>
@@ -54,7 +155,11 @@ function StoreHoursCard() {
 
   const addInterval = (day: number) =>
     setHours((prev) =>
-      prev.map((h) => (h.day_of_week === day ? { ...h, intervals: [...h.intervals, { opens_at: '10:00', closes_at: '14:00' }] } : h))
+      prev.map((h) =>
+        h.day_of_week === day
+          ? { ...h, intervals: [...h.intervals, { opens_at: '18:00', closes_at: '22:00' }] }
+          : h
+      )
     )
 
   const removeInterval = (day: number, index: number) =>
@@ -65,7 +170,14 @@ function StoreHoursCard() {
   const patchInterval = (day: number, index: number, patch: Partial<{ opens_at: string; closes_at: string }>) =>
     setHours((prev) =>
       prev.map((h) =>
-        h.day_of_week === day ? { ...h, intervals: h.intervals.map((iv, i) => (i === index ? { ...iv, ...patch } : iv)) } : h
+        h.day_of_week === day
+          ? {
+              ...h,
+              intervals: h.intervals.map((iv, i) =>
+                i === index ? normalizeInterval({ ...iv, ...patch }) : iv
+              ),
+            }
+          : h
       )
     )
 
@@ -73,12 +185,27 @@ function StoreHoursCard() {
     setSavingHours(true)
     setHoursError(null)
     setHoursSaved(false)
+    setHoursHint(null)
+    const payload = normalizeHours(hours)
     try {
-      await adminService.storeStatus.setHours(hours)
+      await adminService.storeStatus.setHours(payload)
+      setHours(payload)
       setHoursSaved(true)
-      load()
+      // Recarrega do servidor, mas se falhar mantém o que acabou de salvar localmente.
+      try {
+        const s = await adminService.storeStatus.get()
+        applyLoaded(s)
+      } catch {
+        setStatus((prev) => ({
+          hours: payload,
+          manually_closed: prev?.manually_closed ?? false,
+          manual_closed_reason: prev?.manual_closed_reason ?? null,
+        }))
+      }
     } catch (err) {
-      setHoursError(err instanceof ApiError ? err.message : 'Não foi possível salvar os horários.')
+      setHoursError(friendlyHoursError(err, 'salvar'))
+      // Mantém edições locais (incluindo intervalos) pra o lojista tentar de novo.
+      setHours(payload)
     } finally {
       setSavingHours(false)
     }
@@ -88,13 +215,25 @@ function StoreHoursCard() {
     if (!status) return
     setSavingManual(true)
     setManualError(null)
+    const nextClosed = !status.manually_closed
     try {
-      await adminService.storeStatus.setManualStatus(!status.manually_closed, reason)
+      await adminService.storeStatus.setManualStatus(nextClosed, reason)
       setShowCloseReasonPrompt(false)
       setCloseReasonDraft('')
-      load()
+      setStatus({
+        ...status,
+        hours,
+        manually_closed: nextClosed,
+        manual_closed_reason: nextClosed ? reason?.trim() || null : null,
+      })
+      try {
+        const s = await adminService.storeStatus.get()
+        applyLoaded(s)
+      } catch {
+        /* já atualizou o toggle localmente */
+      }
     } catch (err) {
-      setManualError(err instanceof ApiError ? err.message : 'Não foi possível atualizar o status da loja.')
+      setManualError(friendlyHoursError(err, 'status'))
     } finally {
       setSavingManual(false)
     }
@@ -108,7 +247,7 @@ function StoreHoursCard() {
       return
     }
     // Fechando: se agora é um horário que deveria estar aberto, exige motivo.
-    if (isScheduledOpenNow(status)) {
+    if (isScheduledOpenNow({ ...status, hours })) {
       setShowCloseReasonPrompt(true)
       setManualError(null)
       return
@@ -192,6 +331,9 @@ function StoreHoursCard() {
 
       <div className="bg-son-surface border border-white/5 rounded-2xl p-6 space-y-4">
         <p className="font-semibold text-white">Horário semanal</p>
+        <p className="text-son-silver-dim text-xs">
+          Use &quot;+ Intervalo&quot; pra dias com mais de um turno (ex.: 10h–14h e 18h–22h).
+        </p>
         <div className="space-y-4">
           {hours
             .slice()
@@ -221,13 +363,13 @@ function StoreHoursCard() {
                 {h.is_open && (
                   <div className="pl-[7.5rem] space-y-1.5">
                     {h.intervals.length === 0 && (
-                      <p className="text-son-silver-dim text-xs">Nenhum intervalo — clique em "+ Intervalo" pra adicionar.</p>
+                      <p className="text-son-silver-dim text-xs">Nenhum intervalo — clique em &quot;+ Intervalo&quot; pra adicionar.</p>
                     )}
                     {h.intervals.map((iv, i) => (
-                      <div key={i} className="flex items-center gap-2">
+                      <div key={`${h.day_of_week}-${i}-${iv.opens_at}-${iv.closes_at}`} className="flex items-center gap-2">
                         <select
                           className="input-field w-24"
-                          value={iv.opens_at}
+                          value={HOUR_OPTIONS.includes(iv.opens_at) ? iv.opens_at : normalizeTime(iv.opens_at)}
                           onChange={(e) => patchInterval(h.day_of_week, i, { opens_at: e.target.value })}
                         >
                           {HOUR_OPTIONS.map((opt) => (
@@ -239,7 +381,7 @@ function StoreHoursCard() {
                         <span className="text-son-silver-dim text-xs">até</span>
                         <select
                           className="input-field w-24"
-                          value={iv.closes_at}
+                          value={HOUR_OPTIONS.includes(iv.closes_at) ? iv.closes_at : normalizeTime(iv.closes_at)}
                           onChange={(e) => patchInterval(h.day_of_week, i, { closes_at: e.target.value })}
                         >
                           {HOUR_OPTIONS.map((opt) => (
@@ -258,6 +400,7 @@ function StoreHoursCard() {
               </div>
             ))}
         </div>
+        {hoursHint && <p className="text-son-silver-dim text-xs">{hoursHint}</p>}
         {hoursError && <p className="error-msg">{hoursError}</p>}
         {hoursSaved && <p className="text-green-500 text-sm">Horários salvos.</p>}
         <button onClick={saveHours} disabled={savingHours} className="btn-primary text-sm py-2.5 px-3">

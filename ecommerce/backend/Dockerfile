@@ -1,5 +1,5 @@
 # Motor multi-tenant (ecommerce/backend) — mesmo projeto Railway `resolutoo`.
-# (cache-bust: força rebuild limpo após troca de DATABASE_URL para Supabase)
+# (cache-bust: 2026-08-01 store-hours routes — força rebuild após deploy falho)
 FROM rust:1.88-bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
