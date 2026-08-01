@@ -1,44 +1,32 @@
-# Admin panel test module
+# Admin panel tests
 
-Covers admin screens (Login, Pedidos, PDV, Produtos, Relatórios, Configurações, Motoboys/CRM plan gates, onboarding) with unit, API/integration (mocked), and usability/flow tests. No production credentials required for CI.
-
-## How to run
-
-From `ecommerce/frontend`:
+## Default: live (real API)
 
 ```bash
-npm run test:admin          # full admin suite
-npm run test:admin:unit     # pure helpers / validators / PDV math / plan gating
-npm run test:admin:api      # mocked CRUD + async handlers
-npm run test:admin:flow     # Testing Library flows (product → PDV, WA history, etc.)
-npm run test:admin:schema   # migration/schema assertions (+ optional live DB)
-npm test                    # entire Vitest suite (includes legacy tests/)
+cd ecommerce/frontend
+npm run test:admin          # = test:admin:live — real HTTP, real JWT
+npm run test:admin:live:ui  # optional Playwright against ADMIN_TEST_UI_URL
 ```
 
-Optional live checks (never required for CI — no prod credentials):
+Requires env credentials — **fails if missing** (no silent skip). See [`tests/admin-live/README.md`](../../../tests/admin-live/README.md).
+
+| Env | Purpose |
+|-----|---------|
+| `ADMIN_TEST_BASE_URL` / `ECOMMERCE_API_URL` | ecommerce-api origin |
+| `ADMIN_TEST_EMAIL` / `ADMIN_TEST_PASSWORD` | admin login |
+| `ADMIN_TEST_TENANT` | tenant slug |
+| `ADMIN_TEST_DATABASE_URL` | optional DB row asserts |
+| `ADMIN_TEST_ALLOW_PDV_SALE=1` | optional real balcão sale |
+| `ADMIN_TEST_UI_URL` | optional Playwright storefront |
+
+## Offline mocks (not enough alone)
 
 ```bash
-# Windows PowerShell — DB column probe (needs `npm i -D pg`)
-$env:ADMIN_TEST_DATABASE_URL="postgres://..."
-node src/__tests__/admin/schema/live-schema-check.mjs
-
-# Concurrent smoke against local/staging API
-$env:ADMIN_SMOKE_BASE_URL="http://localhost:8080"
-npm run test:admin:smoke
+npm run test:admin:mock     # Vitest unit/api/flow/schema helpers
+npm run test:admin:unit
+npm run test:admin:api
+npm run test:admin:flow
+npm run test:admin:schema
 ```
 
-## Layout
-
-| Path | What |
-|------|------|
-| `unit/` | Pure helpers: PDV cart/search, product validators, plan gating, WA timestamps |
-| `api/` | Mocked `admin`/`pdv` CRUD + connection-events |
-| `flow/` | UI: create product → PDV finds it; WA history render vs empty vs schema error |
-| `schema/` | Assert migration SQL defines required tables/columns; optional live `\d` checks |
-| `smoke/` | Lightweight Node concurrent fetches (opt-in via env) |
-
-## Conventions
-
-- Mock `fetch` / services — never hit production.
-- WhatsApp history: if the API returns events, UI **must** show formatted timestamps; schema/404 must show a clear error (not “Nenhuma conexão ainda”).
-- PDV product list must use the same tenant-scoped source as admin product create (Railway JWT → `/api/pdv/products`).
+These do **not** replace live CRUD / PDV / Conta checks.
