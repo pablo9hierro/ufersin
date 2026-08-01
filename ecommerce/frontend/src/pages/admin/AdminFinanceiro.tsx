@@ -60,19 +60,20 @@ const MONTHS = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ]
 
-/** Calendário mensal estilizado (tema admin escuro) pra escolher um dia. */
-function DayCalendar({
-  value,
+/** Calendário estilizado (tema admin escuro) — evita `<input type="date">` nativo. */
+function DateRangePicker({
+  from,
+  to,
   onChange,
-  label,
 }: {
-  value: string
-  onChange: (iso: string) => void
-  label: string
+  from: string
+  to: string
+  onChange: (from: string, to: string) => void
 }) {
-  const initial = value ? new Date(value + 'T12:00:00') : new Date()
+  const initial = from ? new Date(from + 'T12:00:00') : new Date()
   const [viewYear, setViewYear] = useState(initial.getFullYear())
   const [viewMonth, setViewMonth] = useState(initial.getMonth())
+  const [picking, setPicking] = useState<'from' | 'to'>('from')
 
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
   const firstDow = new Date(viewYear, viewMonth, 1).getDay()
@@ -83,6 +84,31 @@ function DayCalendar({
 
   const toIso = (day: number) =>
     `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+  const select = (day: number) => {
+    const iso = toIso(day)
+    if (picking === 'from') {
+      // Novo início: limpa o fim pra nenhum dia ficar aceso sem seleção completa.
+      onChange(iso, '')
+      setPicking('to')
+    } else {
+      if (iso < from) {
+        onChange(iso, from)
+      } else {
+        onChange(from || iso, iso)
+      }
+      setPicking('from')
+    }
+  }
+
+  const inRange = (day: number) => {
+    const iso = toIso(day)
+    return Boolean(from && to && iso >= from && iso <= to)
+  }
+  const isEdge = (day: number) => {
+    const iso = toIso(day)
+    return Boolean((from && iso === from) || (to && iso === to))
+  }
 
   const prevMonth = () => {
     if (viewMonth === 0) {
@@ -98,9 +124,8 @@ function DayCalendar({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-son-surface-light/40 p-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-son-silver-dim mb-2">{label}</p>
-      <div className="flex items-center justify-between mb-2 gap-2">
+    <div className="rounded-2xl border border-white/10 bg-son-surface-light/40 p-4">
+      <div className="flex items-center justify-between mb-3 gap-2">
         <button
           type="button"
           onClick={prevMonth}
@@ -136,11 +161,13 @@ function DayCalendar({
             <button
               key={day}
               type="button"
-              onClick={() => onChange(toIso(day))}
+              onClick={() => select(day)}
               className={`h-8 rounded-lg text-xs font-medium transition-colors ${
-                toIso(day) === value
+                isEdge(day)
                   ? 'sunset-bg text-white'
-                  : 'text-son-silver hover:bg-white/10 hover:text-white'
+                  : inRange(day)
+                    ? 'bg-son-pink/20 text-white'
+                    : 'text-son-silver hover:bg-white/10 hover:text-white'
               }`}
             >
               {day}
@@ -148,26 +175,54 @@ function DayCalendar({
           )
         )}
       </div>
-      <p className="mt-2 pt-2 border-t border-white/5 text-xs text-son-silver-dim text-center">
-        {value ? formatBrDay(value) : '—'}
-      </p>
+      <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/5">
+        <div
+          className={`rounded-xl border px-4 py-3 ${
+            from || to
+              ? 'border-son-pink/50 bg-gradient-to-br from-son-pink/15 to-son-surface shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]'
+              : 'border-white/10 bg-son-surface/60'
+          }`}
+        >
+          <p className="text-[10px] uppercase tracking-wider text-son-silver-dim mb-1.5">Data selecionada</p>
+          <span
+            className={`flex flex-col items-center gap-1 text-[3.75rem] leading-none font-black tracking-tight ${
+              from || to ? 'text-white' : 'text-son-silver-dim'
+            }`}
+          >
+            <span>{from ? formatBrDay(from) : '—'}</span>
+            <span className="text-[1.75rem] text-son-silver-dim font-bold leading-none">↓</span>
+            <span>{to ? formatBrDay(to) : '—'}</span>
+          </span>
+        </div>
+        <span className="text-xs text-son-silver text-center">
+          {picking === 'from' ? 'Escolha o início' : 'Escolha o fim'}
+        </span>
+      </div>
     </div>
   )
 }
 
 function LucroSection() {
   const [tab, setTab] = useState<'atual' | 'periodo'>('atual')
-  const [rangeFrom, setRangeFrom] = useState(isoMonthStart)
-  const [rangeTo, setRangeTo] = useState(isoToday)
+  // Vazio até o usuário escolher — dias do calendário não ficam acesos sem seleção.
+  const [rangeFrom, setRangeFrom] = useState('')
+  const [rangeTo, setRangeTo] = useState('')
   const [data, setData] = useState<LucroSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const periodReady = Boolean(rangeFrom && rangeTo)
   const queryFrom = tab === 'atual' ? isoMonthStart() : rangeFrom
   const queryTo = tab === 'atual' ? isoToday() : rangeTo
 
   useEffect(() => {
     let cancelled = false
+    if (tab === 'periodo' && !periodReady) {
+      setLoading(false)
+      setData(null)
+      setError(null)
+      return
+    }
     const load = () => {
       adminService.financeiro
         .lucro(queryFrom, queryTo)
@@ -200,7 +255,7 @@ function LucroSection() {
       if (interval) clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [queryFrom, queryTo, tab])
+  }, [queryFrom, queryTo, tab, periodReady])
 
   return (
     <Card className="p-5 mb-6">
@@ -229,21 +284,13 @@ function LucroSection() {
       </div>
 
       {tab === 'periodo' && (
-        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-          <DayCalendar
-            label="Início"
-            value={rangeFrom}
-            onChange={(iso) => {
-              setRangeFrom(iso)
-              if (iso > rangeTo) setRangeTo(iso)
-            }}
-          />
-          <DayCalendar
-            label="Fim"
-            value={rangeTo}
-            onChange={(iso) => {
-              setRangeTo(iso)
-              if (iso < rangeFrom) setRangeFrom(iso)
+        <div className="mb-4 max-w-lg">
+          <DateRangePicker
+            from={rangeFrom}
+            to={rangeTo}
+            onChange={(f, t) => {
+              setRangeFrom(f)
+              setRangeTo(t)
             }}
           />
         </div>
@@ -254,6 +301,10 @@ function LucroSection() {
           De {formatBrDay(queryFrom)} até hoje · atualiza a cada ~20s
         </p>
       )}
+
+      {tab === 'periodo' && !periodReady ? (
+        <p className="text-sm text-son-silver-dim mb-3">Selecione início e fim no calendário para ver o lucro do período.</p>
+      ) : null}
 
       {loading && !data ? (
         <div className="flex justify-center py-8">
