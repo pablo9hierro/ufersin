@@ -1,5 +1,4 @@
 import clsx from 'clsx'
-import logoSrc from '../../assets/logo.png'
 import { isDemoModeActive } from '../../lib/demoMode'
 import UfersinMark from './UfersinMark'
 
@@ -13,11 +12,16 @@ export default function Logo({ size = 'md', className }: { size?: keyof typeof S
   if (isDemoModeActive()) {
     return <UfersinMark className={clsx('w-auto text-son-pink', SIZES[size], className)} />
   }
+  // Painel do assinante Resolutoo — nunca mostrar marca Sunset Tabas.
   return (
-    <img
-      src={logoSrc}
-      alt="Sunset Tabas"
-      className={clsx('w-auto object-contain drop-shadow-[0_0_16px_rgba(242,193,78,0.35)]', SIZES[size], className)}
-    />
+    <span
+      className={clsx(
+        'inline-flex items-center font-black tracking-tight text-white',
+        size === 'sm' ? 'text-base' : size === 'md' ? 'text-xl' : 'text-3xl',
+        className
+      )}
+    >
+      Resolutoo
+    </span>
   )
 }

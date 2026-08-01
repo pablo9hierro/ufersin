@@ -157,12 +157,18 @@ pub async fn status_assinatura(
     };
 
     let gw_status = gateway::get_status(&state, &gateway_kind, &preapproval_id).await?;
-    let novo_status = match gw_status.as_str() {
+    let mut novo_status = match gw_status.as_str() {
         "authorized" | "PAID" | "ACTIVE" | "active" | "paid" | "COMPLETED" | "completed" => "ativo",
         "paused" | "PAUSED" => "pausado",
         "cancelled" | "CANCELLED" | "canceled" => "cancelado",
         _ => "pendente",
     };
+
+    // Nunca rebaixar ativo→pendente por leitura ambígua do gateway
+    // (sandbox/simular + poll em /obrigado). Cancelamento/pausa explícitos ok.
+    if status_atual == "ativo" && novo_status == "pendente" {
+        novo_status = "ativo";
+    }
 
     let novo_onboarding = if novo_status == "ativo" && onboarding_status == "aguardando_pagamento" {
         "aguardando_onboarding"

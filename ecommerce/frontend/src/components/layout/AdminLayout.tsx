@@ -13,20 +13,16 @@ import {
 } from 'lucide-react'
 import Logo from '../ui/Logo'
 import { useAdminAuth } from '../../store/adminAuth'
-import { isDemoModeActive, planoIncludes, type PlanoCode } from '../../lib/demoMode'
+import { isDemoModeActive, planoAtLeast, planoIncludes, type PlanoCode } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 // Exclusivo do admin — vendedor tem seu próprio layout/rota
 // (VendedorLayout, /funcionarios/vendedor/*) e motoboy também
-// (MotoboyLayout, /funcionarios/motoboy/*). Os três nunca mais dividem
-// componente de guarda nem prefixo de URL entre si (antes vendedor caía
-// dentro de /admin/... usando este mesmo layout, e mesmo com sessões
-// isoladas de verdade isso lia como "confundindo usuário" — reportado).
+// (MotoboyLayout, /funcionarios/motoboy/*).
 //
-// `requiredPlan` só é aplicado em modo demo (ver demoMode.ts) — fora
-// dele, todo item sempre aparece pra qualquer admin de verdade (gating
-// de plano de verdade no admin real é trabalho futuro, ver
-// ecommerce/README-TENANCY.md).
+// `requiredPlan` aplica em demo E em tenant real (via tenantConfig.plano
+// do onboarding Resolutoo). Flags do onboarding também escondem itens
+// (ex.: vender_externamente=false → sem Pedidos).
 const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requiredPlan: PlanoCode }[] = [
   { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, requiredPlan: 'essential' },
   { href: '/admin/pdv', label: 'PDV', icon: ShoppingCart, requiredPlan: 'essential' },
@@ -39,23 +35,28 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requ
   { href: '/admin/conta', label: 'Configurações', icon: Settings, requiredPlan: 'essential' },
 ]
 
+function planAllows(required: PlanoCode, demo: boolean, tenantPlano: PlanoCode | undefined): boolean {
+  if (demo) return planoIncludes(required)
+  // Enquanto tenantConfig carrega, tenantPlano é undefined — fail-closed
+  // (só essential) pra não flashar CRM/etc.
+  return planoAtLeast(tenantPlano ?? 'essential', required)
+}
+
 export default function AdminLayout() {
   const { token, name, logout } = useAdminAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const demo = isDemoModeActive()
   const tenantConfig = useTenantConfig()
-  // null enquanto carrega -- otimista (nunca esconde/bloqueia à toa
-  // enquanto a config real ainda não chegou).
+  const tenantPlano = tenantConfig?.plano
+  // null enquanto carrega -- otimista só pra Pedidos (não esconde PDV à toa).
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
 
   if (!token) return <Navigate to="/admin/login" state={{ from: location }} replace />
 
-  // Em demo, navegar direto pra URL de um item bloqueado pelo plano (não
-  // só clicar no menu, que já nem deixa) também precisa ser barrado.
   const currentItem = NAV_ITEMS.find((i) => i.href === location.pathname)
-  if (demo && currentItem && !planoIncludes(currentItem.requiredPlan)) {
-    return <Navigate to="/admin/pedidos" replace />
+  if (currentItem && !planAllows(currentItem.requiredPlan, demo, tenantPlano)) {
+    return <Navigate to="/admin/pdv" replace />
   }
   // Onboarding marcou "vender apenas internamente" -- Pedidos não existe
   // pra esse tenant (só existe fila de balcão via PDV).
@@ -68,20 +69,18 @@ export default function AdminLayout() {
     navigate('/admin/login')
   }
 
-  // Item bloqueado pelo plano nem aparece no menu -- diferente de
-  // deixar visível/cinza com cadeado (removido a pedido: quem tá no
-  // essential não deve nem saber que "CRM"/"Promoções" existem no menu).
-  // "Pedidos" some também quando o onboarding marcou "vender apenas
-  // internamente" -- ver useTenantConfig acima.
   const visibleItems = NAV_ITEMS.filter(
-    (i) => (!demo || planoIncludes(i.requiredPlan)) && (i.href !== '/admin/pedidos' || pedidosLiberado)
+    (i) => planAllows(i.requiredPlan, demo, tenantPlano) && (i.href !== '/admin/pedidos' || pedidosLiberado)
   )
+
+  const lojaLabel = tenantConfig?.loja_nome?.trim() || tenantConfig?.slug || null
 
   return (
     <div className="min-h-screen bg-son-black text-white flex">
       <aside className="hidden md:flex md:flex-col w-56 shrink-0 bg-son-surface border-r border-white/5 min-h-screen sticky top-0">
         <div className="px-5 py-5 border-b border-white/5">
           <Logo size="sm" />
+          {lojaLabel ? <p className="text-xs font-semibold text-white mt-2 truncate">{lojaLabel}</p> : null}
           <p className="text-xs text-son-silver-dim mt-1">Olá, {name}</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">

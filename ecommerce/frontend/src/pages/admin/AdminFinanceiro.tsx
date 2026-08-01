@@ -133,10 +133,11 @@ function PdvSalesSection({ role }: { role: string }) {
   )
 }
 
-function MotoboysSection({ motoboys }: { motoboys: FinanceiroSummary['motoboys'] }) {
+function MotoboysSection({ motoboys }: { motoboys: FinanceiroSummary['motoboys'] | undefined }) {
+  const list = motoboys ?? []
   const [selected, setSelected] = useState<string[] | 'all'>('all')
-  const names = motoboys.map((m) => m.name)
-  const visible = motoboys.filter((m) => selected === 'all' || selected.includes(m.name))
+  const names = list.map((m) => m.name)
+  const visible = list.filter((m) => selected === 'all' || selected.includes(m.name))
 
   const toggle = (name: string) => {
     setSelected((cur) => {
@@ -150,7 +151,7 @@ function MotoboysSection({ motoboys }: { motoboys: FinanceiroSummary['motoboys']
       <div className="flex items-center gap-2 label mb-3">
         <Truck className="w-3.5 h-3.5" /> Frete dos motoboys
       </div>
-      {motoboys.length === 0 ? (
+      {list.length === 0 ? (
         <p className="text-sm text-son-silver-dim">Nenhum motoboy cadastrado.</p>
       ) : (
         <>
@@ -255,11 +256,33 @@ export default function AdminFinanceiro() {
   const [data, setData] = useState<FinanceiroSummary | null>(null)
   const [timeseries, setTimeseries] = useState<FinanceiroTimeseriesPoint[]>([])
   const [loading, setLoading] = useState(role === 'admin')
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
 
   useEffect(() => {
     if (role !== 'admin') return
-    adminService.financeiro.get().then(setData).finally(() => setLoading(false))
+    setLoadError(null)
+    adminService.financeiro
+      .get()
+      .then((raw) => {
+        // Railway devolve subset; RPCs Supabase devolvem o shape completo.
+        // Normaliza pra nunca crashar a tela (tela verde = uncaught throw).
+        setData({
+          total_revenue: raw?.total_revenue ?? 0,
+          total_orders: raw?.total_orders ?? 0,
+          total_discount_given: raw?.total_discount_given ?? 0,
+          orders_by_status: raw?.orders_by_status ?? [],
+          top_products: raw?.top_products ?? [],
+          recent_orders: raw?.recent_orders ?? [],
+          motoboys: raw?.motoboys ?? [],
+          avg_delivery_minutes: raw?.avg_delivery_minutes ?? 0,
+        })
+      })
+      .catch((e) => {
+        setData(null)
+        setLoadError(e instanceof Error ? e.message : 'Não foi possível carregar o financeiro.')
+      })
+      .finally(() => setLoading(false))
     adminService.financeiro.timeseries(30).then(setTimeseries).catch(() => {})
   }, [role])
 
@@ -282,8 +305,17 @@ export default function AdminFinanceiro() {
     )
   }
 
-  if (!data) return null
-
+  if (!data) {
+    return (
+      <div className="py-10 text-center space-y-3">
+        <h1 className="text-2xl font-black">Financeiro</h1>
+        <p className="text-sm text-son-silver-dim">{loadError || 'Sem dados ainda.'}</p>
+        <button type="button" className="btn-secondary text-sm" onClick={() => window.location.reload()}>
+          Tentar de novo
+        </button>
+      </div>
+    )
+  }
   return (
     <div>
       <h1 className="text-2xl font-black mb-6">Financeiro &amp; relatórios &amp; estatísticas</h1>

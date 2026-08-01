@@ -273,4 +273,12 @@ pub struct FinanceiroSummary {
     pub orders_by_status: Vec<StatusCount>,
     pub top_products: Vec<TopProduct>,
     pub recent_orders: Vec<OrderDto>,
+    /// Campos extras que o frontend espera (RPC Supabase); no caminho
+    /// Railway devolvemos zero/lista vazia pra não crashar a UI.
+    #[serde(default)]
+    pub total_discount_given: f64,
+    #[serde(default)]
+    pub motoboys: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub avg_delivery_minutes: f64,
 }

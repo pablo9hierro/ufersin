@@ -26,15 +26,22 @@ export function getDemoPlano(): PlanoCode | null {
 /** Ordem crescente de plano — usada pra "este plano já libera aquele recurso?". */
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 
-export function planoIncludes(recurso: PlanoCode): boolean {
-  const atual = getDemoPlano()
-  if (!atual) return true // fora do modo demo, nunca restringe nada
-  return PLAN_ORDER.indexOf(recurso) <= PLAN_ORDER.indexOf(atual)
+/** `atual` inclui o recurso exigido por `required`? */
+export function planoAtLeast(atual: PlanoCode | null | undefined, required: PlanoCode): boolean {
+  if (!atual) return false
+  return PLAN_ORDER.indexOf(required) <= PLAN_ORDER.indexOf(atual)
 }
 
-// Nome de marca mostrado nas páginas do site-localhost-demo — em modo
-// demonstração vira "Ufersin" (ramo lanchonete simulado), fora dele
-// continua "Sunset Tabas" (a loja de verdade, nunca mexida).
-export function brandName(): string {
-  return isDemoModeActive() ? 'Ufersin' : 'Sunset Tabas'
+/** Demo: usa plano da sessionStorage. Fora dela, não restringe (use planoAtLeast + tenantConfig). */
+export function planoIncludes(recurso: PlanoCode): boolean {
+  const atual = getDemoPlano()
+  if (!atual) return true
+  return planoAtLeast(atual, recurso)
+}
+
+// Nome de marca: demo → Ufersin; loja real → nome do tenant se conhecido.
+export function brandName(lojaNome?: string | null): string {
+  if (isDemoModeActive()) return 'Ufersin'
+  const n = lojaNome?.trim()
+  return n || 'Minha loja'
 }

@@ -580,6 +580,9 @@ pub async fn financeiro(
         orders_by_status,
         top_products,
         recent_orders,
+        total_discount_given: 0.0,
+        motoboys: vec![],
+        avg_delivery_minutes: 0.0,
     }))
 }
 

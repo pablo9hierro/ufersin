@@ -314,6 +314,7 @@ pub async fn editar_onboarding(
 #[derive(Debug, Serialize)]
 pub struct TenantConfigResponse {
     pub slug: String,
+    pub loja_nome: String,
     pub plano: String,
     pub vender_externamente: bool,
     pub whatsapp_habilitado: bool,
@@ -331,18 +332,19 @@ pub async fn tenant_config(
     State(state): State<AppState>,
     axum::extract::Path(slug): axum::extract::Path<String>,
 ) -> Result<Json<TenantConfigResponse>, AppError> {
-    let row: Option<(String, bool, bool, String, Option<String>)> = sqlx::query_as(
-        "SELECT plan_code, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento \
+    let row: Option<(String, String, bool, bool, String, Option<String>)> = sqlx::query_as(
+        "SELECT loja_nome, plan_code, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
     .await?;
-    let (plano, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento) =
+    let (loja_nome, plano, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento) =
         row.ok_or_else(|| AppError::NotFound("loja não encontrada".to_string()))?;
 
     Ok(Json(TenantConfigResponse {
         slug,
+        loja_nome,
         plano,
         vender_externamente,
         whatsapp_habilitado,

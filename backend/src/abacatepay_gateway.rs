@@ -370,8 +370,10 @@ async fn create_subscription_checkout(
 }
 
 pub async fn get_status(state: &AppState, external_id: &str) -> Result<String, AppError> {
+    // Mock local (homolog sem PIX/CARD na loja Abacate) — já foi ativado
+    // no assinar_plano; nunca reportar PENDING senão o poller reverte ativo→pendente.
     if external_id.starts_with("mock-") {
-        return Ok("PENDING".to_string());
+        return Ok("PAID".to_string());
     }
     let token = state
         .abacatepay_token

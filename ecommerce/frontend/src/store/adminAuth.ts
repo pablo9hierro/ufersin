@@ -9,10 +9,14 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 // mesmo registro no localStorage (mesma origem = storage compartilhado
 // entre abas/telas). Com 3 chaves distintas, nenhuma sessão pisa mais
 // na de outro papel.
+//
+// `tenantSlug` vem do login multi-tenant (`?tenant=` do dashboard
+// Resolutoo) e alimenta tenantConfig.ts / gating de plano+onboarding.
 interface AdminAuthState {
   token: string | null
   name: string | null
-  login: (token: string, name: string) => void
+  tenantSlug: string | null
+  login: (token: string, name: string, tenantSlug?: string | null) => void
   logout: () => void
 }
 
@@ -21,8 +25,10 @@ export const useAdminAuth = create<AdminAuthState>()(
     (set) => ({
       token: null,
       name: null,
-      login: (token, name) => set({ token, name }),
-      logout: () => set({ token: null, name: null }),
+      tenantSlug: null,
+      login: (token, name, tenantSlug = null) =>
+        set({ token, name, tenantSlug: tenantSlug?.trim().toLowerCase() || null }),
+      logout: () => set({ token: null, name: null, tenantSlug: null }),
     }),
     {
       name: 'sonset_admin_auth',

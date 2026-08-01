@@ -5,6 +5,7 @@ import Logo from '../../components/ui/Logo'
 import { ApiError } from '../../lib/apiError'
 import { authService } from '../../services/authService'
 import { useAdminAuth } from '../../store/adminAuth'
+import { persistTenantSlug, resetTenantConfigCache } from '../../lib/tenantConfig'
 
 // Login exclusivo do admin — não tenta mais vendedor/motoboy em cascata
 // (isso causava logins acidentais na conta admin: o campo de e-mail vinha
@@ -42,7 +43,9 @@ export default function AdminLogin() {
     setLoading(true)
     try {
       const res = await authService.staff.adminLogin(email, password, slug)
-      login(res.token, res.name)
+      persistTenantSlug(slug)
+      resetTenantConfigCache()
+      login(res.token, res.name, slug)
       navigate('/admin/pedidos')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao entrar.')

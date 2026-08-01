@@ -1,18 +1,19 @@
-// Config real do onboarding do lojista (plataforma Rodoletas/ufersin) --
+// Config real do onboarding do lojista (plataforma Resolutoo/ufersin) --
 // diferente de demoMode.ts (que só simula plano na demo pública). Busca
 // uma vez, em memória, no backend ufersin (ver
 // ufersin/backend/src/routes/onboarding.rs::tenant_config) -- endpoint
 // PÚBLICO, só devolve as flags, nunca credenciais de pagamento.
 //
-// VITE_TENANT_SLUG identifica QUAL loja este deploy do ecommerce/frontend
-// é -- hoje fixo por build/ambiente (a resolução automática por
-// subdomínio é trabalho da Fase 1B/multi-tenant real, ver
-// ecommerce/README-TENANCY.md). Sem slug configurado, ou se a busca
-// falhar (loja ainda não passou pelo onboarding novo, ambiente de
-// demo/dev local etc.), cai num padrão "tudo liberado" -- nunca trava a
-// loja por falta de config.
+// Slug resolvido nesta ordem:
+// 1. session/localStorage do login admin (`?tenant=` do dashboard)
+// 2. VITE_TENANT_SLUG (deploy single-tenant legado)
+// 3. query `?tenant=` na URL atual
+//
+// Sem slug, ou se a busca falhar, cai em essential restritivo (não
+// premium liberado) pra não mostrar CRM/Promoções pra loja real.
 export interface TenantConfig {
   slug: string
+  loja_nome: string
   plano: 'essential' | 'management' | 'premium'
   vender_externamente: boolean
   whatsapp_habilitado: boolean
@@ -20,45 +21,88 @@ export interface TenantConfig {
   plataforma_pagamento: 'mercado_pago' | 'abacate_pay' | null
 }
 
+/** Fail-closed: essential + sem pedidos externos até a config real chegar
+ *  (evita flash de menu completo → sumir, que parece "bug de tela verde"). */
 const DEFAULT_CONFIG: TenantConfig = {
   slug: '',
-  plano: 'premium',
+  loja_nome: '',
+  plano: 'essential',
   vender_externamente: true,
   whatsapp_habilitado: true,
   forma_pagamento: 'manual',
   plataforma_pagamento: null,
 }
 
-// 8081 é a porta local padrão do ufersin/backend (ver backend/.env) --
-// diferente da porta 8080 do próprio backend deste motor (VITE_API_BASE_URL).
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
-const TENANT_SLUG = import.meta.env.VITE_TENANT_SLUG || ''
+const ENV_TENANT_SLUG = (import.meta.env.VITE_TENANT_SLUG as string | undefined)?.trim() || ''
+
+const SLUG_STORAGE_KEY = 'resolutoo_tenant_slug'
 
 let cached: TenantConfig | null = null
 let inFlight: Promise<TenantConfig> | null = null
+let cachedForSlug: string | null = null
 
-async function fetchTenantConfig(): Promise<TenantConfig> {
-  if (!TENANT_SLUG) return DEFAULT_CONFIG
+export function persistTenantSlug(slug: string) {
+  const s = slug.trim().toLowerCase()
+  if (!s || typeof window === 'undefined') return
   try {
-    const res = await fetch(`${RODOLETAS_API_URL}/api/public/tenant-config/${encodeURIComponent(TENANT_SLUG)}`)
-    if (!res.ok) return DEFAULT_CONFIG
-    const data = await res.json()
-    return { ...DEFAULT_CONFIG, ...data }
+    localStorage.setItem(SLUG_STORAGE_KEY, s)
   } catch {
-    return DEFAULT_CONFIG
+    /* ignore */
+  }
+}
+
+export function resolveTenantSlug(): string {
+  if (typeof window === 'undefined') return ENV_TENANT_SLUG
+  try {
+    const fromAuth = localStorage.getItem(SLUG_STORAGE_KEY)?.trim()
+    if (fromAuth) return fromAuth.toLowerCase()
+  } catch {
+    /* ignore */
+  }
+  if (ENV_TENANT_SLUG) return ENV_TENANT_SLUG
+  try {
+    const q = new URLSearchParams(window.location.search).get('tenant')?.trim()
+    if (q) return q.toLowerCase()
+  } catch {
+    /* ignore */
+  }
+  return ''
+}
+
+async function fetchTenantConfig(slug: string): Promise<TenantConfig> {
+  if (!slug) return DEFAULT_CONFIG
+  try {
+    const res = await fetch(`${RODOLETAS_API_URL}/api/public/tenant-config/${encodeURIComponent(slug)}`)
+    if (!res.ok) return { ...DEFAULT_CONFIG, slug }
+    const data = await res.json()
+    return { ...DEFAULT_CONFIG, ...data, slug }
+  } catch {
+    return { ...DEFAULT_CONFIG, slug }
   }
 }
 
 /** Busca (e cacheia em memória, só pra essa aba) a config real do tenant. */
 export function getTenantConfig(): Promise<TenantConfig> {
-  if (cached) return Promise.resolve(cached)
-  if (!inFlight) inFlight = fetchTenantConfig().then((c) => (cached = c))
+  const slug = resolveTenantSlug()
+  if (cached && cachedForSlug === slug) return Promise.resolve(cached)
+  if (inFlight && cachedForSlug === slug) return inFlight
+  cachedForSlug = slug
+  inFlight = fetchTenantConfig(slug).then((c) => {
+    cached = c
+    return c
+  })
   return inFlight
 }
 
-/** Versão síncrona pra quem já garantiu que getTenantConfig() rodou antes
- *  (ex.: guardas de rota que já deram await em algum lugar acima). Sem
- *  fetch ainda feito, devolve o padrão liberado. */
+/** Invalida cache (ex.: depois de trocar de tenant no login). */
+export function resetTenantConfigCache() {
+  cached = null
+  inFlight = null
+  cachedForSlug = null
+}
+
+/** Versão síncrona pra quem já garantiu que getTenantConfig() rodou. */
 export function getCachedTenantConfig(): TenantConfig {
   return cached ?? DEFAULT_CONFIG
 }

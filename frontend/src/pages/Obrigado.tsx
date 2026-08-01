@@ -27,6 +27,7 @@ export default function Obrigado() {
     const inicio = Date.now()
 
     const poll = () => {
+      if (cancelled) return
       api
         .statusAssinatura(id)
         .then((r) => {
@@ -60,8 +61,10 @@ export default function Obrigado() {
       const r = await api.simularPagamento()
       setStatus(r.status)
       setSandbox(Boolean(r.sandbox))
+      // Para o poller: status já é ativo localmente; próximo poll não deve
+      // rebaixar (backend também protege), e navegamos pro onboarding.
       if (r.status === 'ativo' && isAuthenticated && r.onboarding_status === 'aguardando_onboarding') {
-        setTimeout(() => navigate('/onboarding'), 1200)
+        setTimeout(() => navigate('/onboarding'), 800)
       }
     } catch (e) {
       setSimError(e instanceof ApiError ? e.message : 'Não foi possível simular o pagamento.')
