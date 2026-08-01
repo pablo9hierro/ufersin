@@ -2738,6 +2738,7 @@ export const localApi = {
     claimCoupon: customerClaimCoupon,
   },
   pdv: {
+    listProducts: async () => listProducts(),
     createSale: pdvCreateSale,
     notifySale: async () => {},
     notifyPixCharge: async () => {},

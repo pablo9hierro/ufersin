@@ -9,7 +9,13 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:admin": "vitest run src/__tests__/admin",
+    "test:admin:unit": "vitest run src/__tests__/admin/unit",
+    "test:admin:api": "vitest run src/__tests__/admin/api",
+    "test:admin:flow": "vitest run src/__tests__/admin/flow",
+    "test:admin:schema": "vitest run src/__tests__/admin/schema",
+    "test:admin:smoke": "node src/__tests__/admin/smoke/admin-smoke.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

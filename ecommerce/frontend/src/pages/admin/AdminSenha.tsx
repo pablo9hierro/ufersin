@@ -6,20 +6,13 @@ import { adminService } from '../../services/adminService'
 import WhatsAppConnection from '../../components/ui/WhatsAppConnection'
 import StoreHoursCard from '../../components/admin/StoreHoursCard'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-
-interface WaEvent {
-  id: string
-  event_type: string
-  previous_state: string | null
-  new_state: string | null
-  created_at: string
-}
-
-function formatEventLabel(e: WaEvent): string {
-  if (e.event_type === 'connected') return 'Conectado'
-  if (e.event_type === 'disconnected') return 'Desconectado'
-  return e.event_type
-}
+import { validatePasswordChange } from '../../lib/adminValidators'
+import {
+  classifyWaHistoryError,
+  formatWaEventLabel,
+  formatWaEventTime,
+  type WaHistoryEvent,
+} from '../../lib/whatsappHistory'
 
 export default function AdminSenha() {
   const tenantConfig = useTenantConfig()
@@ -29,40 +22,28 @@ export default function AdminSenha() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [waEvents, setWaEvents] = useState<WaEvent[]>([])
+  const [waEvents, setWaEvents] = useState<WaHistoryEvent[]>([])
   const [waEventsError, setWaEventsError] = useState<string | null>(null)
+  const [waEventsLoading, setWaEventsLoading] = useState(false)
 
   const loadWaEvents = () => {
     if (!whatsappHabilitado) return
     setWaEventsError(null)
+    setWaEventsLoading(true)
     adminService.whatsapp
       .connectionEvents()
       .then((events) => {
-        setWaEvents(events)
+        setWaEvents(events as WaHistoryEvent[])
         setWaEventsError(null)
       })
       .catch((err) => {
-        // Deploy gap / rota ainda não no ar: empty state, never raw "Erro 404".
-        const status = err instanceof ApiError ? err.status : undefined
-        const msg = err instanceof ApiError ? err.message : ''
-        if (
-          status === 404 ||
-          status === 502 ||
-          status === 503 ||
-          status === 0 ||
-          /^erro\s*404\b/i.test(msg) ||
-          /does not exist|relation|whatsapp_connection_events/i.test(msg)
-        ) {
-          setWaEvents([])
-          setWaEventsError(null)
-          return
-        }
-        if (status === 401 || /unauthorized|expired token/i.test(msg)) {
-          setWaEventsError('Sessão expirada — faça login de novo.')
-          return
-        }
-        setWaEventsError('Não foi possível carregar o histórico.')
+        // Nunca mascarar falha de schema/rota como "Nenhuma conexão ainda" —
+        // Status "Conectado" + histórico vazio falso era exatamente esse bug.
+        const classified = classifyWaHistoryError(err)
+        setWaEvents([])
+        setWaEventsError(classified.message)
       })
+      .finally(() => setWaEventsLoading(false))
   }
 
   useEffect(() => {
@@ -75,12 +56,9 @@ export default function AdminSenha() {
     setError(null)
     setSuccess(false)
 
-    if (newPassword !== confirmPassword) {
-      setError('A confirmação não confere com a nova senha.')
-      return
-    }
-    if (newPassword.length < 6) {
-      setError('A nova senha precisa ter pelo menos 6 caracteres.')
+    const validation = validatePasswordChange(newPassword, confirmPassword)
+    if (validation) {
+      setError(validation)
       return
     }
 
@@ -113,26 +91,26 @@ export default function AdminSenha() {
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              minLength={6}
+              autoComplete="new-password"
               required
             />
           </div>
           <div>
-            <label className="label">Repetir nova senha</label>
+            <label className="label">Confirmar senha</label>
             <input
               className="input-field"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              minLength={6}
+              autoComplete="new-password"
               required
             />
           </div>
           {error && <p className="error-msg">{error}</p>}
-          {success && <p className="text-green-500 text-sm">Senha alterada com sucesso.</p>}
+          {success && <p className="text-emerald-400 text-sm">Senha atualizada.</p>}
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            Salvar
+            Salvar senha
           </button>
         </form>
       </div>
@@ -141,9 +119,7 @@ export default function AdminSenha() {
         <h2 className="text-2xl font-black mb-1 flex items-center gap-2">
           <Clock className="w-5 h-5" /> Horário de funcionamento
         </h2>
-        <p className="text-son-silver-dim text-sm mb-6">
-          Defina os dias e horários que a loja atende, ou force fechar/abrir manualmente a qualquer momento.
-        </p>
+        <p className="text-son-silver-dim text-sm mb-6">Defina quando a loja aceita pedidos.</p>
         <StoreHoursCard />
       </div>
 
@@ -158,36 +134,48 @@ export default function AdminSenha() {
               api={adminService.whatsapp}
               onConnected={loadWaEvents}
               onDisconnected={() => {
-                // emitWhatsAppGateChange(false) already fired inside WhatsAppConnection;
-                // refresh history — AdminLayout listens and re-locks the full-screen gate.
                 loadWaEvents()
               }}
             />
             <div className="flex-1 min-w-0 max-w-md bg-son-surface border border-white/5 rounded-2xl p-5">
               <p className="font-semibold text-white text-sm mb-3">Histórico de conexões</p>
-              {waEventsError && <p className="error-msg text-xs">{waEventsError}</p>}
-              {!waEventsError && waEvents.length === 0 && (
-                <p className="text-son-silver-dim text-xs">Nenhuma conexão ainda</p>
+              {waEventsLoading && (
+                <p className="text-son-silver-dim text-xs flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando…
+                </p>
               )}
-              <ul className="space-y-2 max-h-64 overflow-y-auto">
-                {waEvents.map((ev) => (
-                  <li key={ev.id} className="flex items-center justify-between gap-3 text-xs border-b border-white/5 pb-2 last:border-0">
-                    <span
-                      className={
-                        ev.event_type === 'connected'
-                          ? 'text-emerald-400 font-semibold'
-                          : ev.event_type === 'disconnected'
-                            ? 'text-red-400 font-semibold'
-                            : 'text-son-silver'
-                      }
+              {waEventsError && <p className="error-msg text-xs" data-testid="wa-history-error">{waEventsError}</p>}
+              {!waEventsLoading && !waEventsError && waEvents.length === 0 && (
+                <p className="text-son-silver-dim text-xs" data-testid="wa-history-empty">
+                  Nenhuma conexão ainda
+                </p>
+              )}
+              <ul className="space-y-2 max-h-64 overflow-y-auto" data-testid="wa-history-list">
+                {waEvents.map((ev) => {
+                  const when = formatWaEventTime(ev.created_at)
+                  return (
+                    <li
+                      key={ev.id}
+                      className="flex items-center justify-between gap-3 text-xs border-b border-white/5 pb-2 last:border-0"
+                      data-testid="wa-history-row"
                     >
-                      {formatEventLabel(ev)}
-                    </span>
-                    <time className="text-son-silver-dim whitespace-nowrap">
-                      {new Date(ev.created_at).toLocaleString('pt-BR')}
-                    </time>
-                  </li>
-                ))}
+                      <span
+                        className={
+                          ev.event_type === 'connected'
+                            ? 'text-emerald-400 font-semibold'
+                            : ev.event_type === 'disconnected'
+                              ? 'text-red-400 font-semibold'
+                              : 'text-son-silver'
+                        }
+                      >
+                        {formatWaEventLabel(ev)}
+                      </span>
+                      <time className="text-son-silver-dim whitespace-nowrap" dateTime={ev.created_at}>
+                        {when ?? '—'}
+                      </time>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           </div>

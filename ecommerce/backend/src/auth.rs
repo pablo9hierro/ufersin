@@ -231,6 +231,24 @@ pub async fn lookup_session_token(
     subject.ok_or_else(|| AppError::Unauthorized("invalid or expired session".to_string()))
 }
 
+/// Extractor: JWT with role admin **or** vendedor (PDV shared surface).
+pub struct PdvUser(pub Claims);
+
+impl FromRequestParts<AppState> for PdvUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let AuthUser(claims) = AuthUser::from_request_parts(parts, state).await?;
+        if claims.role != "admin" && claims.role != "vendedor" {
+            return Err(AppError::Forbidden("admin or vendedor role required".to_string()));
+        }
+        Ok(PdvUser(claims))
+    }
+}
+
 /// Extractor: requires a valid JWT with role == motoboy.
 pub struct MotoboyUser(pub Claims);
 

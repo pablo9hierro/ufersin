@@ -5,6 +5,11 @@ import BarcodePreview from '../../components/admin/BarcodePreview'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
+import {
+  buildProductPayload,
+  isLowStock,
+  isOutOfStock,
+} from '../../lib/productHelpers'
 import type { Category, Product } from '../../types'
 
 // Timestamp (10 dígitos) + 2 dígitos aleatórios — não é um EAN de verdade
@@ -21,17 +26,6 @@ function currency(v: number) {
 const EMPTY_FORM = { name: '', description: '', price: '', quantity: '', image_url: '', category_id: '', barcode: '', cost_price: '', low_stock_threshold: '' }
 
 type Tab = 'todos' | 'baixo' | 'falta'
-
-// Produto zerado sempre vira "em falta", nunca some no meio -- "baixo
-// estoque" só existe pra quem AINDA tem alguma unidade e já configurou
-// um ponto de reposição (sem threshold definido, não há como saber
-// quando alertar, então o produto só aparece aqui de novo quando zerar).
-function isOutOfStock(p: Product) {
-  return p.quantity <= 0
-}
-function isLowStock(p: Product) {
-  return !isOutOfStock(p) && p.low_stock_threshold != null && p.quantity <= p.low_stock_threshold
-}
 
 export default function AdminProdutos() {
   const [products, setProducts] = useState<Product[]>([])
@@ -90,17 +84,7 @@ export default function AdminProdutos() {
 
   const save = async () => {
     setSaving(true)
-    const payload = {
-      name: form.name,
-      description: form.description || null,
-      price: Number(form.price),
-      quantity: Number(form.quantity),
-      image_url: form.image_url || null,
-      category_id: form.category_id || null,
-      barcode: form.barcode || null,
-      cost_price: form.cost_price.trim() === '' ? null : Number(form.cost_price),
-      low_stock_threshold: form.low_stock_threshold.trim() === '' ? null : Number(form.low_stock_threshold),
-    }
+    const payload = buildProductPayload(form)
     try {
       if (editing) await adminService.products.update(editing.id, payload)
       else await adminService.products.create(payload)

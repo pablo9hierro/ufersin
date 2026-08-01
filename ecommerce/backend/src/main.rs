@@ -236,6 +236,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/pdv/notify-pix-charge",
             post(routes::public::notify_pdv_pix_charge),
         )
+        .route("/api/pdv/products", get(routes::pdv::list_products))
+        .route("/api/pdv/sales", post(routes::pdv::create_sale))
         // Cliente deslogado que esqueceu a senha — dispara o código de 3
         // dígitos por WhatsApp (Evolution API só é alcançável daqui).
         .route(

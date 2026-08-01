@@ -320,6 +320,7 @@ const remoteApi = {
                 active: payload.active ?? true,
                 cost_price: payload.cost_price ?? null,
                 low_stock_threshold: payload.low_stock_threshold ?? null,
+                barcode: payload.barcode ?? null,
               }),
             })
           : rpc<Product>('admin_create_product', {
@@ -349,6 +350,7 @@ const remoteApi = {
                 active: payload.active ?? true,
                 cost_price: payload.cost_price ?? null,
                 low_stock_threshold: payload.low_stock_threshold ?? null,
+                barcode: payload.barcode ?? null,
               }),
             })
           : rpc<Product>('admin_update_product', {
@@ -1147,9 +1149,10 @@ const remoteApi = {
       status: () => request<EvolutionStatus>('/api/admin/whatsapp/status', { token: adminToken() }),
       connect: () => request<EvolutionConnect>('/api/admin/whatsapp/connect', { token: adminToken() }),
       logout: () => request<void>('/api/admin/whatsapp/logout', { method: 'POST', token: adminToken() }),
-      // Mesmo motor Railway das demais rotas WhatsApp (JWT multi-tenant).
+      // Mesmo motor Railway das demais rotas WhatsApp — AdminTenant no
+      // backend (JWT Resolutoo OU sessão sunset), igual status/connect.
       connectionEvents: () =>
-        railwayAdmin<
+        request<
           {
             id: string
             event_type: string
@@ -1157,7 +1160,7 @@ const remoteApi = {
             new_state: string | null
             created_at: string
           }[]
-        >('/api/admin/whatsapp/connection-events'),
+        >('/api/admin/whatsapp/connection-events', { token: adminToken() }),
       // Dispara pelo WhatsApp da loja pra cada cliente contemplado num
       // cupom alvo — a não ser que "não notificar clientes" tenha sido
       // marcado na criação (checado nos dois lados, front e Rust).
@@ -1173,10 +1176,15 @@ const remoteApi = {
         railwayAdmin<{ onboarding_hours_done: boolean }>('/api/admin/onboarding-gate'),
     },
   },
-  // PDV — acessível por admin OU vendedor, os dois autenticados no mesmo
-  // useAdminAuth (com role diferente) — adminToken() vale pros dois, a RPC
-  // que decide o que cada papel pode ver.
+  // PDV — acessível por admin OU vendedor. JWT Railway → motor isolado por
+  // tenant (`/api/pdv/*`). Sessão Supabase (Sunset/ufersin) → RPCs. Nunca
+  // misturar: JWT lendo schema público era a causa do PDV “não achar”
+  // produto recém-criado no admin.
   pdv: {
+    listProducts: () =>
+      isRailwayAdminJwt()
+        ? railwayAdmin<Product[]>('/api/pdv/products')
+        : supabasePublicApi.products.list(),
     createSale: (payload: {
       items: PdvSaleItemInput[]
       payment_method: PaymentMethod
@@ -1185,15 +1193,27 @@ const remoteApi = {
       discount_type?: 'percent' | 'fixed'
       discount_value?: number
     }) =>
-      rpc<Order>('pdv_create_sale', {
-        p_token: adminToken(),
-        p_items: payload.items,
-        p_payment_method: payload.payment_method,
-        p_customer_name: payload.customer_name || null,
-        p_customer_whatsapp: payload.customer_whatsapp || null,
-        p_discount_type: payload.discount_type ?? null,
-        p_discount_value: payload.discount_value ?? null,
-      }),
+      isRailwayAdminJwt()
+        ? railwayAdmin<Order>('/api/pdv/sales', {
+            method: 'POST',
+            body: JSON.stringify({
+              items: payload.items,
+              payment_method: payload.payment_method,
+              customer_name: payload.customer_name || null,
+              customer_whatsapp: payload.customer_whatsapp || null,
+              discount_type: payload.discount_type ?? null,
+              discount_value: payload.discount_value ?? null,
+            }),
+          })
+        : rpc<Order>('pdv_create_sale', {
+            p_token: adminToken(),
+            p_items: payload.items,
+            p_payment_method: payload.payment_method,
+            p_customer_name: payload.customer_name || null,
+            p_customer_whatsapp: payload.customer_whatsapp || null,
+            p_discount_type: payload.discount_type ?? null,
+            p_discount_value: payload.discount_value ?? null,
+          }),
     // Único disparo de WhatsApp da venda de balcão (o "obrigado pela
     // compra") — nunca passa pelo passo a passo de pedido online, e sai
     // sempre do número da loja (vendedor não tem instância própria).

@@ -30,6 +30,7 @@ pub struct ProductRow {
     pub category_name: Option<String>,
     pub cost_price: Option<f64>,
     pub low_stock_threshold: Option<i64>,
+    pub barcode: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -45,6 +46,7 @@ pub struct ProductDto {
     pub active: bool,
     pub cost_price: Option<f64>,
     pub low_stock_threshold: Option<i64>,
+    pub barcode: Option<String>,
 }
 
 impl From<ProductRow> for ProductDto {
@@ -61,6 +63,7 @@ impl From<ProductRow> for ProductDto {
             active: r.active != 0,
             cost_price: r.cost_price,
             low_stock_threshold: r.low_stock_threshold,
+            barcode: r.barcode,
         }
     }
 }
@@ -79,6 +82,8 @@ pub struct ProductInput {
     pub cost_price: Option<f64>,
     #[serde(default)]
     pub low_stock_threshold: Option<i64>,
+    #[serde(default)]
+    pub barcode: Option<String>,
 }
 
 // ---------- Motoboys ----------
@@ -132,23 +137,27 @@ pub struct MotoboyInput {
 #[derive(Debug, sqlx::FromRow, Clone)]
 pub struct OrderRow {
     pub id: String,
-    pub customer_id: String,
+    pub customer_id: Option<String>,
     pub customer_name: String,
     pub customer_whatsapp: String,
     pub delivery_type: String,
     pub neighborhood: Option<String>,
     pub address: Option<String>,
+    pub reference_point: Option<String>,
     pub payment_method: String,
     pub payment_status: String,
     pub status: String,
     pub shipping_price: f64,
     pub total: f64,
+    pub discount_amount: f64,
     pub motoboy_id: Option<String>,
     pub pix_payment_id: Option<String>,
     pub pix_qr_base64: Option<String>,
     pub pix_copia_cola: Option<String>,
     pub customer_lat: Option<f64>,
     pub customer_lng: Option<f64>,
+    pub sold_by_role: Option<String>,
+    pub sold_by_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -165,7 +174,7 @@ pub struct OrderItemDto {
 #[derive(Debug, Serialize)]
 pub struct OrderDto {
     pub id: String,
-    pub customer_id: String,
+    pub customer_id: Option<String>,
     pub customer_name: String,
     pub customer_whatsapp: String,
     pub delivery_type: String,
@@ -176,6 +185,7 @@ pub struct OrderDto {
     pub status: String,
     pub shipping_price: f64,
     pub total: f64,
+    pub discount_amount: f64,
     pub motoboy_id: Option<String>,
     pub pix_payment_id: Option<String>,
     pub pix_qr_base64: Option<String>,
@@ -202,6 +212,7 @@ impl OrderDto {
             status: row.status,
             shipping_price: row.shipping_price,
             total: row.total,
+            discount_amount: row.discount_amount,
             motoboy_id: row.motoboy_id,
             pix_payment_id: row.pix_payment_id,
             pix_qr_base64: row.pix_qr_base64,
@@ -213,6 +224,22 @@ impl OrderDto {
             items,
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PdvSaleInput {
+    pub items: Vec<PdvSaleItemInput>,
+    pub payment_method: String,
+    pub customer_name: Option<String>,
+    pub customer_whatsapp: Option<String>,
+    pub discount_type: Option<String>,
+    pub discount_value: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PdvSaleItemInput {
+    pub product_id: String,
+    pub quantity: i64,
 }
 
 #[derive(Debug, Deserialize)]

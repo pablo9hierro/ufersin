@@ -18,9 +18,9 @@ import {
 } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { filterPdvProducts, findProductByBarcode, pdvCartTotals } from '../../lib/pdvHelpers'
 import { orderService } from '../../services/orderService'
 import { pdvService } from '../../services/pdvService'
-import { productService } from '../../services/productService'
 import type { Order, PaymentMethod, Product } from '../../types'
 
 function currency(v: number) {
@@ -75,10 +75,33 @@ export default function AdminPdv() {
   const [copiedPix, setCopiedPix] = useState(false)
 
   useEffect(() => {
-    productService
-      .list()
-      .then((p) => setProducts(p.filter((x) => x.active !== false)))
-      .finally(() => setLoadingProducts(false))
+    let cancelled = false
+    const load = () => {
+      setLoadingProducts(true)
+      // Mesma fonte do CRUD admin no Railway (JWT); catálogo público no
+      // Supabase legado. Recarrega ao focar a aba pra produto recém-criado
+      // aparecer sem F5.
+      pdvService
+        .listProducts()
+        .then((p) => {
+          if (!cancelled) setProducts(p.filter((x) => x.active !== false))
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingProducts(false)
+        })
+    }
+    load()
+    const onFocus = () => load()
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') load()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [])
 
   useEffect(() => {
@@ -92,19 +115,14 @@ export default function AdminPdv() {
     barcodeInputRef.current?.focus()
   }, [])
 
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (q.length < 2) return []
-    return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 12)
-  }, [query, products])
+  const results = useMemo(() => filterPdvProducts(products, query), [query, products])
 
   const cartLines = Object.values(cart)
-  const cartSubtotal = cartLines.reduce((sum, l) => sum + l.product.price * l.quantity, 0)
-  const discountAmount = Math.min(
-    Math.max(discountType === 'percent' ? (cartSubtotal * (Number(discountValue) || 0)) / 100 : Number(discountValue) || 0, 0),
-    cartSubtotal
+  const { subtotal: cartSubtotal, discount: discountAmount, total: cartTotal } = pdvCartTotals(
+    cartLines.map((l) => ({ price: l.product.price, quantity: l.quantity })),
+    discountType,
+    Number(discountValue) || 0
   )
-  const cartTotal = cartSubtotal - discountAmount
 
   const addToCart = (product: Product, qty = 1) => {
     setCart((c) => {
@@ -145,7 +163,7 @@ export default function AdminPdv() {
     const code = barcodeInput.trim()
     setBarcodeInput('')
     if (!code) return
-    const product = products.find((p) => p.barcode === code)
+    const product = findProductByBarcode(products, code)
     if (!product) {
       setScanError(`Nenhum produto com o código de barras "${code}".`)
       return
@@ -181,7 +199,7 @@ export default function AdminPdv() {
         controlsRef.current = controls
         if (!result) return
         const code = result.getText()
-        const product = products.find((p) => p.barcode === code)
+        const product = findProductByBarcode(products, code)
         if (!product) {
           setScanError(`Nenhum produto com o código de barras "${code}".`)
           return
@@ -209,7 +227,7 @@ export default function AdminPdv() {
     setSkipQrcode(!plataformaPix)
     setDiscountType('percent')
     setDiscountValue('')
-    productService.list().then((p) => setProducts(p.filter((x) => x.active !== false)))
+    pdvService.listProducts().then((p) => setProducts(p.filter((x) => x.active !== false)))
     setTimeout(() => setSuccess(null), 4000)
   }
 

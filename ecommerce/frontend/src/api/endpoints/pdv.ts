@@ -1,11 +1,12 @@
 import { api } from '../../lib/api'
-import { validate } from '../validate'
-import { OrderSchema, VendedorRelatorioSchema, type PaymentMethod, type PdvSaleItemInput } from '../../types'
+import { validate, validateList } from '../validate'
+import { OrderSchema, ProductSchema, VendedorRelatorioSchema, type PaymentMethod, type PdvSaleItemInput } from '../../types'
 
 // Módulo PDV (venda de balcão) — acessível por admin OU vendedor, mesma
 // sessão (useAdminAuth com role diferente). Único ponto do app
 // autorizado a chamar `api.pdv.*`.
 export const pdvEndpoint = {
+  listProducts: async () => validateList(ProductSchema, await api.pdv.listProducts(), 'pdv.listProducts'),
   createSale: async (payload: {
     items: PdvSaleItemInput[]
     payment_method: PaymentMethod

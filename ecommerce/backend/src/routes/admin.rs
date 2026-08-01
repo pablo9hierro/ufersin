@@ -150,9 +150,14 @@ pub async fn create_product(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let id = Uuid::new_v4().to_string();
     let active = input.active.unwrap_or(true);
+    let barcode = input
+        .barcode
+        .as_ref()
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty());
     sqlx::query(
-        "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active, cost_price, low_stock_threshold) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active, cost_price, low_stock_threshold, barcode) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -165,6 +170,7 @@ pub async fn create_product(
     .bind(active as i64)
     .bind(input.cost_price)
     .bind(input.low_stock_threshold)
+    .bind(&barcode)
     .execute(&mut *tx)
     .await?;
 
@@ -185,10 +191,15 @@ pub async fn update_product(
 ) -> Result<Json<ProductDto>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let active = input.active.unwrap_or(true);
+    let barcode = input
+        .barcode
+        .as_ref()
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty());
     let result = sqlx::query(
         "UPDATE products SET name = $1, description = $2, price = $3, quantity = $4, image_url = $5, \
-         category_id = $6, active = $7, cost_price = $8, low_stock_threshold = $9 \
-         WHERE tenant_id = $10 AND id = $11",
+         category_id = $6, active = $7, cost_price = $8, low_stock_threshold = $9, barcode = $10 \
+         WHERE tenant_id = $11 AND id = $12",
     )
     .bind(&input.name)
     .bind(&input.description)
@@ -199,6 +210,7 @@ pub async fn update_product(
     .bind(active as i64)
     .bind(input.cost_price)
     .bind(input.low_stock_threshold)
+    .bind(&barcode)
     .bind(&claims.tenant_id)
     .bind(&id)
     .execute(&mut *tx)
@@ -826,15 +838,20 @@ async fn log_whatsapp_event(
     previous_state: Option<&str>,
     new_state: Option<&str>,
 ) -> Result<(), AppError> {
+    // Sempre via tenant_tx: RLS da tabela exige app.tenant_id. Pool cru
+    // sem set_config gravava zero linhas / falhava em silêncio — Status
+    // "Conectado" (Evolution) com histórico vazio.
+    let mut tx = tenant::tenant_tx(pool, tenant_id).await?;
     // Evita spam: só grava se o new_state mudou em relação ao último evento.
     let last: Option<(Option<String>,)> = sqlx::query_as(
         "SELECT new_state FROM whatsapp_connection_events \
          WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1",
     )
     .bind(tenant_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
     if last.as_ref().and_then(|r| r.0.as_deref()) == new_state {
+        tx.commit().await?;
         return Ok(());
     }
     let id = Uuid::new_v4().to_string();
@@ -847,8 +864,9 @@ async fn log_whatsapp_event(
     .bind(event_type)
     .bind(previous_state)
     .bind(new_state)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -899,7 +917,19 @@ pub async fn whatsapp_connect(
 ) -> Result<Json<serde_json::Value>, AppError> {
     features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
     let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
-    Ok(Json(whatsapp::connect(&state, &store.whatsapp_instance).await?))
+    let payload = whatsapp::connect(&state, &store.whatsapp_instance).await?;
+    if let Err(e) = log_whatsapp_event(
+        &state.pool,
+        &admin.tenant_id,
+        "qr",
+        None,
+        Some("qr"),
+    )
+    .await
+    {
+        tracing::warn!("whatsapp qr event log failed: {e:?}");
+    }
+    Ok(Json(payload))
 }
 
 pub async fn whatsapp_logout(
@@ -929,23 +959,29 @@ pub struct WhatsAppConnectionEventDto {
     pub event_type: String,
     pub previous_state: Option<String>,
     pub new_state: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// RFC3339 — string estável pro front (`new Date(created_at)`).
+    pub created_at: String,
 }
 
 pub async fn list_whatsapp_connection_events(
     State(state): State<AppState>,
-    AdminUser(claims): AdminUser,
+    admin: AdminTenant,
 ) -> Result<Json<Vec<WhatsAppConnectionEventDto>>, AppError> {
-    features::require_feature(&state.pool, &claims.tenant_id, Feature::Whatsapp).await?;
+    // AdminTenant (JWT Railway OU sessão sunset) — igual status/connect.
+    // AdminUser-only 401 em sessão legado + pool sem tenant_tx = histórico
+    // vazio enquanto o card de Status mostrava "Conectado".
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &admin.tenant_id).await?;
     let rows: Vec<(String, String, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)> =
         sqlx::query_as(
             "SELECT id, event_type, previous_state, new_state, created_at \
              FROM whatsapp_connection_events WHERE tenant_id = $1 \
              ORDER BY created_at DESC LIMIT 100",
         )
-        .bind(&claims.tenant_id)
-        .fetch_all(&state.pool)
+        .bind(&admin.tenant_id)
+        .fetch_all(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(Json(
         rows.into_iter()
             .map(|(id, event_type, previous_state, new_state, created_at)| {
@@ -954,7 +990,7 @@ pub async fn list_whatsapp_connection_events(
                     event_type,
                     previous_state,
                     new_state,
-                    created_at,
+                    created_at: created_at.to_rfc3339(),
                 }
             })
             .collect(),
