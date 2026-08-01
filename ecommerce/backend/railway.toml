@@ -4,7 +4,9 @@ dockerfilePath = "Dockerfile"
 watchPatterns = ["**"]
 
 [deploy]
-startCommand = "sonset_backend"
+# Must match Dockerfile CMD (binary copied to /usr/local/bin).
+# Do NOT use ./target/release/... — that path only exists in the builder stage.
+startCommand = "/usr/local/bin/sonset_backend"
 healthcheckPath = "/internal/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
