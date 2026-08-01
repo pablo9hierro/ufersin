@@ -1,10 +1,9 @@
 ﻿[build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
-# Empty so git pushes always rebuild (non-empty patterns were skipping real src changes).
+builder = "RAILPACK"
 watchPatterns = []
 
 [deploy]
+startCommand = "./target/release/sonset_backend"
 healthcheckPath = "/internal/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
