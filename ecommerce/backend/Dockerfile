@@ -15,4 +15,4 @@ COPY --from=builder /app/target/release/sonset_backend /usr/local/bin/sonset_bac
 ENV PORT=8080
 ENV PDV_PIX_FIX=1
 EXPOSE 8080
-CMD ["sonset_backend"]
+CMD ["sonset_backend"]# watchPatterns cleared 2026-08-01T17:25:24.0517586-03:00
