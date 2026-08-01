@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../../lib/tenantRouter'
 import { Loader2, X } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { authService } from '../../services/authService'

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from '../lib/tenantRouter'
 import { useCart } from '../store/cart'
 import { pageDecorationService } from '../services/pageDecorationService'
 import type { PageDecorationElement } from '../types'

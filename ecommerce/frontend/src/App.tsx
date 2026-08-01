@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import CustomerPageDecorations from './components/CustomerPageDecorations'
 import DemoEntrar from './pages/DemoEntrar'
 import { isDemoModeActive } from './lib/demoMode'
+import { persistTenantSlug, resolveTenantSlug, withTenantSearch } from './lib/tenantConfig'
+import TenantNavigate from './components/TenantNavigate'
 import { useTenantColor } from './store/tenantColor'
 import { deriveAccentTrio } from './lib/colorHarmony'
 import { useLayoutStyle, type LayoutStyle } from './store/layoutStyle'
@@ -79,20 +81,51 @@ function PdvFallback() {
   )
 }
 
+/** Persiste ?tenant= e reescreve a URL se o slug só estiver no localStorage
+ *  (ex.: após Link antigo ter stripado a query — reload ainda recupera). */
+function TenantBootstrap() {
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const isStaff =
+    location.pathname.startsWith('/admin') || location.pathname.startsWith('/funcionarios')
+
+  useEffect(() => {
+    const fromQuery = params.get('tenant')?.trim().toLowerCase()
+    if (fromQuery) {
+      persistTenantSlug(fromQuery)
+      return
+    }
+    if (isStaff || isDemoModeActive()) return
+    const stored = resolveTenantSlug()
+    if (!stored) return
+    persistTenantSlug(stored)
+    navigate(
+      { pathname: location.pathname, search: withTenantSearch(location.search), hash: location.hash },
+      { replace: true },
+    )
+  }, [params, isStaff, navigate, location.pathname, location.search, location.hash])
+
+  return null
+}
+
 // ÚNICOS estilos de vitrine Resolutoo: ufersin | burgerbite | burgerhouse
 // (os 3 botões do DemoPaletteSwitcher). Padrão = ufersin (1º botão).
 // Layout Sunset / pôr-do-sol foi REMOVIDO — não é fallback.
 function DemoBrandScope() {
   const location = useLocation()
   const tenantColor = useTenantColor()
+  const tenantConfig = useTenantConfig()
   const demo = isDemoModeActive()
   const isStaffPage = location.pathname.startsWith('/admin') || location.pathname.startsWith('/funcionarios')
 
   useEffect(() => {
     const root = document.documentElement
     root.dataset.brand = demo ? 'demo' : ''
-    if (!isStaffPage && tenantColor.color1) {
-      const trio = deriveAccentTrio(tenantColor.color1, tenantColor.color2)
+    // Demo: cores do seletor local. Tenant real: cor_principal do onboarding.
+    const accent = demo ? tenantColor.color1 : tenantConfig?.cor_principal || tenantColor.color1
+    if (!isStaffPage && accent) {
+      const trio = deriveAccentTrio(accent, demo ? tenantColor.color2 : null)
       root.style.setProperty('--tenant-accent-1', trio.accent1)
       root.style.setProperty('--tenant-accent-2', trio.accent2)
       root.style.setProperty('--tenant-accent-3', trio.accent3)
@@ -101,7 +134,7 @@ function DemoBrandScope() {
       root.style.removeProperty('--tenant-accent-2')
       root.style.removeProperty('--tenant-accent-3')
     }
-  }, [demo, isStaffPage, tenantColor.color1, tenantColor.color2])
+  }, [demo, isStaffPage, tenantColor.color1, tenantColor.color2, tenantConfig?.cor_principal])
 
   return demo && !isStaffPage ? <DemoPaletteSwitcher /> : null
 }
@@ -117,11 +150,44 @@ function LojaSemVendaExterna() {
   )
 }
 
+/** `/loja/` sem ?tenant= não é a vitrine do assinante — é só o shell do
+ *  motor. Sem isso, o fallback ufersin parecia "layout não salvou". */
+function LojaSemTenant() {
+  return (
+    <main className="min-h-screen bg-son-black text-white flex items-center justify-center px-5 text-center">
+      <div className="max-w-md">
+        <p className="text-6xl font-black text-white/10 mb-3">Loja</p>
+        <p className="text-son-silver-dim text-sm mb-2">
+          Abra a vitrine com o link do seu painel Resolutoo, no formato:
+        </p>
+        <p className="font-mono text-sm text-white/80 mb-4">
+          /loja/?tenant=seu-slug
+        </p>
+        <p className="text-son-silver-dim text-xs">
+          Sem o parâmetro <span className="font-mono">tenant</span>, esta página não carrega o layout da sua loja.
+        </p>
+      </div>
+    </main>
+  )
+}
+
+function StyleLoading() {
+  return (
+    <main className="min-h-screen bg-son-black text-white flex items-center justify-center">
+      <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
+    </main>
+  )
+}
+
 function resolveStorefrontStyle(demoStyle: LayoutStyle, tenantStyle: string | undefined): LayoutStyle {
-  if (isDemoModeActive()) return demoStyle
-  if (tenantStyle === 'burgerbite' || tenantStyle === 'burgerhouse' || tenantStyle === 'ufersin') {
-    return tenantStyle
+  // Tenant real: layout_style do onboarding/Meu plano manda — nunca o zustand da demo.
+  if (resolveTenantSlug()) {
+    if (tenantStyle === 'burgerbite' || tenantStyle === 'burgerhouse' || tenantStyle === 'ufersin') {
+      return tenantStyle
+    }
+    return 'ufersin'
   }
+  if (isDemoModeActive()) return demoStyle
   return 'ufersin'
 }
 
@@ -136,9 +202,23 @@ function StyleAware({
 }) {
   const demoStyle = useLayoutStyle((s) => s.style)
   const tenantConfig = useTenantConfig()
-  if (tenantConfig?.vender_externamente === false) return <LojaSemVendaExterna />
+  const slug = resolveTenantSlug()
 
-  const style = resolveStorefrontStyle(demoStyle, tenantConfig?.layout_style)
+  // Demo pública (sem ?tenant=): seletor local.
+  if (!slug && isDemoModeActive()) {
+    const style = resolveStorefrontStyle(demoStyle, undefined)
+    if (style === 'burgerbite') return <>{burgerbite}</>
+    if (style === 'burgerhouse') return <>{burgerhouse}</>
+    return <>{ufersin}</>
+  }
+
+  // Vitrine real exige slug (?tenant= ou localStorage pós-login admin).
+  if (!slug) return <LojaSemTenant />
+  // Não aplicar ufersin por padrão enquanto a config (com layout_style) não chega.
+  if (!tenantConfig) return <StyleLoading />
+  if (tenantConfig.vender_externamente === false) return <LojaSemVendaExterna />
+
+  const style = resolveStorefrontStyle(demoStyle, tenantConfig.layout_style)
   if (style === 'burgerbite') return <>{burgerbite}</>
   if (style === 'burgerhouse') return <>{burgerhouse}</>
   return <>{ufersin}</>
@@ -148,6 +228,7 @@ export default function App() {
   const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || undefined
   return (
     <BrowserRouter basename={basename}>
+      <TenantBootstrap />
       <DemoBrandScope />
       <CustomerPageDecorations />
       <Routes>
@@ -164,7 +245,7 @@ export default function App() {
         <Route path="/recuperar-senha" element={<StyleAware ufersin={<Uiux2RecuperarSenha />} burgerbite={<Uiux3RecuperarSenha />} burgerhouse={<Uiux4RecuperarSenha />} />} />
         <Route path="/cliente/favoritos" element={<StyleAware ufersin={<Uiux2Favoritos />} burgerbite={<Uiux3Favoritos />} burgerhouse={<Uiux4Favoritos />} />} />
         <Route path="/cliente/cupons" element={<StyleAware ufersin={<Uiux2Cupons />} burgerbite={<Uiux3Cupons />} burgerhouse={<Uiux4Cupons />} />} />
-        <Route path="/cliente/resgatarcupom" element={<Navigate to="/cliente/cupons" replace />} />
+        <Route path="/cliente/resgatarcupom" element={<TenantNavigate to="/cliente/cupons" replace />} />
         <Route path="/cliente/historico" element={<StyleAware ufersin={<Uiux2Historico />} burgerbite={<Uiux3Historico />} burgerhouse={<Uiux4Historico />} />} />
 
         <Route path="/admin/login" element={<AdminLogin />} />
@@ -207,7 +288,7 @@ export default function App() {
           <Route path="financeiro" element={<MotoboyFinanceiro />} />
           <Route path="conta" element={<MotoboyConta />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<TenantNavigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )

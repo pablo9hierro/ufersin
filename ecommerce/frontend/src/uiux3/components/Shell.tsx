@@ -1,10 +1,13 @@
-import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate } from '../../lib/tenantRouter'
 import { ArrowLeft, Heart, History, LogIn, LogOut, Menu, Package, ShoppingBag, Store, Tag, UserPlus, X } from 'lucide-react'
 import { useCart } from '../../store/cart'
 import { useCustomerAuth } from '../../store/customerAuth'
 import CartFab from '../../components/CartFab'
 import AuthModal from './AuthModal'
+import { brandName } from '../../lib/demoMode'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { persistTenantSlug, resolveTenantSlug } from '../../lib/tenantConfig'
 
 // Layout do estilo BurgerBite -- ao contrário do Ufersin nativo (header
 // com fileira de abas + barra inferior de ponta a ponta), aqui a
@@ -98,9 +101,16 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const navigate = useNavigate()
   const auth = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
   const cartCount = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
   const [menuOpen, setMenuOpen] = useState(false)
   const isLanding = location.pathname === '/'
+  const name = brandName(tenantConfig?.loja_nome)
+
+  useEffect(() => {
+    const slug = resolveTenantSlug()
+    if (slug) persistTenantSlug(slug)
+  }, [])
 
   return (
     <div className="u3-page pb-24 sm:pb-0">
@@ -121,7 +131,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           </div>
 
           <Link to="/" className="u3-wordmark text-lg font-black tracking-tight shrink-0">
-            BurgerBite
+            {name}
           </Link>
 
           <div className="hidden sm:flex items-center gap-2">

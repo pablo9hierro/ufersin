@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from '../../lib/tenantRouter'
 import { Loader2, Package, RotateCcw } from 'lucide-react'
 import { orderService } from '../../services/orderService'
 import { productService } from '../../services/productService'

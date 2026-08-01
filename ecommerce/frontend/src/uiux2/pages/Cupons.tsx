@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate } from '../../lib/tenantRouter'
 import { Loader2, Tag } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { couponService } from '../../services/couponService'

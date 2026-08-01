@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../../lib/tenantRouter'
 import { Loader2, Lock } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { authService } from '../../services/authService'
 import Shell from '../components/Shell'
+import { brandName } from '../../lib/demoMode'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -18,6 +20,8 @@ const inputClass = 'u2-surface w-full px-3.5 py-2.5 text-sm outline-none'
 
 export default function Uiux2RecuperarSenha() {
   const navigate = useNavigate()
+  const tenantConfig = useTenantConfig()
+  const name = brandName(tenantConfig?.loja_nome)
   const [step, setStep] = useState<Step>('whatsapp')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -77,7 +81,7 @@ export default function Uiux2RecuperarSenha() {
       <div className="px-4 sm:px-8 pt-8 pb-16 max-w-sm mx-auto">
         <div className="u2-card p-7">
           <div className="text-center mb-6">
-            <p className="font-black text-lg">Ufersin</p>
+            <p className="font-black text-lg">{name}</p>
             <p className="text-sm u2-dim mt-1.5 flex items-center justify-center gap-1.5">
               <Lock className="w-3.5 h-3.5" /> Recuperar senha
             </p>

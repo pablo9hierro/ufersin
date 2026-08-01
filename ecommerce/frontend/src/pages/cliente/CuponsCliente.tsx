@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate } from '../../lib/tenantRouter'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Loader2, Tag } from 'lucide-react'
 import SiteHeader from '../../components/layout/SiteHeader'

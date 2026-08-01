@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from '../../lib/tenantRouter'
 import { ArrowLeft, Loader2, Minus, Package, Plus, ShoppingBag } from 'lucide-react'
 import { useProduct } from '../../hooks/useProducts'
 import { useCart } from '../../store/cart'

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from '../lib/tenantRouter'
 import BrandHeader from '../components/landing/BrandHeader'
 import CustomerAuthModal from '../components/CustomerAuthModal'
 import { useCustomerAuth } from '../store/customerAuth'

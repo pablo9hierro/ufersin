@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../../lib/tenantRouter'
 import { Loader2, X } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { authService } from '../../services/authService'
 import { useCustomerAuth } from '../../store/customerAuth'
 import { useCustomer } from '../../store/customer'
+import { brandName } from '../../lib/demoMode'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -30,6 +32,8 @@ export default function AuthModal({
   const navigate = useNavigate()
   const auth = useCustomerAuth()
   const customerDraft = useCustomer()
+  const tenantConfig = useTenantConfig()
+  const name = brandName(tenantConfig?.loja_nome)
   const [mode, setMode] = useState<'login' | 'register'>(initialMode)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -91,7 +95,7 @@ export default function AuthModal({
         <button type="button" onClick={onClose} className="u3-icon-btn absolute top-4 right-4" aria-label="Fechar">
           <X className="w-4 h-4" />
         </button>
-        <p className="u3-wordmark text-4xl mb-2">BurgerBite</p>
+        <p className="u3-wordmark text-4xl mb-2">{name}</p>
         <p className="u3-dim text-sm max-w-xs mx-auto">Junte-se a nós e comece sua jornada rumo ao hambúrguer perfeito.</p>
       </div>
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../../lib/tenantRouter'
 import { CreditCard, Home, Loader2, MapPin, QrCode, Tag, Wallet } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { promotionService } from '../../services/promotionService'

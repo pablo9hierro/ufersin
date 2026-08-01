@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from '../../lib/tenantRouter'
 import { Loader2, Minus, Package, Plus, X } from 'lucide-react'
 import { promotionService } from '../../services/promotionService'
 import { productService } from '../../services/productService'

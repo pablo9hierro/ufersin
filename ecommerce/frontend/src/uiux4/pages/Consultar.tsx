@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from '../../lib/tenantRouter'
 import { Loader2, MessageCircle, Package, Search } from 'lucide-react'
 import { orderService } from '../../services/orderService'
 import type { Order } from '../../types'

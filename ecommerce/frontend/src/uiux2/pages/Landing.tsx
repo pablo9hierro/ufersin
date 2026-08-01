@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../../lib/tenantRouter'
 import { Clock, MapPin, MessageCircle, ShoppingBag, Star, Truck, Wallet } from 'lucide-react'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
 import { useTenantConfig } from '../../hooks/useTenantConfig'

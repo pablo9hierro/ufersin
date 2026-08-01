@@ -1,5 +1,5 @@
 import { Minus, Package, Plus } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link } from '../../lib/tenantRouter'
 import type { Product } from '../../types'
 import FavoriteButton from './FavoriteButton'
 import { OutOfStockRibbon } from '../../components/ProductDetailModal'

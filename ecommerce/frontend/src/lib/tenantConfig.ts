@@ -87,13 +87,22 @@ export function resolveTenantSlug(): string {
  * Mantém `?tenant=` em toda navegação da vitrine. React Router `Link to="/"`
  * e `navigate('/')` descartam o search — sem isso a loja vira `/loja` bare
  * (demo Ufersin / "Loja sem tenant").
+ * Em modo demo (`rodoletas_demo_active`) não injeta tenant.
  */
 export function withTenantSearch(existingSearch?: string | null): string {
   const raw = (existingSearch ?? '').replace(/^\?/, '')
   const params = new URLSearchParams(raw)
-  const slug = resolveTenantSlug()
-  if (slug) params.set('tenant', slug)
-  else params.delete('tenant')
+  let demo = false
+  try {
+    demo = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('rodoletas_demo_active') === 'true'
+  } catch {
+    /* ignore */
+  }
+  if (!demo) {
+    const slug = resolveTenantSlug()
+    if (slug) params.set('tenant', slug)
+    else params.delete('tenant')
+  }
   const s = params.toString()
   return s ? `?${s}` : ''
 }

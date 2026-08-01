@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link } from '../../lib/tenantRouter'
 
 export default function EmptyState({ icon: Icon, message, actionLabel, actionHref }: { icon: LucideIcon; message: string; actionLabel?: string; actionHref?: string }) {
   return (

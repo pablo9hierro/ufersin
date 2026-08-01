@@ -1,11 +1,14 @@
-import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate } from '../../lib/tenantRouter'
 import { ArrowLeft, Heart, History, LogIn, LogOut, Menu, Package, ShoppingBag, Store, Tag, UserPlus, X } from 'lucide-react'
 import { useCart } from '../../store/cart'
 import { useCustomerAuth } from '../../store/customerAuth'
 import UfersinMark from '../../components/ui/UfersinMark'
 import CartFab from '../../components/CartFab'
 import AuthModal from './AuthModal'
+import { brandName, isDemoModeActive } from '../../lib/demoMode'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { persistTenantSlug, resolveTenantSlug } from '../../lib/tenantConfig'
 
 // Layout padrão de toda página de cliente no estilo Ufersin nativo --
 // mesmas 9 páginas/rotas/ações do Sunset, só a apresentação muda (ver
@@ -98,9 +101,17 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const navigate = useNavigate()
   const auth = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
   const cartCount = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
   const [menuOpen, setMenuOpen] = useState(false)
   const isLanding = location.pathname === '/'
+  const name = brandName(tenantConfig?.loja_nome)
+  const showMark = isDemoModeActive()
+
+  useEffect(() => {
+    const slug = resolveTenantSlug()
+    if (slug) persistTenantSlug(slug)
+  }, [])
 
   return (
     <div className="u2-page pb-20 sm:pb-0">
@@ -113,8 +124,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </button>
             )}
             <Link to="/" className="flex items-center gap-2 font-black text-lg">
-              <UfersinMark className="w-8 h-8 u2-accent" />
-              <span className="u2-gradient-text">Ufersin</span>
+              {showMark && <UfersinMark className="w-8 h-8 u2-accent" />}
+              <span className="u2-gradient-text">{name}</span>
             </Link>
           </div>
           <div className="hidden sm:flex items-center gap-1">

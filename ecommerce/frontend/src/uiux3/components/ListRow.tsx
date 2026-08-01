@@ -1,5 +1,5 @@
 import { Flame, Minus, Package, Plus } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link } from '../../lib/tenantRouter'
 import type { Product } from '../../types'
 import { currency } from './ProductCard'
 import FavoriteButton from './FavoriteButton'

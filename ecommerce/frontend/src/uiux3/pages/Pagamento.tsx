@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from '../../lib/tenantRouter'
 import { Check, Copy, Loader2, PartyPopper } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { orderService } from '../../services/orderService'

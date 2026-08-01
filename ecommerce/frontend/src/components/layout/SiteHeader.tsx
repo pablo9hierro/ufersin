@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from '../../lib/tenantRouter'
 import { Heart, LogIn, UserPlus } from 'lucide-react'
 import SunsetCartIcon from '../SunsetCartIcon'
 import WhatsAppFab from '../WhatsAppFab'

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from '../lib/tenantRouter'
 import { ChevronDown, CreditCard, Gift, Home, Loader2, MapPin, Phone, QrCode, StickyNote, Tag, User, Wallet } from 'lucide-react'
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../lib/tenantRouter'
 import { Loader2, Lock, X } from 'lucide-react'
 import BirthdateInput from './checkout/BirthdateInput'
 import Logo from './ui/Logo'

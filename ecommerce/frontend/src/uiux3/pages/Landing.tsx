@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../../lib/tenantRouter'
 import { Clock, MapPin, MessageCircle, ShoppingBag } from 'lucide-react'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { tenantWhatsAppHref } from '../../lib/tenantConfig'
 import { getStoreOpenState } from '../../lib/storeHours'
 import { useCustomerAuth } from '../../store/customerAuth'
+import { brandName } from '../../lib/demoMode'
 import Shell from '../components/Shell'
 import AuthModal from '../components/AuthModal'
 import PromoCarousel from '../components/PromoCarousel'
@@ -20,6 +21,7 @@ export default function Uiux3Landing() {
   const { data: storeStatus } = useStoreStatus()
   const tenantConfig = useTenantConfig()
   const whatsappHref = tenantWhatsAppHref(tenantConfig)
+  const name = brandName(tenantConfig?.loja_nome)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
   const openState = storeStatus ? getStoreOpenState(storeStatus) : null
@@ -31,7 +33,7 @@ export default function Uiux3Landing() {
       <PromoCarousel />
 
       <div className="u3-onboard-photo px-4 sm:px-8 pt-8 pb-10 text-center">
-        <p className="u3-wordmark text-3xl sm:text-4xl mb-2">BurgerBite</p>
+        <p className="u3-wordmark text-3xl sm:text-4xl mb-2">{name}</p>
         <p className="u3-dim mb-7 max-w-sm mx-auto">Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.</p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm sm:max-w-none mx-auto">
           <button onClick={() => navigate('/catalogo')} className="u3-pill-primary px-6 py-3 flex items-center justify-center gap-2">

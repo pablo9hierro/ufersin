@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from '../lib/tenantRouter'
 import { Loader2, Minus, Package, Plus, ShoppingBag } from 'lucide-react'
 import { motion } from 'framer-motion'
 import SiteHeader from '../components/layout/SiteHeader'

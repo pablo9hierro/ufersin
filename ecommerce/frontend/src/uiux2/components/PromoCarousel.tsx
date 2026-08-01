@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../../lib/tenantRouter'
 import { useSiteSettings } from '../../hooks/useSiteSettings'
 import { useActivePromotions } from '../../hooks/usePromotions'
-import { isDemoModeActive, planoIncludes } from '../../lib/demoMode'
+import { isDemoModeActive, planoIncludes, brandName } from '../../lib/demoMode'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 const SWIPE_THRESHOLD = 40
 
@@ -12,6 +13,7 @@ const SWIPE_THRESHOLD = 40
 // próprio: um card só, flat, sem glow/halo.
 export default function PromoCarousel() {
   const navigate = useNavigate()
+  const tenantConfig = useTenantConfig()
   const { data: siteSettings } = useSiteSettings()
   const heroUrl = siteSettings?.hero_image_url ?? null
   const { data: activePromotions } = useActivePromotions({ enabled: !isDemoModeActive() || planoIncludes('management') })
@@ -25,7 +27,7 @@ export default function PromoCarousel() {
     {
       key: 'hero',
       image: bannerImage,
-      label: firstPromo ? firstPromo.title : 'Ufersin',
+      label: firstPromo ? firstPromo.title : brandName(tenantConfig?.loja_nome),
       subtitle: firstPromo?.subtitle || 'Promoções',
       onClick: firstPromo ? () => navigate(`/banner?promocao=${firstPromo.id}`) : undefined,
     },

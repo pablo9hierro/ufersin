@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../../lib/tenantRouter'
 import { Minus, Package, Plus, Trash2 } from 'lucide-react'
 import { useProducts } from '../../hooks/useProducts'
 import { favoriteService } from '../../services/favoriteService'
