@@ -4,7 +4,7 @@
    referência). Clone 100% fiel das posições/box-shadow — só os
    seletores viraram classes (.sunset-st-*) em vez de ids, pra poder
    montar o componente mais de uma vez na página sem duplicar id. Sem o
-   #title da referência — o título "Sunset Tabas" já é renderizado pelo
+   #title da referência — o título da loja já é renderizado pelo
    BackgroundScene por cima de qualquer modo de fundo escolhido. */
 .sunset-stars-container {
   position: absolute;

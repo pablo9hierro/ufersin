@@ -86,7 +86,7 @@ function BannerCarousel() {
     {
       key: 'hero',
       image: bannerImage,
-      label: firstPromo ? firstPromo.title : 'Sunset Tabas',
+      label: firstPromo ? firstPromo.title : 'Resolutoo Demo',
       subtitle: (firstPromo?.subtitle || 'Promoções'),
       onClick: firstPromo ? () => navigate(`/banner?promocao=${firstPromo.id}`) : undefined,
     },

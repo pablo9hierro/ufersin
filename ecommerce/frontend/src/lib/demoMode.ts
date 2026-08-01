@@ -49,7 +49,7 @@ export function planoIncludes(recurso: PlanoCode): boolean {
  * Nome da marca na vitrine/admin.
  * - Demo pública → Ufersin
  * - Assinante Resolutoo → loja_nome do onboarding
- * - Sem nome ainda → slug ou "Minha loja" (nunca Sunset Tabas)
+ * - Sem nome ainda → slug ou "Minha loja" (nunca um nome de loja de terceiros)
  */
 export function brandName(lojaNome?: string | null): string {
   if (isDemoModeActive()) return 'Ufersin'

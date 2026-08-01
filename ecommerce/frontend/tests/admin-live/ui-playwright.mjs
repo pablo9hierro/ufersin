@@ -60,16 +60,12 @@ async function main() {
     })
 
     await step('login with real credentials', async () => {
+      // Tenant vem de ?tenant= na URL (campo "Identificador da loja" removido).
       const email = page.locator('input[type="email"]')
       if (await email.count()) {
         await email.fill(env.email)
       }
       await page.locator('input[type="password"]').fill(env.password)
-      // tenant field may be hidden when ?tenant= is present
-      const tenantInput = page.locator('input[type="text"]').first()
-      if ((await tenantInput.count()) && !(await page.locator(`text=${env.tenant}`).count())) {
-        await tenantInput.fill(env.tenant)
-      }
       await page.getByRole('button', { name: /^entrar$/i }).click()
       await page.waitForURL(/\/admin\//, { timeout: 60_000 })
     })

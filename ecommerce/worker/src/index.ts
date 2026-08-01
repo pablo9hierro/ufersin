@@ -114,7 +114,7 @@ function calcularRota(env: Env, de: Ponto, ate: Ponto): Promise<RotaResult> {
 
 // Mesmo papel do CorsLayer/CORS_ORIGINS do lado Rust (backend/src/main.rs) —
 // libera só os domínios conhecidos do front, não "*".
-const ALLOWED_ORIGINS = new Set(['https://sunset-tabas.vercel.app', 'http://localhost:5173'])
+const ALLOWED_ORIGINS = new Set(['https://resolutoo.com', 'https://www.resolutoo.com', 'http://localhost:5173'])
 
 function corsHeaders(origin: string | null): HeadersInit {
   const allowed = origin && ALLOWED_ORIGINS.has(origin) ? origin : ''

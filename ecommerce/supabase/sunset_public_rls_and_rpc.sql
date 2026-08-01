@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — RLS + RPCs para o frontend (Vercel) falar
+-- ecommerce — RLS + RPCs para o frontend (Vercel) falar
 -- DIRETO com o Supabase via supabase-js, sem passar pelo
 -- backend Rust no Railway.
 --

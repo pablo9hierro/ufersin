@@ -12,7 +12,7 @@ porque explica o *porquê* das decisões, mas o código já reflete isso.
 ## 1. O que é isto
 
 **Rodoletas** é o SaaS que vende **Ufersin**: um motor de e-commerce
-multi-tenant (`ecommerce/`) — uma cópia retrofitada do Sunset Tabas
+multi-tenant (`ecommerce/`) — uma cópia retrofitada do ecommerce single-tenant original
 (`C:\Users\pablo\Documents\juite`, produção real, nunca tocado por este
 projeto) que passou a suportar N lojas isoladas por `tenant_id` em vez de
 uma só.
@@ -53,9 +53,9 @@ Isto é a fonte de confusão mais comum neste projeto, então fica explícito:
   local por enquanto (mesmo padrão adotado no motor de e-commerce).
 
 ### 2b. Supabase compartilhado (projeto "juite", ref `zncpcsdpdkvjfknmmhpu`)
-Mesmo projeto Supabase que hospeda o Sunset Tabas de produção de verdade.
+Mesmo projeto Supabase compartilhado com schemas de outras lojas.
 Isolamento é feito por **schema**, não por projeto:
-- `sunset` — produção real da Sunset Tabas. Nunca tocado por este repo.
+- `sunset` — schema legado externo. Nunca tocado por este repo.
 - `vrtech` — outro produto, também nunca tocado.
 - `ufersin` — schema dedicado pro motor multi-tenant deste projeto
   (bootstrap em `ecommerce/supabase-ufersin/0000_bootstrap_ufersin_schema.sql`,

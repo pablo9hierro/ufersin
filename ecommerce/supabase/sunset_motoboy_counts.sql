@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — contagem de pedidos por status pro motoboy (mostra
+-- ecommerce — contagem de pedidos por status pro motoboy (mostra
 -- o número em cada aba da fila, tipo "Pedido pronto (3)"). Espelha
 -- exatamente os mesmos WHERE de sunset.motoboy_list_orders, só que
 -- devolve COUNT em vez da lista inteira — mais leve, principalmente

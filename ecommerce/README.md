@@ -1,4 +1,4 @@
-# Sunset Tabas
+# Resolutoo Demo (ecommerce)
 
 E-commerce com 3 perfis de usuário (admin, cliente, motoboy). Frontend em React (Vite),
 backend em Rust (Axum), microserviço de WhatsApp em Node (whatsapp-web.js).
@@ -53,7 +53,7 @@ via `sqlx` — é preciso a senha do Postgres (Project Settings → Database →
 ## Credenciais de teste (seed automático)
 
 - Admin: `pablo2@gmail.com` / `123456` → `/admin/login` (senha trocável em `/admin/senha`; e-mail é fixo)
-- Motoboy: `motoboy@sonset.com` / `motoboy123` → `/motoboy/login`
+- Motoboy: `motoboy@resolutoo-demo.com` / `motoboy123` → `/motoboy/login`
 - Cliente: não precisa de login, só WhatsApp na hora do checkout.
 
 ## Pagamento Pix (Mercado Pago)
@@ -108,13 +108,13 @@ WhatsApp do celular em Aparelhos conectados → Conectar um aparelho.
 **Banco (Supabase):** já em produção — o Postgres do Supabase é o único banco usado agora,
 inclusive em desenvolvimento local (não tem mais SQLite).
 
-**Frontend (Vercel):** já em produção em https://sunset-tabas.vercel.app (subdomínio grátis da
-própria Vercel, sem DNS — projeto chamado `sonset`, root directory `frontend`).
+**Frontend (Vercel):** produção em https://resolutoo.com (loja embutida em
+`/loja`). Projeto legado de subdomínio Vercel foi descontinuado.
 - Framework, build command e output directory são detectados automaticamente via
   `frontend/vercel.json` (Vite, `npm run build`, `dist/`, com rewrite de SPA pra rotas do
   React Router funcionarem em navegação direta).
-- O backend já libera CORS por padrão pra `https://sunset-tabas.vercel.app` (variável
-  `CORS_ORIGINS`, comma-separated, caso mude de novo).
+- O backend libera CORS por padrão pra `https://resolutoo.com` e
+  `https://www.resolutoo.com` (variável `CORS_ORIGINS`, comma-separated).
 - **Variável de ambiente:** `VITE_API_BASE_URL` apontando pra URL do backend no Railway. Sem
   essa variável, em produção o site entra automaticamente em **modo demonstração** (ver abaixo)
   em vez de tentar falar com `localhost:8080`.
@@ -133,8 +133,8 @@ Pix mock) reimplementada em `frontend/src/lib/localApi.ts`. Isso ativa sozinho q
 Implicações de ser só local:
 - Cada navegador/aba tem seus próprios dados — não é compartilhado entre visitantes nem entre
   dispositivos, e reseta se o usuário limpar o site data do navegador.
-- Login de motoboy/admin usa as mesmas credenciais de sempre (`admin@sonset.com`/`admin123`,
-  `motoboy@sonset.com`/`motoboy123`), verificadas no próprio navegador.
+- Login de motoboy/admin usa as credenciais do seed demo (`admin@resolutoo-demo.com`/`admin123`,
+  `motoboy@resolutoo-demo.com`/`motoboy123`), verificadas no próprio navegador.
 - Pix fica sempre em modo mock (sem Mercado Pago de verdade) e o WhatsApp só loga no console do
   navegador (`[demo] WhatsApp para ...`) em vez de mandar mensagem de verdade.
 - Para forçar esse modo mesmo com um backend configurado (ou forçar desligar), defina

@@ -89,7 +89,7 @@ export default function CompletarConta() {
         <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 space-y-4">
           <div>
             <label className="label">Nome da loja *</label>
-            <input className="input-field" value={lojaNome} onChange={(e) => setLojaNome(e.target.value)} placeholder="Ex: Sunset Tabas" />
+            <input className="input-field" value={lojaNome} onChange={(e) => setLojaNome(e.target.value)} placeholder="Ex: Minha Loja" />
           </div>
           <div>
             <label className="label">Seu nome *</label>

@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — adiciona "ponto de referência" (número da casa,
+-- ecommerce — adiciona "ponto de referência" (número da casa,
 -- condomínio, observações de entrega) ao pedido. Complementa
 -- customer_lat/customer_lng: a coordenada localiza o endereço no mapa,
 -- o ponto de referência é o texto livre que o motoboy lê pra achar a

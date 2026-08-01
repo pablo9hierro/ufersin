@@ -30,7 +30,7 @@ WhatsApp: suite calls `GET /status`, `GET /connection-events`, and (when `ADMIN_
 
 | Tenant | Notes |
 |--------|--------|
-| `sunset-tabas` | Seed: `admin@sonset.com` / seed password from `ecommerce/backend` seed (local/dev) |
+| `resolutoo-demo` | Seed: `admin@resolutoo-demo.com` / seed password from `ecommerce/backend/src/seed.rs` (local/dev) |
 | `resusu` | Live store on resolutoo.com/loja — use real admin email/password via env (never commit) |
 
 ## Run
@@ -56,14 +56,15 @@ PowerShell example:
 
 ```powershell
 $env:ADMIN_TEST_BASE_URL="https://your-api.up.railway.app"
-$env:ADMIN_TEST_EMAIL="admin@example.com"
+$env:ADMIN_TEST_EMAIL="admin@resolutoo-demo.com"
 $env:ADMIN_TEST_PASSWORD="…"
-$env:ADMIN_TEST_TENANT="your-tenant-slug"
+$env:ADMIN_TEST_TENANT="resolutoo-demo"
 # optional:
 $env:ADMIN_TEST_DATABASE_URL="postgres://…"
 npm run test:admin
 ```
 
+Use the seeded demo tenant slug **`resolutoo-demo`** (see `ecommerce/backend/src/seed.rs`) unless you intentionally target another tenant.
 ## What it covers
 
 1. **Login** — `POST /api/auth/admin/login` → JWT  

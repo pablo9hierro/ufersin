@@ -88,7 +88,7 @@ function currentMotoboyId(): string {
 
 function fakePixCode(): string {
   const rand = uid().replace(/-/g, '').slice(0, 25).toUpperCase()
-  return `00020126580014BR.GOV.BCB.PIX0136${rand}5204000053039865802BR5912SUNSET TABAS6009SAO PAULO62070503***6304ABCD`
+  return `00020126580014BR.GOV.BCB.PIX0136${rand}5204000053039865802BR5913RESOLUTOO DEMO6009SAO PAULO62070503***6304ABCD`
 }
 
 // ---------- status flow (mirrors backend/src/status_flow.rs) ----------

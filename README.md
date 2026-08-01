@@ -1,7 +1,7 @@
 # Rodoletas
 
 A plataforma SaaS que vende o "Ecommerce" (motor multi-tenant em `ecommerce/`,
-uma cópia do Sunset Tabas retrofitada pra atender centenas de lojas — ver
+uma cópia multi-tenant do ecommerce retrofitada pra atender centenas de lojas — ver
 `ecommerce/README-TENANCY.md`). A Rodoletas em si **não é uma loja** — é a
 landing, o cadastro/checkout, o dashboard do assinante e o onboarding que
 provisiona automaticamente um Tenant novo dentro do motor.

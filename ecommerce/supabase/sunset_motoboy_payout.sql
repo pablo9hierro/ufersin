@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — motoboy fica com 100% do frete (fim da comissão em %)
+-- ecommerce — motoboy fica com 100% do frete (fim da comissão em %)
 -- + baixa de pagamento pelo admin (dinheiro/Pix), com histórico.
 --
 -- 100% do shipping_price de cada entrega concluída é do motoboy. O que

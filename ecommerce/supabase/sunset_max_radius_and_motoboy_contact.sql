@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — raio máximo de entrega + contato do motoboy no /consultar
+-- ecommerce — raio máximo de entrega + contato do motoboy no /consultar
 --
 -- 1) admin define uma distância máxima (km) de entrega em sunset.shipping_settings.
 --    max_km NULL = sem limite (comportamento atual, compatível).

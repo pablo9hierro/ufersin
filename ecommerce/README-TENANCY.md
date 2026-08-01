@@ -1,6 +1,6 @@
 # ecommerce/ — motor multi-tenant (cópia do Sunset)
 
-Este diretório é uma **cópia** do código do Sunset Tabas
+Este diretório é uma **cópia** do código do ecommerce single-tenant original
 (`C:\Users\pablo\Documents\juite` — backend Rust+Axum, frontend React,
 `supabase/*.sql`). O Sunset original e o vrtech continuam existindo
 exatamente como estão, em seus próprios repositórios, e nunca recebem
@@ -35,7 +35,7 @@ lógica do ufersin").
   seja, o sistema de origem só suportava mesmo uma loja por natureza. Agora
   são colunas de `tenants` (`whatsapp_instance`, `pickup_address`), assim
   como o nome da loja usado nas mensagens de WhatsApp/Pix (antes hardcoded
-  "Sunset Tabas" em várias strings — corrigido).
+  o nome da loja demo em várias strings — corrigido).
 - **Google Routes API**: já era uma única chave global compartilhada
   (`GOOGLE_ROUTES_API_KEY`) antes mesmo desse refactor — comportamento
   mantido, exatamente como pedido ("nunca criar chave por loja").
@@ -49,7 +49,7 @@ lógica do ufersin").
   Postgres local na porta 5433. `backend/.env` já aponta pra ele. Rodando
   `cargo run` de dentro de `backend/`, as migrations (incluindo a nova
   0005) e o seed (`backend/src/seed.rs`) criam um tenant de demonstração
-  ("Sunset Tabas", slug `sunset-tabas`) com assinatura Premium ativa —
+  ("Resolutoo Demo", slug `resolutoo-demo`) com assinatura Premium ativa —
   então tudo funciona igual ao sistema original, só que dentro da nova
   arquitetura.
 - **RLS desenhado, não ainda forçado**: toda tabela de tenant tem política

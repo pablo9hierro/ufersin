@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — login de admin/motoboy 100% dentro do
+-- ecommerce — login de admin/motoboy 100% dentro do
 -- schema `sunset`, SEM usar o Supabase Auth (auth.users).
 --
 -- POR QUÊ NÃO USAR auth.users: ele é compartilhado por TODO o
@@ -46,8 +46,8 @@ ALTER TABLE sunset.sessions ENABLE ROW LEVEL SECURITY;
 -- esse arquivo já foi rodado antes.
 DELETE FROM sunset.admins a
   USING sunset.admins b
-  WHERE a.email IN ('admin@sonset.com', 'sunset@gmail.com', 'pablo2@gmail.com')
-    AND b.email IN ('admin@sonset.com', 'sunset@gmail.com', 'pablo2@gmail.com')
+  WHERE a.email IN ('admin@resolutoo-demo.com', 'sunset@gmail.com', 'pablo2@gmail.com')
+    AND b.email IN ('admin@resolutoo-demo.com', 'sunset@gmail.com', 'pablo2@gmail.com')
     AND a.created_at > b.created_at;
 
 -- Re-hash das credenciais seedadas pelo backend Rust em argon2 (que o
@@ -55,9 +55,9 @@ DELETE FROM sunset.admins a
 -- admin de teste pro e-mail/senha reais. WHERE cobre os e-mails antigos e o
 -- novo pra esse UPDATE poder ser re-executado sem erro.
 UPDATE sunset.admins SET email = 'pablo2@gmail.com', password_hash = crypt('123456', gen_salt('bf'))
-  WHERE email IN ('admin@sonset.com', 'sunset@gmail.com', 'pablo2@gmail.com');
+  WHERE email IN ('admin@resolutoo-demo.com', 'sunset@gmail.com', 'pablo2@gmail.com');
 UPDATE sunset.motoboys SET password_hash = crypt('motoboy123', gen_salt('bf'))
-  WHERE email = 'motoboy@sonset.com';
+  WHERE email = 'motoboy@resolutoo-demo.com';
 
 -- ─────────────────────────────────────────────────────
 -- 2. Login

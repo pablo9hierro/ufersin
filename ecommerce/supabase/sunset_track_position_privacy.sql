@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — track_delivery_position só revela a posição do motoboy
+-- ecommerce — track_delivery_position só revela a posição do motoboy
 -- pro pedido que é REALMENTE a parada atual da corrida (current_index).
 -- Antes a posição vazava pra qualquer pedido do lote, mesmo enquanto o
 -- motoboy ainda tava terminando outra entrega antes — exatamente o que o

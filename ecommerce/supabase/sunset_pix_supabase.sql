@@ -59,7 +59,7 @@ CREATE OR REPLACE FUNCTION sunset._notify_pix_paid()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = sunset, public, net AS $$
 BEGIN
   PERFORM net.http_post(
-    url := 'https://sunset-tabas.vercel.app/api/notify-payment',
+    url := 'https://resolutoo.com/api/notify-payment',
     body := jsonb_build_object('order_id', NEW.id),
     headers := jsonb_build_object('Content-Type', 'application/json')
   );
@@ -92,7 +92,7 @@ BEGIN
       AND created_at::timestamptz > now() - interval '2 days'
   LOOP
     PERFORM net.http_post(
-      url := 'https://sunset-tabas.vercel.app/api/pix-check',
+      url := 'https://resolutoo.com/api/pix-check',
       body := jsonb_build_object('order_id', v_order.id),
       headers := jsonb_build_object('Content-Type', 'application/json')
     );

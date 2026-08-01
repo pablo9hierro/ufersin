@@ -165,7 +165,7 @@ export function estimateShippingLocal(lat: number, lng: number, pricePerKm: numb
   }
 }
 
-export const ADMIN_CREDENTIALS = { email: 'pablo2@gmail.com', password: '123456', name: 'Admin Sunset Tabas' }
+export const ADMIN_CREDENTIALS = { email: 'pablo2@gmail.com', password: '123456', name: 'Admin Resolutoo Demo' }
 export const FAKE_MOTOBOY_ID = 'local-motoboy-seed'
 
 // Fora do modo demo, sempre a mesma chave de sempre (não muda nada do
@@ -229,7 +229,7 @@ function seedDb(): LocalDb {
       id: FAKE_MOTOBOY_ID,
       name: 'Motoboy Teste',
       phone: '83999990000',
-      email: 'motoboy@sonset.com',
+      email: 'motoboy@resolutoo-demo.com',
       password: 'motoboy123',
       whatsapp: '83999990000',
       active: true,

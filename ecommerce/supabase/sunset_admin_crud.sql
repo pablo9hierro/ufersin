@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — CRUD do painel admin e fila do motoboy,
+-- ecommerce — CRUD do painel admin e fila do motoboy,
 -- tudo via RPC (SECURITY DEFINER) escopado ao schema `sunset`,
 -- usando o mesmo token de sunset.sessions (ver
 -- sunset_admin_auth.sql). Substitui as rotas /api/admin/* e

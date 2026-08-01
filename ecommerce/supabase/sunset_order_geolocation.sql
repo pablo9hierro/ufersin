@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — expõe customer_lat/customer_lng (capturados via
+-- ecommerce — expõe customer_lat/customer_lng (capturados via
 -- webhook da Evolution API quando o cliente compartilha localização
 -- no WhatsApp) no retorno de sunset.get_order — usado por toda
 -- consulta de pedido (admin, motoboy, financeiro), então essa

@@ -20,12 +20,11 @@ if (!supabaseConfigured) {
 // !supabaseConfigured (ver USE_LOCAL_DB em api.ts).
 //
 // Schema dedicado do Ufersin dentro do mesmo projeto Supabase compartilhado
-// com VRTech/Sunset — isolado dos dois, igual ao search_path isolado que o
-// backend Rust usa pro Sunset. `sunset` é a Sunset Tabas de produção de
-// verdade (nunca deve ser tocada por aqui); ver
+// — isolado dos schemas de outras lojas. O schema `sunset` (legado externo)
+// nunca deve ser tocado por aqui; ver
 // supabase-ufersin/0000_bootstrap_ufersin_schema.sql pra como o schema
 // `ufersin` foi criado. Só mude via VITE_SUPABASE_SCHEMA se precisar
-// apontar deliberadamente pra outro schema (ex.: depurar algo no sunset).
+// apontar deliberadamente pra outro schema.
 export const supabase: SupabaseClient = createClient(
   url || 'https://placeholder.supabase.co',
   anonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder',

@@ -54,7 +54,7 @@ vi.mock('../../src/lib/api', async () => {
 
 function resetAll() {
   localStorage.clear()
-  useAdminAuth.setState({ token: null, name: null })
+  useAdminAuth.setState({ token: null, name: null, tenantSlug: null })
   useVendedorAuth.setState({ token: null, name: null })
   useMotoboyAuth.setState({ token: null, name: null })
 }
@@ -75,7 +75,7 @@ describe('fluxo completo de login (tela → API mockada → store) não cruza se
 
   it('logar como admin pela tela grava só em useAdminAuth', async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/admin/login?tenant=test-loja']}>
         <AdminLogin />
       </MemoryRouter>
     )
@@ -84,6 +84,7 @@ describe('fluxo completo de login (tela → API mockada → store) não cruza se
 
     await waitFor(() => expect(useAdminAuth.getState().token).toBe('tok-admin-real'))
     expect(useAdminAuth.getState().name).toBe('Admin Real')
+    expect(useAdminAuth.getState().tenantSlug).toBe('test-loja')
     expect(useVendedorAuth.getState().token).toBeNull()
     expect(useMotoboyAuth.getState().token).toBeNull()
   })
@@ -128,7 +129,7 @@ describe('fluxo completo de login (tela → API mockada → store) não cruza se
 
   it('credenciais erradas não gravam token em nenhuma store', async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/admin/login?tenant=test-loja']}>
         <AdminLogin />
       </MemoryRouter>
     )

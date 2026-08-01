@@ -1,7 +1,7 @@
 # Root directory desse Worker no Cloudflare Pages/Workers Build precisa
 # ser "worker" (não a raiz do repo) — senão ele builda o monorepo inteiro
 # como se fosse assets estáticos do frontend, em vez de rodar este script.
-name = "sunset-tabas-api"
+name = "resolutoo-demo-api"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 

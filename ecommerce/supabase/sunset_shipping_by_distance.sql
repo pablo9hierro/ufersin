@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — frete calculado por DISTÂNCIA real (loja → cliente)
+-- ecommerce — frete calculado por DISTÂNCIA real (loja → cliente)
 -- em vez de tabela fixa por bairro. Substitui inteiramente
 -- neighborhood_shipping_rates.
 --

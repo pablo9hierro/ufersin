@@ -3,12 +3,12 @@ use uuid::Uuid;
 
 use crate::auth::hash_password;
 
-/// Seeds one demo tenant ("Sunset Tabas", same data the single-tenant
-/// version always seeded) on a Premium subscription — Premium so every
-/// feature-gated endpoint is reachable out of the box in local dev,
-/// matching "the exact same system as before, just SaaS-ready" rather than
-/// a locked-down trial. Plans/features/roles/permissions themselves are
-/// seeded by migrations/0005_tenancy.sql (catalog data, not per-tenant).
+/// Seeds one demo tenant ("Resolutoo Demo") on a Premium subscription —
+/// Premium so every feature-gated endpoint is reachable out of the box in
+/// local dev, matching "the exact same system as before, just SaaS-ready"
+/// rather than a locked-down trial. Plans/features/roles/permissions
+/// themselves are seeded by migrations/0005_tenancy.sql (catalog data, not
+/// per-tenant).
 pub async fn seed_if_empty(pool: &PgPool) -> anyhow::Result<()> {
     let admin_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM admins")
         .fetch_one(pool)
@@ -25,13 +25,14 @@ pub async fn seed_if_empty(pool: &PgPool) -> anyhow::Result<()> {
     let org_id = Uuid::new_v4().to_string();
     sqlx::query("INSERT INTO organizations (id, name, email) VALUES ($1, $2, $3)")
         .bind(&org_id)
-        .bind("Sunset Tabas")
-        .bind("contato@sunsettabas.com")
+        .bind("Resolutoo Demo")
+        .bind("contato@resolutoo-demo.com")
         .execute(pool)
         .await?;
 
     let tenant_id = Uuid::new_v4().to_string();
-    let evolution_instance = std::env::var("SEED_EVOLUTION_INSTANCE").unwrap_or_else(|_| "sunset".to_string());
+    let evolution_instance =
+        std::env::var("SEED_EVOLUTION_INSTANCE").unwrap_or_else(|_| "resolutoo-demo".to_string());
     let pickup_address = std::env::var("SEED_STORE_PICKUP_ADDRESS")
         .unwrap_or_else(|_| "combine o endereço pelo WhatsApp da loja".to_string());
     sqlx::query(
@@ -40,8 +41,8 @@ pub async fn seed_if_empty(pool: &PgPool) -> anyhow::Result<()> {
     )
     .bind(&tenant_id)
     .bind(&org_id)
-    .bind("sunset-tabas")
-    .bind("Sunset Tabas")
+    .bind("resolutoo-demo")
+    .bind("Resolutoo Demo")
     .bind(&evolution_instance)
     .bind(&pickup_address)
     .execute(pool)
@@ -64,9 +65,9 @@ pub async fn seed_if_empty(pool: &PgPool) -> anyhow::Result<()> {
     )
     .bind(&admin_id)
     .bind(&tenant_id)
-    .bind("admin@sonset.com")
+    .bind("admin@resolutoo-demo.com")
     .bind(&admin_hash)
-    .bind("Admin Sunset Tabas")
+    .bind("Admin Resolutoo Demo")
     .execute(pool)
     .await?;
 
@@ -82,7 +83,7 @@ pub async fn seed_if_empty(pool: &PgPool) -> anyhow::Result<()> {
     .bind(&tenant_id)
     .bind("Motoboy Teste")
     .bind("83999990000")
-    .bind("motoboy@sonset.com")
+    .bind("motoboy@resolutoo-demo.com")
     .bind(&motoboy_hash)
     .execute(pool)
     .await?;
@@ -130,7 +131,7 @@ pub async fn seed_if_empty(pool: &PgPool) -> anyhow::Result<()> {
 
     // shipping_settings — needed by routes/motoboy.rs's route optimization;
     // same default store coordinates the single-tenant version hardcoded
-    // (see the old supabase/sunset_shipping_by_distance.sql).
+    // (see the old supabase shipping-by-distance migration).
     sqlx::query(
         "INSERT INTO shipping_settings (tenant_id, price_per_km, store_lat, store_lng) VALUES ($1, 1.5, -7.1746, -34.8576)",
     )
@@ -139,11 +140,11 @@ pub async fn seed_if_empty(pool: &PgPool) -> anyhow::Result<()> {
     .await?;
 
     println!("========================================");
-    println!(" Sunset Tabas backend — seeded credentials");
+    println!(" Resolutoo Demo backend — seeded credentials");
     println!("----------------------------------------");
-    println!(" Tenant slug: sunset-tabas");
-    println!(" Admin:    admin@sonset.com / {admin_password}");
-    println!(" Motoboy:  motoboy@sonset.com / {motoboy_password}");
+    println!(" Tenant slug: resolutoo-demo");
+    println!(" Admin:    admin@resolutoo-demo.com / {admin_password}");
+    println!(" Motoboy:  motoboy@resolutoo-demo.com / {motoboy_password}");
     println!("========================================");
 
     Ok(())
@@ -153,10 +154,11 @@ pub async fn seed_if_empty(pool: &PgPool) -> anyhow::Result<()> {
 /// pela plataforma Rodoletas em /demo (POST /demo/tokens, ver
 /// routes/demo.rs) pra deixar um visitante logar nas telas REAIS de
 /// admin/motoboy com dados fake, sem tocar em nenhum tenant de verdade
-/// (o de cima, "sunset-tabas", é uma loja real — nunca deve ser
-/// alcançável por um endpoint público). Roda sempre (não só quando o
-/// banco está vazio), checando pelo slug — assim continua existindo
-/// mesmo depois que `seed_if_empty` já rodou uma vez e passou a pular.
+/// (o seed `resolutoo-demo` acima é o tenant de desenvolvimento local —
+/// nunca deve ser alcançável por um endpoint público). Roda sempre (não
+/// só quando o banco está vazio), checando pelo slug — assim continua
+/// existindo mesmo depois que `seed_if_empty` já rodou uma vez e passou
+/// a pular.
 pub async fn seed_demo_tenant(pool: &PgPool) -> anyhow::Result<()> {
     let existing: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = 'loja-demo'")
         .fetch_optional(pool)

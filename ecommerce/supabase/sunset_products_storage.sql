@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — bucket de imagens de produto.
+-- ecommerce — bucket de imagens de produto.
 --
 -- O upload em si passa pelo backend Rust (usa a service_role key,
 -- que ignora RLS) — só precisa dessa policy pra leitura pública

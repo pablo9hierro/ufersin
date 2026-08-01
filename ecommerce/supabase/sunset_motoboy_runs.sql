@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — corrida do motoboy (revolução da fila + rastreamento
+-- ecommerce — corrida do motoboy (revolução da fila + rastreamento
 -- ao vivo). Substitui o fluxo antigo de "pedir localização por WhatsApp"
 -- (obsoleto agora que o checkout já captura customer_lat/lng no mapa):
 -- o motoboy seleciona um lote de pedidos prontos e clica "Iniciar

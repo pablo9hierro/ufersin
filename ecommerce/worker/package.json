@@ -1,5 +1,5 @@
 {
-  "name": "sunset-tabas-worker",
+  "name": "resolutoo-demo-worker",
   "private": true,
   "scripts": {
     "dev": "wrangler dev",

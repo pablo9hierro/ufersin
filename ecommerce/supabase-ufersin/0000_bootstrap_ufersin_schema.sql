@@ -1,6 +1,6 @@
 -- =====================================================================
 -- BOOTSTRAP DO SCHEMA `ufersin` -- clone isolado da evolucao completa do
--- schema `ufersin` (Sunset Tabas), gerado automaticamente a partir de:
+-- schema `ufersin` (Resolutoo Demo), gerado automaticamente a partir de:
 --   1) juite/backend/migrations/000{1,2,3,4}_*.sql (tabelas base, via sqlx)
 --   2) ecommerce/supabase/*.sql (71 arquivos rodados a mao no SQL Editor,
 --      na ordem cronologica real de autoria -- historico do repo juite,
@@ -10,7 +10,7 @@
 --      com as versoes ATUAIS do ufersin (que ja incluem os campos
 --      cost_price/low_stock_threshold, desconto no PDV etc. desta sessao)
 --
--- O schema `ufersin` (producao real da Sunset Tabas) NAO e tocado por
+-- O schema `ufersin` (producao real da Resolutoo Demo) NAO e tocado por
 -- este script -- toda referencia a ele foi substituida por `ufersin`.
 --
 -- Rode uma unica vez no SQL Editor do projeto Supabase "juite"
@@ -113,7 +113,7 @@ CREATE TABLE neighborhood_shipping_rates (
 -- sunset_public_rls_and_rpc.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — RLS + RPCs para o frontend (Vercel) falar
+-- ecommerce — RLS + RPCs para o frontend (Vercel) falar
 -- DIRETO com o Supabase via supabase-js, sem passar pelo
 -- backend Rust no Railway.
 --
@@ -346,7 +346,7 @@ GRANT EXECUTE ON FUNCTION ufersin.track_orders_by_phone(text) TO anon, authentic
 -- sunset_admin_auth.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — login de admin/motoboy 100% dentro do
+-- ecommerce — login de admin/motoboy 100% dentro do
 -- schema `ufersin`, SEM usar o Supabase Auth (auth.users).
 --
 -- POR QUÊ NÃO USAR auth.users: ele é compartilhado por TODO o
@@ -393,8 +393,8 @@ ALTER TABLE ufersin.sessions ENABLE ROW LEVEL SECURITY;
 -- esse arquivo já foi rodado antes.
 DELETE FROM ufersin.admins a
   USING ufersin.admins b
-  WHERE a.email IN ('admin@sonset.com', 'ufersin@gmail.com', 'pablo2@gmail.com')
-    AND b.email IN ('admin@sonset.com', 'ufersin@gmail.com', 'pablo2@gmail.com')
+  WHERE a.email IN ('admin@resolutoo-demo.com', 'ufersin@gmail.com', 'pablo2@gmail.com')
+    AND b.email IN ('admin@resolutoo-demo.com', 'ufersin@gmail.com', 'pablo2@gmail.com')
     AND a.created_at > b.created_at;
 
 -- Re-hash das credenciais seedadas pelo backend Rust em argon2 (que o
@@ -402,9 +402,9 @@ DELETE FROM ufersin.admins a
 -- admin de teste pro e-mail/senha reais. WHERE cobre os e-mails antigos e o
 -- novo pra esse UPDATE poder ser re-executado sem erro.
 UPDATE ufersin.admins SET email = 'pablo2@gmail.com', password_hash = crypt('123456', gen_salt('bf'))
-  WHERE email IN ('admin@sonset.com', 'ufersin@gmail.com', 'pablo2@gmail.com');
+  WHERE email IN ('admin@resolutoo-demo.com', 'ufersin@gmail.com', 'pablo2@gmail.com');
 UPDATE ufersin.motoboys SET password_hash = crypt('motoboy123', gen_salt('bf'))
-  WHERE email = 'motoboy@sonset.com';
+  WHERE email = 'motoboy@resolutoo-demo.com';
 
 -- ─────────────────────────────────────────────────────
 -- 2. Login
@@ -539,7 +539,7 @@ GRANT EXECUTE ON FUNCTION ufersin.admin_set_password(text, text) TO anon, authen
 -- sunset_admin_crud.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — CRUD do painel admin e fila do motoboy,
+-- ecommerce — CRUD do painel admin e fila do motoboy,
 -- tudo via RPC (SECURITY DEFINER) escopado ao schema `ufersin`,
 -- usando o mesmo token de ufersin.sessions (ver
 -- sunset_admin_auth.sql). Substitui as rotas /api/admin/* e
@@ -1113,7 +1113,7 @@ GRANT EXECUTE ON FUNCTION ufersin.motoboy_update_order_status(text, text, text, 
 -- sunset_motoboy_financeiro.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — comissão do motoboy (whatsapp + porcentagem no
+-- ecommerce — comissão do motoboy (whatsapp + porcentagem no
 -- cadastro) e telas de financeiro (admin e motoboy).
 --
 -- Ganho do motoboy por entrega = shipping_price (frete) * commission_percent / 100
@@ -1310,7 +1310,7 @@ ALTER TABLE orders ADD COLUMN customer_lng DOUBLE PRECISION;
 -- sunset_order_geolocation.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — expõe customer_lat/customer_lng (capturados via
+-- ecommerce — expõe customer_lat/customer_lng (capturados via
 -- webhook da Evolution API quando o cliente compartilha localização
 -- no WhatsApp) no retorno de ufersin.get_order — usado por toda
 -- consulta de pedido (admin, motoboy, financeiro), então essa
@@ -1370,7 +1370,7 @@ GRANT EXECUTE ON FUNCTION ufersin.get_order(text) TO anon, authenticated;
 -- sunset_products_storage.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — bucket de imagens de produto.
+-- ecommerce — bucket de imagens de produto.
 --
 -- O upload em si passa pelo backend Rust (usa a service_role key,
 -- que ignora RLS) — só precisa dessa policy pra leitura pública
@@ -1389,7 +1389,7 @@ CREATE POLICY "sunset_public_read_products" ON storage.objects
 -- sunset_motoboy_counts.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — contagem de pedidos por status pro motoboy (mostra
+-- ecommerce — contagem de pedidos por status pro motoboy (mostra
 -- o número em cada aba da fila, tipo "Pedido pronto (3)"). Espelha
 -- exatamente os mesmos WHERE de ufersin.motoboy_list_orders, só que
 -- devolve COUNT em vez da lista inteira — mais leve, principalmente
@@ -1433,7 +1433,7 @@ DROP TABLE IF EXISTS neighborhood_shipping_rates;
 -- sunset_shipping_by_distance.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — frete calculado por DISTÂNCIA real (loja → cliente)
+-- ecommerce — frete calculado por DISTÂNCIA real (loja → cliente)
 -- em vez de tabela fixa por bairro. Substitui inteiramente
 -- neighborhood_shipping_rates.
 --
@@ -1648,7 +1648,7 @@ ALTER TABLE orders ADD COLUMN reference_point TEXT;
 -- sunset_order_reference_point.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — adiciona "ponto de referência" (número da casa,
+-- ecommerce — adiciona "ponto de referência" (número da casa,
 -- condomínio, observações de entrega) ao pedido. Complementa
 -- customer_lat/customer_lng: a coordenada localiza o endereço no mapa,
 -- o ponto de referência é o texto livre que o motoboy lê pra achar a
@@ -1828,7 +1828,7 @@ GRANT EXECUTE ON FUNCTION ufersin.create_order(text,text,text,text,text,text,jso
 -- sunset_motoboy_payout.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — motoboy fica com 100% do frete (fim da comissão em %)
+-- ecommerce — motoboy fica com 100% do frete (fim da comissão em %)
 -- + baixa de pagamento pelo admin (dinheiro/Pix), com histórico.
 --
 -- 100% do shipping_price de cada entrega concluída é do motoboy. O que
@@ -2111,7 +2111,7 @@ GRANT EXECUTE ON FUNCTION ufersin.admin_financeiro(text) TO anon, authenticated;
 -- sunset_motoboy_runs.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — corrida do motoboy (revolução da fila + rastreamento
+-- ecommerce — corrida do motoboy (revolução da fila + rastreamento
 -- ao vivo). Substitui o fluxo antigo de "pedir localização por WhatsApp"
 -- (obsoleto agora que o checkout já captura customer_lat/lng no mapa):
 -- o motoboy seleciona um lote de pedidos prontos e clica "Iniciar
@@ -2588,7 +2588,7 @@ GRANT EXECUTE ON FUNCTION ufersin.admin_financeiro(text) TO anon, authenticated;
 -- sunset_track_position_privacy.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — track_delivery_position só revela a posição do motoboy
+-- ecommerce — track_delivery_position só revela a posição do motoboy
 -- pro pedido que é REALMENTE a parada atual da corrida (current_index).
 -- Antes a posição vazava pra qualquer pedido do lote, mesmo enquanto o
 -- motoboy ainda tava terminando outra entrega antes — exatamente o que o
@@ -2642,7 +2642,7 @@ GRANT EXECUTE ON FUNCTION ufersin.track_delivery_position(text) TO anon, authent
 -- sunset_max_radius_and_motoboy_contact.sql
 -- ───────────────────────────────────────────────────────────────────
 -- =====================================================
--- Sunset Tabas — raio máximo de entrega + contato do motoboy no /consultar
+-- ecommerce — raio máximo de entrega + contato do motoboy no /consultar
 --
 -- 1) admin define uma distância máxima (km) de entrega em ufersin.shipping_settings.
 --    max_km NULL = sem limite (comportamento atual, compatível).

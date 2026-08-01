@@ -23,7 +23,7 @@ function fakeCopiaCola(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
   let chunk = ''
   for (let i = 0; i < 24; i++) chunk += chars[Math.floor(Math.random() * chars.length)]
-  return `00020126580014BR.GOV.BCB.PIX0136${chunk}5204000053039865802BR5912SUNSET TABAS6009SAO PAULO62070503***6304ABCD`
+  return `00020126580014BR.GOV.BCB.PIX0136${chunk}5204000053039865802BR5913RESOLUTOO DEMO6009SAO PAULO62070503***6304ABCD`
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -72,7 +72,7 @@ export default async function handler(req: Request): Promise<Response> {
         headers: { Authorization: `Bearer ${abacateKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: amountCentavos,
-          description: 'Pedido Sunset Tabas',
+          description: 'Pedido Resolutoo Demo',
           customer: { name: order.customer_name, cellphone: digits },
         }),
       })

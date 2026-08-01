@@ -2,7 +2,7 @@
 
 Small Node.js microservice whose only job is to connect to WhatsApp Web (as
 the store's own WhatsApp number) and send outbound text messages on behalf
-of the Sunset Tabas Rust backend. It does not implement any business logic — the
+of the ecommerce Rust backend. It does not implement any business logic — the
 Rust API decides *when* to notify a customer (payment confirmed, aguardando
 localização, saiu para entrega, etc.) and calls this service's `/send`
 endpoint to actually deliver the message via WhatsApp.

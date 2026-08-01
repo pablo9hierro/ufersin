@@ -7,7 +7,7 @@
 // serverless — ver worker/src/index.ts.
 import type { Ponto, Rota } from './tipos'
 
-const WORKER_BASE = import.meta.env.VITE_WORKER_BASE_URL || 'https://sunset-tabas-api.mulekinrx1v9.workers.dev'
+const WORKER_BASE = import.meta.env.VITE_WORKER_BASE_URL || 'https://resolutoo-demo-api.mulekinrx1v9.workers.dev'
 
 // Distância em LINHA RETA entre dois pontos (fórmula de Haversine). Zero
 // requisição — é só matemática, funciona offline. Mesma fórmula usada no

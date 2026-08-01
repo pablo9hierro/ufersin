@@ -1,5 +1,5 @@
 -- =====================================================
--- Sunset Tabas — comissão do motoboy (whatsapp + porcentagem no
+-- ecommerce — comissão do motoboy (whatsapp + porcentagem no
 -- cadastro) e telas de financeiro (admin e motoboy).
 --
 -- Ganho do motoboy por entrega = shipping_price (frete) * commission_percent / 100
