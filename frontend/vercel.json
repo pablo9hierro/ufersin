@@ -1,5 +1,5 @@
 {
-  "buildCommand": "bash scripts/embed-loja-demo.sh && npm run build",
+  "buildCommand": "test -f scripts/embed-loja-demo.sh || { echo 'ERROR: scripts/embed-loja-demo.sh missing. Deploy via Git push (Root Directory=frontend). Do not vercel-deploy a static-only folder.' >&2; exit 127; }; bash scripts/embed-loja-demo.sh && npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [

@@ -1,9 +1,10 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-watchPatterns = []
+watchPatterns = ["**"]
 
 [deploy]
+startCommand = "sonset_backend"
 healthcheckPath = "/internal/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
