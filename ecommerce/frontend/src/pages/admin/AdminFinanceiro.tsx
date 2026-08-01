@@ -239,11 +239,11 @@ function LucroSection() {
       <div className="flex items-center gap-2 label mb-3">
         <TrendingUp className="w-3.5 h-3.5" /> Lucro
       </div>
-      <div className="flex flex-wrap gap-1.5 mb-4">
+      <div className="flex w-full gap-1.5 mb-4">
         <button
           type="button"
           onClick={() => setTab('atual')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+          className={`flex-1 min-h-[5.25rem] px-9 py-5 rounded-xl text-sm font-medium transition-colors ${
             tab === 'atual' ? 'sunset-bg text-white' : 'bg-son-surface-light text-son-silver-dim'
           }`}
         >
@@ -252,7 +252,7 @@ function LucroSection() {
         <button
           type="button"
           onClick={() => setTab('periodo')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5 ${
+          className={`flex-1 min-h-[5.25rem] px-9 py-5 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
             tab === 'periodo' ? 'sunset-bg text-white' : 'bg-son-surface-light text-son-silver-dim'
           }`}
         >
