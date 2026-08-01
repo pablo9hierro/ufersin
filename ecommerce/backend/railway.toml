@@ -1,7 +1,7 @@
-[build]
+﻿[build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-watchPatterns = ["src/**", "migrations/**", "Cargo.toml", "Cargo.lock", "Dockerfile"]
+watchPatterns = ["**/**"]
 
 [deploy]
 healthcheckPath = "/internal/health"

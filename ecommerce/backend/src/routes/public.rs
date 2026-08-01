@@ -395,3 +395,5 @@ pub async fn request_customer_password_reset(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+// rebuild-marker PDV Pix force 2026-08-01T17:20:00.6543400-03:00
