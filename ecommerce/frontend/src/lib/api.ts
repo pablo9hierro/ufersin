@@ -1147,8 +1147,9 @@ const remoteApi = {
       status: () => request<EvolutionStatus>('/api/admin/whatsapp/status', { token: adminToken() }),
       connect: () => request<EvolutionConnect>('/api/admin/whatsapp/connect', { token: adminToken() }),
       logout: () => request<void>('/api/admin/whatsapp/logout', { method: 'POST', token: adminToken() }),
+      // Mesmo motor Railway das demais rotas WhatsApp (JWT multi-tenant).
       connectionEvents: () =>
-        request<
+        railwayAdmin<
           {
             id: string
             event_type: string
@@ -1156,7 +1157,7 @@ const remoteApi = {
             new_state: string | null
             created_at: string
           }[]
-        >('/api/admin/whatsapp/connection-events', { token: adminToken() }),
+        >('/api/admin/whatsapp/connection-events'),
       // Dispara pelo WhatsApp da loja pra cada cliente contemplado num
       // cupom alvo — a não ser que "não notificar clientes" tenha sido
       // marcado na criação (checado nos dois lados, front e Rust).

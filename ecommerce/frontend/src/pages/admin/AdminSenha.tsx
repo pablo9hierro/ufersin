@@ -34,11 +34,34 @@ export default function AdminSenha() {
 
   const loadWaEvents = () => {
     if (!whatsappHabilitado) return
+    setWaEventsError(null)
     adminService.whatsapp
       .connectionEvents()
-      .then(setWaEvents)
+      .then((events) => {
+        setWaEvents(events)
+        setWaEventsError(null)
+      })
       .catch((err) => {
-        setWaEventsError(err instanceof ApiError ? err.message : 'Não foi possível carregar o histórico.')
+        // Deploy gap / rota ainda não no ar: empty state, never raw "Erro 404".
+        const status = err instanceof ApiError ? err.status : undefined
+        const msg = err instanceof ApiError ? err.message : ''
+        if (
+          status === 404 ||
+          status === 502 ||
+          status === 503 ||
+          status === 0 ||
+          /^erro\s*404\b/i.test(msg) ||
+          /does not exist|relation|whatsapp_connection_events/i.test(msg)
+        ) {
+          setWaEvents([])
+          setWaEventsError(null)
+          return
+        }
+        if (status === 401 || /unauthorized|expired token/i.test(msg)) {
+          setWaEventsError('Sessão expirada — faça login de novo.')
+          return
+        }
+        setWaEventsError('Não foi possível carregar o histórico.')
       })
   }
 
@@ -144,7 +167,7 @@ export default function AdminSenha() {
               <p className="font-semibold text-white text-sm mb-3">Histórico de conexões</p>
               {waEventsError && <p className="error-msg text-xs">{waEventsError}</p>}
               {!waEventsError && waEvents.length === 0 && (
-                <p className="text-son-silver-dim text-xs">Nenhum evento registrado ainda.</p>
+                <p className="text-son-silver-dim text-xs">Nenhuma conexão ainda</p>
               )}
               <ul className="space-y-2 max-h-64 overflow-y-auto">
                 {waEvents.map((ev) => (
