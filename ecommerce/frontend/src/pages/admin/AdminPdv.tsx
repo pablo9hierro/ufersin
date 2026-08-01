@@ -72,6 +72,7 @@ export default function AdminPdv() {
   const [confirmCashOpen, setConfirmCashOpen] = useState(false)
   const [pixOrder, setPixOrder] = useState<Order | null>(null)
   const [confirmingPix, setConfirmingPix] = useState(false)
+  const [regeneratingPix, setRegeneratingPix] = useState(false)
   const [copiedPix, setCopiedPix] = useState(false)
 
   useEffect(() => {
@@ -267,6 +268,9 @@ export default function AdminPdv() {
         let withPix = order
         try {
           withPix = await orderService.createPixPayment(order.id)
+          if (!withPix.pix_copia_cola) {
+            throw new ApiError(502, 'Cobrança Pix sem QR / copia-e-cola.')
+          }
         } catch (e) {
           setFinalizeError(
             e instanceof ApiError
@@ -318,14 +322,39 @@ export default function AdminPdv() {
     if (!pixOrder) return
     setConfirmingPix(true)
     try {
-      // Confirmação de recebimento no balcão — dispara o "obrigado" (só se
-      // o WhatsApp do comprador estava no formulário; o backend ignora vazio).
-      if (pixOrder.customer_whatsapp?.replace(/\D/g, '')) {
-        await pdvService.notifySale(pixOrder.id).catch(() => {})
-      }
+      // Confirmação de recebimento no balcão — marca pago + "obrigado"
+      // (backend ignora WhatsApp vazio).
+      await pdvService.notifySale(pixOrder.id).catch(() => {})
       setPixOrder(null)
     } finally {
       setConfirmingPix(false)
+    }
+  }
+
+  const dismissPixModal = () => {
+    if (confirmingPix || regeneratingPix) return
+    setPixOrder(null)
+  }
+
+  const regeneratePixCharge = async () => {
+    if (!pixOrder) return
+    setRegeneratingPix(true)
+    setFinalizeError(null)
+    try {
+      const withPix = await orderService.createPixPayment(pixOrder.id, true)
+      if (!withPix.pix_copia_cola) {
+        throw new ApiError(502, 'Nova cobrança criada sem QR / copia-e-cola.')
+      }
+      setPixOrder(withPix)
+      if (withPix.customer_whatsapp?.replace(/\D/g, '')) {
+        pdvService.notifyPixCharge(withPix.id).catch(() => {})
+      }
+    } catch (e) {
+      setFinalizeError(
+        e instanceof ApiError ? e.message : 'Não foi possível gerar nova cobrança Pix.',
+      )
+    } finally {
+      setRegeneratingPix(false)
     }
   }
 
@@ -618,8 +647,17 @@ export default function AdminPdv() {
 
       {pixOrder && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass rounded-2xl p-6 max-w-sm w-full text-center">
-            <h3 className="font-bold text-white mb-1">Pix da venda</h3>
+          <div className="glass rounded-2xl p-6 max-w-sm w-full text-center relative">
+            <button
+              type="button"
+              onClick={dismissPixModal}
+              disabled={confirmingPix || regeneratingPix}
+              className="absolute top-3 right-3 text-son-silver-dim hover:text-white disabled:opacity-40"
+              aria-label="Fechar cobrança Pix"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="font-bold text-white mb-1 pr-6">Pix da venda</h3>
             <p className="text-sm text-son-silver-dim mb-4">
               Peça ao cliente para escanear o QR ou use o copia-e-cola.
               {pixOrder.customer_whatsapp?.replace(/\D/g, '')
@@ -635,12 +673,21 @@ export default function AdminPdv() {
               )}
             </div>
             {pixOrder.pix_copia_cola && (
-              <button type="button" onClick={copyPixCode} className="btn-secondary w-full mb-4 text-sm">
+              <button type="button" onClick={copyPixCode} className="btn-secondary w-full mb-3 text-sm">
                 <Copy className="w-4 h-4" />
                 {copiedPix ? 'Copiado!' : 'Copiar Pix copia-e-cola'}
               </button>
             )}
-            <button type="button" onClick={confirmPixReceived} disabled={confirmingPix} className="btn-primary w-full py-3">
+            <button
+              type="button"
+              onClick={regeneratePixCharge}
+              disabled={confirmingPix || regeneratingPix}
+              className="btn-secondary w-full mb-3 text-sm"
+            >
+              {regeneratingPix ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+              Gerar nova cobrança
+            </button>
+            <button type="button" onClick={confirmPixReceived} disabled={confirmingPix || regeneratingPix} className="btn-primary w-full py-3">
               {confirmingPix ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
               Pagamento Pix recebido
             </button>

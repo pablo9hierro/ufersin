@@ -29,8 +29,9 @@ export const ordersEndpoint = {
     const data = await api.trackDeliveryPosition(orderId)
     return data ? validate(DeliveryPositionSchema, data, 'trackDeliveryPosition') : null
   },
-  // Pix roda via Vercel Edge Function (ver lib/api.ts callVercelPixApi).
-  createPixPayment: async (id: string) => validate(OrderSchema, await api.orders.createPixPayment(id), 'orders.createPixPayment'),
+  // Pix no ecommerce-api (Railway). `force` regenera QR (PDV).
+  createPixPayment: async (id: string, force = false) =>
+    validate(OrderSchema, await api.orders.createPixPayment(id, force), 'orders.createPixPayment'),
   refreshPayment: async (id: string) => validate(OrderSchema, await api.orders.refreshPayment(id), 'orders.refreshPayment'),
   simulatePixPaid: async (id: string) => validate(OrderSchema, await api.orders.simulatePixPaid(id), 'orders.simulatePixPaid'),
   notifyCreated: async (orderId: string) => api.orders.notifyCreated(orderId),

@@ -149,13 +149,20 @@ pub async fn create_sale(
     }
 
     let order_id = Uuid::new_v4().to_string();
+    // Pix no balcão com QR fica pendente até o caixa confirmar (ou o
+    // gateway marcar pago). Dinheiro/cartão já nascem pagos.
+    let payment_status = if input.payment_method == "pix" {
+        "pendente"
+    } else {
+        "pago"
+    };
     sqlx::query(
         "INSERT INTO orders (\
             id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
             payment_method, payment_status, status, shipping_price, total, discount_amount, \
             sold_by_role, sold_by_id\
          ) VALUES (\
-            $1, $2, $3, $4, $5, 'balcao', $6, 'pago', 'concluido', 0, $7, $8, $9, $10\
+            $1, $2, $3, $4, $5, 'balcao', $6, $7, 'concluido', 0, $8, $9, $10, $11\
          )",
     )
     .bind(&order_id)
@@ -164,6 +171,7 @@ pub async fn create_sale(
     .bind(&name)
     .bind(whatsapp.as_deref().unwrap_or(""))
     .bind(&input.payment_method)
+    .bind(payment_status)
     .bind(total)
     .bind(discount)
     .bind(&claims.role)

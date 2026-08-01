@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
@@ -52,15 +52,30 @@ pub async fn notify_order_created(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct CreatePixQuery {
+    /// Quando `1`/`true`, descarta cobrança anterior (ainda não paga) e
+    /// gera um QR novo — usado pelo PDV ("Gerar nova cobrança").
+    #[serde(default)]
+    pub force: Option<String>,
+}
+
+fn force_flag(q: &CreatePixQuery) -> bool {
+    matches!(
+        q.force.as_deref().map(|s| s.trim().to_ascii_lowercase()).as_deref(),
+        Some("1") | Some("true") | Some("yes")
+    )
+}
+
 /// Cria a cobrança Pix de verdade na AbacatePay (ou fake em modo mock) pro
-/// pedido — antes disso não existia nenhum lugar que de fato chamava a API
-/// de pagamento; a tela de pagamento só lia campos que nunca eram
-/// preenchidos. Idempotente: se já tiver cobrança criada, devolve como está
-/// em vez de criar uma segunda.
+/// pedido. Idempotente: se já tiver cobrança e `force` não veio, devolve
+/// como está. Com `?force=1` (e pagamento ainda pendente), gera outra.
 pub async fn create_pix_payment(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(q): Query<CreatePixQuery>,
 ) -> Result<Json<OrderDto>, AppError> {
+    let force = force_flag(&q);
     let store = tenant::tenant_for_order(&state.pool, &id).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
     let Some(order) = fetch_order_row(&mut *tx, &store.id, &id).await? else {
@@ -70,7 +85,12 @@ pub async fn create_pix_payment(
     if order.payment_method != "pix" {
         return Err(AppError::BadRequest("order is not a pix payment".to_string()));
     }
-    if order.pix_payment_id.is_some() {
+    if order.payment_status == "pago" && force {
+        return Err(AppError::BadRequest(
+            "cannot regenerate pix charge after payment is confirmed".to_string(),
+        ));
+    }
+    if order.pix_payment_id.is_some() && !force {
         let dto = row_to_dto(&mut tx, &store.id, order).await?;
         tx.commit().await?;
         return Ok(Json(dto));
@@ -80,7 +100,9 @@ pub async fn create_pix_payment(
     let pix = abacatepay::create_pix_charge(&state, &store.name, order.total, &order.customer_name, &digits).await?;
 
     sqlx::query(
-        "UPDATE orders SET pix_payment_id = $1, pix_qr_base64 = $2, pix_copia_cola = $3, updated_at = now()::text \
+        "UPDATE orders SET pix_payment_id = $1, pix_qr_base64 = $2, pix_copia_cola = $3, \
+         payment_status = CASE WHEN payment_status = 'pago' THEN payment_status ELSE 'pendente' END, \
+         updated_at = now()::text \
          WHERE tenant_id = $4 AND id = $5",
     )
     .bind(&pix.payment_id)
@@ -141,7 +163,30 @@ pub async fn notify_pdv_sale(
 
     let digits = whatsapp::digits_only(&order.customer_whatsapp);
     if digits.is_empty() {
+        // Sem WA: ainda confirma Pix pendente de balcão se for o caso.
+        if order.payment_method == "pix" && order.payment_status != "pago" {
+            sqlx::query(
+                "UPDATE orders SET payment_status = 'pago', updated_at = now()::text \
+                 WHERE tenant_id = $1 AND id = $2",
+            )
+            .bind(&store.id)
+            .bind(&input.order_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
         return Ok(StatusCode::NO_CONTENT);
+    }
+
+    if order.payment_method == "pix" && order.payment_status != "pago" {
+        sqlx::query(
+            "UPDATE orders SET payment_status = 'pago', updated_at = now()::text \
+             WHERE tenant_id = $1 AND id = $2",
+        )
+        .bind(&store.id)
+        .bind(&input.order_id)
+        .execute(&mut *tx)
+        .await?;
     }
 
     let items = fetch_items(&mut *tx, &store.id, &order.id).await?;

@@ -15,13 +15,23 @@ Set in the shell or `ecommerce/frontend/.env.local` (**never commit secrets**):
 | `ADMIN_TEST_PASSWORD` | yes | Admin password |
 | `ADMIN_TEST_TENANT` | yes* | Tenant slug (`tenant_slug` on login) |
 | `ADMIN_TEST_DATABASE_URL` | no | Postgres URL — when set, asserts product rows after create/delete (`npm i -D pg`) |
-| `ADMIN_TEST_ALLOW_PDV_SALE` | no | Set `1` to create a real balcão sale (mutates stock/orders) |
+| `ADMIN_TEST_ALLOW_PDV_SALE` | no | Set `1` to also create a real cash balcão sale |
+| `ADMIN_TEST_WA_PHONE` | no | Digits for Pix charge + confirmation WA asserts (no QR-login) |
 | `ADMIN_TEST_UI_URL` | for UI | Storefront origin including mount path, e.g. `https://….vercel.app/loja` |
 
 \* Fallbacks: `VITE_API_BASE_URL` for API base; `VITE_TENANT_SLUG` for tenant.  
 Missing required vars → **exit 1** (no silent skip / green pass).
 
-WhatsApp: suite calls `GET /status` and `GET /connection-events` only — **does not** scan QR / connect.
+WhatsApp: suite calls `GET /status`, `GET /connection-events`, and (when `ADMIN_TEST_WA_PHONE` is set) `notify-pix-charge` / `notify-sale` — **does not** scan QR / connect.
+
+**PDV Pix** always runs: creates a Pix balcão sale, then `POST /api/orders/{id}/create-pix-payment` (and `?force=1`). Suite **fails** on HTTP 405 or missing `pix_copia_cola`.
+
+### Tenants
+
+| Tenant | Notes |
+|--------|--------|
+| `sunset-tabas` | Seed: `admin@sonset.com` / seed password from `ecommerce/backend` seed (local/dev) |
+| `resusu` | Live store on resolutoo.com/loja — use real admin email/password via env (never commit) |
 
 ## Run
 

@@ -9,7 +9,7 @@ export const orderService = {
   get: ordersEndpoint.get,
   track: ordersEndpoint.track,
   trackDeliveryPosition: ordersEndpoint.trackDeliveryPosition,
-  createPixPayment: ordersEndpoint.createPixPayment,
+  createPixPayment: (id: string, force = false) => ordersEndpoint.createPixPayment(id, force),
   refreshPayment: ordersEndpoint.refreshPayment,
   simulatePixPaid: ordersEndpoint.simulatePixPaid,
   notifyCreated: ordersEndpoint.notifyCreated,

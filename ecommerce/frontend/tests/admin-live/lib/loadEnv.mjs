@@ -77,6 +77,8 @@ export function requireLiveEnv() {
     databaseUrl: (process.env.ADMIN_TEST_DATABASE_URL || process.env.DATABASE_URL || '').trim() || null,
     uiUrl: (process.env.ADMIN_TEST_UI_URL || '').trim().replace(/\/$/, '') || null,
     allowPdvSale: process.env.ADMIN_TEST_ALLOW_PDV_SALE === '1',
+    /** When set, assert PDV Pix charge notify API accepts the number (no QR-login). */
+    waPhone: (process.env.ADMIN_TEST_WA_PHONE || '').replace(/\D/g, '') || null,
     runId: `TEST_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
   }
 }

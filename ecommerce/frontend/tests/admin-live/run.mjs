@@ -57,7 +57,9 @@ async function main() {
   console.log(`  email: ${env.email.replace(/(^.).*(@.*$)/, '$1***$2')}`)
   console.log(`  runId: ${env.runId}`)
   console.log(`  DB asserts: ${env.databaseUrl ? 'yes' : 'no'}`)
-  console.log(`  PDV sale: ${env.allowPdvSale ? 'enabled' : 'skipped (set ADMIN_TEST_ALLOW_PDV_SALE=1)'}`)
+  console.log(`  PDV cash sale: ${env.allowPdvSale ? 'enabled' : 'skipped (set ADMIN_TEST_ALLOW_PDV_SALE=1)'}`)
+  console.log(`  PDV Pix: always on (fails on 405 / missing QR)`)
+  console.log(`  WA phone: ${env.waPhone ? `set (…${env.waPhone.slice(-4)})` : 'skipped (ADMIN_TEST_WA_PHONE)'}`)
   console.log('')
 
   const anon = createClient(env.baseUrl)
@@ -255,9 +257,9 @@ async function main() {
     }
   })
 
-  // ---- Optional PDV sale (mutating) ----
+  // ---- Optional cash PDV sale (mutating) ----
   if (env.allowPdvSale && createdProductId) {
-    await run('pdv: create sale (ADMIN_TEST_ALLOW_PDV_SALE=1)', async () => {
+    await run('pdv: create cash sale (ADMIN_TEST_ALLOW_PDV_SALE=1)', async () => {
       const res = await api.post('/api/pdv/sales', {
         items: [{ product_id: createdProductId, quantity: 1 }],
         payment_method: 'dinheiro',
@@ -269,7 +271,111 @@ async function main() {
       assertShape(res.data, ['id', 'total', 'status'], 'sale')
     })
   } else {
-    console.log('  · pdv sale skipped (set ADMIN_TEST_ALLOW_PDV_SALE=1 to enable)')
+    console.log('  · pdv cash sale skipped (set ADMIN_TEST_ALLOW_PDV_SALE=1 to enable)')
+  }
+
+  // ---- PDV Pix (must catch 405 / missing QR) ----
+  // Always runs when we still have stock on the test product. Restores qty
+  // after so cleanup delete still works. Fails hard on wrong method/path or
+  // empty pix_copia_cola.
+  if (createdProductId) {
+    let pixOrderId = null
+    await run('pdv: Pix sale + create-pix-payment returns QR payload', async () => {
+      // Ensure stock for the Pix sale (cash sale above may have consumed 1).
+      const bump = await api.put(`/api/admin/products/${createdProductId}`, {
+        name: productName,
+        description: 'admin-live suite pix',
+        price: 39.9,
+        quantity: 10,
+        image_url: null,
+        category_id: createdCategoryId,
+        active: true,
+        cost_price: 12,
+        low_stock_threshold: 3,
+        barcode,
+      })
+      assertStatus(bump, 200)
+
+      const salePayload = {
+        items: [{ product_id: createdProductId, quantity: 1 }],
+        payment_method: 'pix',
+        customer_name: `${env.runId}_Pix`,
+        discount_type: 'percent',
+        discount_value: 0,
+      }
+      if (env.waPhone) {
+        salePayload.customer_whatsapp = env.waPhone.startsWith('55')
+          ? env.waPhone
+          : `55${env.waPhone}`
+      }
+
+      const sale = await api.post('/api/pdv/sales', salePayload)
+      assertStatus(sale, [200, 201], 'pdv pix sale')
+      assert(sale.status !== 405, 'pdv/sales must not return 405')
+      assertShape(sale.data, ['id', 'total', 'payment_method'], 'pix sale')
+      assertEqual(sale.data.payment_method, 'pix', 'payment_method')
+      pixOrderId = sale.data.id
+
+      const pix = await api.post(`/api/orders/${pixOrderId}/create-pix-payment`, {}, {
+        expectStatus: [200, 201, 400, 404, 405, 500, 502],
+      })
+      assert(
+        pix.status !== 405,
+        `create-pix-payment returned 405 (wrong method/path). body=${JSON.stringify(pix.data).slice(0, 200)}`,
+      )
+      assertStatus(pix, [200, 201], 'create-pix-payment')
+      assert(
+        typeof pix.data?.pix_copia_cola === 'string' && pix.data.pix_copia_cola.length > 20,
+        `missing pix_copia_cola / QR payload: ${JSON.stringify(pix.data).slice(0, 300)}`,
+      )
+      assert(
+        typeof pix.data?.pix_payment_id === 'string' && pix.data.pix_payment_id.length > 3,
+        'missing pix_payment_id',
+      )
+
+      // Regenerate must also return a real payload (force=1).
+      const again = await api.post(`/api/orders/${pixOrderId}/create-pix-payment?force=1`, {}, {
+        expectStatus: [200, 201, 400, 404, 405, 500, 502],
+      })
+      assert(again.status !== 405, 'force create-pix-payment must not 405')
+      assertStatus(again, [200, 201], 'create-pix-payment force')
+      assert(
+        typeof again.data?.pix_copia_cola === 'string' && again.data.pix_copia_cola.length > 20,
+        'force regenerate missing pix_copia_cola',
+      )
+    })
+
+    if (env.waPhone && pixOrderId) {
+      await run('pdv: notify-pix-charge accepts WA number (no QR-login)', async () => {
+        const res = await api.post('/api/pdv/notify-pix-charge', { order_id: pixOrderId }, {
+          expectStatus: [200, 204, 502, 503],
+        })
+        assert(
+          res.status !== 405,
+          'notify-pix-charge must not return 405',
+        )
+        // 502/503 = Evolution down — still proves our route+payload; 200/204 = sent/queued
+        assertStatus(res, [200, 204, 502, 503], 'notify-pix-charge')
+      })
+
+      await run('pdv: notify-sale (confirmation) after Pix', async () => {
+        const res = await api.post('/api/pdv/notify-sale', { order_id: pixOrderId }, {
+          expectStatus: [200, 204, 502, 503],
+        })
+        assert(res.status !== 405, 'notify-sale must not return 405')
+        assertStatus(res, [200, 204, 502, 503], 'notify-sale')
+      })
+    } else {
+      console.log('  · pdv WA notify skipped (set ADMIN_TEST_WA_PHONE to exercise Evolution send)')
+      if (pixOrderId) {
+        await run('pdv: notify-sale marks Pix paid (no WA)', async () => {
+          const res = await api.post('/api/pdv/notify-sale', { order_id: pixOrderId }, {
+            expectStatus: [200, 204],
+          })
+          assertStatus(res, [200, 204], 'notify-sale')
+        })
+      }
+    }
   }
 
   // ---- Cleanup ----

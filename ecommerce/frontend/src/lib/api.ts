@@ -102,24 +102,11 @@ async function request<T>(
   return res.json() as Promise<T>
 }
 
-// Pix (frontend/api/pix-*.ts) roda como Edge Function na própria Vercel —
-// path relativo, nunca passa por API_BASE (Railway).
-async function callVercelPixApi(path: string, orderId: string): Promise<Order> {
-  let res: Response
-  try {
-    res = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_id: orderId }),
-    })
-  } catch {
-    throw new ApiError(0, 'Não foi possível conectar ao servidor de pagamento. Tente novamente em instantes.')
-  }
-  const body = await res.json().catch(() => null)
-  if (!res.ok) {
-    throw new ApiError(res.status, body?.error || `Erro ${res.status} ao processar o pagamento.`)
-  }
-  return body as Order
+/** Pix no motor Railway (`/api/orders/{id}/…`). Path relativo `/api/pix-*`
+ * na Vercel quebrava em `/loja` embutido (POST no host pai → 405). */
+async function callRailwayPixApi(orderId: string, action: 'create-pix-payment' | 'refresh-payment' | 'simulate-pix-paid', force = false): Promise<Order> {
+  const qs = force ? '?force=1' : ''
+  return request<Order>(`/api/orders/${orderId}/${action}${qs}`, { method: 'POST' })
 }
 
 // admin e vendedor têm sessões separadas (useAdminAuth/useVendedorAuth,
@@ -213,11 +200,11 @@ const remoteApi = {
     create: supabasePublicApi.orders.create,
     get: supabasePublicApi.orders.get,
     track: supabasePublicApi.orders.track,
-    // Pix roda via Vercel Edge Function (frontend/api/pix-*.ts) direto no
-    // Supabase — não depende mais do backend Rust/Railway.
-    createPixPayment: (id: string) => callVercelPixApi('/api/pix-create', id),
-    refreshPayment: (id: string) => callVercelPixApi('/api/pix-check', id),
-    simulatePixPaid: (id: string) => callVercelPixApi('/api/pix-simulate', id),
+    // Pix no ecommerce-api (Railway). `force` gera nova cobrança (PDV).
+    createPixPayment: (id: string, force = false) =>
+      callRailwayPixApi(id, 'create-pix-payment', force),
+    refreshPayment: (id: string) => callRailwayPixApi(id, 'refresh-payment'),
+    simulatePixPaid: (id: string) => callRailwayPixApi(id, 'simulate-pix-paid'),
     // Público — dispara logo após o checkout, avisando que o pedido chegou.
     notifyCreated: (orderId: string) =>
       request<void>('/api/orders/notify-created', {

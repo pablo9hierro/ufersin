@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, Lock, Users } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Lock, Users } from 'lucide-react'
 import Logo from '../../components/ui/Logo'
 import { ApiError } from '../../lib/apiError'
 import { authService } from '../../services/authService'
@@ -26,6 +26,7 @@ export default function AdminLogin() {
 
   const [email, setEmail] = useState(emailFromUrl)
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [tenantSlug, setTenantSlug] = useState(tenantFromUrl)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -96,14 +97,25 @@ export default function AdminLogin() {
           </div>
           <div>
             <label className="label">Senha</label>
-            <input
-              className="input-field"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoFocus={Boolean(emailFromUrl)}
-            />
+            <div className="relative">
+              <input
+                className="input-field pr-12"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoFocus={Boolean(emailFromUrl)}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-son-silver-dim hover:text-white p-1"
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
           {error && (
             <div>
