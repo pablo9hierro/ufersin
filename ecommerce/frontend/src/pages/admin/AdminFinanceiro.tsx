@@ -107,7 +107,8 @@ function DateRangePicker({
   }
   const isEdge = (day: number) => {
     const iso = toIso(day)
-    return Boolean((from && iso === from) || (to && iso === to))
+    // Só acende com seleção completa (início + fim); um dia sozinho fica muted.
+    return Boolean(from && to && (iso === from || iso === to))
   }
 
   const prevMonth = () => {
