@@ -21,8 +21,9 @@ export default function Assinar() {
   const initialCiclo: BillingCycle = cicloParam === 'semestral' ? 'semestral' : 'mensal'
 
   const [ciclo, setCiclo] = useState<BillingCycle>(initialCiclo)
-  // Homologação AbacatePay costuma ter só PIX liberado — cartão cai pra PIX no backend.
-  const [metodo, setMetodo] = useState<MetodoPagamento>('pix')
+  // Homologação AbacatePay / mock local — cartão pode cair pra PIX no backend.
+  // Com Mercado Pago (MP_ACCESS_TOKEN), o checkout hospedado aceita cartão e Pix.
+  const [metodo, setMetodo] = useState<MetodoPagamento>('cartao')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -45,8 +46,8 @@ export default function Assinar() {
     setLoading(true)
     try {
       const result = await api.assinarPlano({ plano, metodo, ciclo })
-      // Homologação: vai pra /obrigado com botão "Simular pagamento" (e link do checkout real).
-      // Produção: redireciona direto ao checkout AbacatePay.
+      // Sandbox/mock: /obrigado com link do checkout + "Simular pagamento".
+      // Produção / MP TEST com init_point real: redireciona ao checkout hospedado.
       if (result.sandbox) {
         const q = new URLSearchParams({ id: result.id })
         if (result.checkout_url) q.set('checkout', result.checkout_url)
@@ -149,8 +150,9 @@ export default function Assinar() {
             Assinar e configurar pagamento
           </button>
           <p className="text-[11px] text-uf-silver-dim text-center">
-            Checkout AbacatePay ({metodo === 'pix' ? 'Pix' : 'cartão'}). Em homologação (chave abc_dev_), se a loja
-            AbacatePay ainda não tiver Pix/Cartão liberados, você cai direto em “Simular pagamento”.
+            Você será redirecionado ao checkout seguro ({metodo === 'pix' ? 'Pix' : 'cartão'}). Com
+            Mercado Pago em modo teste (`TEST-…`), use os cartões de teste do MP. Em homologação
+            AbacatePay (`abc_dev_`) sem Pix/Cartão liberados, cai em “Simular pagamento”.
           </p>
         </form>
       </motion.div>

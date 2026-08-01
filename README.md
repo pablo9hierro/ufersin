@@ -29,10 +29,11 @@ Landing (/) -> Escolher plano (#planos) -> /cadastro?plano=X (conta + plano já 
 
 - **Planos**: Essential R$60, Management R$250, Premium R$350 — mesmos
   planos/preços definidos no motor (`ecommerce/backend/migrations/0005_tenancy.sql`).
-- **Pagamento**: Mercado Pago (funcionando, cartão) já em produção antes
-  desse SaaS; AbacatePay (Pix) preparado em modo mock — ver
-  `backend/src/gateway.rs`. Sem `MP_ACCESS_TOKEN`/`ABACATEPAY_API_KEY`
-  configurada, tudo roda em modo mock (não cobra nada de verdade).
+- **Pagamento**: Mercado Pago (preapproval / checkout hospedado) é o gateway
+  padrão das assinaturas Resolutoo quando `MP_ACCESS_TOKEN` está setado.
+  AbacatePay fica como fallback se só `ABACATEPAY_API_KEY` existir — ver
+  `backend/src/gateway.rs`. Sem nenhum token, tudo roda em modo mock.
+  Script de smoke: `node scripts/test-mp-subscription.mjs` (token via env).
 - **Onboarding -> Tenant**: ao finalizar o onboarding, este backend chama
   `POST /internal/provision-tenant` no motor de e-commerce (chave
   compartilhada `ECOMMERCE_INTERNAL_KEY`/`INTERNAL_API_KEY`), que cria

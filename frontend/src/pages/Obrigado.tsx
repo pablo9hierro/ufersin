@@ -86,7 +86,7 @@ export default function Obrigado() {
             {(sandbox || checkoutUrl) && isAuthenticated && (
               <div className="mt-6 uf-glass rounded-2xl p-4 text-left space-y-3">
                 <p className="text-xs text-amber-300/90">
-                  Homologação AbacatePay — nenhum valor real será cobrado. Simule pra avançar, ou abra o checkout de teste.
+                  Homologação — nenhum valor real será cobrado. Simule pra avançar, ou abra o checkout de teste.
                 </p>
                 <button
                   type="button"
@@ -104,7 +104,7 @@ export default function Obrigado() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Abrir checkout AbacatePay
+                    Abrir checkout de pagamento
                   </a>
                 )}
                 {simError && <p className="error-msg">{simError}</p>}

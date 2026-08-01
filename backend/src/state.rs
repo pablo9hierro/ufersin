@@ -15,9 +15,9 @@ pub struct AppState {
     /// sem uma conta Mercado Pago com o produto de assinaturas aprovado).
     pub mp_token: Arc<Option<String>>,
     /// None = camada AbacatePay em modo mock — ver gateway.rs/
-    /// abacatepay_gateway.rs. Quando presente, PASSA a ser o gateway usado
-    /// por padrão pra assinaturas novas (Mercado Pago fica só pra quem já
-    /// assinou por ele).
+    /// abacatepay_gateway.rs. Usado como fallback quando `MP_ACCESS_TOKEN`
+    /// não está setado; com MP configurado, novas assinaturas Resolutoo
+    /// vão pelo Mercado Pago (ver gateway::resolve_gateway_kind).
     pub abacatepay_token: Arc<Option<String>>,
     /// Preço padrão da assinatura mensal (R$), usado quando o formulário
     /// não especifica outro plano.

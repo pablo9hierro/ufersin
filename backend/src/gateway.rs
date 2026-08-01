@@ -68,10 +68,14 @@ pub fn charge_amount(monthly_price: f64, cycle: BillingCycle) -> f64 {
     }
 }
 
-/// Qual gateway processa a assinatura — AbacatePay tem prioridade quando a
-/// chave está configurada; senão cai no Mercado Pago.
+/// Qual gateway processa a assinatura Resolutoo (planos).
+/// Mercado Pago tem prioridade quando `MP_ACCESS_TOKEN` está setado
+/// (assinaturas com CPF ok no MP). AbacatePay fica como fallback quando
+/// só `ABACATEPAY_API_KEY` existe. Sem nenhum token → MP em modo mock.
 pub fn resolve_gateway_kind(state: &AppState) -> &'static str {
-    if state.abacatepay_token.is_some() {
+    if state.mp_token.is_some() {
+        "mercadopago"
+    } else if state.abacatepay_token.is_some() {
         "abacatepay"
     } else {
         "mercadopago"
@@ -104,10 +108,17 @@ pub async fn create_subscription(
             .await
         }
         _ => {
-            // Mercado Pago preapproval é mensal; semestral cobra o valor do
-            // período como transaction_amount único por ciclo (ainda mensal
-            // no MP — o valor já vem ajustado pelo caller).
-            let r = mercadopago::create_subscription(state, reason, payer_email, amount_reais, external_reference).await?;
+            // Mercado Pago preapproval: mensal = frequency 1 month; semestral =
+            // frequency 6 months com o valor do semestre já calculado pelo caller.
+            let r = mercadopago::create_subscription(
+                state,
+                reason,
+                payer_email,
+                amount_reais,
+                cycle,
+                external_reference,
+            )
+            .await?;
             let sandbox = r.preapproval_id.starts_with("mock-");
             Ok(GatewayCharge {
                 external_id: r.preapproval_id,
@@ -123,7 +134,7 @@ pub async fn create_subscription(
 pub fn sandbox_mode(state: &AppState) -> bool {
     match resolve_gateway_kind(state) {
         "abacatepay" => abacatepay_gateway::sandbox_mode(state),
-        _ => state.mp_token.is_none(),
+        _ => mercadopago::sandbox_mode(state),
     }
 }
 
