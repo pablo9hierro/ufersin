@@ -1,4 +1,5 @@
 # Rodoletas API (ufersin/backend) — deploy no projeto Railway `resolutoo`.
+# (cache-bust: 2026-08-01T20:00Z — force rebuild after failed GitHub/RAILPACK deploys)
 FROM rust:1.88-bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
