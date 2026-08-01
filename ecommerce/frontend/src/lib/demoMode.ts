@@ -17,7 +17,11 @@ export function activateDemoMode(plano: PlanoCode) {
 }
 
 export function isDemoModeActive(): boolean {
-  return typeof window !== 'undefined' && sessionStorage.getItem(ACTIVE_KEY) === 'true'
+  if (typeof window === 'undefined') return false
+  // Vitrine real (?tenant= / slug persistido) nunca fica em modo demo —
+  // senão o zustand rodoletas_demo_layout_style sobrescreve layout_style do Meu plano.
+  if (resolveTenantSlug()) return false
+  return sessionStorage.getItem(ACTIVE_KEY) === 'true'
 }
 
 export function getDemoPlano(): PlanoCode | null {

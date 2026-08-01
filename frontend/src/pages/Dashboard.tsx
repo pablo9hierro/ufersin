@@ -18,7 +18,7 @@ import {
 import { api, ApiError, type MeResponse, type PlanoCode } from '../lib/api'
 import { authStore, useAuthReady, useEmailConfirmed, useIsAuthenticated } from '../lib/authStore'
 import { PLAN_MAP } from '../lib/plans'
-import { storeAdminLoginUrl } from '../lib/ecommerceUrl'
+import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 
@@ -277,21 +277,40 @@ export default function Dashboard() {
               <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
                 <Globe className="w-4 h-4" /> Domínio &amp; loja
               </h2>
-              {me.onboarding_status === 'provisionado' && me.dominio ? (
+              {me.onboarding_status === 'provisionado' && me.slug ? (
                 <>
                   <p className="text-sm mb-4">
-                    Sua loja: <span className="font-semibold">{me.dominio}</span>
+                    Sua loja:{' '}
+                    <a
+                      href={storePublicUrl(me.slug)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold underline underline-offset-2 hover:text-white"
+                    >
+                      {me.dominio ?? `resolutoo.com/loja/?tenant=${me.slug}`}
+                    </a>
                   </p>
-                  <a
-                    href={storeAdminLoginUrl(me.slug!, me.email)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn-primary text-xs px-3 py-2.5 inline-flex"
-                  >
-                    Entrar no painel da loja
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                  <p className="text-[11px] text-uf-silver-dim mt-2">Use o mesmo e-mail e senha da sua conta Resolutoo.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={storePublicUrl(me.slug)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-primary text-xs px-3 py-2.5 inline-flex"
+                    >
+                      Ver minha loja
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                    <a
+                      href={storeAdminLoginUrl(me.slug, me.email)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-secondary text-xs px-3 py-2.5 inline-flex"
+                    >
+                      Entrar no painel
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                  <p className="text-[11px] text-uf-silver-dim mt-2">Use o mesmo e-mail e senha da sua conta Resolutoo no painel.</p>
                 </>
               ) : (
                 <p className="text-sm text-uf-silver-dim">Sua loja ainda não foi configurada — finalize a assinatura e o onboarding primeiro.</p>

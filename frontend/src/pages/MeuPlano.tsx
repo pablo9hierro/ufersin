@@ -5,7 +5,7 @@ import { ArrowLeft, CreditCard, ExternalLink, Loader2, Palette, Save, Sparkles, 
 import { api, ApiError, type FormaPagamento, type MeResponse, type PlanoCode, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { PLAN_MAP } from '../lib/plans'
-import { storeAdminLoginUrl } from '../lib/ecommerceUrl'
+import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
 
@@ -190,6 +190,8 @@ export default function MeuPlano() {
   const canEditOnboarding = me.onboarding_status === 'provisionado'
   const panelUrl =
     me.onboarding_status === 'provisionado' && me.slug ? storeAdminLoginUrl(me.slug, me.email) : null
+  const publicUrl =
+    me.onboarding_status === 'provisionado' && me.slug ? storePublicUrl(me.slug) : null
 
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver px-5 py-16 relative">
@@ -218,14 +220,27 @@ export default function MeuPlano() {
           </div>
         </section>
 
-        {panelUrl && (
+        {(panelUrl || publicUrl) && (
           <section className="uf-glass rounded-2xl p-6 mb-6">
-            <h2 className="font-bold mb-3 text-sm text-uf-silver-dim uppercase tracking-wide">Painel da loja</h2>
-            <a href={panelUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm px-4 py-2.5 inline-flex">
-              Entrar no painel
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-            <p className="text-[11px] text-uf-silver-dim mt-2">Mesmo e-mail e senha da conta Resolutoo.</p>
+            <h2 className="font-bold mb-3 text-sm text-uf-silver-dim uppercase tracking-wide">Loja &amp; painel</h2>
+            <div className="flex flex-wrap gap-2">
+              {publicUrl && (
+                <a href={publicUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm px-4 py-2.5 inline-flex">
+                  Ver minha loja
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
+              {panelUrl && (
+                <a href={panelUrl} target="_blank" rel="noreferrer" className="btn-secondary text-sm px-4 py-2.5 inline-flex">
+                  Entrar no painel
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
+            </div>
+            {publicUrl && (
+              <p className="text-[11px] text-uf-silver-dim mt-2 font-mono break-all">{publicUrl.replace(/^https?:\/\//, '')}</p>
+            )}
+            <p className="text-[11px] text-uf-silver-dim mt-1">O layout da vitrine só aparece com <span className="font-mono">?tenant=</span> no link.</p>
           </section>
         )}
 

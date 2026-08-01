@@ -446,7 +446,11 @@ pub async fn tenant_config(
         whatsapp,
         forma_pagamento,
         plataforma_pagamento,
-        layout_style,
+        // Sempre um dos 3 packs — evita omissão/valor inválido no JSON público.
+        layout_style: match layout_style.as_str() {
+            "burgerbite" | "burgerhouse" | "ufersin" => layout_style,
+            _ => "ufersin".to_string(),
+        },
         cor_principal,
     }))
 }

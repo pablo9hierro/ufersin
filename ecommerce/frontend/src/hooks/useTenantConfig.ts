@@ -36,10 +36,12 @@ export function useTenantConfig() {
       getTenantConfig({ force: true }).then(apply)
     }
     document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
 
     return () => {
       cancelled = true
       document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
     }
   }, [tenantParam])
 
