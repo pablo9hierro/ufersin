@@ -42,6 +42,16 @@ const DEFAULT_CONFIG: TenantConfig = {
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
 const ENV_TENANT_SLUG = (import.meta.env.VITE_TENANT_SLUG as string | undefined)?.trim() || ''
 
+/** Fallback quando o Railway ufersin-api está em binário antigo (sem layout_style).
+ *  RPC em schema resolutoo — tabela real do assinante (public.subscribers é legado). */
+const SUPABASE_URL = (
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ||
+  'https://migkkrwzykpztrakbfij.supabase.co'
+).replace(/\/$/, '')
+const SUPABASE_ANON_KEY =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pZ2trcnd6eWtwenRyYWtiZmlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NjI2OTQsImV4cCI6MjA5MTUzODY5NH0.0bEy_WikqnfPU9eV7wusSb757dhiTiK5D2KeDSWyJTo'
+
 const SLUG_STORAGE_KEY = 'resolutoo_tenant_slug'
 
 /** Cache curto: Meu plano pode ter alterado layout_style em outra aba. */
@@ -131,8 +141,51 @@ function normalizeLayoutStyle(v: unknown): TenantConfig['layout_style'] {
   return v === 'burgerbite' || v === 'burgerhouse' || v === 'ufersin' ? v : 'ufersin'
 }
 
+function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConfig {
+  const whatsapp = String(data.whatsapp ?? '').replace(/\D/g, '')
+  return {
+    ...DEFAULT_CONFIG,
+    ...data,
+    slug,
+    whatsapp,
+    layout_style: normalizeLayoutStyle(data.layout_style),
+  }
+}
+
+/** Lê config no schema resolutoo via PostgREST (fonte de verdade do layout_style). */
+async function fetchTenantConfigFromSupabase(slug: string): Promise<TenantConfig | null> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_public_tenant_config`, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        'Accept-Profile': 'resolutoo',
+        'Content-Profile': 'resolutoo',
+      },
+      body: JSON.stringify({ p_slug: slug }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as Partial<TenantConfig> | null
+    if (!data || typeof data !== 'object' || !('layout_style' in data || data.slug || data.loja_nome)) {
+      return null
+    }
+    return mapTenantPayload(slug, data)
+  } catch {
+    return null
+  }
+}
+
 async function fetchTenantConfig(slug: string): Promise<TenantConfig> {
   if (!slug) return DEFAULT_CONFIG
+
+  // Preferir Supabase (resolutoo.subscribers): o Railway ufersin-api em produção
+  // ficou semanas sem redeploy e omitia layout_style do JSON público.
+  const fromSb = await fetchTenantConfigFromSupabase(slug)
+  if (fromSb) return fromSb
+
   try {
     const res = await fetch(
       `${RODOLETAS_API_URL}/api/public/tenant-config/${encodeURIComponent(slug)}`,
@@ -140,14 +193,7 @@ async function fetchTenantConfig(slug: string): Promise<TenantConfig> {
     )
     if (!res.ok) return { ...DEFAULT_CONFIG, slug }
     const data = (await res.json()) as Partial<TenantConfig>
-    const whatsapp = String(data.whatsapp ?? '').replace(/\D/g, '')
-    return {
-      ...DEFAULT_CONFIG,
-      ...data,
-      slug,
-      whatsapp,
-      layout_style: normalizeLayoutStyle(data.layout_style),
-    }
+    return mapTenantPayload(slug, data)
   } catch {
     return { ...DEFAULT_CONFIG, slug }
   }

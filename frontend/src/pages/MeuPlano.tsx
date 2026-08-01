@@ -8,6 +8,7 @@ import { PLAN_MAP } from '../lib/plans'
 import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
+import { supabase } from '../lib/supabaseClient'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 const CATEGORIAS = ['Alimentação', 'Moda', 'Beleza', 'Casa & decoração', 'Eletrônicos', 'Pet shop', 'Outro']
@@ -113,6 +114,15 @@ export default function MeuPlano() {
         plataforma_pagamento: formaPagamento === 'plataforma' ? plataformaPagamento : undefined,
         plataforma_credenciais: formaPagamento === 'plataforma' && credencial.trim() ? { token: credencial.trim() } : undefined,
       })
+      // Espelha layout_style direto no schema resolutoo — o Railway API em
+      // produção às vezes ignora o campo (binário antigo / search_path).
+      const styleToSave = venderExternamente ? layoutStyle : 'ufersin'
+      const { error: layoutErr } = await supabase.schema('resolutoo').rpc('set_my_layout_style', {
+        p_style: styleToSave,
+      })
+      if (layoutErr) {
+        console.warn('set_my_layout_style:', layoutErr.message)
+      }
       setMe((prev) =>
         prev
           ? {

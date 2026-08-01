@@ -17,6 +17,8 @@ LOJA_OUT="$FRONTEND_DIR/public/loja"
 # O motor embutido precisa da API do ecommerce — NÃO herdar a errada.
 ECOM_API="${VITE_ECOMMERCE_API_URL:-https://ecommerce-api-production-d447.up.railway.app}"
 RODO_API="${VITE_API_BASE_URL:-https://ufersin-api-production.up.railway.app}"
+SB_URL="${VITE_SUPABASE_URL:-https://migkkrwzykpztrakbfij.supabase.co}"
+SB_ANON="${VITE_SUPABASE_ANON_KEY:-}"
 
 echo "→ Building ecommerce frontend with base=/loja/ (API=$ECOM_API)"
 cd "$LOJA_SRC"
@@ -24,6 +26,8 @@ if [ -f package-lock.json ]; then npm ci; else npm install; fi
 VITE_BASE_PATH=/loja/ \
   VITE_API_BASE_URL="$ECOM_API" \
   VITE_RODOLETAS_API_URL="$RODO_API" \
+  VITE_SUPABASE_URL="$SB_URL" \
+  VITE_SUPABASE_ANON_KEY="$SB_ANON" \
   VITE_USE_LOCAL_DB=false \
   npm run build
 

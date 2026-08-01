@@ -77,11 +77,10 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Banco local por enquanto (ver docker-compose.yml) — projeto Supabase
-    // dedicado do ufersin (retmfoorwjwzuevaqlsr) fica pra quando a
-    // integração real com Supabase acontecer. Schema "public" padrão, sem
-    // schema próprio (banco não é compartilhado com outro app).
-    let connect_options = PgConnectOptions::from_str(&database_url)?;
+    // Assinantes Resolutoo vivem em schema `resolutoo` (pooler role resolutoo_svc).
+    // `public.subscribers` é legado sem layout_style — sem search_path o GET
+    // público omite o campo e a vitrine sempre cai em ufersin.
+    let connect_options = PgConnectOptions::from_str(&database_url)?.options([("search_path", "resolutoo,public")]);
     let pool = PgPoolOptions::new().max_connections(5).connect_with(connect_options).await?;
 
     sqlx::migrate!("./migrations").run(&pool).await?;
