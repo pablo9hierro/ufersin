@@ -1,0 +1,8 @@
+﻿[phases.setup]
+nixPkgs = ["rustc", "cargo", "openssl", "pkg-config"]
+
+[phases.build]
+cmds = ["cargo build --release"]
+
+[start]
+cmd = "./target/release/sonset_backend"
