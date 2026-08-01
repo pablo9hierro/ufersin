@@ -382,6 +382,9 @@ pub struct TenantConfigResponse {
     pub plano: String,
     pub vender_externamente: bool,
     pub whatsapp_habilitado: bool,
+    /// Número de contato da loja (só dígitos) pra `https://wa.me/{whatsapp}`
+    /// na vitrine — nunca credenciais de pagamento.
+    pub whatsapp: String,
     pub forma_pagamento: String,
     pub plataforma_pagamento: Option<String>,
     pub layout_style: String,
@@ -392,22 +395,47 @@ pub struct TenantConfigResponse {
 /// frontend) consulta pra saber como aplicar o gating condicional do
 /// onboarding daquele tenant — Pedidos, seção de WhatsApp em
 /// Configurações, toggle de confirmar recebimento manual. Só devolve as
-/// FLAGS, nunca `plataforma_credenciais` (isso fica só no /api/me
-/// autenticado do próprio assinante, nunca sai daqui).
+/// FLAGS + WhatsApp de contato da loja, nunca `plataforma_credenciais`
+/// (isso fica só no /api/me autenticado do próprio assinante, nunca sai daqui).
 pub async fn tenant_config(
     State(state): State<AppState>,
     axum::extract::Path(slug): axum::extract::Path<String>,
 ) -> Result<Json<TenantConfigResponse>, AppError> {
-    let row: Option<(String, String, bool, bool, String, Option<String>, String, Option<String>)> = sqlx::query_as(
-        "SELECT loja_nome, plan_code, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento, \
-         layout_style, cor_principal \
+    let row: Option<(
+        String,
+        String,
+        bool,
+        bool,
+        String,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT loja_nome, plan_code, vender_externamente, whatsapp_habilitado, whatsapp, \
+         forma_pagamento, plataforma_pagamento, \
+         COALESCE(layout_style, 'ufersin') as layout_style, cor_principal \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
     .await?;
-    let (loja_nome, plano, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento, layout_style, cor_principal) =
-        row.ok_or_else(|| AppError::NotFound("loja não encontrada".to_string()))?;
+    let (
+        loja_nome,
+        plano,
+        vender_externamente,
+        whatsapp_habilitado,
+        whatsapp_raw,
+        forma_pagamento,
+        plataforma_pagamento,
+        layout_style,
+        cor_principal,
+    ) = row.ok_or_else(|| AppError::NotFound("loja não encontrada".to_string()))?;
+
+    let whatsapp: String = whatsapp_raw
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .collect();
 
     Ok(Json(TenantConfigResponse {
         slug,
@@ -415,6 +443,7 @@ pub async fn tenant_config(
         plano,
         vender_externamente,
         whatsapp_habilitado,
+        whatsapp,
         forma_pagamento,
         plataforma_pagamento,
         layout_style,

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Clock, MapPin, MessageCircle, ShoppingBag } from 'lucide-react'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { tenantWhatsAppHref } from '../../lib/tenantConfig'
 import { getStoreOpenState } from '../../lib/storeHours'
 import { useCustomerAuth } from '../../store/customerAuth'
 import Shell from '../components/Shell'
@@ -16,6 +18,8 @@ export default function Uiux3Landing() {
   const navigate = useNavigate()
   const customerAuth = useCustomerAuth()
   const { data: storeStatus } = useStoreStatus()
+  const tenantConfig = useTenantConfig()
+  const whatsappHref = tenantWhatsAppHref(tenantConfig)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
   const openState = storeStatus ? getStoreOpenState(storeStatus) : null
@@ -66,9 +70,16 @@ export default function Uiux3Landing() {
           <p className="flex items-center justify-center gap-1.5">
             <Clock className="w-4 h-4 shrink-0" /> Todos os dias, 18h às 23h
           </p>
-          <a href="#" className="u3-pill-primary inline-flex items-center justify-center gap-2 px-4 py-2.5 mx-auto mt-1">
-            <MessageCircle className="w-4 h-4" /> Falar no WhatsApp
-          </a>
+          {whatsappHref && (
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="u3-pill-primary inline-flex items-center justify-center gap-2 px-4 py-2.5 mx-auto mt-1"
+            >
+              <MessageCircle className="w-4 h-4" /> Falar no WhatsApp
+            </a>
+          )}
         </div>
       </div>
 
