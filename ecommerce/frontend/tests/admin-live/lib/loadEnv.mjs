@@ -74,7 +74,9 @@ export function requireLiveEnv() {
     email,
     password,
     tenant,
-    databaseUrl: (process.env.ADMIN_TEST_DATABASE_URL || process.env.DATABASE_URL || '').trim() || null,
+    // Only ADMIN_TEST_DATABASE_URL — never inherit backend DATABASE_URL
+    // (often a private Railway host unreachable from this machine).
+    databaseUrl: (process.env.ADMIN_TEST_DATABASE_URL || '').trim() || null,
     uiUrl: (process.env.ADMIN_TEST_UI_URL || '').trim().replace(/\/$/, '') || null,
     allowPdvSale: process.env.ADMIN_TEST_ALLOW_PDV_SALE === '1',
     /** When set, assert PDV Pix charge notify API accepts the number (no QR-login). */
