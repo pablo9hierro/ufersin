@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   ClipboardList,
-  Layers,
   LogOut,
   Megaphone,
   Package,
@@ -34,7 +33,6 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requ
   { href: '/admin/motoboys', label: 'Funcionários', icon: Truck, requiredPlan: 'management' },
   { href: '/admin/crm', label: 'CRM', icon: Users, requiredPlan: 'premium' },
   { href: '/admin/promocoes', label: 'Promoções', icon: Megaphone, requiredPlan: 'management' },
-  { href: '/admin/layout-cliente', label: 'Layout', icon: Layers, requiredPlan: 'essential' },
   { href: '/admin/relatorios', label: 'Relatórios', icon: Wallet, requiredPlan: 'essential' },
   { href: '/admin/conta', label: 'Configurações', icon: Settings, requiredPlan: 'essential' },
 ]
