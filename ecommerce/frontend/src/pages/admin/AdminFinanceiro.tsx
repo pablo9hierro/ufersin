@@ -60,20 +60,19 @@ const MONTHS = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ]
 
-/** Calendário estilizado (tema admin escuro) — evita `<input type="date">` nativo. */
-function DateRangePicker({
-  from,
-  to,
+/** Calendário mensal estilizado (tema admin escuro) pra escolher um dia. */
+function DayCalendar({
+  value,
   onChange,
+  label,
 }: {
-  from: string
-  to: string
-  onChange: (from: string, to: string) => void
+  value: string
+  onChange: (iso: string) => void
+  label: string
 }) {
-  const initial = from ? new Date(from + 'T12:00:00') : new Date()
+  const initial = value ? new Date(value + 'T12:00:00') : new Date()
   const [viewYear, setViewYear] = useState(initial.getFullYear())
   const [viewMonth, setViewMonth] = useState(initial.getMonth())
-  const [picking, setPicking] = useState<'from' | 'to'>('from')
 
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
   const firstDow = new Date(viewYear, viewMonth, 1).getDay()
@@ -84,31 +83,6 @@ function DateRangePicker({
 
   const toIso = (day: number) =>
     `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-
-  const select = (day: number) => {
-    const iso = toIso(day)
-    if (picking === 'from') {
-      const nextTo = to && iso > to ? iso : to
-      onChange(iso, nextTo || iso)
-      setPicking('to')
-    } else {
-      if (iso < from) {
-        onChange(iso, from)
-      } else {
-        onChange(from || iso, iso)
-      }
-      setPicking('from')
-    }
-  }
-
-  const inRange = (day: number) => {
-    const iso = toIso(day)
-    return from && to && iso >= from && iso <= to
-  }
-  const isEdge = (day: number) => {
-    const iso = toIso(day)
-    return iso === from || iso === to
-  }
 
   const prevMonth = () => {
     if (viewMonth === 0) {
@@ -124,8 +98,9 @@ function DateRangePicker({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-son-surface-light/40 p-4">
-      <div className="flex items-center justify-between mb-3 gap-2">
+    <div className="rounded-2xl border border-white/10 bg-son-surface-light/40 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-son-silver-dim mb-2">{label}</p>
+      <div className="flex items-center justify-between mb-2 gap-2">
         <button
           type="button"
           onClick={prevMonth}
@@ -161,13 +136,11 @@ function DateRangePicker({
             <button
               key={day}
               type="button"
-              onClick={() => select(day)}
+              onClick={() => onChange(toIso(day))}
               className={`h-8 rounded-lg text-xs font-medium transition-colors ${
-                isEdge(day)
+                toIso(day) === value
                   ? 'sunset-bg text-white'
-                  : inRange(day)
-                    ? 'bg-son-pink/20 text-white'
-                    : 'text-son-silver hover:bg-white/10 hover:text-white'
+                  : 'text-son-silver hover:bg-white/10 hover:text-white'
               }`}
             >
               {day}
@@ -175,14 +148,9 @@ function DateRangePicker({
           )
         )}
       </div>
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5 text-xs text-son-silver-dim">
-        <span>
-          {from ? formatBrDay(from) : '—'} → {to ? formatBrDay(to) : '—'}
-        </span>
-        <span className="text-son-silver">
-          {picking === 'from' ? 'Escolha o início' : 'Escolha o fim'}
-        </span>
-      </div>
+      <p className="mt-2 pt-2 border-t border-white/5 text-xs text-son-silver-dim text-center">
+        {value ? formatBrDay(value) : '—'}
+      </p>
     </div>
   )
 }
@@ -261,13 +229,21 @@ function LucroSection() {
       </div>
 
       {tab === 'periodo' && (
-        <div className="mb-4 max-w-sm">
-          <DateRangePicker
-            from={rangeFrom}
-            to={rangeTo}
-            onChange={(f, t) => {
-              setRangeFrom(f)
-              setRangeTo(t)
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+          <DayCalendar
+            label="Início"
+            value={rangeFrom}
+            onChange={(iso) => {
+              setRangeFrom(iso)
+              if (iso > rangeTo) setRangeTo(iso)
+            }}
+          />
+          <DayCalendar
+            label="Fim"
+            value={rangeTo}
+            onChange={(iso) => {
+              setRangeTo(iso)
+              if (iso < rangeFrom) setRangeFrom(iso)
             }}
           />
         </div>

@@ -14,6 +14,12 @@ const PLATAFORMAS: { value: PlataformaPagamento; label: string; credField: strin
   { value: 'abacate_pay', label: 'AbacatePay', credField: 'Chave de API' },
 ]
 
+/** CPF (PF) → só Mercado Pago; CNPJ → AbacatePay ou Mercado Pago. */
+function plataformasParaDocumento(tipo: TipoDocumento) {
+  if (tipo === 'cpf') return PLATAFORMAS.filter((p) => p.value === 'mercado_pago')
+  return PLATAFORMAS
+}
+
 function slugify(s: string) {
   return s
     .normalize('NFD')
@@ -105,8 +111,14 @@ export default function Onboarding() {
     const err = validateStep1()
     if (err) return setError(err)
     setError(null)
+    // CPF não pode AbacatePay — força Mercado Pago ao entrar na etapa 2.
+    if (tipoDocumento === 'cpf' && plataformaPagamento === 'abacate_pay') {
+      setPlataformaPagamento('mercado_pago')
+    }
     setStep(2)
   }
+
+  const plataformasDisponiveis = plataformasParaDocumento(tipoDocumento)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -135,7 +147,12 @@ export default function Onboarding() {
         vender_externamente: venderExternamente,
         whatsapp_habilitado: whatsappHabilitado,
         forma_pagamento: formaPagamento,
-        plataforma_pagamento: formaPagamento === 'plataforma' ? plataformaPagamento : undefined,
+        plataforma_pagamento:
+          formaPagamento === 'plataforma'
+            ? tipoDocumento === 'cpf'
+              ? 'mercado_pago'
+              : plataformaPagamento
+            : undefined,
         plataforma_credenciais: formaPagamento === 'plataforma' ? { token: credencial.trim() } : undefined,
         layout_style: venderExternamente ? layoutStyle : 'ufersin',
       })
@@ -200,6 +217,7 @@ export default function Onboarding() {
                         onClick={() => {
                           setTipoDocumento(t)
                           setDocumento('')
+                          if (t === 'cpf') setPlataformaPagamento('mercado_pago')
                         }}
                         className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase transition-all ${
                           tipoDocumento === t ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'
@@ -349,7 +367,7 @@ export default function Onboarding() {
                     <div className="pl-3">
                       <label className="label">Plataforma</label>
                       <div className="flex flex-wrap gap-2">
-                        {PLATAFORMAS.map((p) => (
+                        {plataformasDisponiveis.map((p) => (
                           <button
                             key={p.value}
                             type="button"
@@ -362,6 +380,11 @@ export default function Onboarding() {
                           </button>
                         ))}
                       </div>
+                      {tipoDocumento === 'cpf' && (
+                        <p className="text-[11px] text-uf-silver-dim mt-2">
+                          Com CPF só Mercado Pago está disponível. AbacatePay exige CNPJ.
+                        </p>
+                      )}
                     </div>
                     <div className="pl-3">
                       <label className="label flex items-center gap-1.5">

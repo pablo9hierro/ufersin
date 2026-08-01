@@ -1184,6 +1184,13 @@ const remoteApi = {
     // sempre do número da loja (vendedor não tem instância própria).
     notifySale: (orderId: string) =>
       request<void>('/api/pdv/notify-sale', { method: 'POST', body: JSON.stringify({ order_id: orderId }) }),
+    // Pix copia-e-cola pro WhatsApp do comprador (só se o PDV gerou QR e
+    // o formulário tinha telefone).
+    notifyPixCharge: (orderId: string) =>
+      request<void>('/api/pdv/notify-pix-charge', {
+        method: 'POST',
+        body: JSON.stringify({ order_id: orderId }),
+      }),
     relatorio: () => rpc<VendedorRelatorio>('vendedor_relatorio', { p_token: adminToken() }),
   },
   motoboy: {

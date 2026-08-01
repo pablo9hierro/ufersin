@@ -1,11 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import type { IScannerControls } from '@zxing/browser'
-import { Camera, CheckCircle2, Loader2, Minus, Package, Plus, ScanBarcode, Search, Trash2, X } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import {
+  Camera,
+  CheckCircle2,
+  Copy,
+  Loader2,
+  Minus,
+  Package,
+  Plus,
+  QrCode,
+  ScanBarcode,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { orderService } from '../../services/orderService'
 import { pdvService } from '../../services/pdvService'
 import { productService } from '../../services/productService'
-import type { PaymentMethod, Product } from '../../types'
+import type { Order, PaymentMethod, Product } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -25,6 +41,9 @@ interface CartLine {
 }
 
 export default function AdminPdv() {
+  const tenantConfig = useTenantConfig()
+  const plataformaPix = tenantConfig?.forma_pagamento === 'plataforma'
+
   const [products, setProducts] = useState<Product[]>([])
   const [loadingProducts, setLoadingProducts] = useState(true)
   const [cart, setCart] = useState<Record<string, CartLine>>({})
@@ -41,11 +60,19 @@ export default function AdminPdv() {
   const [customerName, setCustomerName] = useState('')
   const [customerWhatsapp, setCustomerWhatsapp] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro')
+  // "Não gerar QR" — cobrança Pix manual (confirma recebimento). Com
+  // forma_pagamento manual da loja, QR de plataforma não existe: força true.
+  const [skipQrcode, setSkipQrcode] = useState(!plataformaPix)
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent')
   const [discountValue, setDiscountValue] = useState('')
   const [finalizing, setFinalizing] = useState(false)
   const [finalizeError, setFinalizeError] = useState<string | null>(null)
   const [success, setSuccess] = useState<number | null>(null)
+
+  const [confirmCashOpen, setConfirmCashOpen] = useState(false)
+  const [pixOrder, setPixOrder] = useState<Order | null>(null)
+  const [confirmingPix, setConfirmingPix] = useState(false)
+  const [copiedPix, setCopiedPix] = useState(false)
 
   useEffect(() => {
     productService
@@ -53,6 +80,10 @@ export default function AdminPdv() {
       .then((p) => setProducts(p.filter((x) => x.active !== false)))
       .finally(() => setLoadingProducts(false))
   }, [])
+
+  useEffect(() => {
+    if (!plataformaPix) setSkipQrcode(true)
+  }, [plataformaPix])
 
   // Leitor físico (bip) é um teclado disfarçado — digita o código rapidinho
   // e manda Enter sozinho. Mantendo esse campo sempre focado, o vendedor
@@ -143,13 +174,6 @@ export default function AdminPdv() {
     const reader = new BrowserMultiFormatReader()
     reader
       .decodeFromVideoDevice(undefined, videoRef.current, (result, _err, controls) => {
-        // Esse callback é assíncrono e dispara depois que a câmera já está
-        // de fato transmitindo — se o usuário já fechou o scanner ANTES
-        // disso, o cleanup abaixo rodou com controlsRef.current ainda nulo
-        // (nada pra parar) e ninguém mais chama stop() depois. Checar
-        // "cancelled" aqui dentro, a cada chamada, garante que a câmera
-        // para na hora que os controles finalmente chegam, mesmo que o
-        // widget já tenha sido fechado antes disso.
         if (cancelled) {
           controls.stop()
           return
@@ -176,30 +200,82 @@ export default function AdminPdv() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scannerOpen])
 
+  const resetFormAfterSale = (total: number) => {
+    setSuccess(total)
+    setCart({})
+    setCustomerName('')
+    setCustomerWhatsapp('')
+    setPaymentMethod('dinheiro')
+    setSkipQrcode(!plataformaPix)
+    setDiscountType('percent')
+    setDiscountValue('')
+    productService.list().then((p) => setProducts(p.filter((x) => x.active !== false)))
+    setTimeout(() => setSuccess(null), 4000)
+  }
+
+  const buildSalePayload = () => ({
+    items: cartLines.map((l) => ({ product_id: l.product.id, quantity: l.quantity })),
+    payment_method: paymentMethod,
+    customer_name: customerName.trim() || undefined,
+    customer_whatsapp: customerWhatsapp.replace(/\D/g, '') ? `55${customerWhatsapp.replace(/\D/g, '')}` : undefined,
+    discount_type: discountAmount > 0 ? discountType : undefined,
+    discount_value: discountAmount > 0 ? Number(discountValue) || 0 : undefined,
+  })
+
+  /** Dinheiro / cartão / Pix sem QR: baixa imediata + WhatsApp "obrigado". */
+  const commitSalePaid = async () => {
+    const order = await pdvService.createSale(buildSalePayload())
+    pdvService.notifySale(order.id).catch(() => {})
+    resetFormAfterSale(cartTotal)
+  }
+
   const finalizeSale = async () => {
     if (cartLines.length === 0) return
-    setFinalizing(true)
     setFinalizeError(null)
+
+    // Pix + "não gerar qrcode" (ou loja em cobrança manual) → diálogo de
+    // confirmação de recebimento, igual baixa de dinheiro.
+    if (paymentMethod === 'pix' && (skipQrcode || !plataformaPix)) {
+      setConfirmCashOpen(true)
+      return
+    }
+
+    // Pix + gerar QR (plataforma): cria venda, gera cobrança, mostra QR e
+    // manda copia-cola no WhatsApp do comprador se informado.
+    if (paymentMethod === 'pix' && plataformaPix && !skipQrcode) {
+      setFinalizing(true)
+      try {
+        const order = await pdvService.createSale(buildSalePayload())
+        let withPix = order
+        try {
+          withPix = await orderService.createPixPayment(order.id)
+        } catch (e) {
+          setFinalizeError(
+            e instanceof ApiError
+              ? e.message
+              : 'Venda criada, mas não foi possível gerar o QR Pix. Confirme o pagamento manualmente.',
+          )
+          // Ainda mostra o modal pra confirmar baixa mesmo sem QR.
+          setPixOrder(order)
+          resetFormAfterSale(cartTotal)
+          return
+        }
+        setPixOrder(withPix)
+        if (withPix.customer_whatsapp?.replace(/\D/g, '')) {
+          pdvService.notifyPixCharge(withPix.id).catch(() => {})
+        }
+        resetFormAfterSale(cartTotal)
+      } catch (e) {
+        setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
+      } finally {
+        setFinalizing(false)
+      }
+      return
+    }
+
+    setFinalizing(true)
     try {
-      const order = await pdvService.createSale({
-        items: cartLines.map((l) => ({ product_id: l.product.id, quantity: l.quantity })),
-        payment_method: paymentMethod,
-        customer_name: customerName.trim() || undefined,
-        customer_whatsapp: customerWhatsapp.replace(/\D/g, '') ? `55${customerWhatsapp.replace(/\D/g, '')}` : undefined,
-        discount_type: discountAmount > 0 ? discountType : undefined,
-        discount_value: discountAmount > 0 ? Number(discountValue) || 0 : undefined,
-      })
-      pdvService.notifySale(order.id).catch(() => {})
-      setSuccess(cartTotal)
-      setCart({})
-      setCustomerName('')
-      setCustomerWhatsapp('')
-      setPaymentMethod('dinheiro')
-      setDiscountType('percent')
-      setDiscountValue('')
-      // Recarrega estoque (a venda já decrementou no banco).
-      productService.list().then((p) => setProducts(p.filter((x) => x.active !== false)))
-      setTimeout(() => setSuccess(null), 4000)
+      await commitSalePaid()
     } catch (e) {
       setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
     } finally {
@@ -207,11 +283,46 @@ export default function AdminPdv() {
     }
   }
 
+  const confirmCashReceived = async () => {
+    setFinalizing(true)
+    setFinalizeError(null)
+    try {
+      await commitSalePaid()
+      setConfirmCashOpen(false)
+    } catch (e) {
+      setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
+  const confirmPixReceived = async () => {
+    if (!pixOrder) return
+    setConfirmingPix(true)
+    try {
+      // Confirmação de recebimento no balcão — dispara o "obrigado" (só se
+      // o WhatsApp do comprador estava no formulário; o backend ignora vazio).
+      if (pixOrder.customer_whatsapp?.replace(/\D/g, '')) {
+        await pdvService.notifySale(pixOrder.id).catch(() => {})
+      }
+      setPixOrder(null)
+    } finally {
+      setConfirmingPix(false)
+    }
+  }
+
+  const copyPixCode = () => {
+    if (!pixOrder?.pix_copia_cola) return
+    navigator.clipboard.writeText(pixOrder.pix_copia_cola)
+    setCopiedPix(true)
+    setTimeout(() => setCopiedPix(false), 2000)
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-black mb-6">PDV — nova venda</h1>
 
-      {success !== null && (
+      {success !== null && !pixOrder && (
         <div className="mb-6 flex items-center gap-2 bg-emerald-500/15 text-emerald-400 rounded-2xl px-4 py-3 text-sm font-medium">
           <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
           Venda de {currency(success)} finalizada com sucesso!
@@ -220,7 +331,6 @@ export default function AdminPdv() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
-          {/* Leitor físico (bip) — campo sempre focado, some sozinho no Enter. */}
           <form onSubmit={handleBarcodeSubmit} className="mb-4">
             <label className="label flex items-center gap-1.5">
               <ScanBarcode className="w-3.5 h-3.5" /> Bipar código de barras
@@ -400,7 +510,7 @@ export default function AdminPdv() {
             </div>
           </div>
 
-          <div className="mb-4">
+          <div className="mb-3">
             <label className="label">Forma de pagamento</label>
             <div className="grid grid-cols-3 gap-2">
               {(['dinheiro', 'pix', 'cartao'] as const).map((value) => (
@@ -419,6 +529,30 @@ export default function AdminPdv() {
               ))}
             </div>
           </div>
+
+          {paymentMethod === 'pix' && (
+            <label
+              className={`mb-4 flex items-start gap-2.5 rounded-2xl border border-white/10 bg-son-surface px-3 py-2.5 ${
+                plataformaPix ? 'cursor-pointer' : 'opacity-70'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={skipQrcode || !plataformaPix}
+                disabled={!plataformaPix}
+                onChange={(e) => setSkipQrcode(e.target.checked)}
+                className="mt-0.5 w-4 h-4"
+              />
+              <span className="text-xs text-son-silver-dim">
+                <QrCode className="w-3.5 h-3.5 inline mr-1" />
+                <span className="text-white font-semibold">não gerar qrcode</span>
+                <br />
+                {plataformaPix
+                  ? 'Se marcado, confirma o Pix recebido sem gerar cobrança na plataforma.'
+                  : 'Sua loja está em cobrança manual — Pix no balcão é sempre confirmação sem QR de plataforma.'}
+              </span>
+            </label>
+          )}
 
           {finalizeError && <p className="error-msg mb-3">{finalizeError}</p>}
 
@@ -439,6 +573,59 @@ export default function AdminPdv() {
               </button>
             </div>
             <video ref={videoRef} className="w-full rounded-xl bg-black aspect-square object-cover" muted playsInline />
+          </div>
+        </div>
+      )}
+
+      {confirmCashOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => !finalizing && setConfirmCashOpen(false)}>
+          <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-white mb-2">Confirmar pagamento</h3>
+            <p className="text-sm text-son-silver-dim mb-5">
+              Confirme que recebeu o pagamento em Pix de{' '}
+              <span className="sunset-text font-bold">{currency(cartTotal)}</span> para dar baixa na venda.
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setConfirmCashOpen(false)} disabled={finalizing} className="btn-secondary flex-1">
+                Cancelar
+              </button>
+              <button type="button" onClick={confirmCashReceived} disabled={finalizing} className="btn-primary flex-1">
+                {finalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pixOrder && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="glass rounded-2xl p-6 max-w-sm w-full text-center">
+            <h3 className="font-bold text-white mb-1">Pix da venda</h3>
+            <p className="text-sm text-son-silver-dim mb-4">
+              Peça ao cliente para escanear o QR ou use o copia-e-cola.
+              {pixOrder.customer_whatsapp?.replace(/\D/g, '')
+                ? ' Também enviamos o código no WhatsApp informado.'
+                : ''}
+            </p>
+            <p className="sunset-text font-black text-xl mb-4">{currency(pixOrder.total)}</p>
+            <div className="bg-white rounded-2xl p-3 inline-block mb-4">
+              {pixOrder.pix_copia_cola ? (
+                <QRCodeSVG value={pixOrder.pix_copia_cola} size={200} />
+              ) : (
+                <div className="w-[200px] h-[200px] flex items-center justify-center text-gray-400 text-sm">QR indisponível</div>
+              )}
+            </div>
+            {pixOrder.pix_copia_cola && (
+              <button type="button" onClick={copyPixCode} className="btn-secondary w-full mb-4 text-sm">
+                <Copy className="w-4 h-4" />
+                {copiedPix ? 'Copiado!' : 'Copiar Pix copia-e-cola'}
+              </button>
+            )}
+            <button type="button" onClick={confirmPixReceived} disabled={confirmingPix} className="btn-primary w-full py-3">
+              {confirmingPix ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Pagamento Pix recebido
+            </button>
           </div>
         </div>
       )}

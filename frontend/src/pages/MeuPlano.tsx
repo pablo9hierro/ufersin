@@ -18,6 +18,12 @@ const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
   { value: 'abacate_pay', label: 'AbacatePay' },
 ]
 
+/** CPF (PF) → só Mercado Pago; CNPJ → AbacatePay ou Mercado Pago. */
+function plataformasParaDocumento(tipo: TipoDocumento) {
+  if (tipo === 'cpf') return PLATAFORMAS.filter((p) => p.value === 'mercado_pago')
+  return PLATAFORMAS
+}
+
 // /meu-plano: editar etapa 1 + etapa 2 do onboarding a qualquer momento
 // (nunca re-provisiona o tenant — PUT /api/onboarding) + trocar de plano.
 export default function MeuPlano() {
@@ -67,7 +73,8 @@ export default function MeuPlano() {
         setWhatsapp(m.whatsapp ?? '')
         setWhatsappHabilitado(m.whatsapp_habilitado)
         setFormaPagamento(m.forma_pagamento)
-        setPlataformaPagamento(m.plataforma_pagamento ?? 'mercado_pago')
+        const plat = m.plataforma_pagamento ?? 'mercado_pago'
+        setPlataformaPagamento(m.tipo_documento === 'cpf' ? 'mercado_pago' : plat)
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 404) {
@@ -111,7 +118,12 @@ export default function MeuPlano() {
         whatsapp: whatsappHabilitado ? whatsapp.trim() || undefined : '',
         whatsapp_habilitado: whatsappHabilitado,
         forma_pagamento: formaPagamento,
-        plataforma_pagamento: formaPagamento === 'plataforma' ? plataformaPagamento : undefined,
+        plataforma_pagamento:
+          formaPagamento === 'plataforma'
+            ? tipoDocumento === 'cpf'
+              ? 'mercado_pago'
+              : plataformaPagamento
+            : undefined,
         plataforma_credenciais: formaPagamento === 'plataforma' && credencial.trim() ? { token: credencial.trim() } : undefined,
       })
       // Espelha layout_style direto no schema resolutoo — o Railway API em
@@ -282,7 +294,10 @@ export default function MeuPlano() {
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setTipoDocumento(t)}
+                    onClick={() => {
+                      setTipoDocumento(t)
+                      if (t === 'cpf') setPlataformaPagamento('mercado_pago')
+                    }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase ${tipoDocumento === t ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
                   >
                     {t}
@@ -402,7 +417,7 @@ export default function MeuPlano() {
               {formaPagamento === 'plataforma' && (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
-                    {PLATAFORMAS.map((p) => (
+                    {plataformasParaDocumento(tipoDocumento).map((p) => (
                       <button
                         key={p.value}
                         type="button"
@@ -413,6 +428,9 @@ export default function MeuPlano() {
                       </button>
                     ))}
                   </div>
+                  {tipoDocumento === 'cpf' && (
+                    <p className="text-[11px] text-uf-silver-dim">Com CPF só Mercado Pago está disponível. AbacatePay exige CNPJ.</p>
+                  )}
                   <input
                     className="input-field"
                     value={credencial}

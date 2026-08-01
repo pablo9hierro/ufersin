@@ -221,6 +221,12 @@ fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
                 ))
             }
         }
+        // CPF (PF) só pode usar Mercado Pago — AbacatePay exige CNPJ.
+        if body.tipo_documento == "cpf" && body.plataforma_pagamento.as_deref() == Some("abacate_pay") {
+            return Err(AppError::BadRequest(
+                "com CPF só é permitido Mercado Pago; AbacatePay exige CNPJ".to_string(),
+            ));
+        }
         if body.plataforma_credenciais.is_none() {
             return Err(AppError::BadRequest("informe as credenciais da plataforma de pagamento escolhida".to_string()));
         }
@@ -269,13 +275,14 @@ pub async fn editar_onboarding(
     AuthSubscriber(claims): AuthSubscriber,
     Json(body): Json<EditOnboardingInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let row: Option<(Option<String>, String, String, bool)> = sqlx::query_as(
-        "SELECT tenant_id, status, slug, whatsapp_habilitado FROM subscribers WHERE id = $1",
+    let row: Option<(Option<String>, String, String, bool, String)> = sqlx::query_as(
+        "SELECT tenant_id, status, slug, whatsapp_habilitado, COALESCE(tipo_documento, 'cnpj') \
+         FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
     .fetch_optional(&state.pool)
     .await?;
-    let (tenant_id, status, slug, was_whatsapp_on) =
+    let (tenant_id, status, slug, was_whatsapp_on, current_tipo_documento) =
         row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
     if tenant_id.is_none() {
         return Err(AppError::BadRequest("finalize o onboarding inicial antes de editar".to_string()));
@@ -299,6 +306,17 @@ pub async fn editar_onboarding(
                 "plataforma_pagamento deve ser 'mercado_pago' ou 'abacate_pay'".to_string(),
             ));
         }
+    }
+    // Efetivo após o UPDATE (COALESCE): CPF + AbacatePay é inválido.
+    let effective_tipo = body
+        .tipo_documento
+        .as_deref()
+        .unwrap_or(current_tipo_documento.as_str());
+    let effective_plataforma = body.plataforma_pagamento.as_deref();
+    if effective_tipo == "cpf" && effective_plataforma == Some("abacate_pay") {
+        return Err(AppError::BadRequest(
+            "com CPF só é permitido Mercado Pago; AbacatePay exige CNPJ".to_string(),
+        ));
     }
 
     if let Some(ls) = &body.layout_style {

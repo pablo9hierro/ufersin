@@ -159,6 +159,40 @@ pub async fn notify_pdv_sale(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Envia o Pix copia-e-cola (ou link de pagamento) da venda de balcão pro
+/// WhatsApp do comprador — só quando o PDV gerou QR e o formulário tinha
+/// telefone preenchido. Texto montado no servidor a partir do pedido.
+pub async fn notify_pdv_pix_charge(
+    State(state): State<AppState>,
+    Json(input): Json<NotifyPdvSaleInput>,
+) -> Result<StatusCode, AppError> {
+    let store = tenant::tenant_for_order(&state.pool, &input.order_id).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let Some(order) = fetch_order_row(&mut *tx, &store.id, &input.order_id).await? else {
+        return Err(AppError::NotFound("order not found".to_string()));
+    };
+    tx.commit().await?;
+
+    let digits = whatsapp::digits_only(&order.customer_whatsapp);
+    if digits.is_empty() {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    if order.payment_method != "pix" {
+        return Err(AppError::BadRequest("order is not a pix payment".to_string()));
+    }
+    let Some(copia) = order.pix_copia_cola.as_deref().filter(|s| !s.is_empty()) else {
+        return Err(AppError::BadRequest("pix charge not created yet".to_string()));
+    };
+
+    let total_str = format!("{:.2}", order.total).replace('.', ",");
+    let msg = format!(
+        "Pix da sua compra na {} — R$ {total_str}\n\nCopie e cole no app do banco:\n\n{copia}",
+        store.name
+    );
+    whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Só manda o WhatsApp de "pagamento confirmado" pra esse pedido — chamada
 /// pela Vercel Edge Function depois que ELA já confirmou o pagamento no
 /// Supabase (o Pix em si saiu do Rust/Railway, mas o envio de WhatsApp via

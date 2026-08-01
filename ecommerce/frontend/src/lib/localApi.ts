@@ -2739,6 +2739,7 @@ export const localApi = {
   pdv: {
     createSale: pdvCreateSale,
     notifySale: async () => {},
+    notifyPixCharge: async () => {},
     relatorio: vendedorRelatorio,
   },
   admin: {
