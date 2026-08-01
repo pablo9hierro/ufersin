@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle2, CreditCard, ImagePlus, Loader2, MessageCircle, Palette, QrCode, Rocket, Store } from 'lucide-react'
 import { api, ApiError, type FormaPagamento, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
+import StorefrontStylePicker from '../components/StorefrontStylePicker'
+import type { StorefrontStyle } from '../lib/storefrontStyles'
 
 const CATEGORIAS = ['Alimentação', 'Moda', 'Beleza', 'Casa & decoração', 'Eletrônicos', 'Pet shop', 'Outro']
 const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
@@ -63,6 +65,7 @@ export default function Onboarding() {
   const [corPrincipal, setCorPrincipal] = useState(CORES[0])
   const [slug, setSlug] = useState('')
   const [slugTocado, setSlugTocado] = useState(false)
+  const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
 
   // Etapa 2
   const [whatsappHabilitado, setWhatsappHabilitado] = useState(true)
@@ -134,6 +137,7 @@ export default function Onboarding() {
         forma_pagamento: formaPagamento,
         plataforma_pagamento: formaPagamento === 'plataforma' ? plataformaPagamento : undefined,
         plataforma_credenciais: formaPagamento === 'plataforma' ? { token: credencial.trim() } : undefined,
+        layout_style: layoutStyle,
       })
       setDone(true)
       setTimeout(() => navigate('/dashboard'), 2200)
@@ -263,9 +267,17 @@ export default function Onboarding() {
                     placeholder="minha-loja"
                   />
                   <p className="text-[11px] text-uf-silver-dim mt-1">
-                    Sua loja vai ficar em <span className="text-uf-silver">{slugify(slug) || 'minha-loja'}.resolutoo.com</span>
+                    Sua loja fica em{' '}
+                    <span className="text-uf-silver">resolutoo.com/loja/?tenant={slugify(slug) || 'minha-loja'}</span>
                   </p>
                 </div>
+
+                <StorefrontStylePicker
+                  value={layoutStyle}
+                  onChange={setLayoutStyle}
+                  lojaNome={nomeLoja}
+                  corPrincipal={corPrincipal}
+                />
 
                 <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                   <input type="checkbox" checked={!venderExternamente} onChange={(e) => setVenderExternamente(!e.target.checked)} className="w-4 h-4 mt-0.5" />

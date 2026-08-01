@@ -1,21 +1,24 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, CreditCard, ExternalLink, Loader2, Save, Sparkles } from 'lucide-react'
+import { ArrowLeft, CreditCard, ExternalLink, Loader2, Palette, Save, Sparkles, Store } from 'lucide-react'
 import { api, ApiError, type FormaPagamento, type MeResponse, type PlanoCode, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { PLAN_MAP } from '../lib/plans'
 import { storeAdminLoginUrl } from '../lib/ecommerceUrl'
+import StorefrontStylePicker from '../components/StorefrontStylePicker'
+import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
+const CATEGORIAS = ['Alimentação', 'Moda', 'Beleza', 'Casa & decoração', 'Eletrônicos', 'Pet shop', 'Outro']
+const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
 const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
   { value: 'mercado_pago', label: 'Mercado Pago' },
   { value: 'abacate_pay', label: 'AbacatePay' },
 ]
 
-// /meu-plano: editar os dados do onboarding a qualquer momento (nunca
-// re-provisiona o tenant, só atualiza os campos — ver PUT /api/onboarding)
-// + trocar de plano (upgrade/downgrade, já existente via api.mudarPlano).
+// /meu-plano: editar etapa 1 + etapa 2 do onboarding a qualquer momento
+// (nunca re-provisiona o tenant — PUT /api/onboarding) + trocar de plano.
 export default function MeuPlano() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
@@ -27,12 +30,18 @@ export default function MeuPlano() {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
+  // Etapa 1
+  const [nomeLoja, setNomeLoja] = useState('')
   const [categoria, setCategoria] = useState('')
   const [endereco, setEndereco] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
+  const [corPrincipal, setCorPrincipal] = useState(CORES[0])
+  const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
   const [documento, setDocumento] = useState('')
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('cnpj')
   const [venderExternamente, setVenderExternamente] = useState(true)
+
+  // Etapa 2
   const [whatsapp, setWhatsapp] = useState('')
   const [whatsappHabilitado, setWhatsappHabilitado] = useState(true)
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('manual')
@@ -45,9 +54,12 @@ export default function MeuPlano() {
       .me()
       .then((m) => {
         setMe(m)
+        setNomeLoja(m.loja_nome ?? '')
         setCategoria(m.categoria ?? '')
         setEndereco(m.endereco ?? '')
         setLogoUrl(m.logo_url ?? '')
+        setCorPrincipal(m.cor_principal || CORES[0])
+        setLayoutStyle(isStorefrontStyle(m.layout_style) ? m.layout_style : 'ufersin')
         setDocumento(m.documento ?? '')
         setTipoDocumento(m.tipo_documento ?? 'cnpj')
         setVenderExternamente(m.vender_externamente)
@@ -79,12 +91,19 @@ export default function MeuPlano() {
     e.preventDefault()
     setError(null)
     setSaved(false)
+    if (!nomeLoja.trim()) {
+      setError('Informe o nome da empresa.')
+      return
+    }
     setSaving(true)
     try {
       await api.editarOnboarding({
+        nome_loja: nomeLoja.trim(),
         categoria: categoria.trim() || undefined,
         endereco: endereco.trim() || undefined,
         logo_url: logoUrl.trim() || undefined,
+        cor_principal: corPrincipal,
+        layout_style: layoutStyle,
         documento: documento.replace(/\D/g, '') || undefined,
         tipo_documento: tipoDocumento,
         vender_externamente: venderExternamente,
@@ -94,6 +113,17 @@ export default function MeuPlano() {
         plataforma_pagamento: formaPagamento === 'plataforma' ? plataformaPagamento : undefined,
         plataforma_credenciais: formaPagamento === 'plataforma' && credencial.trim() ? { token: credencial.trim() } : undefined,
       })
+      setMe((prev) =>
+        prev
+          ? {
+              ...prev,
+              loja_nome: nomeLoja.trim(),
+              cor_principal: corPrincipal,
+              layout_style: layoutStyle,
+              vender_externamente: venderExternamente,
+            }
+          : prev
+      )
       setSaved(true)
       setCredencial('')
       window.setTimeout(() => setSaved(false), 3000)
@@ -158,9 +188,7 @@ export default function MeuPlano() {
 
   const canEditOnboarding = me.onboarding_status === 'provisionado'
   const panelUrl =
-    me.onboarding_status === 'provisionado' && me.slug
-      ? storeAdminLoginUrl(me.slug, me.email)
-      : null
+    me.onboarding_status === 'provisionado' && me.slug ? storeAdminLoginUrl(me.slug, me.email) : null
 
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver px-5 py-16 relative">
@@ -177,7 +205,9 @@ export default function MeuPlano() {
           <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
             <Sparkles className="w-4 h-4" /> Plano atual: {PLAN_MAP[me.plano].name}
           </h2>
-          <p className="text-sm text-uf-silver-dim mb-4">Status: {me.status} · R$ {(me.valor_mensal ?? 0).toFixed(2)}/mês</p>
+          <p className="text-sm text-uf-silver-dim mb-4">
+            Status: {me.status} · R$ {(me.valor_mensal ?? 0).toFixed(2)}/mês
+          </p>
           <div className="flex flex-wrap gap-2">
             {PLAN_ORDER.filter((p) => p !== me.plano).map((p) => (
               <button key={p} onClick={() => handleMudarPlano(p)} disabled={busyPlano} className="btn-secondary text-xs px-3 py-2">
@@ -208,107 +238,147 @@ export default function MeuPlano() {
           </div>
         )}
 
-        <form onSubmit={handleSave} className={`uf-glass rounded-2xl p-6 space-y-4 ${!canEditOnboarding ? 'opacity-60 pointer-events-none' : ''}`}>
-          <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Dados da loja (onboarding)</h2>
+        <form onSubmit={handleSave} className={`space-y-6 ${!canEditOnboarding ? 'opacity-60 pointer-events-none' : ''}`}>
+          <section className="uf-glass rounded-2xl p-6 space-y-4">
+            <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide flex items-center gap-2">
+              <Store className="w-4 h-4" /> Etapa 1 — Empresa &amp; vitrine
+            </h2>
 
-          <div>
-            <label className="label">Documento</label>
-            <div className="flex gap-2 mb-2">
-              {(['cnpj', 'cpf'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTipoDocumento(t)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase ${tipoDocumento === t ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-            <input className="input-field" value={documento} onChange={(e) => setDocumento(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="label">Categoria</label>
-            <input className="input-field" value={categoria} onChange={(e) => setCategoria(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="label">Endereço</label>
-            <input className="input-field" value={endereco} onChange={(e) => setEndereco(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="label">Logo (link da imagem)</label>
-            <input className="input-field" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
-          </div>
-
-          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-            <input type="checkbox" checked={!venderExternamente} onChange={(e) => setVenderExternamente(!e.target.checked)} className="w-4 h-4 mt-0.5" />
-            <span className="text-xs text-uf-silver-dim">
-              <span className="block text-uf-silver font-semibold mb-0.5">Vender apenas internamente</span>
-              Desativa a vitrine online (catálogo, carrinho, checkout) — só o painel e o PDV continuam disponíveis.
-            </span>
-          </label>
-
-          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-            <input type="checkbox" checked={whatsappHabilitado} onChange={(e) => setWhatsappHabilitado(e.target.checked)} className="w-4 h-4 mt-0.5" />
-            <span className="text-xs text-uf-silver-dim">
-              <span className="block text-uf-silver font-semibold mb-0.5">Notificações por WhatsApp</span>
-              Se desmarcar, a seção de conectar WhatsApp some de Configurações e os avisos automáticos param.
-            </span>
-          </label>
-
-          {whatsappHabilitado && (
             <div>
-              <label className="label">WhatsApp da loja</label>
-              <input className="input-field" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} type="tel" inputMode="numeric" />
+              <label className="label">Nome da empresa</label>
+              <input className="input-field" value={nomeLoja} onChange={(e) => setNomeLoja(e.target.value)} />
             </div>
-          )}
 
-          <div>
-            <label className="label flex items-center gap-1.5">
-              <CreditCard className="w-3.5 h-3.5" /> Pagamento
-            </label>
-            <div className="flex gap-2 mb-2">
-              <button
-                type="button"
-                onClick={() => setFormaPagamento('manual')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${formaPagamento === 'manual' ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
-              >
-                Cobrança manual
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormaPagamento('plataforma')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${formaPagamento === 'plataforma' ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
-              >
-                Gerar QR Pix
-              </button>
+            <div>
+              <label className="label">Documento</label>
+              <div className="flex gap-2 mb-2">
+                {(['cnpj', 'cpf'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTipoDocumento(t)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase ${tipoDocumento === t ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <input className="input-field" value={documento} onChange={(e) => setDocumento(e.target.value)} />
             </div>
-            {formaPagamento === 'plataforma' && (
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  {PLATAFORMAS.map((p) => (
-                    <button
-                      key={p.value}
-                      type="button"
-                      onClick={() => setPlataformaPagamento(p.value)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${plataformaPagamento === p.value ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  className="input-field"
-                  value={credencial}
-                  onChange={(e) => setCredencial(e.target.value)}
-                  placeholder="Nova credencial (deixe em branco pra manter a atual)"
-                />
+
+            <div>
+              <label className="label">Categoria</label>
+              <select className="input-field" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+                {!CATEGORIAS.includes(categoria) && categoria ? <option value={categoria}>{categoria}</option> : null}
+                {CATEGORIAS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="label">Endereço</label>
+              <input className="input-field" value={endereco} onChange={(e) => setEndereco(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="label">Logo (link da imagem)</label>
+              <input className="input-field" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="label flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5" /> Cor principal
+              </label>
+              <div className="flex gap-2">
+                {CORES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCorPrincipal(c)}
+                    className={`w-9 h-9 rounded-full border-2 transition-transform ${corPrincipal === c ? 'scale-110 border-white' : 'border-transparent'}`}
+                    style={{ background: c }}
+                    aria-label={c}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <StorefrontStylePicker value={layoutStyle} onChange={setLayoutStyle} lojaNome={nomeLoja} corPrincipal={corPrincipal} />
+
+            <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={!venderExternamente} onChange={(e) => setVenderExternamente(!e.target.checked)} className="w-4 h-4 mt-0.5" />
+              <span className="text-xs text-uf-silver-dim">
+                <span className="block text-uf-silver font-semibold mb-0.5">Vender apenas internamente</span>
+                Desativa a vitrine online (catálogo, carrinho, checkout) — só o painel e o PDV continuam disponíveis.
+              </span>
+            </label>
+          </section>
+
+          <section className="uf-glass rounded-2xl p-6 space-y-4">
+            <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide flex items-center gap-2">
+              <CreditCard className="w-4 h-4" /> Etapa 2 — Pagamento &amp; WhatsApp
+            </h2>
+
+            <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={whatsappHabilitado} onChange={(e) => setWhatsappHabilitado(e.target.checked)} className="w-4 h-4 mt-0.5" />
+              <span className="text-xs text-uf-silver-dim">
+                <span className="block text-uf-silver font-semibold mb-0.5">Notificações por WhatsApp</span>
+                Se desmarcar, a seção de conectar WhatsApp some de Configurações e os avisos automáticos param.
+              </span>
+            </label>
+
+            {whatsappHabilitado && (
+              <div>
+                <label className="label">WhatsApp da loja</label>
+                <input className="input-field" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} type="tel" inputMode="numeric" />
               </div>
             )}
-          </div>
+
+            <div>
+              <label className="label">Pagamento</label>
+              <div className="flex gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setFormaPagamento('manual')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${formaPagamento === 'manual' ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
+                >
+                  Cobrança manual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormaPagamento('plataforma')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${formaPagamento === 'plataforma' ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
+                >
+                  Gerar QR Pix
+                </button>
+              </div>
+              {formaPagamento === 'plataforma' && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {PLATAFORMAS.map((p) => (
+                      <button
+                        key={p.value}
+                        type="button"
+                        onClick={() => setPlataformaPagamento(p.value)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${plataformaPagamento === p.value ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    className="input-field"
+                    value={credencial}
+                    onChange={(e) => setCredencial(e.target.value)}
+                    placeholder="Nova credencial (deixe em branco pra manter a atual)"
+                  />
+                </div>
+              )}
+            </div>
+          </section>
 
           {error && <p className="error-msg">{error}</p>}
           {saved && <p className="text-sm text-emerald-400">Salvo!</p>}

@@ -34,6 +34,9 @@ pub struct OnboardingInput {
     pub plataforma_pagamento: Option<String>, // 'mercado_pago' | 'abacate_pay'
     #[serde(default)]
     pub plataforma_credenciais: Option<serde_json::Value>,
+    /// Estilo de vitrine: ufersin | burgerbite | burgerhouse
+    #[serde(default = "default_layout_style")]
+    pub layout_style: String,
 }
 fn default_color() -> String {
     "#0f5132".to_string()
@@ -43,6 +46,9 @@ fn default_true() -> bool {
 }
 fn default_forma_pagamento() -> String {
     "manual".to_string()
+}
+fn default_layout_style() -> String {
+    "ufersin".to_string()
 }
 
 #[derive(Debug, Serialize)]
@@ -119,6 +125,11 @@ pub async fn onboarding(
         return Err(AppError::BadRequest("nome da loja e categoria são obrigatórios".to_string()));
     }
     validate_essential_fields(&body)?;
+    if !matches!(body.layout_style.as_str(), "ufersin" | "burgerbite" | "burgerhouse") {
+        return Err(AppError::BadRequest(
+            "layout_style deve ser ufersin, burgerbite ou burgerhouse".to_string(),
+        ));
+    }
 
     // Instância de WhatsApp única por tenant (spec: "cada Tenant deverá
     // possuir SUA PRÓPRIA INSTÂNCIA") — deriva do slug, que já é único.
@@ -163,7 +174,8 @@ pub async fn onboarding(
         "UPDATE subscribers SET tenant_id = $1, slug = $2, categoria = $3, endereco = $4, logo_url = $5, \
          cor_principal = $6, banner_url = $7, loja_nome = $8, whatsapp = $9, onboarding_status = 'provisionado', \
          documento = $11, tipo_documento = $12, vender_externamente = $13, whatsapp_habilitado = $14, \
-         forma_pagamento = $15, plataforma_pagamento = $16, plataforma_credenciais = $17, updated_at = now() \
+         forma_pagamento = $15, plataforma_pagamento = $16, plataforma_credenciais = $17, \
+         layout_style = $18, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -183,6 +195,7 @@ pub async fn onboarding(
     .bind(&body.forma_pagamento)
     .bind(&body.plataforma_pagamento)
     .bind(&body.plataforma_credenciais)
+    .bind(&body.layout_style)
     .execute(&state.pool)
     .await?;
 
@@ -241,6 +254,10 @@ pub struct EditOnboardingInput {
     pub plataforma_pagamento: Option<String>,
     #[serde(default)]
     pub plataforma_credenciais: Option<serde_json::Value>,
+    #[serde(default)]
+    pub nome_loja: Option<String>,
+    #[serde(default)]
+    pub layout_style: Option<String>,
 }
 
 /// Edição pós-onboarding (/meu-plano) — atualiza os mesmos campos, mas
@@ -282,6 +299,14 @@ pub async fn editar_onboarding(
         }
     }
 
+    if let Some(ls) = &body.layout_style {
+        if !matches!(ls.as_str(), "ufersin" | "burgerbite" | "burgerhouse") {
+            return Err(AppError::BadRequest(
+                "layout_style deve ser ufersin, burgerbite ou burgerhouse".to_string(),
+            ));
+        }
+    }
+
     sqlx::query(
         "UPDATE subscribers SET \
          categoria = COALESCE($1, categoria), whatsapp = COALESCE($2, whatsapp), endereco = COALESCE($3, endereco), \
@@ -289,8 +314,9 @@ pub async fn editar_onboarding(
          documento = COALESCE($6, documento), tipo_documento = COALESCE($7, tipo_documento), \
          vender_externamente = COALESCE($8, vender_externamente), whatsapp_habilitado = COALESCE($9, whatsapp_habilitado), \
          forma_pagamento = COALESCE($10, forma_pagamento), plataforma_pagamento = COALESCE($11, plataforma_pagamento), \
-         plataforma_credenciais = COALESCE($12, plataforma_credenciais), updated_at = now() \
-         WHERE id = $13",
+         plataforma_credenciais = COALESCE($12, plataforma_credenciais), \
+         loja_nome = COALESCE($13, loja_nome), layout_style = COALESCE($14, layout_style), updated_at = now() \
+         WHERE id = $15",
     )
     .bind(&body.categoria)
     .bind(&body.whatsapp)
@@ -304,6 +330,8 @@ pub async fn editar_onboarding(
     .bind(&body.forma_pagamento)
     .bind(&body.plataforma_pagamento)
     .bind(&body.plataforma_credenciais)
+    .bind(&body.nome_loja)
+    .bind(&body.layout_style)
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
@@ -320,6 +348,8 @@ pub struct TenantConfigResponse {
     pub whatsapp_habilitado: bool,
     pub forma_pagamento: String,
     pub plataforma_pagamento: Option<String>,
+    pub layout_style: String,
+    pub cor_principal: Option<String>,
 }
 
 /// Endpoint PÚBLICO (sem auth) que o motor de e-commerce (ecommerce/
@@ -332,14 +362,15 @@ pub async fn tenant_config(
     State(state): State<AppState>,
     axum::extract::Path(slug): axum::extract::Path<String>,
 ) -> Result<Json<TenantConfigResponse>, AppError> {
-    let row: Option<(String, String, bool, bool, String, Option<String>)> = sqlx::query_as(
-        "SELECT loja_nome, plan_code, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento \
+    let row: Option<(String, String, bool, bool, String, Option<String>, String, Option<String>)> = sqlx::query_as(
+        "SELECT loja_nome, plan_code, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento, \
+         layout_style, cor_principal \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
     .await?;
-    let (loja_nome, plano, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento) =
+    let (loja_nome, plano, vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento, layout_style, cor_principal) =
         row.ok_or_else(|| AppError::NotFound("loja não encontrada".to_string()))?;
 
     Ok(Json(TenantConfigResponse {
@@ -350,5 +381,7 @@ pub async fn tenant_config(
         whatsapp_habilitado,
         forma_pagamento,
         plataforma_pagamento,
+        layout_style,
+        cor_principal,
     }))
 }

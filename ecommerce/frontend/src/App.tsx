@@ -172,15 +172,25 @@ function StyleAware({
   burgerbite: React.ReactNode
   burgerhouse: React.ReactNode
 }) {
-  const style = useLayoutStyle((s) => s.style)
+  const demoStyle = useLayoutStyle((s) => s.style)
   const tenantConfig = useTenantConfig()
   // null (ainda carregando) trata como liberado -- nunca 404 a vitrine à
   // toa por causa de uma resposta que ainda não chegou.
   if (tenantConfig?.vender_externamente === false) return <LojaSemVendaExterna />
-  if (!isDemoModeActive()) return <>{sunset}</>
+
+  // Assinante Resolutoo (tem slug/config): usa o estilo escolhido no
+  // onboarding/Meu plano. Demo pública: seletor local. Sem slug (deploy
+  // Sunset single-tenant legado): shell Sunset original.
+  const style = isDemoModeActive()
+    ? demoStyle
+    : tenantConfig?.slug
+      ? tenantConfig.layout_style
+      : null
+
   if (style === 'burgerbite') return <>{burgerbite}</>
   if (style === 'burgerhouse') return <>{burgerhouse}</>
-  return <>{ufersin}</>
+  if (style === 'ufersin') return <>{ufersin}</>
+  return <>{sunset}</>
 }
 
 export default function App() {

@@ -19,6 +19,8 @@ export interface TenantConfig {
   whatsapp_habilitado: boolean
   forma_pagamento: 'manual' | 'plataforma'
   plataforma_pagamento: 'mercado_pago' | 'abacate_pay' | null
+  layout_style: 'ufersin' | 'burgerbite' | 'burgerhouse'
+  cor_principal: string | null
 }
 
 /** Fail-closed: essential + sem pedidos externos até a config real chegar
@@ -31,6 +33,8 @@ const DEFAULT_CONFIG: TenantConfig = {
   whatsapp_habilitado: true,
   forma_pagamento: 'manual',
   plataforma_pagamento: null,
+  layout_style: 'ufersin',
+  cor_principal: null,
 }
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'

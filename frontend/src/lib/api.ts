@@ -111,6 +111,7 @@ export interface MeResponse {
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento: PlataformaPagamento | null
+  layout_style: 'ufersin' | 'burgerbite' | 'burgerhouse'
   proxima_cobranca: string | null
 }
 
@@ -130,6 +131,7 @@ export interface OnboardingInput {
   forma_pagamento: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
   plataforma_credenciais?: Record<string, string>
+  layout_style?: 'ufersin' | 'burgerbite' | 'burgerhouse'
 }
 export interface OnboardingOutput {
   tenant_id: string
@@ -138,6 +140,7 @@ export interface OnboardingOutput {
 }
 
 export interface EditOnboardingInput {
+  nome_loja?: string
   categoria?: string
   whatsapp?: string
   endereco?: string
@@ -150,6 +153,7 @@ export interface EditOnboardingInput {
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
   plataforma_credenciais?: Record<string, string>
+  layout_style?: 'ufersin' | 'burgerbite' | 'burgerhouse'
 }
 
 export const api = {
