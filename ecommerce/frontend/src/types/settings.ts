@@ -89,6 +89,7 @@ export const StoreStatusSchema = z.object({
   hours: z.array(StoreHourDaySchema),
   manually_closed: z.boolean(),
   manual_closed_reason: z.string().nullable(),
+  onboarding_hours_done: z.boolean().optional(),
 })
 export type StoreStatus = z.infer<typeof StoreStatusSchema>
 

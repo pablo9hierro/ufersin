@@ -819,13 +819,78 @@ pub async fn notify_coupon_grant(
 
 // Admin auth: JWT (Resolutoo) ou sessão sunset (legado) via AdminTenant.
 
+async fn log_whatsapp_event(
+    pool: &sqlx::PgPool,
+    tenant_id: &str,
+    event_type: &str,
+    previous_state: Option<&str>,
+    new_state: Option<&str>,
+) -> Result<(), AppError> {
+    // Evita spam: só grava se o new_state mudou em relação ao último evento.
+    let last: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT new_state FROM whatsapp_connection_events \
+         WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if last.as_ref().and_then(|r| r.0.as_deref()) == new_state {
+        return Ok(());
+    }
+    let id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO whatsapp_connection_events (id, tenant_id, event_type, previous_state, new_state) \
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(&id)
+    .bind(tenant_id)
+    .bind(event_type)
+    .bind(previous_state)
+    .bind(new_state)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn extract_wa_state(status: &serde_json::Value) -> String {
+    status
+        .pointer("/instance/state")
+        .or_else(|| status.get("state"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("desconhecido")
+        .to_string()
+}
+
 pub async fn whatsapp_status(
     State(state): State<AppState>,
     admin: AdminTenant,
 ) -> Result<Json<serde_json::Value>, AppError> {
     features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
     let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
-    Ok(Json(whatsapp::connection_status(&state, &store.whatsapp_instance).await?))
+    let status = whatsapp::connection_status(&state, &store.whatsapp_instance).await?;
+    let new_state = extract_wa_state(&status);
+    let event_type = if new_state == "open" {
+        "connected"
+    } else if matches!(new_state.as_str(), "close" | "closed" | "logout") {
+        "disconnected"
+    } else {
+        "status"
+    };
+    // Só registra connected/disconnected (transições relevantes pro histórico).
+    if event_type != "status" {
+        if let Err(e) = log_whatsapp_event(
+            &state.pool,
+            &admin.tenant_id,
+            event_type,
+            None,
+            Some(&new_state),
+        )
+        .await
+        {
+            tracing::warn!("whatsapp event log failed: {e:?}");
+        }
+    }
+    Ok(Json(status))
 }
 
 pub async fn whatsapp_connect(
@@ -844,7 +909,76 @@ pub async fn whatsapp_logout(
     features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
     let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
     whatsapp::logout(&state, &store.whatsapp_instance).await?;
+    if let Err(e) = log_whatsapp_event(
+        &state.pool,
+        &admin.tenant_id,
+        "disconnected",
+        Some("open"),
+        Some("close"),
+    )
+    .await
+    {
+        tracing::warn!("whatsapp disconnect event log failed: {e:?}");
+    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct WhatsAppConnectionEventDto {
+    pub id: String,
+    pub event_type: String,
+    pub previous_state: Option<String>,
+    pub new_state: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub async fn list_whatsapp_connection_events(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<WhatsAppConnectionEventDto>>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Whatsapp).await?;
+    let rows: Vec<(String, String, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)> =
+        sqlx::query_as(
+            "SELECT id, event_type, previous_state, new_state, created_at \
+             FROM whatsapp_connection_events WHERE tenant_id = $1 \
+             ORDER BY created_at DESC LIMIT 100",
+        )
+        .bind(&claims.tenant_id)
+        .fetch_all(&state.pool)
+        .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, event_type, previous_state, new_state, created_at)| {
+                WhatsAppConnectionEventDto {
+                    id,
+                    event_type,
+                    previous_state,
+                    new_state,
+                    created_at,
+                }
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct OnboardingGateDto {
+    pub onboarding_hours_done: bool,
+}
+
+pub async fn get_onboarding_gate(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<OnboardingGateDto>, AppError> {
+    let row: Option<(bool,)> = sqlx::query_as(
+        "SELECT COALESCE(onboarding_hours_done, false) FROM tenants WHERE id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    Ok(Json(OnboardingGateDto {
+        onboarding_hours_done: row.map(|r| r.0).unwrap_or(false),
+    }))
 }
 
 // ---------- Horário / status da loja ----------
@@ -920,10 +1054,20 @@ pub async fn get_store_status(
     .unwrap_or((false, None));
 
     tx.commit().await?;
+
+    let hours_done: (bool,) = sqlx::query_as(
+        "SELECT COALESCE(onboarding_hours_done, false) FROM tenants WHERE id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_optional(&state.pool)
+    .await?
+    .unwrap_or((false,));
+
     Ok(Json(StoreStatusDto {
         hours,
         manually_closed: status.0,
         manual_closed_reason: status.1,
+        onboarding_hours_done: hours_done.0,
     }))
 }
 
@@ -954,8 +1098,12 @@ pub async fn set_store_hours(
         .execute(&mut *tx)
         .await?;
     }
+    sqlx::query("UPDATE tenants SET onboarding_hours_done = true, updated_at = now()::text WHERE id = $1")
+        .bind(&claims.tenant_id)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
-    Ok(Json(serde_json::json!({ "ok": true })))
+    Ok(Json(serde_json::json!({ "ok": true, "onboarding_hours_done": true })))
 }
 
 pub async fn set_store_manual_status(

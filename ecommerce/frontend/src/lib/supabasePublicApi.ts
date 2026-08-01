@@ -104,6 +104,7 @@ export const supabasePublicApi = {
         hours: (hoursRes.data ?? []) as StoreHourDay[],
         manually_closed: !!statusRes.data?.manually_closed,
         manual_closed_reason: (statusRes.data?.manual_closed_reason as string | null) ?? null,
+        onboarding_hours_done: true,
       }
     },
   },

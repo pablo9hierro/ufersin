@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   ClipboardList,
@@ -12,17 +13,12 @@ import {
   Wallet,
 } from 'lucide-react'
 import Logo from '../ui/Logo'
+import OnboardingGate from '../admin/OnboardingGate'
 import { useAdminAuth } from '../../store/adminAuth'
 import { isDemoModeActive, planoAtLeast, planoIncludes, type PlanoCode } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { adminService } from '../../services/adminService'
 
-// Exclusivo do admin — vendedor tem seu próprio layout/rota
-// (VendedorLayout, /funcionarios/vendedor/*) e motoboy também
-// (MotoboyLayout, /funcionarios/motoboy/*).
-//
-// `requiredPlan` aplica em demo E em tenant real (via tenantConfig.plano
-// do onboarding Resolutoo). Flags do onboarding também escondem itens
-// (ex.: vender_externamente=false → sem Pedidos).
 const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requiredPlan: PlanoCode }[] = [
   { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, requiredPlan: 'essential' },
   { href: '/admin/pdv', label: 'PDV', icon: ShoppingCart, requiredPlan: 'essential' },
@@ -37,9 +33,12 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requ
 
 function planAllows(required: PlanoCode, demo: boolean, tenantPlano: PlanoCode | undefined): boolean {
   if (demo) return planoIncludes(required)
-  // Enquanto tenantConfig carrega, tenantPlano é undefined — fail-closed
-  // (só essential) pra não flashar CRM/etc.
   return planoAtLeast(tenantPlano ?? 'essential', required)
+}
+
+function extractWaState(status: unknown): string {
+  const s = status as { instance?: { state?: string }; state?: string } | null
+  return s?.instance?.state ?? s?.state ?? 'desconhecido'
 }
 
 export default function AdminLayout() {
@@ -49,17 +48,78 @@ export default function AdminLayout() {
   const demo = isDemoModeActive()
   const tenantConfig = useTenantConfig()
   const tenantPlano = tenantConfig?.plano
-  // null enquanto carrega -- otimista só pra Pedidos (não esconde PDV à toa).
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
+  const whatsappRequired = tenantConfig?.whatsapp_habilitado === true
+
+  // null = ainda checando; true = gate ativo; false = liberado
+  const [gateLocked, setGateLocked] = useState<boolean | null>(demo ? false : null)
+
+  const recheckGate = useCallback(async () => {
+    if (demo) {
+      setGateLocked(false)
+      return
+    }
+    // Espera tenantConfig pra saber se WhatsApp é obrigatório.
+    if (tenantConfig == null) return
+    try {
+      const gate = await adminService.onboardingGate.get()
+      const hoursDone = !!gate.onboarding_hours_done
+      let waOk = !whatsappRequired
+      if (whatsappRequired) {
+        try {
+          waOk = extractWaState(await adminService.whatsapp.status()) === 'open'
+        } catch {
+          waOk = false
+        }
+      }
+      setGateLocked(!(hoursDone && waOk))
+    } catch {
+      // Se a API falhar, não trava o painel pra lojas já existentes.
+      setGateLocked(false)
+    }
+  }, [demo, tenantConfig, whatsappRequired])
+
+  useEffect(() => {
+    recheckGate()
+  }, [recheckGate])
+
+  // Se WhatsApp desconectar depois, reabre o gate (horas continuam done).
+  useEffect(() => {
+    if (demo || !whatsappRequired || gateLocked !== false) return
+    const t = setInterval(async () => {
+      try {
+        const s = extractWaState(await adminService.whatsapp.status())
+        if (s !== 'open') setGateLocked(true)
+      } catch {
+        /* ignore transient errors */
+      }
+    }, 30_000)
+    return () => clearInterval(t)
+  }, [demo, whatsappRequired, gateLocked])
 
   if (!token) return <Navigate to="/admin/login" state={{ from: location }} replace />
+
+  if (gateLocked === null) {
+    return (
+      <div className="min-h-screen bg-son-black flex items-center justify-center text-son-silver-dim text-sm">
+        Carregando…
+      </div>
+    )
+  }
+
+  if (gateLocked) {
+    return (
+      <OnboardingGate
+        whatsappRequired={whatsappRequired}
+        onUnlocked={() => setGateLocked(false)}
+      />
+    )
+  }
 
   const currentItem = NAV_ITEMS.find((i) => i.href === location.pathname)
   if (currentItem && !planAllows(currentItem.requiredPlan, demo, tenantPlano)) {
     return <Navigate to="/admin/pdv" replace />
   }
-  // Onboarding marcou "vender apenas internamente" -- Pedidos não existe
-  // pra esse tenant (só existe fila de balcão via PDV).
   if (location.pathname === '/admin/pedidos' && !pedidosLiberado) {
     return <Navigate to="/admin/pdv" replace />
   }

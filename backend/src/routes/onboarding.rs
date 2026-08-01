@@ -8,9 +8,13 @@ use crate::state::AppState;
 #[derive(Debug, Deserialize)]
 pub struct OnboardingInput {
     pub nome_loja: String,
+    #[serde(default)]
     pub categoria: String,
+    #[serde(default)]
     pub whatsapp: String,
     pub endereco: String,
+    #[serde(default)]
+    pub endereco_numero: Option<String>,
     #[serde(default)]
     pub logo_url: Option<String>,
     #[serde(default = "default_color")]
@@ -19,13 +23,15 @@ pub struct OnboardingInput {
     pub banner_url: Option<String>,
     pub slug: String,
 
-    // Etapa 1/2 do onboarding do plano Essential.
+    // Etapa 1 (Resolutoo /onboarding) — painel liberado após provision.
     pub documento: String,
     pub tipo_documento: String, // 'cnpj' | 'cpf'
+    #[serde(default)]
+    pub instagram: Option<String>,
     #[serde(default = "default_true")]
     pub vender_externamente: bool,
 
-    // Etapa 2/2.
+    // WhatsApp: só a flag aqui; QR connect fica na etapa 2 do painel da loja.
     #[serde(default = "default_true")]
     pub whatsapp_habilitado: bool,
     #[serde(default = "default_forma_pagamento")]
@@ -121,8 +127,11 @@ pub async fn onboarding(
     if slug.is_empty() || !slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         return Err(AppError::BadRequest("o slug/subdomínio só pode ter letras minúsculas, números e hífen".to_string()));
     }
-    if body.nome_loja.trim().is_empty() || body.categoria.trim().is_empty() {
-        return Err(AppError::BadRequest("nome da loja e categoria são obrigatórios".to_string()));
+    if body.nome_loja.trim().is_empty() {
+        return Err(AppError::BadRequest("nome da empresa é obrigatório".to_string()));
+    }
+    if body.endereco.trim().is_empty() {
+        return Err(AppError::BadRequest("endereço é obrigatório".to_string()));
     }
     validate_essential_fields(&body)?;
     if !matches!(body.layout_style.as_str(), "ufersin" | "burgerbite" | "burgerhouse") {
@@ -134,6 +143,21 @@ pub async fn onboarding(
     // Instância de WhatsApp única por tenant (spec: "cada Tenant deverá
     // possuir SUA PRÓPRIA INSTÂNCIA") — deriva do slug, que já é único.
     let whatsapp_instance = format!("loja-{slug}");
+    let pickup = match body.endereco_numero.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(n) => format!("{}, {}", body.endereco.trim(), n),
+        None => body.endereco.trim().to_string(),
+    };
+    let categoria = if body.categoria.trim().is_empty() {
+        "Outro"
+    } else {
+        body.categoria.trim()
+    };
+    let instagram = body
+        .instagram
+        .as_deref()
+        .map(|s| s.trim().trim_start_matches('@'))
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
 
     let payload = ProvisionRequest {
         organization_name: body.nome_loja.trim(),
@@ -142,7 +166,7 @@ pub async fn onboarding(
         tenant_slug: &slug,
         theme_primary_color: &body.cor_principal,
         whatsapp_instance,
-        pickup_address: body.endereco.trim(),
+        pickup_address: &pickup,
         plan_code: &plan_code,
         admin_email: email.trim(),
         admin_password_hash: &password_hash,
@@ -175,12 +199,12 @@ pub async fn onboarding(
          cor_principal = $6, banner_url = $7, loja_nome = $8, whatsapp = $9, onboarding_status = 'provisionado', \
          documento = $11, tipo_documento = $12, vender_externamente = $13, whatsapp_habilitado = $14, \
          forma_pagamento = $15, plataforma_pagamento = $16, plataforma_credenciais = $17, \
-         layout_style = $18, updated_at = now() \
+         layout_style = $18, instagram = $19, endereco_numero = $20, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
     .bind(&slug)
-    .bind(body.categoria.trim())
+    .bind(categoria)
     .bind(body.endereco.trim())
     .bind(&body.logo_url)
     .bind(&body.cor_principal)
@@ -196,10 +220,54 @@ pub async fn onboarding(
     .bind(&body.plataforma_pagamento)
     .bind(&body.plataforma_credenciais)
     .bind(&body.layout_style)
+    .bind(&instagram)
+    .bind(body.endereco_numero.as_deref().map(str::trim).filter(|s| !s.is_empty()))
     .execute(&state.pool)
     .await?;
 
     Ok(Json(OnboardingOutput { tenant_id: parsed.tenant_id, slug, admin_login_hint: email }))
+}
+
+fn digits_only(s: &str) -> String {
+    s.chars().filter(|c| c.is_ascii_digit()).collect()
+}
+
+fn valid_cpf(raw: &str) -> bool {
+    let cpf = digits_only(raw);
+    if cpf.len() != 11 || cpf.chars().all(|c| c == cpf.as_bytes()[0] as char) {
+        return false;
+    }
+    let calc = |base: &str, factor: u32| -> u32 {
+        let mut sum = 0u32;
+        for (i, ch) in base.chars().enumerate() {
+            sum += ch.to_digit(10).unwrap_or(0) * (factor - i as u32);
+        }
+        let rest = (sum * 10) % 11;
+        if rest == 10 { 0 } else { rest }
+    };
+    let d1 = calc(&cpf[..9], 10);
+    let d2 = calc(&cpf[..10], 11);
+    d1 == cpf[9..10].parse().unwrap_or(99) && d2 == cpf[10..11].parse().unwrap_or(99)
+}
+
+fn valid_cnpj(raw: &str) -> bool {
+    let cnpj = digits_only(raw);
+    if cnpj.len() != 14 || cnpj.chars().all(|c| c == cnpj.as_bytes()[0] as char) {
+        return false;
+    }
+    let calc = |base: &str, weights: &[u32]| -> u32 {
+        let mut sum = 0u32;
+        for (i, w) in weights.iter().enumerate() {
+            sum += base.chars().nth(i).and_then(|c| c.to_digit(10)).unwrap_or(0) * w;
+        }
+        let rest = sum % 11;
+        if rest < 2 { 0 } else { 11 - rest }
+    };
+    let w1 = [5u32, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    let w2 = [6u32, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    let d1 = calc(&cnpj[..12], &w1);
+    let d2 = calc(&cnpj[..13], &w2);
+    d1 == cnpj[12..13].parse().unwrap_or(99) && d2 == cnpj[13..14].parse().unwrap_or(99)
 }
 
 fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
@@ -209,15 +277,28 @@ fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
     if !matches!(body.tipo_documento.as_str(), "cnpj" | "cpf") {
         return Err(AppError::BadRequest("tipo_documento deve ser 'cnpj' ou 'cpf'".to_string()));
     }
+    let doc_ok = if body.tipo_documento == "cpf" {
+        valid_cpf(&body.documento)
+    } else {
+        valid_cnpj(&body.documento)
+    };
+    if !doc_ok {
+        return Err(AppError::BadRequest(format!(
+            "{} inválido — confira os dígitos",
+            body.tipo_documento.to_uppercase()
+        )));
+    }
     if !matches!(body.forma_pagamento.as_str(), "manual" | "plataforma") {
-        return Err(AppError::BadRequest("forma_pagamento deve ser 'manual' ou 'plataforma'".to_string()));
+        return Err(AppError::BadRequest(
+            "forma_pagamento deve ser 'manual' (não integrar) ou 'plataforma'".to_string(),
+        ));
     }
     if body.forma_pagamento == "plataforma" {
         match body.plataforma_pagamento.as_deref() {
             Some("mercado_pago") | Some("abacate_pay") => {}
             _ => {
                 return Err(AppError::BadRequest(
-                    "escolha uma plataforma de pagamento (mercado_pago ou abacate_pay) ou marque cobrança manual".to_string(),
+                    "escolha Mercado Pago, Abacate Pay, ou não integrar plataforma de pagamentos".to_string(),
                 ))
             }
         }
@@ -227,9 +308,7 @@ fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
                 "com CPF só é permitido Mercado Pago; AbacatePay exige CNPJ".to_string(),
             ));
         }
-        if body.plataforma_credenciais.is_none() {
-            return Err(AppError::BadRequest("informe as credenciais da plataforma de pagamento escolhida".to_string()));
-        }
+        // Credenciais podem ser preenchidas depois em Meu plano — não bloqueia o provision.
     }
     Ok(())
 }
@@ -243,6 +322,8 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub endereco: Option<String>,
     #[serde(default)]
+    pub endereco_numero: Option<String>,
+    #[serde(default)]
     pub logo_url: Option<String>,
     #[serde(default)]
     pub cor_principal: Option<String>,
@@ -250,6 +331,8 @@ pub struct EditOnboardingInput {
     pub documento: Option<String>,
     #[serde(default)]
     pub tipo_documento: Option<String>,
+    #[serde(default)]
+    pub instagram: Option<String>,
     #[serde(default)]
     pub vender_externamente: Option<bool>,
     #[serde(default)]
@@ -327,6 +410,11 @@ pub async fn editar_onboarding(
         }
     }
 
+    let instagram = body.instagram.as_ref().map(|s| {
+        let t = s.trim().trim_start_matches('@');
+        t.to_string()
+    });
+
     sqlx::query(
         "UPDATE subscribers SET \
          categoria = COALESCE($1, categoria), whatsapp = COALESCE($2, whatsapp), endereco = COALESCE($3, endereco), \
@@ -335,8 +423,9 @@ pub async fn editar_onboarding(
          vender_externamente = COALESCE($8, vender_externamente), whatsapp_habilitado = COALESCE($9, whatsapp_habilitado), \
          forma_pagamento = COALESCE($10, forma_pagamento), plataforma_pagamento = COALESCE($11, plataforma_pagamento), \
          plataforma_credenciais = COALESCE($12, plataforma_credenciais), \
-         loja_nome = COALESCE($13, loja_nome), layout_style = COALESCE($14, layout_style), updated_at = now() \
-         WHERE id = $15",
+         loja_nome = COALESCE($13, loja_nome), layout_style = COALESCE($14, layout_style), \
+         instagram = COALESCE($15, instagram), endereco_numero = COALESCE($16, endereco_numero), updated_at = now() \
+         WHERE id = $17",
     )
     .bind(&body.categoria)
     .bind(&body.whatsapp)
@@ -352,6 +441,8 @@ pub async fn editar_onboarding(
     .bind(&body.plataforma_credenciais)
     .bind(&body.nome_loja)
     .bind(&body.layout_style)
+    .bind(&instagram)
+    .bind(body.endereco_numero.as_deref().map(str::trim))
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;

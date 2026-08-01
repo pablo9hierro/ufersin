@@ -103,6 +103,7 @@ export interface MeResponse {
   assinante_desde: string
   categoria: string | null
   endereco: string | null
+  endereco_numero: string | null
   logo_url: string | null
   cor_principal: string | null
   documento: string | null
@@ -112,20 +113,23 @@ export interface MeResponse {
   forma_pagamento: FormaPagamento
   plataforma_pagamento: PlataformaPagamento | null
   layout_style: 'ufersin' | 'burgerbite' | 'burgerhouse'
+  instagram: string | null
   proxima_cobranca: string | null
 }
 
 export interface OnboardingInput {
   nome_loja: string
-  categoria: string
-  whatsapp: string
+  categoria?: string
+  whatsapp?: string
   endereco: string
+  endereco_numero?: string
   logo_url?: string
-  cor_principal: string
+  cor_principal?: string
   banner_url?: string
   slug: string
   documento: string
   tipo_documento: TipoDocumento
+  instagram?: string
   vender_externamente: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
@@ -144,10 +148,12 @@ export interface EditOnboardingInput {
   categoria?: string
   whatsapp?: string
   endereco?: string
+  endereco_numero?: string
   logo_url?: string
   cor_principal?: string
   documento?: string
   tipo_documento?: TipoDocumento
+  instagram?: string
   vender_externamente?: boolean
   whatsapp_habilitado?: boolean
   forma_pagamento?: FormaPagamento

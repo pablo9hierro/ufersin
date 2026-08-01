@@ -2297,6 +2297,7 @@ async function getStoreStatus(): Promise<StoreStatus> {
     hours: db.storeHours ?? DEFAULT_STORE_HOURS,
     manually_closed: db.storeManuallyClosed ?? false,
     manual_closed_reason: db.storeManualClosedReason ?? null,
+    onboarding_hours_done: true,
   }
 }
 
@@ -2817,7 +2818,11 @@ export const localApi = {
         throw new ApiError(400, 'WhatsApp não disponível no modo demonstração.')
       },
       logout: async () => {},
+      connectionEvents: async () => [],
       notifyCouponGrant: async () => {},
+    },
+    onboardingGate: {
+      get: async () => ({ onboarding_hours_done: true }),
     },
   },
   motoboy: {

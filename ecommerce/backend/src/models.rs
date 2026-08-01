@@ -328,6 +328,9 @@ pub struct StoreStatusDto {
     pub hours: Vec<StoreHourDay>,
     pub manually_closed: bool,
     pub manual_closed_reason: Option<String>,
+    /// Etapa 2 do painel: horário já foi salvo pelo lojista pelo menos uma vez.
+    #[serde(default)]
+    pub onboarding_hours_done: bool,
 }
 
 #[derive(Debug, Deserialize)]

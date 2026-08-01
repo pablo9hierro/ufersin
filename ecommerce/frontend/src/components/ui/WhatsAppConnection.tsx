@@ -47,12 +47,16 @@ function friendlyWhatsAppError(err: unknown, fallback: string): string {
 
 export default function WhatsAppConnection({
   api,
+  onConnected,
+  onDisconnected,
 }: {
   api: {
     status: () => Promise<unknown>
     connect: () => Promise<EvolutionConnect>
     logout: () => Promise<void>
   }
+  onConnected?: () => void
+  onDisconnected?: () => void
 }) {
   const [status, setStatus] = useState<string | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(true)
@@ -68,6 +72,7 @@ export default function WhatsAppConnection({
       const data = await api.status()
       const s = extractState(data)
       setStatus(s)
+      if (s === 'open') onConnected?.()
       return s
     } catch (err) {
       setError(friendlyWhatsAppError(err, 'Não foi possível consultar o status.'))
@@ -136,6 +141,7 @@ export default function WhatsAppConnection({
       await api.logout()
       setQr(null)
       await loadStatus()
+      onDisconnected?.()
     } catch (err) {
       setError(friendlyWhatsAppError(err, 'Não foi possível desconectar.'))
     } finally {

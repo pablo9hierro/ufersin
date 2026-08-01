@@ -3,6 +3,10 @@
 --   POST /rest/v1/rpc/get_public_tenant_config
 --   Headers: Accept-Profile / Content-Profile: resolutoo
 
+ALTER TABLE IF EXISTS resolutoo.subscribers
+  ADD COLUMN IF NOT EXISTS instagram text,
+  ADD COLUMN IF NOT EXISTS endereco_numero text;
+
 CREATE OR REPLACE FUNCTION resolutoo.get_public_tenant_config(p_slug text)
 RETURNS json
 LANGUAGE sql
@@ -20,7 +24,8 @@ AS $$
     'forma_pagamento', forma_pagamento,
     'plataforma_pagamento', plataforma_pagamento,
     'layout_style', coalesce(nullif(layout_style, ''), 'ufersin'),
-    'cor_principal', cor_principal
+    'cor_principal', cor_principal,
+    'instagram', instagram
   )
   FROM resolutoo.subscribers
   WHERE lower(slug) = lower(p_slug)

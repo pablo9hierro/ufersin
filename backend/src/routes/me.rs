@@ -33,6 +33,8 @@ struct SubscriberRow {
     forma_pagamento: String,
     plataforma_pagamento: Option<String>,
     layout_style: String,
+    instagram: Option<String>,
+    endereco_numero: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -67,6 +69,8 @@ pub struct MeResponse {
     pub forma_pagamento: String,
     pub plataforma_pagamento: Option<String>,
     pub layout_style: String,
+    pub instagram: Option<String>,
+    pub endereco_numero: Option<String>,
     /// Próxima cobrança / histórico de faturas dependem de consultar o
     /// gateway (Mercado Pago não expõe isso na mesma chamada de status) ou
     /// de um worker que registre cada cobrança recebida por webhook — não
@@ -83,7 +87,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 status, gateway, slug, onboarding_status, tenant_id, created_at,
                 categoria, endereco, logo_url, cor_principal, documento, tipo_documento,
                 vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento,
-                COALESCE(layout_style, 'ufersin') as layout_style
+                COALESCE(layout_style, 'ufersin') as layout_style, instagram, endereco_numero
          FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
@@ -122,6 +126,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         forma_pagamento: row.forma_pagamento,
         plataforma_pagamento: row.plataforma_pagamento,
         layout_style: row.layout_style,
+        instagram: row.instagram,
+        endereco_numero: row.endereco_numero,
         proxima_cobranca: None,
     }))
 }

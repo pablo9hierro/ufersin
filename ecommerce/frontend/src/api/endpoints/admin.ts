@@ -180,7 +180,11 @@ export const adminEndpoint = {
     status: async () => api.admin.whatsapp.status(),
     connect: async () => api.admin.whatsapp.connect(),
     logout: async () => api.admin.whatsapp.logout(),
+    connectionEvents: async () => api.admin.whatsapp.connectionEvents(),
     notifyCouponGrant: async (couponId: string, customMessage?: string) => api.admin.whatsapp.notifyCouponGrant(couponId, customMessage),
+  },
+  onboardingGate: {
+    get: async () => api.admin.onboardingGate.get(),
   },
 }
 

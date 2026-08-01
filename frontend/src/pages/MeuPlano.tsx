@@ -1,22 +1,25 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, CreditCard, ExternalLink, Loader2, Palette, Save, Sparkles, Store } from 'lucide-react'
+import { ArrowLeft, AtSign, CreditCard, ExternalLink, Loader2, Palette, Save, Sparkles, Store } from 'lucide-react'
 import { api, ApiError, type FormaPagamento, type MeResponse, type PlanoCode, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { PLAN_MAP } from '../lib/plans'
 import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
+import AddressField from '../components/AddressField'
+import { isValidDocumento, onlyDigits } from '../lib/documento'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
 import { supabase } from '../lib/supabaseClient'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
-const CATEGORIAS = ['Alimentação', 'Moda', 'Beleza', 'Casa & decoração', 'Eletrônicos', 'Pet shop', 'Outro']
 const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
 const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
   { value: 'mercado_pago', label: 'Mercado Pago' },
-  { value: 'abacate_pay', label: 'AbacatePay' },
+  { value: 'abacate_pay', label: 'Abacate Pay' },
 ]
+
+type IntegracaoPagamento = 'mercado_pago' | 'abacate_pay' | 'nao_integrar'
 
 /** CPF (PF) → só Mercado Pago; CNPJ → AbacatePay ou Mercado Pago. */
 function plataformasParaDocumento(tipo: TipoDocumento) {
@@ -39,8 +42,9 @@ export default function MeuPlano() {
 
   // Etapa 1
   const [nomeLoja, setNomeLoja] = useState('')
-  const [categoria, setCategoria] = useState('')
   const [endereco, setEndereco] = useState('')
+  const [enderecoNumero, setEnderecoNumero] = useState('')
+  const [instagram, setInstagram] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
   const [corPrincipal, setCorPrincipal] = useState(CORES[0])
   const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
@@ -48,11 +52,10 @@ export default function MeuPlano() {
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('cnpj')
   const [venderExternamente, setVenderExternamente] = useState(true)
 
-  // Etapa 2
+  // Pagamento & WhatsApp
   const [whatsapp, setWhatsapp] = useState('')
   const [whatsappHabilitado, setWhatsappHabilitado] = useState(true)
-  const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('manual')
-  const [plataformaPagamento, setPlataformaPagamento] = useState<PlataformaPagamento>('mercado_pago')
+  const [integracao, setIntegracao] = useState<IntegracaoPagamento>('nao_integrar')
   const [credencial, setCredencial] = useState('')
 
   useEffect(() => {
@@ -62,8 +65,9 @@ export default function MeuPlano() {
       .then((m) => {
         setMe(m)
         setNomeLoja(m.loja_nome ?? '')
-        setCategoria(m.categoria ?? '')
         setEndereco(m.endereco ?? '')
+        setEnderecoNumero(m.endereco_numero ?? '')
+        setInstagram((m.instagram ?? '').replace(/^@/, ''))
         setLogoUrl(m.logo_url ?? '')
         setCorPrincipal(m.cor_principal || CORES[0])
         setLayoutStyle(isStorefrontStyle(m.layout_style) ? m.layout_style : 'ufersin')
@@ -72,9 +76,12 @@ export default function MeuPlano() {
         setVenderExternamente(m.vender_externamente)
         setWhatsapp(m.whatsapp ?? '')
         setWhatsappHabilitado(m.whatsapp_habilitado)
-        setFormaPagamento(m.forma_pagamento)
-        const plat = m.plataforma_pagamento ?? 'mercado_pago'
-        setPlataformaPagamento(m.tipo_documento === 'cpf' ? 'mercado_pago' : plat)
+        if (m.forma_pagamento === 'plataforma' && m.plataforma_pagamento) {
+          const plat = m.tipo_documento === 'cpf' ? 'mercado_pago' : m.plataforma_pagamento
+          setIntegracao(plat)
+        } else {
+          setIntegracao('nao_integrar')
+        }
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 404) {
@@ -103,27 +110,33 @@ export default function MeuPlano() {
       setError('Informe o nome da empresa.')
       return
     }
+    if (documento && !isValidDocumento(tipoDocumento, documento)) {
+      setError(`${tipoDocumento.toUpperCase()} inválido — confira os dígitos.`)
+      return
+    }
+    let formaPagamento: FormaPagamento = 'manual'
+    let plataformaPagamento: PlataformaPagamento | undefined
+    if (integracao === 'mercado_pago' || integracao === 'abacate_pay') {
+      formaPagamento = 'plataforma'
+      plataformaPagamento = tipoDocumento === 'cpf' ? 'mercado_pago' : integracao
+    }
     setSaving(true)
     try {
       await api.editarOnboarding({
         nome_loja: nomeLoja.trim(),
-        categoria: categoria.trim() || undefined,
         endereco: endereco.trim() || undefined,
+        endereco_numero: enderecoNumero.trim() || undefined,
+        instagram: instagram.trim().replace(/^@/, '') || undefined,
         logo_url: logoUrl.trim() || undefined,
         cor_principal: corPrincipal,
         layout_style: venderExternamente ? layoutStyle : 'ufersin',
-        documento: documento.replace(/\D/g, '') || undefined,
+        documento: onlyDigits(documento) || undefined,
         tipo_documento: tipoDocumento,
         vender_externamente: venderExternamente,
         whatsapp: whatsappHabilitado ? whatsapp.trim() || undefined : '',
         whatsapp_habilitado: whatsappHabilitado,
         forma_pagamento: formaPagamento,
-        plataforma_pagamento:
-          formaPagamento === 'plataforma'
-            ? tipoDocumento === 'cpf'
-              ? 'mercado_pago'
-              : plataformaPagamento
-            : undefined,
+        plataforma_pagamento: plataformaPagamento,
         plataforma_credenciais: formaPagamento === 'plataforma' && credencial.trim() ? { token: credencial.trim() } : undefined,
       })
       // Espelha layout_style direto no schema resolutoo — o Railway API em
@@ -144,6 +157,10 @@ export default function MeuPlano() {
               layout_style: venderExternamente ? layoutStyle : 'ufersin',
               vender_externamente: venderExternamente,
               whatsapp_habilitado: whatsappHabilitado,
+              instagram: instagram.trim().replace(/^@/, '') || null,
+              endereco_numero: enderecoNumero.trim() || null,
+              forma_pagamento: formaPagamento,
+              plataforma_pagamento: plataformaPagamento ?? null,
             }
           : prev
       )
@@ -279,7 +296,7 @@ export default function MeuPlano() {
         <form onSubmit={handleSave} className={`space-y-6 ${!canEditOnboarding ? 'opacity-60 pointer-events-none' : ''}`}>
           <section className="uf-glass rounded-2xl p-6 space-y-4">
             <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide flex items-center gap-2">
-              <Store className="w-4 h-4" /> Etapa 1 — Empresa &amp; vitrine
+              <Store className="w-4 h-4" /> Empresa &amp; vitrine
             </h2>
 
             <div>
@@ -296,7 +313,7 @@ export default function MeuPlano() {
                     type="button"
                     onClick={() => {
                       setTipoDocumento(t)
-                      if (t === 'cpf') setPlataformaPagamento('mercado_pago')
+                      if (t === 'cpf' && integracao === 'abacate_pay') setIntegracao('mercado_pago')
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase ${tipoDocumento === t ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
                   >
@@ -307,21 +324,26 @@ export default function MeuPlano() {
               <input className="input-field" value={documento} onChange={(e) => setDocumento(e.target.value)} />
             </div>
 
-            <div>
-              <label className="label">Categoria</label>
-              <select className="input-field" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-                {!CATEGORIAS.includes(categoria) && categoria ? <option value={categoria}>{categoria}</option> : null}
-                {CATEGORIAS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <AddressField
+              endereco={endereco}
+              numero={enderecoNumero}
+              onEnderecoChange={setEndereco}
+              onNumeroChange={setEnderecoNumero}
+            />
 
             <div>
-              <label className="label">Endereço</label>
-              <input className="input-field" value={endereco} onChange={(e) => setEndereco(e.target.value)} />
+              <label className="label flex items-center gap-1.5">
+                <AtSign className="w-3.5 h-3.5" /> Instagram
+              </label>
+              <div className="flex items-center gap-1 input-field !py-0 !px-3">
+                <span className="text-uf-silver-dim text-sm">@</span>
+                <input
+                  className="flex-1 bg-transparent outline-none py-2.5 text-sm"
+                  value={instagram}
+                  onChange={(e) => setInstagram(e.target.value.replace(/^@/, ''))}
+                  placeholder="sua_loja"
+                />
+              </div>
             </div>
 
             <div>
@@ -347,97 +369,79 @@ export default function MeuPlano() {
               </div>
             </div>
 
-            <div className="uf-glass rounded-2xl px-4 py-4 space-y-4 border border-white/10">
-              <div>
-                <p className="label mb-1 flex items-center gap-1.5">
-                  <Palette className="w-3.5 h-3.5" /> Vitrine pra clientes
-                </p>
-                <p className="text-[11px] text-uf-silver-dim leading-snug">
-                  Vai vender pelo site ou só usar o painel/PDV internamente?
-                </p>
-              </div>
+            <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={venderExternamente}
+                onChange={(e) => setVenderExternamente(e.target.checked)}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span className="text-xs text-uf-silver-dim">
+                <span className="block text-uf-silver font-semibold mb-0.5">Quer vender pro público externo</span>
+                Desative pra usar só painel/PDV — a escolha de layout some.
+              </span>
+            </label>
 
-              <label className="rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer bg-black/20 border border-white/5">
-                <input
-                  type="checkbox"
-                  checked={!venderExternamente}
-                  onChange={(e) => setVenderExternamente(!e.target.checked)}
-                  className="w-4 h-4 mt-0.5"
-                />
-                <span className="text-xs text-uf-silver-dim">
-                  <span className="block text-uf-silver font-semibold mb-0.5">Vender apenas pro público interno</span>
-                  Desativa a vitrine online — sem vitrine, a escolha de layout some.
-                </span>
-              </label>
-
-              {venderExternamente && (
-                <StorefrontStylePicker value={layoutStyle} onChange={setLayoutStyle} lojaNome={nomeLoja} corPrincipal={corPrincipal} />
-              )}
-            </div>
+            {venderExternamente && (
+              <StorefrontStylePicker value={layoutStyle} onChange={setLayoutStyle} lojaNome={nomeLoja} corPrincipal={corPrincipal} />
+            )}
           </section>
 
           <section className="uf-glass rounded-2xl p-6 space-y-4">
             <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide flex items-center gap-2">
-              <CreditCard className="w-4 h-4" /> Etapa 2 — Pagamento &amp; WhatsApp
+              <CreditCard className="w-4 h-4" /> Pagamento &amp; WhatsApp
             </h2>
 
             <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" checked={whatsappHabilitado} onChange={(e) => setWhatsappHabilitado(e.target.checked)} className="w-4 h-4 mt-0.5" />
               <span className="text-xs text-uf-silver-dim">
-                <span className="block text-uf-silver font-semibold mb-0.5">Notificações por WhatsApp</span>
-                Se desmarcar, a seção de conectar WhatsApp some de Configurações e os avisos automáticos param.
+                <span className="block text-uf-silver font-semibold mb-0.5">Usar WhatsApp pra mensageria</span>
+                Conecte o QR em Configurações do painel da loja.
               </span>
             </label>
 
             {whatsappHabilitado && (
               <div>
-                <label className="label">WhatsApp da loja</label>
+                <label className="label">WhatsApp da loja (contato)</label>
                 <input className="input-field" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} type="tel" inputMode="numeric" />
               </div>
             )}
 
             <div>
-              <label className="label">Pagamento</label>
-              <div className="flex gap-2 mb-2">
+              <label className="label">Integrar com</label>
+              <div className="space-y-2">
+                {plataformasParaDocumento(tipoDocumento).map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setIntegracao(p.value)}
+                    className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${
+                      integracao === p.value ? 'border-uf-blue' : 'border-transparent'
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold text-uf-silver">{p.label}</span>
+                  </button>
+                ))}
                 <button
                   type="button"
-                  onClick={() => setFormaPagamento('manual')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${formaPagamento === 'manual' ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
+                  onClick={() => setIntegracao('nao_integrar')}
+                  className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${
+                    integracao === 'nao_integrar' ? 'border-uf-blue' : 'border-transparent'
+                  }`}
                 >
-                  Cobrança manual
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormaPagamento('plataforma')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${formaPagamento === 'plataforma' ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
-                >
-                  Gerar QR Pix
+                  <span className="block text-sm font-semibold text-uf-silver">Não integrar plataforma de pagamentos</span>
                 </button>
               </div>
-              {formaPagamento === 'plataforma' && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    {plataformasParaDocumento(tipoDocumento).map((p) => (
-                      <button
-                        key={p.value}
-                        type="button"
-                        onClick={() => setPlataformaPagamento(p.value)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${plataformaPagamento === p.value ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                  {tipoDocumento === 'cpf' && (
-                    <p className="text-[11px] text-uf-silver-dim">Com CPF só Mercado Pago está disponível. AbacatePay exige CNPJ.</p>
-                  )}
-                  <input
-                    className="input-field"
-                    value={credencial}
-                    onChange={(e) => setCredencial(e.target.value)}
-                    placeholder="Nova credencial (deixe em branco pra manter a atual)"
-                  />
-                </div>
+              {tipoDocumento === 'cpf' && (
+                <p className="text-[11px] text-uf-silver-dim mt-2">Com CPF só Mercado Pago está disponível.</p>
+              )}
+              {(integracao === 'mercado_pago' || integracao === 'abacate_pay') && (
+                <input
+                  className="input-field mt-2"
+                  value={credencial}
+                  onChange={(e) => setCredencial(e.target.value)}
+                  placeholder="Nova credencial (deixe em branco pra manter a atual)"
+                />
               )}
             </div>
           </section>

@@ -1147,6 +1147,16 @@ const remoteApi = {
       status: () => request<EvolutionStatus>('/api/admin/whatsapp/status', { token: adminToken() }),
       connect: () => request<EvolutionConnect>('/api/admin/whatsapp/connect', { token: adminToken() }),
       logout: () => request<void>('/api/admin/whatsapp/logout', { method: 'POST', token: adminToken() }),
+      connectionEvents: () =>
+        request<
+          {
+            id: string
+            event_type: string
+            previous_state: string | null
+            new_state: string | null
+            created_at: string
+          }[]
+        >('/api/admin/whatsapp/connection-events', { token: adminToken() }),
       // Dispara pelo WhatsApp da loja pra cada cliente contemplado num
       // cupom alvo — a não ser que "não notificar clientes" tenha sido
       // marcado na criação (checado nos dois lados, front e Rust).
@@ -1156,6 +1166,10 @@ const remoteApi = {
           body: JSON.stringify({ coupon_id: couponId, custom_message: customMessage || null }),
           token: adminToken(),
         }),
+    },
+    onboardingGate: {
+      get: () =>
+        railwayAdmin<{ onboarding_hours_done: boolean }>('/api/admin/onboarding-gate'),
     },
   },
   // PDV — acessível por admin OU vendedor, os dois autenticados no mesmo
