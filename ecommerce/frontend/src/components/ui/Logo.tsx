@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import logoSrc from '../../assets/logo.png'
 import { isDemoModeActive } from '../../lib/demoMode'
 import UfersinMark from './UfersinMark'
 
@@ -8,20 +9,18 @@ const SIZES = {
   lg: 'h-40',
 }
 
+/** Logo do motor: demo → Ufersin; fora → marca Sunset (padrão
+ *  dev→demo→produção). Nome da loja do assinante vai no texto
+ *  (brandName / AdminLayout), não substitui o shell Sunset. */
 export default function Logo({ size = 'md', className }: { size?: keyof typeof SIZES; className?: string }) {
   if (isDemoModeActive()) {
     return <UfersinMark className={clsx('w-auto text-son-pink', SIZES[size], className)} />
   }
-  // Painel do assinante Resolutoo — nunca mostrar marca Sunset Tabas.
   return (
-    <span
-      className={clsx(
-        'inline-flex items-center font-black tracking-tight text-white',
-        size === 'sm' ? 'text-base' : size === 'md' ? 'text-xl' : 'text-3xl',
-        className
-      )}
-    >
-      Resolutoo
-    </span>
+    <img
+      src={logoSrc}
+      alt="Sunset"
+      className={clsx('w-auto object-contain drop-shadow-[0_0_16px_rgba(242,193,78,0.35)]', SIZES[size], className)}
+    />
   )
 }

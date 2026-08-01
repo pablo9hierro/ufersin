@@ -12,7 +12,8 @@ import { useActivePromotions } from '../hooks/usePromotions'
 import { useStoreStatus } from '../hooks/useStoreStatus'
 import type { BadgesLayout, LandingBadge } from '../types'
 import { getStoreOpenState } from '../lib/storeHours'
-import { isDemoModeActive, planoIncludes } from '../lib/demoMode'
+import { isDemoModeActive, planoIncludes, brandName } from '../lib/demoMode'
+import { useTenantConfig } from '../hooks/useTenantConfig'
 
 // Limiar de arrasto (px) pra contar como swipe de navegação em vez de tap
 // ou rolagem vertical da página — usado nos dois estilos de carrossel.
@@ -246,9 +247,18 @@ function BannerCarousel() {
 export default function Landing() {
   const navigate = useNavigate()
   const customerAuth = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
   const { data: storeStatus } = useStoreStatus()
   const { data: siteSettings } = useSiteSettings()
-  const defaultBadges = isDemoModeActive() ? UFERSIN_BADGES : SUNSET_BADGES
+  const tenantBadges: LandingBadge[] | null =
+    !isDemoModeActive() && tenantConfig?.loja_nome
+      ? [
+          { id: '1', text: brandName(tenantConfig.loja_nome).toUpperCase(), bold: true },
+          { id: '2', text: 'Experiência, vibe e essência', bold: false },
+          { id: '3', text: 'A vibe começa aqui', bold: false },
+        ]
+      : null
+  const defaultBadges = isDemoModeActive() ? UFERSIN_BADGES : tenantBadges ?? SUNSET_BADGES
   const badges: LandingBadge[] = siteSettings && siteSettings.badges.length > 0 ? siteSettings.badges : defaultBadges
   const badgesLayout: BadgesLayout = siteSettings?.badges_layout ?? 'row'
   const badgesGap = siteSettings?.badges_gap ?? 8

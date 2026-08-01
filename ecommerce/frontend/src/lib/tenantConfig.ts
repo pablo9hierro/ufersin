@@ -54,6 +54,15 @@ export function persistTenantSlug(slug: string) {
 
 export function resolveTenantSlug(): string {
   if (typeof window === 'undefined') return ENV_TENANT_SLUG
+  // Query ?tenant= manda no path público da loja — tem prioridade sobre
+  // localStorage (login admin anterior na mesma origem não pode sequestrar
+  // a vitrine de outro slug).
+  try {
+    const q = new URLSearchParams(window.location.search).get('tenant')?.trim()
+    if (q) return q.toLowerCase()
+  } catch {
+    /* ignore */
+  }
   try {
     const fromAuth = localStorage.getItem(SLUG_STORAGE_KEY)?.trim()
     if (fromAuth) return fromAuth.toLowerCase()
@@ -61,12 +70,6 @@ export function resolveTenantSlug(): string {
     /* ignore */
   }
   if (ENV_TENANT_SLUG) return ENV_TENANT_SLUG
-  try {
-    const q = new URLSearchParams(window.location.search).get('tenant')?.trim()
-    if (q) return q.toLowerCase()
-  } catch {
-    /* ignore */
-  }
   return ''
 }
 

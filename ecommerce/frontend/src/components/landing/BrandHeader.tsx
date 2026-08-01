@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Heart, History, LogIn, LogOut, Menu, Tag, UserPlus } from 'lucide-react'
 import WhatsAppFab from '../WhatsAppFab'
 import CustomerAuthModal from '../CustomerAuthModal'
 import { useCustomerAuth } from '../../store/customerAuth'
 import { brandName } from '../../lib/demoMode'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { persistTenantSlug, resolveTenantSlug } from '../../lib/tenantConfig'
 
 // Mesmo navbar de /catalogo (moldura sunset-nav-bar), só que com
 // conteúdo próprio da landing: menu / nome da marca no estilo
@@ -13,8 +15,16 @@ import { brandName } from '../../lib/demoMode'
 export default function BrandHeader() {
   const navigate = useNavigate()
   const customerAuth = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
   const [menuOpen, setMenuOpen] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null)
+
+  useEffect(() => {
+    const slug = resolveTenantSlug()
+    if (slug) persistTenantSlug(slug)
+  }, [])
+
+  const name = brandName(tenantConfig?.loja_nome)
 
   return (
     <header className="px-5 sm:px-10 pt-5 max-w-6xl mx-auto">
@@ -138,7 +148,7 @@ export default function BrandHeader() {
         </div>
         <div className="sunset-nav-slot sunset-nav-slot-center">
           <div className="sunset-brand-btn">
-            <span>{brandName()}</span>
+            <span>{name}</span>
           </div>
         </div>
         <div className="sunset-nav-slot sunset-nav-slot-end">

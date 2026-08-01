@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Heart, LogIn, UserPlus } from 'lucide-react'
 import SunsetCartIcon from '../SunsetCartIcon'
@@ -7,6 +7,8 @@ import CustomerAuthModal from '../CustomerAuthModal'
 import { useCart } from '../../store/cart'
 import { useCustomerAuth } from '../../store/customerAuth'
 import { brandName } from '../../lib/demoMode'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { persistTenantSlug, resolveTenantSlug } from '../../lib/tenantConfig'
 
 // O logo clicável (header > div > a > img) foi retirado de todas as
 // páginas de cliente a pedido — só sobra o "Voltar" do lado esquerdo.
@@ -24,8 +26,16 @@ export default function SiteHeader({
   const navigate = useNavigate()
   const count = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
   const customerAuth = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
   const [guestMenuOpen, setGuestMenuOpen] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null)
+
+  useEffect(() => {
+    const slug = resolveTenantSlug()
+    if (slug) persistTenantSlug(slug)
+  }, [])
+
+  const name = brandName(tenantConfig?.loja_nome)
 
   return (
     <header className="px-5 sm:px-10 pt-5 max-w-6xl mx-auto">
@@ -61,7 +71,7 @@ export default function SiteHeader({
         </div>
         <div className="sunset-nav-slot sunset-nav-slot-center">
           <Link to="/" className="sunset-brand-btn" aria-label="Página inicial">
-            <span>{brandName()}</span>
+            <span>{name}</span>
           </Link>
         </div>
         <div className="sunset-nav-slot sunset-nav-slot-end">

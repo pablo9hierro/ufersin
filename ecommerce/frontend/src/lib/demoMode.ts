@@ -1,3 +1,5 @@
+import { getCachedTenantConfig, resolveTenantSlug } from './tenantConfig'
+
 export type PlanoCode = 'essential' | 'management' | 'premium'
 
 // Modo demo da plataforma Rodoletas: uma aba inteira passa a rodar 100%
@@ -39,9 +41,19 @@ export function planoIncludes(recurso: PlanoCode): boolean {
   return planoAtLeast(atual, recurso)
 }
 
-// Nome de marca: demo → Ufersin; loja real → nome do tenant se conhecido.
+/**
+ * Nome da marca na vitrine/admin.
+ * - Demo pública → Ufersin
+ * - Assinante Resolutoo → loja_nome do onboarding (ex.: Resusu)
+ * - Deploy Sunset single-tenant (sem slug) → Sunset Tabas
+ */
 export function brandName(lojaNome?: string | null): string {
   if (isDemoModeActive()) return 'Ufersin'
-  const n = lojaNome?.trim()
-  return n || 'Minha loja'
+  const arg = lojaNome?.trim()
+  if (arg) return arg
+  const cached = getCachedTenantConfig()
+  if (cached.loja_nome?.trim()) return cached.loja_nome.trim()
+  const slug = cached.slug?.trim() || resolveTenantSlug()
+  if (slug) return slug
+  return 'Sunset Tabas'
 }
