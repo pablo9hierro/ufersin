@@ -160,6 +160,11 @@ export default function Assinar() {
           {preview && (
             <p className="text-xs text-emerald-400 mb-1">
               Cupom {preview.code}: de R$ {formatBRL(preview.monthly_before)} → R$ {formatBRL(preview.monthly_after)}/mês
+              {preview.duration_kind === 'lifetime_current_plan'
+                ? ' · vitalício neste plano'
+                : preview.duration_days != null
+                  ? ` · ${preview.duration_days} dias`
+                  : ''}
             </p>
           )}
           {ciclo === 'mensal' ? (

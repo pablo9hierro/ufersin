@@ -360,6 +360,22 @@ pub async fn create_coupon(
     if code.is_empty() {
         return Err(AppError::BadRequest("código vazio".to_string()));
     }
+
+    // Vitalício: desconto enquanto o assinante permanecer no plano do resgate.
+    // Sem janela (duration_days) e sem teto de resgates (max_redemptions).
+    // Timed: exige dias + máximo de usos.
+    let (duration_days, max_redemptions) = if body.duration_kind == "lifetime_current_plan" {
+        (None, None)
+    } else {
+        let days = body.duration_days.filter(|d| *d > 0).ok_or_else(|| {
+            AppError::BadRequest("cupom por tempo limitado exige duration_days > 0".to_string())
+        })?;
+        let max = body.max_redemptions.filter(|m| *m > 0).ok_or_else(|| {
+            AppError::BadRequest("cupom por tempo limitado exige max_redemptions > 0".to_string())
+        })?;
+        (Some(days), Some(max))
+    };
+
     let id = uuid::Uuid::new_v4().to_string();
     sqlx::query(
         "INSERT INTO platform_coupons \
@@ -371,13 +387,19 @@ pub async fn create_coupon(
     .bind(&body.discount_type)
     .bind(body.discount_value)
     .bind(&body.duration_kind)
-    .bind(body.duration_days)
-    .bind(body.max_redemptions)
+    .bind(duration_days)
+    .bind(max_redemptions)
     .bind(body.notes.unwrap_or_default())
     .execute(&state.pool)
     .await
     .map_err(|e| AppError::BadRequest(format!("não foi possível criar cupom: {e}")))?;
-    Ok(Json(serde_json::json!({ "id": id, "code": code })))
+    Ok(Json(serde_json::json!({
+        "id": id,
+        "code": code,
+        "duration_kind": body.duration_kind,
+        "duration_days": duration_days,
+        "max_redemptions": max_redemptions,
+    })))
 }
 
 /// Quem sou eu no painel — front usa pra redirecionar login.

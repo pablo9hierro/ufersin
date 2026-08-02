@@ -360,6 +360,18 @@ export default function Dashboard() {
 
   const handleCreateCoupon = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
+    const isTimed = couponForm.duration_kind === 'timed'
+    const days = parseInt(couponForm.duration_days, 10)
+    const maxUses = parseInt(couponForm.max_redemptions, 10)
+    if (isTimed && (!Number.isFinite(days) || days <= 0)) {
+      setError('Informe a duração em dias para cupom por tempo limitado.')
+      return
+    }
+    if (isTimed && (!Number.isFinite(maxUses) || maxUses <= 0)) {
+      setError('Informe o máximo de resgates para cupom por tempo limitado.')
+      return
+    }
     setBusy(true)
     try {
       await api.superadminCreateCoupon({
@@ -367,11 +379,20 @@ export default function Dashboard() {
         discount_type: couponForm.discount_type,
         discount_value: parseFloat(couponForm.discount_value.replace(',', '.')),
         duration_kind: couponForm.duration_kind,
-        duration_days: couponForm.duration_kind === 'timed' ? parseInt(couponForm.duration_days, 10) : undefined,
-        max_redemptions: couponForm.max_redemptions ? parseInt(couponForm.max_redemptions, 10) : undefined,
+        // Vitalício: sem janela e sem teto — API força null também.
+        duration_days: isTimed ? days : null,
+        max_redemptions: isTimed ? maxUses : null,
         notes: couponForm.notes || undefined,
       })
-      setCouponForm({ code: '', discount_type: 'percent', discount_value: '10', duration_kind: 'lifetime_current_plan', duration_days: '30', max_redemptions: '', notes: '' })
+      setCouponForm({
+        code: '',
+        discount_type: 'percent',
+        discount_value: '10',
+        duration_kind: 'lifetime_current_plan',
+        duration_days: '30',
+        max_redemptions: '',
+        notes: '',
+      })
       await loadCupons()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Erro ao criar cupom.')
@@ -553,16 +574,25 @@ export default function Dashboard() {
               <section className="uf-glass rounded-2xl p-5">
                 <h2 className="font-bold text-sm mb-4">Cupons ativos</h2>
                 <ul className="space-y-2 mb-6">
-                  {coupons.map((c) => (
-                    <li key={c.id} className="flex flex-wrap justify-between gap-2 text-sm py-2 border-b border-white/5">
-                      <span className="font-mono font-semibold">{c.code}</span>
-                      <span className="text-uf-silver-dim">
-                        {c.discount_type === 'percent' ? `${c.discount_value}%` : `R$ ${formatBRL(c.discount_value)}`} · {c.duration_kind}
-                        {c.duration_days != null && ` (${c.duration_days}d)`} · {c.redemptions}
-                        {c.max_redemptions != null ? `/${c.max_redemptions}` : ''} usos
-                      </span>
-                    </li>
-                  ))}
+                  {coupons.map((c) => {
+                    const kindLabel =
+                      c.duration_kind === 'lifetime_current_plan'
+                        ? 'Vitalício no plano atual'
+                        : `Tempo limitado${c.duration_days != null ? ` (${c.duration_days}d)` : ''}`
+                    const usesLabel =
+                      c.duration_kind === 'lifetime_current_plan'
+                        ? `${c.redemptions} usos (ilimitado)`
+                        : `${c.redemptions}${c.max_redemptions != null ? `/${c.max_redemptions}` : ''} usos`
+                    return (
+                      <li key={c.id} className="flex flex-wrap justify-between gap-2 text-sm py-2 border-b border-white/5">
+                        <span className="font-mono font-semibold">{c.code}</span>
+                        <span className="text-uf-silver-dim">
+                          {c.discount_type === 'percent' ? `${c.discount_value}%` : `R$ ${formatBRL(c.discount_value)}`} · {kindLabel} ·{' '}
+                          {usesLabel}
+                        </span>
+                      </li>
+                    )
+                  })}
                   {coupons.length === 0 && <li className="text-sm text-uf-silver-dim">Nenhum cupom.</li>}
                 </ul>
 
@@ -570,7 +600,13 @@ export default function Dashboard() {
                   <Percent className="w-4 h-4" /> Novo cupom
                 </h3>
                 <form onSubmit={handleCreateCoupon} className="space-y-3">
-                  <input className="input-field" placeholder="Código" value={couponForm.code} onChange={(e) => setCouponForm((f) => ({ ...f, code: e.target.value }))} />
+                  <input
+                    className="input-field"
+                    placeholder="Código"
+                    value={couponForm.code}
+                    onChange={(e) => setCouponForm((f) => ({ ...f, code: e.target.value }))}
+                    required
+                  />
                   <div className="grid grid-cols-2 gap-3">
                     <select
                       className="input-field"
@@ -586,34 +622,49 @@ export default function Dashboard() {
                       value={couponForm.discount_value}
                       onChange={(e) => setCouponForm((f) => ({ ...f, discount_value: e.target.value }))}
                       inputMode="decimal"
+                      required
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <select
-                      className="input-field"
-                      value={couponForm.duration_kind}
-                      onChange={(e) => setCouponForm((f) => ({ ...f, duration_kind: e.target.value as 'timed' | 'lifetime_current_plan' }))}
-                    >
-                      <option value="lifetime_current_plan">Vitalício no plano atual</option>
-                      <option value="timed">Por tempo limitado</option>
-                    </select>
-                    {couponForm.duration_kind === 'timed' && (
+                  <select
+                    className="input-field"
+                    value={couponForm.duration_kind}
+                    onChange={(e) =>
+                      setCouponForm((f) => ({
+                        ...f,
+                        duration_kind: e.target.value as 'timed' | 'lifetime_current_plan',
+                        // Limpa teto ao voltar pra vitalício — não deve ir no payload.
+                        max_redemptions: e.target.value === 'lifetime_current_plan' ? '' : f.max_redemptions,
+                      }))
+                    }
+                  >
+                    <option value="lifetime_current_plan">Vitalício no plano atual</option>
+                    <option value="timed">Por tempo limitado</option>
+                  </select>
+                  {couponForm.duration_kind === 'lifetime_current_plan' ? (
+                    <p className="text-[11px] text-uf-silver-dim">
+                      Desconto enquanto o lojista permanecer no plano do resgate. Sem prazo e sem limite de resgates.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
                       <input
                         className="input-field"
-                        placeholder="Dias"
+                        placeholder="Dias de validade"
                         value={couponForm.duration_days}
                         onChange={(e) => setCouponForm((f) => ({ ...f, duration_days: e.target.value }))}
                         inputMode="numeric"
+                        required
                       />
-                    )}
-                  </div>
-                  <input
-                    className="input-field"
-                    placeholder="Máx. resgates (opcional)"
-                    value={couponForm.max_redemptions}
-                    onChange={(e) => setCouponForm((f) => ({ ...f, max_redemptions: e.target.value }))}
-                    inputMode="numeric"
-                  />
+                      <input
+                        className="input-field"
+                        placeholder="Máx. resgates"
+                        value={couponForm.max_redemptions}
+                        onChange={(e) => setCouponForm((f) => ({ ...f, max_redemptions: e.target.value }))}
+                        inputMode="numeric"
+                        required
+                      />
+                    </div>
+                  )}
+                  {error && section === 'cupons' && <p className="text-sm text-red-400">{error}</p>}
                   <button type="submit" disabled={busy} className="btn-primary w-full py-2.5 text-sm">
                     Criar cupom
                   </button>
