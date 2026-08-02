@@ -14,7 +14,14 @@ import {
 import Logo from '../ui/Logo'
 import OnboardingGate from '../admin/OnboardingGate'
 import { useAdminAuth } from '../../store/adminAuth'
-import { isDemoModeActive, planoAtLeast, planoIncludes, type PlanoCode } from '../../lib/demoMode'
+import {
+  clearDemoStaffSession,
+  getDemoStaffSession,
+  isDemoModeActive,
+  planoAtLeast,
+  planoIncludes,
+  type PlanoCode,
+} from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { adminService } from '../../services/adminService'
 import { subscribeWhatsAppGateChange } from '../../lib/whatsappGateEvents'
@@ -47,6 +54,10 @@ export default function AdminLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const demo = isDemoModeActive()
+  const demoStaff = getDemoStaffSession()
+  const demoAdmin = demo && demoStaff?.role === 'admin'
+  const effectiveToken = token || (demoAdmin ? demoStaff!.token : null)
+  const effectiveName = demoAdmin ? demoStaff!.name : name
   const tenantConfig = useTenantConfig()
   const tenantPlano = tenantConfig?.plano
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
@@ -193,7 +204,7 @@ export default function AdminLayout() {
     }
   }, [demo, whatsappRequired, gateLocked, applyVerdict])
 
-  if (!token) return <Navigate to="/admin/login" state={{ from: location }} replace />
+  if (!effectiveToken) return <Navigate to="/admin/login" state={{ from: location }} replace />
 
   if (gateLocked === null) {
     return (
@@ -231,13 +242,14 @@ export default function AdminLayout() {
   }
 
   const handleLogout = () => {
-    logout()
-    // Demo pública: nunca mandar pro formulário de login (autofill da
-    // plataforma no mesmo domínio). Volta pra vitrine mock da aba.
+    // Demo pública: limpa só sessionStorage da aba — nunca useAdminAuth.logout()
+    // (isso apagaria o JWT real do lojista no localStorage compartilhado).
     if (demo) {
+      clearDemoStaffSession()
       navigate('/', { replace: true })
       return
     }
+    logout()
     navigate('/admin/login')
   }
 
@@ -253,7 +265,7 @@ export default function AdminLayout() {
         <div className="px-5 py-5 border-b border-white/5">
           <Logo size="sm" />
           {lojaLabel ? <p className="text-xs font-semibold text-white mt-2 truncate">{lojaLabel}</p> : null}
-          <p className="text-xs text-son-silver-dim mt-1">Olá, {name}</p>
+          <p className="text-xs text-son-silver-dim mt-1">Olá, {effectiveName}</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {visibleItems.map(({ href, label, icon: Icon }) => {

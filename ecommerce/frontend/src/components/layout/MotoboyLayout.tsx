@@ -3,7 +3,12 @@ import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-d
 import { LogOut, MessageCircle, Moon, Navigation, Sun, Truck, Wallet } from 'lucide-react'
 import Logo from '../ui/Logo'
 import { motoboyService } from '../../services/motoboyService'
-import { isDemoModeActive, planoIncludes } from '../../lib/demoMode'
+import {
+  clearDemoStaffSession,
+  getDemoStaffSession,
+  isDemoModeActive,
+  planoIncludes,
+} from '../../lib/demoMode'
 import { useMotoboyAuth } from '../../store/motoboyAuth'
 import { useMotoboyTheme } from '../../store/motoboyTheme'
 
@@ -21,12 +26,17 @@ export default function MotoboyLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [hasActiveRun, setHasActiveRun] = useState(false)
+  const demo = isDemoModeActive()
+  const demoStaff = getDemoStaffSession()
+  const demoMotoboy = demo && demoStaff?.role === 'motoboy'
+  const effectiveToken = token || (demoMotoboy ? demoStaff!.token : null)
+  const effectiveName = demoMotoboy ? demoStaff!.name : name
 
   // Lembrete persistente de corrida ativa, visível em qualquer página do
   // dashboard — a corrida em si mora no banco (não aqui), isso é só um
   // atalho pra ele não esquecer de voltar pro mapa.
   useEffect(() => {
-    if (!token) return
+    if (!effectiveToken) return
     let cancelled = false
     const check = () => motoboyService.runs.active().then((r) => !cancelled && setHasActiveRun(!!r))
     check()
@@ -35,14 +45,19 @@ export default function MotoboyLayout() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [token])
+  }, [effectiveToken])
 
-  if (!token) return <Navigate to="/funcionarios/login" state={{ from: location }} replace />
+  if (!effectiveToken) return <Navigate to="/funcionarios/login" state={{ from: location }} replace />
   // Motoboy só entra no plano Management pra cima — só relevante em modo
   // demo (fora dele nunca há restrição, ver demoMode.ts).
-  if (isDemoModeActive() && !planoIncludes('management')) return <Navigate to="/" replace />
+  if (demo && !planoIncludes('management')) return <Navigate to="/" replace />
 
   const handleLogout = () => {
+    if (demo) {
+      clearDemoStaffSession()
+      navigate('/', { replace: true })
+      return
+    }
     logout()
     navigate('/funcionarios/login')
   }
@@ -52,7 +67,7 @@ export default function MotoboyLayout() {
       <header className="bg-son-surface border-b border-white/5 px-4 sm:px-8 py-4 flex items-center justify-between sticky top-0 z-10">
         <div>
           <Logo size="sm" />
-          <p className="text-xs text-son-silver-dim mt-0.5">Olá, {name}</p>
+          <p className="text-xs text-son-silver-dim mt-0.5">Olá, {effectiveName}</p>
         </div>
         <div className="flex items-center gap-3">
           <button

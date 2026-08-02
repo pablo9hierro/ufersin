@@ -1,6 +1,7 @@
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ClipboardList, LogOut, ShoppingCart, Wallet } from 'lucide-react'
 import Logo from '../ui/Logo'
+import { clearDemoStaffSession, getDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
 import { useVendedorAuth } from '../../store/vendedorAuth'
 
 // Layout 100% próprio do vendedor — nada compartilhado com AdminLayout
@@ -21,10 +22,20 @@ export default function VendedorLayout() {
   const { token, name, logout } = useVendedorAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const demo = isDemoModeActive()
+  const demoStaff = getDemoStaffSession()
+  const demoVendedor = demo && demoStaff?.role === 'vendedor'
+  const effectiveToken = token || (demoVendedor ? demoStaff!.token : null)
+  const effectiveName = demoVendedor ? demoStaff!.name : name
 
-  if (!token) return <Navigate to="/funcionarios/login" state={{ from: location }} replace />
+  if (!effectiveToken) return <Navigate to="/funcionarios/login" state={{ from: location }} replace />
 
   const handleLogout = () => {
+    if (demo) {
+      clearDemoStaffSession()
+      navigate('/', { replace: true })
+      return
+    }
     logout()
     navigate('/funcionarios/login')
   }
@@ -34,7 +45,7 @@ export default function VendedorLayout() {
       <aside className="hidden md:flex md:flex-col w-56 shrink-0 bg-son-surface border-r border-white/5 min-h-screen sticky top-0">
         <div className="px-5 py-5 border-b border-white/5">
           <Logo size="sm" />
-          <p className="text-xs text-son-silver-dim mt-1">Olá, {name}</p>
+          <p className="text-xs text-son-silver-dim mt-1">Olá, {effectiveName}</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {

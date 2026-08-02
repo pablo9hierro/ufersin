@@ -1,6 +1,14 @@
-import { clearTenantSlug, getCachedTenantConfig, resolveTenantSlug, resetTenantConfigCache } from './tenantConfig'
+import { getCachedTenantConfig, resolveTenantSlug, resetTenantConfigCache } from './tenantConfig'
 
 export type PlanoCode = 'essential' | 'management' | 'premium'
+
+export type DemoStaffRole = 'admin' | 'motoboy' | 'vendedor'
+
+export interface DemoStaffSession {
+  role: DemoStaffRole
+  token: string
+  name: string
+}
 
 // Modo demo da plataforma Rodoletas: uma aba inteira passa a rodar 100%
 // em cima do modo demonstração já existente (localApi.ts/localData.ts —
@@ -10,14 +18,17 @@ export type PlanoCode = 'essential' | 'management' | 'premium'
 // fechar; nunca vaza pra uma aba normal usando o backend de verdade.
 const ACTIVE_KEY = 'rodoletas_demo_active'
 const PLANO_KEY = 'rodoletas_demo_plano'
+/** Sessão staff da demo — sessionStorage only (nunca localStorage / zustand persist). */
+const STAFF_KEY = 'rodoletas_demo_staff'
 
 export function activateDemoMode(plano: PlanoCode) {
   sessionStorage.setItem(ACTIVE_KEY, 'true')
   sessionStorage.setItem(PLANO_KEY, plano)
-  // Slug de loja real em localStorage (visita anterior a /loja/?tenant=…)
-  // NÃO pode sequestrar a demo — senão isDemoModeActive falhava, o token
-  // mock batia na API real → 401 → /admin/login com autofill do superadmin.
-  clearTenantSlug()
+  // NÃO limpa resolutoo_tenant_slug em localStorage: a demo iframe (/loja)
+  // compartilha origem com o admin real — wipe global derrubava lojistas
+  // e deixava /admin/login com Entrar disabled (!tenantSlug).
+  // resolveTenantSlug() já ignora slug persistido enquanto a flag de demo
+  // estiver ativa nesta aba.
   resetTenantConfigCache()
 }
 
@@ -33,6 +44,49 @@ export function isDemoModeActive(): boolean {
     /* ignore */
   }
   return true
+}
+
+/**
+ * Autenticação staff da demo pública — só sessionStorage desta aba.
+ * Nunca chama useAdminAuth/useMotoboyAuth/useVendedorAuth (localStorage
+ * compartilhado com a loja real / iframe same-origin).
+ */
+export function setDemoStaffSession(session: DemoStaffSession) {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.setItem(STAFF_KEY, JSON.stringify(session))
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearDemoStaffSession() {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.removeItem(STAFF_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getDemoStaffSession(): DemoStaffSession | null {
+  if (!isDemoModeActive()) return null
+  try {
+    const raw = sessionStorage.getItem(STAFF_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<DemoStaffSession>
+    if (
+      (parsed.role === 'admin' || parsed.role === 'motoboy' || parsed.role === 'vendedor') &&
+      typeof parsed.token === 'string' &&
+      parsed.token &&
+      typeof parsed.name === 'string'
+    ) {
+      return { role: parsed.role, token: parsed.token, name: parsed.name }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
 }
 
 export function getDemoPlano(): PlanoCode | null {

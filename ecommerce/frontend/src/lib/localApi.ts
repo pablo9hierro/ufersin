@@ -27,6 +27,7 @@ import { FALLBACK as STORE_LOCATION } from './geo/mapa'
 import { isScheduledOpenNow } from './storeHours'
 import { useVendedorAuth } from '../store/vendedorAuth'
 import { useMotoboyAuth } from '../store/motoboyAuth'
+import { getDemoStaffSession } from './demoMode'
 import type {
   BadgesLayout,
   BadgesSettings,
@@ -79,6 +80,10 @@ function stripPassword(m: LocalMotoboy): Motoboy {
 }
 
 function currentMotoboyId(): string {
+  const demoStaff = getDemoStaffSession()
+  if (demoStaff?.role === 'motoboy' && demoStaff.token.startsWith('local-motoboy:')) {
+    return demoStaff.token.slice('local-motoboy:'.length)
+  }
   const token = useMotoboyAuth.getState().token
   if (!token || !token.startsWith('local-motoboy:')) {
     throw new ApiError(401, 'not authenticated')
@@ -2028,6 +2033,13 @@ async function deletePromotion(id: string): Promise<void> {
 // suficiente pra reconhecer quem fez a venda nos relatórios em modo
 // demonstração.
 function pdvActorFromToken(): { role: 'admin' | 'vendedor'; id: string } {
+  const demoStaff = getDemoStaffSession()
+  if (demoStaff?.role === 'vendedor') {
+    return { role: 'vendedor', id: demoStaff.token.replace('local-vendedor:', '') }
+  }
+  if (demoStaff?.role === 'admin') {
+    return { role: 'admin', id: 'admin' }
+  }
   const vendedorToken = useVendedorAuth.getState().token
   if (vendedorToken) {
     return { role: 'vendedor', id: vendedorToken.replace('local-vendedor:', '') }

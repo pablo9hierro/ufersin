@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, Loader2, Lock, Users } from 'lucide-react'
 import Logo from '../../components/ui/Logo'
 import { ApiError } from '../../lib/apiError'
-import { isDemoModeActive } from '../../lib/demoMode'
+import { getDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
 import { authService } from '../../services/authService'
 import { useAdminAuth } from '../../store/adminAuth'
 import { persistTenantSlug, resetTenantConfigCache, resolveTenantSlug } from '../../lib/tenantConfig'
@@ -23,14 +23,15 @@ import { persistTenantSlug, resetTenantConfigCache, resolveTenantSlug } from '..
 //
 // Demo pública NUNCA deve cair aqui — /demo-entrar já autentica com mock.
 export default function AdminLogin() {
-  const { token, login } = useAdminAuth()
+  const { token, login, tenantSlug: authTenantSlug } = useAdminAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   // Só aceita e-mail da query quando há tenant (deep link do Meu Plano).
   // Sem tenant, ignorar ?email= evita vazar e-mail de outra sessão/plataforma.
   const tenantFromUrl = (searchParams.get('tenant') || '').trim().toLowerCase()
   const emailFromUrl = tenantFromUrl ? (searchParams.get('email') || '').trim() : ''
-  const tenantSlug = tenantFromUrl || resolveTenantSlug()
+  const tenantSlug =
+    tenantFromUrl || resolveTenantSlug() || (authTenantSlug || '').trim().toLowerCase()
 
   const [email, setEmail] = useState(emailFromUrl)
   const [password, setPassword] = useState('')
@@ -39,21 +40,39 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false)
 
   // Demo ativa nesta aba: pular o formulário (nunca pedir senha / autofill).
-  if (isDemoModeActive()) return <Navigate to="/admin/pedidos" replace />
+  if (isDemoModeActive()) {
+    const staff = getDemoStaffSession()
+    if (staff?.role === 'admin') return <Navigate to="/admin/pedidos" replace />
+    return <Navigate to="/" replace />
+  }
   if (token) return <Navigate to="/admin/pedidos" replace />
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
+    // FormData pega valores preenchidos pelo gerenciador de senhas mesmo
+    // quando o React state ainda está vazio (autocomplete sem onChange).
+    const fd = new FormData(e.currentTarget)
+    const emailVal = String(fd.get('loja-admin-email') || email).trim()
+    const passwordVal = String(fd.get('loja-admin-password') || password)
+    if (emailVal !== email) setEmail(emailVal)
+    if (passwordVal !== password) setPassword(passwordVal)
+
     const slug =
-      (searchParams.get('tenant') || '').trim().toLowerCase() || resolveTenantSlug()
+      (searchParams.get('tenant') || '').trim().toLowerCase() ||
+      resolveTenantSlug() ||
+      (authTenantSlug || '').trim().toLowerCase()
     if (!slug) {
       setError('Loja não identificada. Abra o login pelo link do painel Resolutoo.')
       return
     }
+    if (!emailVal || !passwordVal) {
+      setError('Informe e-mail e senha.')
+      return
+    }
     setLoading(true)
     try {
-      const res = await authService.staff.adminLogin(email, password, slug)
+      const res = await authService.staff.adminLogin(emailVal, passwordVal, slug)
       persistTenantSlug(slug)
       resetTenantConfigCache()
       login(res.token, res.name, slug)
@@ -128,7 +147,9 @@ export default function AdminLogin() {
               </p>
             </div>
           )}
-          <button type="submit" disabled={loading || !tenantSlug} className="btn-primary w-full">
+          {/* Só loading desabilita — falta de tenant valida no submit (Entrar
+              travado por !tenantSlug impedia re-login após wipe da demo). */}
+          <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Entrar
           </button>

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
-import { useAdminAuth } from '../store/adminAuth'
-import { useMotoboyAuth } from '../store/motoboyAuth'
-import { useVendedorAuth } from '../store/vendedorAuth'
-import { activateDemoMode, type PlanoCode } from '../lib/demoMode'
+import {
+  activateDemoMode,
+  setDemoStaffSession,
+  type PlanoCode,
+} from '../lib/demoMode'
 import { ADMIN_CREDENTIALS, FAKE_MOTOBOY_ID } from '../lib/localData'
 
 const VALID_ROLES = new Set(['admin', 'motoboy', 'vitrine', 'vendedor'])
@@ -20,9 +21,13 @@ const VALID_ROLES = new Set(['admin', 'motoboy', 'vitrine', 'vendedor'])
  *
  * Nunca redireciona pra /admin/login — a demo entra já autenticada.
  *
+ * Staff demo vive só em sessionStorage (`setDemoStaffSession`) — NÃO
+ * sobrescreve useAdminAuth / localStorage, senão a iframe same-origin
+ * em /demo destrói a sessão real do lojista em /loja/admin.
+ *
  * `?role=admin&token=<jwt>` continua aceito por compatibilidade (era o
  * modo anterior, com um backend + tenant demo reais) mas não é mais usado
- * pelo fluxo atual do Rodoletas.
+ * pelo fluxo atual do Rodoletas — e também só grava em sessionStorage.
  */
 export default function DemoEntrar() {
   const [searchParams] = useSearchParams()
@@ -30,20 +35,34 @@ export default function DemoEntrar() {
   const token = searchParams.get('token')
   const planoParam = searchParams.get('plano') as PlanoCode | null
   const plano = planoParam === 'essential' || planoParam === 'management' || planoParam === 'premium' ? planoParam : null
-  const adminAuth = useAdminAuth()
-  const motoboyAuth = useMotoboyAuth()
-  const vendedorAuth = useVendedorAuth()
-  // Não navegar com token pré-existente (JWT real em localStorage) antes
-  // de ativar demo + trocar pelo token mock — senão AdminLayout batia na
-  // API real e o 401 mandava pra /admin/login.
+  // Não navegar antes de ativar demo + staff session — senão AdminLayout
+  // via real API / sem token e o 401 mandava pra /admin/login.
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
     if (plano) {
       activateDemoMode(plano)
-      if (role === 'admin') adminAuth.login('local-admin-token', ADMIN_CREDENTIALS.name, null)
-      if (role === 'motoboy') motoboyAuth.login(`local-motoboy:${FAKE_MOTOBOY_ID}`, 'Motoboy Teste')
-      if (role === 'vendedor') vendedorAuth.login('local-vendedor-token', 'Vendedor Teste')
+      if (role === 'admin') {
+        setDemoStaffSession({
+          role: 'admin',
+          token: 'local-admin-token',
+          name: ADMIN_CREDENTIALS.name,
+        })
+      }
+      if (role === 'motoboy') {
+        setDemoStaffSession({
+          role: 'motoboy',
+          token: `local-motoboy:${FAKE_MOTOBOY_ID}`,
+          name: 'Motoboy Teste',
+        })
+      }
+      if (role === 'vendedor') {
+        setDemoStaffSession({
+          role: 'vendedor',
+          token: 'local-vendedor-token',
+          name: 'Vendedor Teste',
+        })
+      }
       setReady(true)
       return
     }
@@ -51,8 +70,15 @@ export default function DemoEntrar() {
       setReady(true)
       return
     }
-    if (role === 'admin') adminAuth.login(token, 'Admin (demo)', null)
-    if (role === 'motoboy') motoboyAuth.login(token, 'Motoboy (demo)')
+    // Legacy ?token= JWT path — still session-scoped, never touch zustand persist.
+    if (role === 'admin') {
+      setDemoStaffSession({ role: 'admin', token, name: 'Admin (demo)' })
+      activateDemoMode('premium')
+    }
+    if (role === 'motoboy') {
+      setDemoStaffSession({ role: 'motoboy', token, name: 'Motoboy (demo)' })
+      activateDemoMode('premium')
+    }
     setReady(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, token, plano])

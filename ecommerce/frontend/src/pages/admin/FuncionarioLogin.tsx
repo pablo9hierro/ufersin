@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Loader2, Lock, Store, Truck } from 'lucide-react'
 import Logo from '../../components/ui/Logo'
 import { ApiError } from '../../lib/apiError'
+import { getDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
 import { authService } from '../../services/authService'
 import { useVendedorAuth } from '../../store/vendedorAuth'
 import { useMotoboyAuth } from '../../store/motoboyAuth'
@@ -27,6 +28,12 @@ export default function FuncionarioLogin() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
+  if (isDemoModeActive()) {
+    const staff = getDemoStaffSession()
+    if (staff?.role === 'motoboy') return <Navigate to="/funcionarios/motoboy" replace />
+    if (staff?.role === 'vendedor') return <Navigate to="/funcionarios/vendedor/pedidos" replace />
+    return <Navigate to="/" replace />
+  }
   if (motoboyToken) return <Navigate to="/funcionarios/motoboy" replace />
   if (vendedorToken) return <Navigate to="/funcionarios/vendedor" replace />
 
