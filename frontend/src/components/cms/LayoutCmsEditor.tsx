@@ -145,10 +145,15 @@ export default function LayoutCmsEditor({
                   aria-label={`Preço ${p.name}`}
                 />
                 <span className="text-xs text-uf-silver-dim">R$/mês</span>
-                <label className="flex items-center gap-1.5 text-xs text-uf-silver-dim cursor-pointer">
+                <label
+                  htmlFor={`plan-active-${p.code}`}
+                  className="flex items-center gap-1.5 text-xs text-uf-silver-dim cursor-pointer"
+                >
                   <input
+                    id={`plan-active-${p.code}`}
+                    name={`plan-active-${p.code}`}
                     type="checkbox"
-                    checked={p.active}
+                    checked={Boolean(p.active)}
                     disabled={busy}
                     onChange={(e) => void onToggleActive(p.code, e.target.checked)}
                   />
@@ -228,12 +233,14 @@ export default function LayoutCmsEditor({
               )}
               {tab === 'demo' && (
                 <DemoPage
-                  key={`demo-${plans.map((p) => `${p.code}:${p.price_monthly}`).join('|')}`}
+                  key={`demo-${plans.map((p) => `${p.code}:${p.price_monthly}:${p.active}`).join('|')}`}
                   cmsPreview
                 />
               )}
               {tab === 'assinar' && (
-                <AssinarPreviewShell key={`assinar-${plans.map((p) => `${p.code}:${p.price_monthly}`).join('|')}`} />
+                <AssinarPreviewShell
+                  key={`assinar-${plans.map((p) => `${p.code}:${p.price_monthly}:${p.active}`).join('|')}`}
+                />
               )}
             </CmsEditProvider>
           </div>

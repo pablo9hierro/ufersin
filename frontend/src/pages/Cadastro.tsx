@@ -31,15 +31,17 @@ export default function Cadastro() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
   const planoParam = searchParams.get('plano') as PlanoCode | null
-  const planMap = getPlanMap()
-  const plano: PlanoCode | null = planoParam && planoParam in planMap ? planoParam : null
   const cicloParam = searchParams.get('ciclo') as BillingCycle | null
   const ciclo: BillingCycle = cicloParam === 'semestral' ? 'semestral' : 'mensal'
-  const planInfo = plano ? planMap[plano] : null
+  const [plansReady, setPlansReady] = useState(false)
 
   useEffect(() => {
-    void fetchPlans()
+    fetchPlans().finally(() => setPlansReady(true))
   }, [])
+
+  const planMap = getPlanMap()
+  const plano: PlanoCode | null = planoParam && planMap[planoParam] ? planoParam : null
+  const planInfo = plano ? planMap[plano] : null
 
   const [lojaNome, setLojaNome] = useState('')
   const [responsavelNome, setResponsavelNome] = useState('')
@@ -174,7 +176,7 @@ export default function Cadastro() {
     }
   }
 
-  if (!ready || finishing) {
+  if (!ready || !plansReady || finishing) {
     return (
       <main className="min-h-screen bg-uf-black flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
@@ -191,7 +193,7 @@ export default function Cadastro() {
           <h1 className="text-xl font-black mb-2">Confirme seu e-mail</h1>
           <p className="text-sm text-uf-silver-dim mb-6">
             Enviamos um link de confirmação pra <span className="text-uf-silver">{email.trim()}</span>. Clique nele pra continuar
-            {plano ? ` e assinar o plano ${planMap[plano].name}` : ''}.
+            {plano && planInfo ? ` e assinar o plano ${planInfo.name}` : ''}.
           </p>
           <p className="text-xs text-uf-silver-dim mb-4">Já confirmou? Atualize a página (F5) ou volte a esta aba — a gente te leva pro painel.</p>
           {error && <p className="error-msg mb-4">{error}</p>}

@@ -53,7 +53,7 @@ export default function Assinar() {
   }, [isAuthenticated, navigate, session?.user?.email])
 
   const planMap = getPlanMap()
-  const plano: PlanoCode | null = planoParam && planoParam in planMap ? planoParam : null
+  const plano: PlanoCode | null = planoParam && planMap[planoParam] ? planoParam : null
 
   useEffect(() => {
     if (!plano || !cupom.trim()) {
@@ -87,6 +87,7 @@ export default function Assinar() {
   if (!plano) return <Navigate to="/planos" replace />
 
   const planInfo = planMap[plano]
+  if (!planInfo) return <Navigate to="/planos" replace />
   const monthly = preview?.monthly_after ?? planInfo.price
   const charged = priceForCycle(monthly, ciclo)
   const platformSigningReady = pandadocStatus?.platform_signing_ready ?? false

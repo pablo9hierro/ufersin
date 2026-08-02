@@ -50,6 +50,8 @@ export const PLAN_NAMES: Record<PlanoCode, string> = {
 }
 
 let loadedPlans: PlanInfo[] | null = null
+/** True after a successful `/api/public/plans` response (even if empty / subset). */
+let publicFetchOk = false
 
 function rowToPlanInfo(row: PlatformPlan): PlanInfo {
   const features = Array.isArray(row.features) ? row.features.map(String) : []
@@ -63,37 +65,52 @@ function rowToPlanInfo(row: PlatformPlan): PlanInfo {
   }
 }
 
-/** Limpa cache em memória (após superadmin editar preços). */
+/** Limpa cache em memória (após superadmin editar preços / ativo). */
 export function invalidatePlansCache() {
   loadedPlans = null
+  publicFetchOk = false
 }
 
-/** Carrega planos da API; em falha mantém fallback em memória. */
+/** Carrega planos ativos da API; em falha de rede usa FALLBACK. */
 export async function fetchPlans(): Promise<PlanInfo[]> {
   try {
     const rows = await api.listPublicPlans()
-    const active = rows.filter((r) => r.active).sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code))
-    if (active.length > 0) {
-      loadedPlans = active.map(rowToPlanInfo)
-      return loadedPlans
-    }
+    // Public API already returns active-only; filter defensively.
+    const active = rows
+      .filter((r) => r.active !== false)
+      .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code))
+    publicFetchOk = true
+    loadedPlans = active.map(rowToPlanInfo)
+    return loadedPlans
   } catch {
     /* offline — usa fallback */
+    publicFetchOk = false
+    loadedPlans = null
   }
-  loadedPlans = null
   return FALLBACK_PLANS
 }
 
+/** Planos oferecidos a novos assinantes (ativos). Sem padding de inativos. */
 export function getPlans(): PlanInfo[] {
+  if (publicFetchOk) return loadedPlans ?? []
   return loadedPlans ?? FALLBACK_PLANS
 }
 
-export function getPlanMap(): Record<PlanoCode, PlanInfo> {
-  const map = Object.fromEntries(getPlans().map((p) => [p.code, p])) as Partial<Record<PlanoCode, PlanInfo>>
-  for (const code of PLAN_ORDER) {
-    if (!map[code]) map[code] = FALLBACK_PLANS.find((p) => p.code === code)!
-  }
-  return map as Record<PlanoCode, PlanInfo>
+/**
+ * Mapa code → plano ativo. Não reintroduz FALLBACK para códigos ausentes
+ * (planos inativos somem do mapa após fetch bem-sucedido).
+ */
+export function getPlanMap(): Partial<Record<PlanoCode, PlanInfo>> {
+  return Object.fromEntries(getPlans().map((p) => [p.code, p])) as Partial<Record<PlanoCode, PlanInfo>>
+}
+
+/** Nome amigável mesmo se o plano estiver inativo / fora da lista pública. */
+export function planDisplayName(code: string): string {
+  const fromActive = getPlans().find((p) => p.code === code)
+  if (fromActive) return fromActive.name
+  const fb = FALLBACK_PLANS.find((p) => p.code === code)
+  if (fb) return fb.name
+  return PLAN_NAMES[code as PlanoCode] ?? code
 }
 
 /** @deprecated prefer `getPlanMap()` */

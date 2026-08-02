@@ -296,12 +296,34 @@ export default function Dashboard() {
   }
 
   const togglePlanActive = async (code: string, active: boolean) => {
+    // Optimistic per-code update — never share a single `active` across rows.
+    setPlans((prev) => prev.map((p) => (p.code === code ? { ...p, active } : p)))
     setBusy(true)
+    setError(null)
     try {
-      await api.superadminUpdatePlan(code, { active })
-      await loadLayout()
+      const updated = await api.superadminUpdatePlan(code, { active })
+      setPlans((prev) =>
+        prev.map((p) =>
+          p.code === code
+            ? {
+                ...p,
+                active: updated.active,
+                name: updated.name,
+                price_monthly: updated.price_monthly,
+                highlight: updated.highlight,
+              }
+            : p,
+        ),
+      )
+      invalidatePlansCache()
+      await fetchPlans()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Erro ao atualizar plano.')
+      try {
+        await loadLayout()
+      } catch {
+        /* keep optimistic until next refresh */
+      }
     } finally {
       setBusy(false)
     }

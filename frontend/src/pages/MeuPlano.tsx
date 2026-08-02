@@ -23,7 +23,7 @@ import {
 } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
-import { fetchPlans, formatBRL, getPlanMap, PLAN_ORDER, priceForCycle } from '../lib/plans'
+import { fetchPlans, formatBRL, getPlans, getPlanMap, planDisplayName, priceForCycle } from '../lib/plans'
 import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
 import AddressField from '../components/AddressField'
@@ -273,16 +273,12 @@ export default function MeuPlano() {
           <p className="text-sm text-uf-silver-dim mb-8">{noPlanMsg}</p>
           <div className="grid sm:grid-cols-3 gap-3">
             {plansLoaded &&
-              PLAN_ORDER.map((code) => {
-                const p = planMap[code]
-                if (!p) return null
-                return (
-                  <Link key={code} to={`/assinar?plano=${code}`} className="uf-glass uf-glass-hover rounded-2xl p-4 block">
-                    <p className="font-bold text-sm">{p.name}</p>
-                    <p className="text-lg font-black uf-text mt-1">R$ {formatBRL(p.price)}/mês</p>
-                  </Link>
-                )
-              })}
+              getPlans().map((p) => (
+                <Link key={p.code} to={`/assinar?plano=${p.code}`} className="uf-glass uf-glass-hover rounded-2xl p-4 block">
+                  <p className="font-bold text-sm">{p.name}</p>
+                  <p className="text-lg font-black uf-text mt-1">R$ {formatBRL(p.price)}/mês</p>
+                </Link>
+              ))}
           </div>
         </div>
       </main>
@@ -352,7 +348,7 @@ export default function MeuPlano() {
           {tab === 'plano' && me.plano && (
             <section className="uf-glass rounded-2xl p-6">
               <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
-                <Sparkles className="w-4 h-4" /> {planMap[me.plano]?.name ?? me.plano}
+                <Sparkles className="w-4 h-4" /> {planMap[me.plano]?.name ?? planDisplayName(me.plano)}
               </h2>
               <p className="text-sm text-uf-silver-dim mb-1">
                 Status: <span className="text-uf-silver">{me.status}</span>
