@@ -1,9 +1,9 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Loader2, Rocket } from 'lucide-react'
+import { Loader2, LogOut, Rocket } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
-import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
+import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { resolveSessionHome } from '../lib/sessionHome'
 import PasswordField from '../components/PasswordField'
 
@@ -28,8 +28,19 @@ export default function CompletarConta() {
   const [whatsapp, setWhatsapp] = useState('')
   const [senha, setSenha] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkingAdmin, setCheckingAdmin] = useState(true)
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      await authStore.signOut()
+      navigate('/login', { replace: true })
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   // Superadmin nunca completa conta de lojista — manda direto pro /dashboard.
   useEffect(() => {
@@ -51,9 +62,22 @@ export default function CompletarConta() {
     }
   }, [ready, isAuthenticated, navigate])
 
+  const logoutControl = (
+    <button
+      type="button"
+      onClick={handleLogout}
+      disabled={loggingOut}
+      className="fixed top-4 right-4 z-50 inline-flex items-center gap-2 rounded-lg border border-uf-silver/20 bg-uf-black/80 px-3 py-2 text-sm text-uf-silver hover:border-uf-silver/40 hover:text-white backdrop-blur"
+    >
+      {loggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+      Sair
+    </button>
+  )
+
   if (!ready || checkingAdmin) {
     return (
-      <main className="min-h-screen bg-uf-black flex items-center justify-center">
+      <main className="min-h-screen bg-uf-black flex items-center justify-center relative">
+        {isAuthenticated && logoutControl}
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
       </main>
     )
@@ -96,6 +120,7 @@ export default function CompletarConta() {
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 py-16 relative">
       <div className="uf-mesh" />
+      {logoutControl}
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md relative z-10">
         <div className="text-center mb-8">
           <Link to="/" className="text-2xl font-black uf-text">
