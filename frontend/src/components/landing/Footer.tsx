@@ -2,7 +2,7 @@
 
 export default function Footer() {
   return (
-    <footer className="border-t border-white/5 py-10 px-5">
+    <footer className="border-t border-white/5 py-16 px-5">
       <div className="uf-container flex flex-col sm:flex-row items-center justify-between gap-4">
         <Link to="/" className="text-lg font-black uf-text">
           Resolutoo
