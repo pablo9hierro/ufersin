@@ -24,7 +24,8 @@ import {
   type SuperadminOverview,
   type SuperadminStore,
 } from '../lib/api'
-import { authStore, useAuthReady, useIsAuthenticated } from '../lib/authStore'
+import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
+import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { formatBRL } from '../lib/plans'
 
 type Section = 'relatorios' | 'lojas' | 'layout' | 'cupons'
@@ -46,6 +47,7 @@ const LANDING_KEYS = [
 export default function Dashboard() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
+  const session = useSession()
   const navigate = useNavigate()
   const [section, setSection] = useState<Section>('relatorios')
   const [guard, setGuard] = useState<'loading' | 'ok' | 'denied' | 'api_error'>('loading')
@@ -81,6 +83,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!isAuthenticated) return
+    const sessionEmail = session?.user?.email ?? null
+    if (isKnownPlatformAdminEmail(sessionEmail)) {
+      setAdminEmail(sessionEmail)
+    }
     api
       .superadminWhoami()
       .then((w) => {
@@ -88,6 +94,18 @@ export default function Dashboard() {
         setGuard('ok')
       })
       .catch((e) => {
+        // Known platform owner: never bounce to lojista hub, even if whoami 404.
+        if (isKnownPlatformAdminEmail(sessionEmail)) {
+          setError(
+            e instanceof ApiError && e.status === 404
+              ? 'API do painel ainda não publicou as rotas de superadmin. Aguarde o deploy do backend.'
+              : e instanceof ApiError
+                ? e.message
+                : 'Não foi possível carregar dados do painel.',
+          )
+          setGuard('api_error')
+          return
+        }
         // Só lojista autenticado (403) vai pro hub. 401 → login.
         // 404/5xx = API sem rota superadmin / fora do ar — NÃO mostrar UI de lojista.
         if (e instanceof ApiError && e.status === 403) {
@@ -105,7 +123,7 @@ export default function Dashboard() {
           setGuard('api_error')
         }
       })
-  }, [isAuthenticated])
+  }, [isAuthenticated, session?.user?.email])
 
   const loadRelatorios = useCallback(async () => {
     const [ov, cs] = await Promise.all([api.superadminOverview(), api.superadminCosts()])

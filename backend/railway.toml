@@ -1,10 +1,11 @@
-# RAILPACK (not DOCKERFILE): Metal Docker builds have been stuck at
-# "scheduling build on Metal builder" since the superadmin commit, so
-# production never received /api/superadmin/*. Dockerfile.local is kept
-# for local/docker experimentation only.
+# RAILPACK (not DOCKERFILE): Metal Docker builds stick at
+# "scheduling build on Metal builder", so production never received
+# /api/superadmin/*. Dockerfile is kept as Dockerfile.local / .metal.bak only.
 [build]
 builder = "RAILPACK"
 watchPatterns = ["src/**", "migrations/**", "Cargo.toml", "Cargo.lock", "railway.toml"]
+# Ensure cargo release binary exists for startCommand.
+buildCommand = "cargo build --release"
 
 [deploy]
 startCommand = "./target/release/ufersin_backend"

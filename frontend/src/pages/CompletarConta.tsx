@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Loader2, LogOut, Rocket } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
+import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { resolveSessionHome } from '../lib/sessionHome'
 import PasswordField from '../components/PasswordField'
 
@@ -31,6 +32,11 @@ export default function CompletarConta() {
   const [loggingOut, setLoggingOut] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkingAdmin, setCheckingAdmin] = useState(true)
+  const [adminCheckError, setAdminCheckError] = useState<string | null>(null)
+  const [retryTick, setRetryTick] = useState(0)
+
+  const email = session?.user?.email ?? null
+  const knownAdmin = isKnownPlatformAdminEmail(email)
 
   const handleLogout = async () => {
     setLoggingOut(true)
@@ -43,24 +49,47 @@ export default function CompletarConta() {
   }
 
   // Superadmin nunca completa conta de lojista — manda direto pro /dashboard.
+  // Quem está em KNOWN_PLATFORM_ADMIN_EMAILS também vai pro dashboard mesmo
+  // se /api/superadmin/whoami estiver 404 (API antiga no Railway).
   useEffect(() => {
     if (!ready || !isAuthenticated) {
       setCheckingAdmin(false)
       return
     }
+    if (knownAdmin) {
+      navigate('/dashboard', { replace: true })
+      return
+    }
     let cancelled = false
+    setCheckingAdmin(true)
+    setAdminCheckError(null)
     api
       .superadminWhoami()
       .then(() => {
         if (!cancelled) navigate('/dashboard', { replace: true })
       })
-      .catch(() => {
-        if (!cancelled) setCheckingAdmin(false)
+      .catch((e) => {
+        if (cancelled) return
+        // 403 = autenticado e não é admin → formulário lojista.
+        // Qualquer outro erro (404/5xx/rede) NÃO assume lojista: mantém
+        // loading + retry, com Sair disponível.
+        if (e instanceof ApiError && e.status === 403) {
+          setCheckingAdmin(false)
+          return
+        }
+        setAdminCheckError(
+          e instanceof ApiError
+            ? e.status === 404
+              ? 'Painel admin ainda não está disponível na API. Tente de novo em instantes ou saia e entre depois.'
+              : e.message
+            : 'Não foi possível verificar seu acesso.',
+        )
+        // fica em checkingAdmin=true (sem mostrar form de loja)
       })
     return () => {
       cancelled = true
     }
-  }, [ready, isAuthenticated, navigate])
+  }, [ready, isAuthenticated, navigate, knownAdmin, retryTick])
 
   const logoutControl = (
     <button
@@ -74,11 +103,19 @@ export default function CompletarConta() {
     </button>
   )
 
-  if (!ready || checkingAdmin) {
+  if (!ready || checkingAdmin || knownAdmin) {
     return (
-      <main className="min-h-screen bg-uf-black flex items-center justify-center relative">
+      <main className="min-h-screen bg-uf-black text-uf-silver flex flex-col items-center justify-center gap-4 px-5 relative">
         {isAuthenticated && logoutControl}
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+        {adminCheckError && (
+          <div className="text-center max-w-sm space-y-3">
+            <p className="text-sm text-uf-silver-dim">{adminCheckError}</p>
+            <button type="button" className="btn-secondary text-sm px-4 py-2" onClick={() => setRetryTick((n) => n + 1)}>
+              Tentar de novo
+            </button>
+          </div>
+        )}
       </main>
     )
   }
@@ -127,9 +164,9 @@ export default function CompletarConta() {
             Resolutoo
           </Link>
           <p className="text-uf-silver-dim text-sm mt-2">E-mail confirmado! Só falta completar os dados da loja.</p>
-          {session?.user?.email && (
+          {email && (
             <p className="text-xs text-uf-silver-dim mt-1">
-              Conta: <span className="text-uf-silver">{session.user.email}</span>
+              Conta: <span className="text-uf-silver">{email}</span>
             </p>
           )}
         </div>

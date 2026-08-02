@@ -21,7 +21,8 @@ import {
   type PlataformaPagamento,
   type TipoDocumento,
 } from '../lib/api'
-import { authStore, useAuthReady, useIsAuthenticated } from '../lib/authStore'
+import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
+import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlanMap, PLAN_ORDER, priceForCycle } from '../lib/plans'
 import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
@@ -50,6 +51,7 @@ function contentMap(items: { key: string; value: string }[]) {
 export default function MeuPlano() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
+  const session = useSession()
   const navigate = useNavigate()
   const [me, setMe] = useState<MeResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -80,6 +82,10 @@ export default function MeuPlano() {
     let cancelled = false
     ;(async () => {
       // Superadmin primeiro — nunca mostrar hub lojista nem mandar a completar-conta.
+      if (isKnownPlatformAdminEmail(session?.user?.email)) {
+        if (!cancelled) navigate('/dashboard', { replace: true })
+        return
+      }
       try {
         await api.superadminWhoami()
         if (!cancelled) navigate('/dashboard', { replace: true })
@@ -124,7 +130,7 @@ export default function MeuPlano() {
     return () => {
       cancelled = true
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate, session?.user?.email])
 
   if (!ready || loading) {
     return (

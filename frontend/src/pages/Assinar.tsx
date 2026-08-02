@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { CreditCard, ExternalLink, Loader2, QrCode, Rocket, Tag } from 'lucide-react'
 import { api, ApiError, type BillingCycle, type CouponPreview, type MetodoPagamento, type PandadocStatus, type PlanoCode } from '../lib/api'
 import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
+import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlanMap, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
 
 export default function Assinar() {
@@ -37,13 +38,17 @@ export default function Assinar() {
 
   useEffect(() => {
     if (!isAuthenticated) return
+    if (isKnownPlatformAdminEmail(session?.user?.email)) {
+      navigate('/dashboard', { replace: true })
+      return
+    }
     api
       .superadminWhoami()
       .then(() => navigate('/dashboard', { replace: true }))
       .catch(() => {
         /* lojista */
       })
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate, session?.user?.email])
 
   const planMap = getPlanMap()
   const plano: PlanoCode | null = planoParam && planoParam in planMap ? planoParam : null

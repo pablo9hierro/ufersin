@@ -1,4 +1,6 @@
 import { api, ApiError, type BillingCycle, type PlanoCode } from './api'
+import { authStore } from './authStore'
+import { isKnownPlatformAdminEmail } from './platformAdmin'
 
 /**
  * Destino pós-login / pós-auth — respeita as duas identidades do Auth:
@@ -7,11 +9,19 @@ import { api, ApiError, type BillingCycle, type PlanoCode } from './api'
  * - Auth sem subscriber → `/completar-conta`
  *
  * Ordem obrigatória: whoami/superadmin ANTES de qualquer fluxo de loja.
+ * Fallback: e-mails em KNOWN_PLATFORM_ADMIN_EMAILS → `/dashboard` mesmo se
+ * a rota whoami ainda não existir na API (deploy atrasado).
  */
 export async function resolveSessionHome(opts?: {
   plano?: PlanoCode | null
   ciclo?: BillingCycle
+  email?: string | null
 }): Promise<string> {
+  const email = opts?.email ?? authStore.getSession()?.user?.email ?? null
+  if (isKnownPlatformAdminEmail(email)) {
+    return '/dashboard'
+  }
+
   try {
     await api.superadminWhoami()
     return '/dashboard'
@@ -26,6 +36,7 @@ export async function resolveSessionHome(opts?: {
     } else {
       // rede/5xx/404: ainda tenta lojista; CompletarConta/MeuPlano
       // revalidam whoami e bounceiam admin se a API voltar.
+      // Known-admin já foi tratado acima.
     }
   }
 
