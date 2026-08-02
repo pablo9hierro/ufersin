@@ -35,6 +35,16 @@ export default function Assinar() {
     api.getPandadocStatus().then(setPandadocStatus).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    if (!isAuthenticated) return
+    api
+      .superadminWhoami()
+      .then(() => navigate('/dashboard', { replace: true }))
+      .catch(() => {
+        /* lojista */
+      })
+  }, [isAuthenticated, navigate])
+
   const planMap = getPlanMap()
   const plano: PlanoCode | null = planoParam && planoParam in planMap ? planoParam : null
 

@@ -77,15 +77,20 @@ export default function MeuPlano() {
 
   useEffect(() => {
     if (!isAuthenticated) return
-    // Superadmin não é lojista — painel é /dashboard.
-    api
-      .superadminWhoami()
-      .then(() => navigate('/dashboard', { replace: true }))
-      .catch(() => {
+    let cancelled = false
+    ;(async () => {
+      // Superadmin primeiro — nunca mostrar hub lojista nem mandar a completar-conta.
+      try {
+        await api.superadminWhoami()
+        if (!cancelled) navigate('/dashboard', { replace: true })
+        return
+      } catch {
         /* lojista */
-      })
-    Promise.all([api.me(), api.listPublicContent(), fetchPlans()])
-      .then(([m, ct]) => {
+      }
+
+      try {
+        const [m, ct] = await Promise.all([api.me(), api.listPublicContent(), fetchPlans()])
+        if (cancelled) return
         setMe(m)
         setContent(contentMap(ct))
         setPlansLoaded(true)
@@ -105,15 +110,20 @@ export default function MeuPlano() {
         } else {
           setIntegracao('nao_integrar')
         }
-      })
-      .catch((e) => {
+      } catch (e) {
+        if (cancelled) return
         if (e instanceof ApiError && e.status === 404) {
           navigate('/completar-conta', { replace: true })
           return
         }
         setError(e instanceof ApiError ? e.message : 'Não foi possível carregar seus dados.')
-      })
-      .finally(() => setLoading(false))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [isAuthenticated, navigate])
 
   if (!ready || loading) {

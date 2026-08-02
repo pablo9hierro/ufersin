@@ -48,7 +48,7 @@ export default function Dashboard() {
   const isAuthenticated = useIsAuthenticated()
   const navigate = useNavigate()
   const [section, setSection] = useState<Section>('relatorios')
-  const [guard, setGuard] = useState<'loading' | 'ok' | 'denied'>('loading')
+  const [guard, setGuard] = useState<'loading' | 'ok' | 'denied' | 'api_error'>('loading')
   const [adminEmail, setAdminEmail] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -88,11 +88,21 @@ export default function Dashboard() {
         setGuard('ok')
       })
       .catch((e) => {
-        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        // Só lojista autenticado (403) vai pro hub. 401 → login.
+        // 404/5xx = API sem rota superadmin / fora do ar — NÃO mostrar UI de lojista.
+        if (e instanceof ApiError && e.status === 403) {
+          setGuard('denied')
+        } else if (e instanceof ApiError && e.status === 401) {
           setGuard('denied')
         } else {
-          setError(e instanceof ApiError ? e.message : 'Não foi possível verificar acesso.')
-          setGuard('denied')
+          setError(
+            e instanceof ApiError
+              ? e.status === 404
+                ? 'API do painel ainda não publicou as rotas de superadmin. Aguarde o deploy do backend.'
+                : e.message
+              : 'Não foi possível verificar acesso de superadmin.',
+          )
+          setGuard('api_error')
         }
       })
   }, [isAuthenticated])
@@ -148,6 +158,19 @@ export default function Dashboard() {
     )
   }
   if (guard === 'denied') return <Navigate to="/meu-plano" replace />
+  if (guard === 'api_error') {
+    return (
+      <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 text-center">
+        <div>
+          <p className="text-lg font-black mb-2">Painel Resolutoo (superadmin)</p>
+          <p className="text-uf-silver-dim mb-4">{error || 'Falha ao verificar permissão.'}</p>
+          <button type="button" className="btn-secondary text-sm px-4 py-2" onClick={() => window.location.reload()}>
+            Tentar de novo
+          </button>
+        </div>
+      </main>
+    )
+  }
 
   const handleLogout = async () => {
     await authStore.signOut()
@@ -239,9 +262,10 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver flex">
       <aside className="w-56 shrink-0 border-r border-white/5 p-4 flex flex-col gap-1">
-        <Link to="/" className="text-lg font-black uf-text px-3 py-2 mb-4 block">
+        <Link to="/" className="text-lg font-black uf-text px-3 py-2 mb-1 block">
           Resolutoo
         </Link>
+        <p className="text-[10px] uppercase tracking-wider text-uf-silver-dim px-3 mb-4">Painel superadmin</p>
         {NAV.map(({ id, label, icon: Icon }) => (
           <button
             key={id}

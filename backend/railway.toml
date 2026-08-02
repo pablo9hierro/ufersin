@@ -1,6 +1,5 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+builder = "RAILPACK"
 watchPatterns = ["src/**", "migrations/**", "Cargo.toml", "Cargo.lock", "Dockerfile"]
 
 [deploy]

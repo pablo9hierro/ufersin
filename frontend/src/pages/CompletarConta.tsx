@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Loader2, Rocket } from 'lucide-react'
@@ -29,8 +29,29 @@ export default function CompletarConta() {
   const [senha, setSenha] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [checkingAdmin, setCheckingAdmin] = useState(true)
 
-  if (!ready) {
+  // Superadmin nunca completa conta de lojista — manda direto pro /dashboard.
+  useEffect(() => {
+    if (!ready || !isAuthenticated) {
+      setCheckingAdmin(false)
+      return
+    }
+    let cancelled = false
+    api
+      .superadminWhoami()
+      .then(() => {
+        if (!cancelled) navigate('/dashboard', { replace: true })
+      })
+      .catch(() => {
+        if (!cancelled) setCheckingAdmin(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ready, isAuthenticated, navigate])
+
+  if (!ready || checkingAdmin) {
     return (
       <main className="min-h-screen bg-uf-black flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />

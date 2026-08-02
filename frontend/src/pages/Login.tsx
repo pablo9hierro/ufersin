@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { LogIn, Loader2 } from 'lucide-react'
 import { supabase, supabaseConfigured } from '../lib/supabaseClient'
-import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
+import { authStore, useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { translateAuthError } from '../lib/authErrors'
 import { clearAuthFailures, getAuthLockMessage, recordAuthFailure } from '../lib/authRateLimit'
 import PasswordField from '../components/PasswordField'
@@ -66,6 +66,10 @@ export default function Login() {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
       if (signInError) throw signInError
       clearAuthFailures()
+      // Garante que o authStore já espelhou o token antes do whoami/me.
+      for (let i = 0; i < 40 && !authStore.getToken(); i++) {
+        await new Promise((r) => setTimeout(r, 25))
+      }
       const to = await resolveSessionHome({ plano, ciclo })
       navigate(to, { replace: true })
     } catch (err) {
