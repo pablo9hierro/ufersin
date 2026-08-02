@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   BarChart3,
@@ -31,19 +31,35 @@ import LayoutCmsEditor, { defaultPlansSeed } from '../components/cms/LayoutCmsEd
 
 type Section = 'relatorios' | 'lojas' | 'layout' | 'cupons'
 
-const NAV: { id: Section; label: string; icon: typeof BarChart3 }[] = [
-  { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
-  { id: 'lojas', label: 'Lojas', icon: Store },
-  { id: 'layout', label: 'Layout', icon: LayoutTemplate },
-  { id: 'cupons', label: 'Cupons', icon: Tag },
+const NAV: { id: Section; label: string; icon: typeof BarChart3; path: string }[] = [
+  { id: 'relatorios', label: 'Relatórios', icon: BarChart3, path: '/dashboard' },
+  { id: 'lojas', label: 'Lojas', icon: Store, path: '/lojas' },
+  { id: 'layout', label: 'Layout', icon: LayoutTemplate, path: '/layout' },
+  { id: 'cupons', label: 'Cupons', icon: Tag, path: '/cupons' },
 ]
+
+const PATH_TO_SECTION: Record<string, Section> = {
+  '/dashboard': 'relatorios',
+  '/lojas': 'lojas',
+  '/layout': 'layout',
+  '/cupons': 'cupons',
+}
+
+const SECTION_PATH: Record<Section, string> = {
+  relatorios: '/dashboard',
+  lojas: '/lojas',
+  layout: '/layout',
+  cupons: '/cupons',
+}
 
 export default function Dashboard() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
   const session = useSession()
   const navigate = useNavigate()
-  const [section, setSection] = useState<Section>('relatorios')
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const section: Section = PATH_TO_SECTION[location.pathname] ?? 'relatorios'
   const [guard, setGuard] = useState<'loading' | 'ok' | 'denied' | 'api_error'>('loading')
   const [adminEmail, setAdminEmail] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +89,15 @@ export default function Dashboard() {
     max_redemptions: '',
     notes: '',
   })
+
+  // Legacy `/dashboard?tab=lojas|layout|cupons|relatorios` → real paths
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (!tab) return
+    if (tab === 'relatorios' || tab === 'lojas' || tab === 'layout' || tab === 'cupons') {
+      navigate(SECTION_PATH[tab], { replace: true })
+    }
+  }, [searchParams, navigate])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -340,18 +365,17 @@ export default function Dashboard() {
           Resolutoo
         </Link>
         <p className="text-[10px] uppercase tracking-wider text-uf-silver-dim px-3 mb-4">Painel superadmin</p>
-        {NAV.map(({ id, label, icon: Icon }) => (
-          <button
+        {NAV.map(({ id, label, icon: Icon, path }) => (
+          <Link
             key={id}
-            type="button"
-            onClick={() => setSection(id)}
+            to={path}
             className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-left transition-colors ${
               section === id ? 'bg-white/10 text-white' : 'text-uf-silver-dim hover:text-uf-silver hover:bg-white/5'
             }`}
           >
             <Icon className="w-4 h-4 shrink-0" />
             {label}
-          </button>
+          </Link>
         ))}
         <div className="mt-auto pt-4 border-t border-white/5">
           {adminEmail && <p className="text-[10px] text-uf-silver-dim px-3 mb-2 truncate">{adminEmail}</p>}

@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import Landing from './pages/Landing'
 import Demo from './pages/Demo'
 import DemoPlano from './pages/DemoPlano'
@@ -31,6 +31,10 @@ export default function App() {
       <Route path="/planos" element={<Planos />} />
       <Route path="/assinar" element={<Assinar />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/lojas" element={<Dashboard />} />
+      <Route path="/layout" element={<Dashboard />} />
+      <Route path="/cupons" element={<Dashboard />} />
+      <Route path="/relatorios" element={<Navigate to="/dashboard" replace />} />
       <Route path="/completar-conta" element={<CompletarConta />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/meu-plano" element={<MeuPlano />} />

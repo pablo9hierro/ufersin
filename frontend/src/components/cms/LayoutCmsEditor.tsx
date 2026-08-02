@@ -15,6 +15,7 @@ const TABS: { id: CmsTabId; label: string; path: string }[] = [
 ]
 
 const PREVIEW_WIDTH = 1280
+const PREVIEW_VIEWPORT_HEIGHT = 'min(70vh, calc(100vh - 220px))'
 
 interface LayoutCmsEditorProps {
   content: Record<string, string>
@@ -47,8 +48,10 @@ export default function LayoutCmsEditor({
 }: LayoutCmsEditorProps) {
   const [tab, setTab] = useState<CmsTabId>('landing')
   const [scale, setScale] = useState(0.5)
+  const [contentHeight, setContentHeight] = useState(820)
   const [planNames, setPlanNames] = useState<Record<string, string>>({})
   const frameRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setPlanNames(Object.fromEntries(plans.map((p) => [p.code, p.name])))
@@ -65,6 +68,20 @@ export default function LayoutCmsEditor({
     return () => ro.disconnect()
   }, [])
 
+  // Measure unscaled content so the spacer height matches visual (scaled) height for scroll.
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    const measure = () => {
+      const h = el.scrollHeight
+      if (h > 0) setContentHeight(h)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [tab, content, plans])
+
   const blockNav = useCallback((e: React.MouseEvent) => {
     const t = e.target as HTMLElement
     if (t.closest('[data-cms-edit]')) return
@@ -72,6 +89,16 @@ export default function LayoutCmsEditor({
       e.preventDefault()
       e.stopPropagation()
     }
+  }, [])
+
+  // Keep wheel/trackpad scrolling inside the preview when hovering it.
+  const onPreviewWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    if (el.scrollHeight <= el.clientHeight) return
+    const atTop = el.scrollTop <= 0
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+    if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) return
+    e.stopPropagation()
   }, [])
 
   return (
@@ -165,42 +192,51 @@ export default function LayoutCmsEditor({
         Visual CMS — clique num texto destacado no preview para editar. Ctrl/Cmd+Enter salva. A página pública reflete após o save.
       </p>
 
-      <div ref={frameRef} className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-uf-black" style={{ height: Math.round(820 * scale) }}>
-        <div
-          className="origin-top-left pointer-events-auto"
-          style={{
-            width: PREVIEW_WIDTH,
-            transform: `scale(${scale})`,
-            height: 820,
-          }}
-          onClickCapture={blockNav}
-        >
-          <CmsEditProvider
-            editable
-            content={content}
-            onContentChange={onContentChange}
-            onSave={onSaveContent}
+      {/* Scrollable viewport; spacer height = unscaled content × scale so transform doesn't clip. */}
+      <div
+        ref={frameRef}
+        className="relative w-full overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-uf-black"
+        style={{ height: PREVIEW_VIEWPORT_HEIGHT }}
+        onWheel={onPreviewWheel}
+      >
+        <div style={{ height: Math.max(1, Math.round(contentHeight * scale)), width: '100%' }}>
+          <div
+            ref={contentRef}
+            className="origin-top-left pointer-events-auto"
+            style={{
+              width: PREVIEW_WIDTH,
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left',
+            }}
+            onClickCapture={blockNav}
           >
-            {tab === 'landing' && (
-              <div className="bg-uf-black text-uf-silver min-h-full" key={`landing-${plans.map((p) => `${p.code}:${p.price_monthly}:${p.active}`).join('|')}`}>
-                <div className="px-6 py-3 border-b border-white/5 text-xs text-uf-silver-dim flex justify-between">
-                  <span className="font-black uf-text text-sm">Resolutoo</span>
-                  <span>preview · /</span>
+            <CmsEditProvider
+              editable
+              content={content}
+              onContentChange={onContentChange}
+              onSave={onSaveContent}
+            >
+              {tab === 'landing' && (
+                <div className="bg-uf-black text-uf-silver" key={`landing-${plans.map((p) => `${p.code}:${p.price_monthly}:${p.active}`).join('|')}`}>
+                  <div className="px-6 py-3 border-b border-white/5 text-xs text-uf-silver-dim flex justify-between">
+                    <span className="font-black uf-text text-sm">Resolutoo</span>
+                    <span>preview · /</span>
+                  </div>
+                  <Hero />
+                  <Pricing />
                 </div>
-                <Hero />
-                <Pricing />
-              </div>
-            )}
-            {tab === 'demo' && (
-              <DemoPage
-                key={`demo-${plans.map((p) => `${p.code}:${p.price_monthly}`).join('|')}`}
-                cmsPreview
-              />
-            )}
-            {tab === 'assinar' && (
-              <AssinarPreviewShell key={`assinar-${plans.map((p) => `${p.code}:${p.price_monthly}`).join('|')}`} />
-            )}
-          </CmsEditProvider>
+              )}
+              {tab === 'demo' && (
+                <DemoPage
+                  key={`demo-${plans.map((p) => `${p.code}:${p.price_monthly}`).join('|')}`}
+                  cmsPreview
+                />
+              )}
+              {tab === 'assinar' && (
+                <AssinarPreviewShell key={`assinar-${plans.map((p) => `${p.code}:${p.price_monthly}`).join('|')}`} />
+              )}
+            </CmsEditProvider>
+          </div>
         </div>
       </div>
     </div>
