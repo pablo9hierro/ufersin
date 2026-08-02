@@ -1257,6 +1257,9 @@ a {
 .sunset-share-item[data-network='instagram'] a::before {
   background: radial-gradient(circle at 30% 110%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285aeb 90%);
 }
+.sunset-share-item[data-network='facebook'] a::before {
+  background: #1877f2;
+}
 .sunset-share-item a:hover::before,
 .sunset-share-item a:focus-visible::before,
 .sunset-share-item a:active::before {
@@ -1290,6 +1293,68 @@ a {
   transform: translateX(-50%) translateY(0);
 }
 
+/* Pilha iso-pro (Uiverse) — painel de redes nas landings uiux2/3/4. */
+.share-stack {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-height: 3.25rem;
+}
+.share-stack-item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  transition: transform 0.35s cubic-bezier(0.68, -0.4, 0.27, 1.4);
+}
+.share-stack:not(.is-open) .share-stack-item {
+  transform: translateY(calc(var(--stack-i) * 5px)) scale(calc(1 - var(--stack-i) * 0.035));
+  z-index: calc(10 - var(--stack-i));
+}
+.share-stack.is-open .share-stack-item {
+  transform: translateY(calc(var(--stack-i) * 56px));
+  z-index: calc(10 - var(--stack-i));
+}
+.share-stack-item a {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  border-radius: 14px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.share-stack-item a:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.share-stack-u2 .share-stack-item[data-network='whatsapp'] a {
+  background: linear-gradient(135deg, var(--uf-blue), var(--uf-purple));
+}
+.share-stack-u2 .share-stack-item[data-network='instagram'] a {
+  background: linear-gradient(135deg, var(--uf-purple), var(--uf-pink));
+}
+.share-stack-u2 .share-stack-item[data-network='facebook'] a {
+  background: linear-gradient(135deg, var(--uf-blue), var(--uf-pink));
+}
+.share-stack-u3 .share-stack-item[data-network='whatsapp'] a {
+  background: linear-gradient(135deg, var(--u3-red), var(--u3-orange));
+}
+.share-stack-u3 .share-stack-item[data-network='instagram'] a {
+  background: linear-gradient(135deg, var(--u3-orange), var(--u3-gold));
+}
+.share-stack-u3 .share-stack-item[data-network='facebook'] a {
+  background: linear-gradient(135deg, var(--u3-red), var(--u3-gold));
+}
+.share-stack-u4 .share-stack-item[data-network='whatsapp'] a,
+.share-stack-u4 .share-stack-item[data-network='instagram'] a,
+.share-stack-u4 .share-stack-item[data-network='facebook'] a {
+  background: var(--u4-orange);
+  color: #000;
+}
 
 /* Uiverse.io by JaydipPrajapati1910 — "pulse" loader: um anel em formato
    de gota (border-radius assimétrico + rotate(45deg)) que pulsa saindo do

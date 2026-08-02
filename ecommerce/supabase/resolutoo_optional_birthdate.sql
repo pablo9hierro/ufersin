@@ -1,0 +1,26 @@
+-- Birthdate opcional no create_order quando a loja NÃO exige 18+.
+-- Substitua o bloco de validação de birthdate na função live
+-- `sunset.create_order` (ou o schema do tenant) por isto:
+--
+--   IF p_customer_birthdate IS NOT NULL AND trim(p_customer_birthdate) <> '' THEN
+--     BEGIN
+--       v_birthdate := p_customer_birthdate::date;
+--     EXCEPTION WHEN OTHERS THEN
+--       RAISE EXCEPTION 'invalid birthdate';
+--     END;
+--     IF v_birthdate > current_date THEN
+--       RAISE EXCEPTION 'invalid birthdate';
+--     END IF;
+--     IF extract(year FROM age(current_date, v_birthdate)) < 18 THEN
+--       RAISE EXCEPTION 'you must be 18 or older';
+--     END IF;
+--   ELSE
+--     v_birthdate := NULL;
+--   END IF;
+--
+-- E no upsert do customer use p_customer_birthdate nullable.
+-- O front só envia birthdate quando TenantConfig.vende_mais_18 = true.
+
+-- Patch da versão histórica sunset_checkout_birthdate (novas installs locais):
+-- (não recria create_order inteiro aqui — ver sunset_crm_campanhas_multi_cupom.sql)
+SELECT 1;

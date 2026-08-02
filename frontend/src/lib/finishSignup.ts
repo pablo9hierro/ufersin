@@ -1,5 +1,6 @@
-import { api, ApiError } from './api'
+import { api, type PlanoCode } from './api'
 import { PENDING_SIGNUP_KEY } from './pendingSignup'
+import { resolveSessionHome } from './sessionHome'
 
 export interface PendingSignup {
   loja_nome: string
@@ -34,17 +35,8 @@ export async function finishSignupAfterConfirm(): Promise<string> {
       senha: pending.senha,
     })
     const ciclo = pending.ciclo === 'semestral' ? 'semestral' : 'mensal'
-    return pending.plano ? `/assinar?plano=${pending.plano}&ciclo=${ciclo}` : '/dashboard'
+    return resolveSessionHome({ plano: (pending.plano as PlanoCode | null) ?? null, ciclo })
   }
 
-  try {
-    await api.me()
-    return '/dashboard'
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 404) {
-      // Sessão Supabase ok, mas sem linha em subscribers — precisa completar dados.
-      return '/completar-conta'
-    }
-    throw e
-  }
+  return resolveSessionHome()
 }

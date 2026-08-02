@@ -1,4 +1,5 @@
-import type { BillingCycle, PlanoCode } from './api'
+import { api, type PlatformPlan, type PlanoCode } from './api'
+import type { BillingCycle } from './api'
 
 export interface PlanInfo {
   code: PlanoCode
@@ -12,10 +13,8 @@ export interface PlanInfo {
 /** Desconto aplicado no total do semestre (6 × mensal). */
 export const SEMESTRAL_DISCOUNT = 0.05
 
-// Fonte única dos 3 planos — usada pela Pricing da Landing e por /planos
-// (escolha pós-login). Mesmos planos/preços do motor de e-commerce
-// (ecommerce/backend/migrations/0005_tenancy.sql).
-export const PLANS: PlanInfo[] = [
+/** Offline / fallback quando a API de planos não responde. */
+export const FALLBACK_PLANS: PlanInfo[] = [
   {
     code: 'essential',
     name: 'Essential',
@@ -40,10 +39,8 @@ export const PLANS: PlanInfo[] = [
   },
 ]
 
-export const PLAN_MAP: Record<PlanoCode, PlanInfo> = Object.fromEntries(PLANS.map((p) => [p.code, p])) as Record<
-  PlanoCode,
-  PlanInfo
->
+/** @deprecated prefer `getPlans()` após `fetchPlans()` */
+export const PLANS = FALLBACK_PLANS
 
 export const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 export const PLAN_NAMES: Record<PlanoCode, string> = {
@@ -51,6 +48,54 @@ export const PLAN_NAMES: Record<PlanoCode, string> = {
   management: 'Management',
   premium: 'Premium',
 }
+
+let loadedPlans: PlanInfo[] | null = null
+
+function rowToPlanInfo(row: PlatformPlan): PlanInfo {
+  const features = Array.isArray(row.features) ? row.features.map(String) : []
+  return {
+    code: row.code,
+    name: row.name,
+    price: row.price_monthly,
+    tagline: row.tagline,
+    features,
+    highlight: row.highlight,
+  }
+}
+
+/** Carrega planos da API; em falha mantém fallback em memória. */
+export async function fetchPlans(): Promise<PlanInfo[]> {
+  try {
+    const rows = await api.listPublicPlans()
+    const active = rows.filter((r) => r.active).sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code))
+    if (active.length > 0) {
+      loadedPlans = active.map(rowToPlanInfo)
+      return loadedPlans
+    }
+  } catch {
+    /* offline — usa fallback */
+  }
+  loadedPlans = null
+  return FALLBACK_PLANS
+}
+
+export function getPlans(): PlanInfo[] {
+  return loadedPlans ?? FALLBACK_PLANS
+}
+
+export function getPlanMap(): Record<PlanoCode, PlanInfo> {
+  const map = Object.fromEntries(getPlans().map((p) => [p.code, p])) as Partial<Record<PlanoCode, PlanInfo>>
+  for (const code of PLAN_ORDER) {
+    if (!map[code]) map[code] = FALLBACK_PLANS.find((p) => p.code === code)!
+  }
+  return map as Record<PlanoCode, PlanInfo>
+}
+
+/** @deprecated prefer `getPlanMap()` */
+export const PLAN_MAP: Record<PlanoCode, PlanInfo> = Object.fromEntries(FALLBACK_PLANS.map((p) => [p.code, p])) as Record<
+  PlanoCode,
+  PlanInfo
+>
 
 /** Valor cobrado no ciclo escolhido. Semestral = 6 meses com 5% off. */
 export function priceForCycle(monthly: number, cycle: BillingCycle): number {

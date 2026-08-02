@@ -14,6 +14,7 @@ import LocationPicker from '../../components/checkout/LocationPicker'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 import AuthModal from '../components/AuthModal'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -30,6 +31,7 @@ export default function Uiux2Checkout() {
   const { items, clear } = useCart()
   const customer = useCustomer()
   const customerAuth = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
 
   const [products, setProducts] = useState<Product[]>([])
   const [pickupAtStore, setPickupAtStore] = useState(false)
@@ -203,11 +205,11 @@ export default function Uiux2Checkout() {
     if (!customer.name.trim()) return setError('Informe seu nome.')
     const digits = customer.whatsapp.replace(/\D/g, '')
     if (digits.length < 10) return setError('Informe um WhatsApp válido.')
-    if (!customer.birthdate) return setError('Informe sua data de nascimento.')
-    // Maioridade obrigatória (venda de produtos de tabacaria) -- calculada
-    // a partir da data de nascimento, bloqueia ANTES de chamar create_order.
-    const age = (Date.now() - new Date(customer.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
-    if (age < 18) return setError('Você precisa ser maior de idade para comprar produtos de tabacaria.')
+    if (tenantConfig?.vende_mais_18) {
+      if (!customer.birthdate) return setError('Informe sua data de nascimento.')
+      const age = (Date.now() - new Date(customer.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+      if (age < 18) return setError('Você precisa ser maior de 18 anos para comprar nesta loja.')
+    }
     if (!pickupAtStore && (customer.lat == null || customer.lng == null)) return setError('Escolha sua localização no mapa ou marque retirada no local.')
 
     setSubmitting(true)
@@ -215,7 +217,7 @@ export default function Uiux2Checkout() {
       const order = await orderService.create({
         customer_name: customer.name.trim(),
         customer_whatsapp: `55${digits}`,
-        customer_birthdate: customer.birthdate,
+        customer_birthdate: tenantConfig?.vende_mais_18 ? customer.birthdate : customer.birthdate || undefined,
         delivery_type: pickupAtStore ? 'retirada' : 'entrega',
         neighborhood: pickupAtStore ? undefined : customer.neighborhood,
         address: pickupAtStore ? undefined : customer.address,
@@ -253,10 +255,12 @@ export default function Uiux2Checkout() {
             <label className="text-xs font-semibold u2-dim">WhatsApp *</label>
             <input className={inputClass} value={customer.whatsapp} onChange={(e) => customer.set({ whatsapp: formatPhone(e.target.value) })} type="tel" inputMode="numeric" placeholder="(83) 99999-9999" maxLength={15} />
           </div>
-          <div>
-            <label className="text-xs font-semibold u2-dim">Data de nascimento *</label>
-            <input className={inputClass} type="date" value={customer.birthdate} onChange={(e) => customer.set({ birthdate: e.target.value })} />
-          </div>
+          {tenantConfig?.vende_mais_18 && (
+            <div>
+              <label className="text-xs font-semibold u2-dim">Data de nascimento *</label>
+              <input className={inputClass} type="date" value={customer.birthdate} onChange={(e) => customer.set({ birthdate: e.target.value })} />
+            </div>
+          )}
 
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={pickupAtStore} onChange={(e) => setPickupAtStore(e.target.checked)} className="w-4 h-4" />

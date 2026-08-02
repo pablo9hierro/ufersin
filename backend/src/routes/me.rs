@@ -2,8 +2,10 @@ use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthSubscriber;
+use crate::coupons;
 use crate::error::AppError;
-use crate::gateway;
+use crate::gateway::{self, BillingCycle};
+use crate::plans;
 use crate::state::AppState;
 
 #[derive(Debug, sqlx::FromRow)]
@@ -34,7 +36,10 @@ struct SubscriberRow {
     plataforma_pagamento: Option<String>,
     layout_style: String,
     instagram: Option<String>,
+    facebook: Option<String>,
     endereco_numero: Option<String>,
+    vende_mais_18: bool,
+    coupon_code: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -70,7 +75,10 @@ pub struct MeResponse {
     pub plataforma_pagamento: Option<String>,
     pub layout_style: String,
     pub instagram: Option<String>,
+    pub facebook: Option<String>,
     pub endereco_numero: Option<String>,
+    pub vende_mais_18: bool,
+    pub coupon_code: Option<String>,
     /// Próxima cobrança / histórico de faturas dependem de consultar o
     /// gateway (Mercado Pago não expõe isso na mesma chamada de status) ou
     /// de um worker que registre cada cobrança recebida por webhook — não
@@ -87,7 +95,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 status, gateway, slug, onboarding_status, tenant_id, created_at,
                 categoria, endereco, logo_url, cor_principal, documento, tipo_documento,
                 vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento,
-                COALESCE(layout_style, 'ufersin') as layout_style, instagram, endereco_numero
+                COALESCE(layout_style, 'ufersin') as layout_style, instagram, facebook, endereco_numero,
+                COALESCE(vende_mais_18, false) as vende_mais_18, coupon_code
          FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
@@ -127,7 +136,10 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         plataforma_pagamento: row.plataforma_pagamento,
         layout_style: row.layout_style,
         instagram: row.instagram,
+        facebook: row.facebook,
         endereco_numero: row.endereco_numero,
+        vende_mais_18: row.vende_mais_18,
+        coupon_code: row.coupon_code,
         proxima_cobranca: None,
     }))
 }
@@ -137,34 +149,62 @@ pub struct MudarPlanoInput {
     pub novo_plano: String,
 }
 
-/// Upgrade/downgrade — troca o plano localmente. Sincronizar o VALOR da
-/// cobrança recorrente no gateway (PUT /preapproval no Mercado Pago) é
-/// TODO: por enquanto o valor cobrado continua o do plano em que a
-/// assinatura foi criada até essa sincronização ser feita; o dashboard
-/// mostra o plano novo, mas isso precisa ser fechado antes de oferecer
-/// upgrade/downgrade de verdade pra um lojista pagante.
+/// Upgrade/downgrade — preço do banco + regras de cupom + sync no gateway.
 pub async fn mudar_plano(
     State(state): State<AppState>,
     AuthSubscriber(claims): AuthSubscriber,
     Json(body): Json<MudarPlanoInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !matches!(body.novo_plano.as_str(), "essential" | "management" | "premium") {
-        return Err(AppError::BadRequest("plano inválido".to_string()));
-    }
-    let row: Option<(Option<String>,)> = sqlx::query_as("SELECT plan_code FROM subscribers WHERE id = $1")
-        .bind(&claims.sub)
-        .fetch_optional(&state.pool)
-        .await?;
-    let Some((Some(_plano_atual),)) = row else {
+    let list_monthly = plans::monthly_price(&state.pool, &body.novo_plano).await?;
+
+    let row: Option<(Option<String>, Option<String>, Option<String>, String, Option<String>)> = sqlx::query_as(
+        "SELECT plan_code, gateway, mp_preapproval_id, COALESCE(billing_cycle, 'mensal'), coupon_kind \
+         FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((Some(plano_atual), gateway_kind, external_id, billing_cycle, coupon_kind)) = row else {
         return Err(AppError::BadRequest("assine um plano antes de trocar".to_string()));
     };
 
-    sqlx::query("UPDATE subscribers SET plan_code = $1, updated_at = now() WHERE id = $2")
-        .bind(&body.novo_plano)
-        .bind(&claims.sub)
-        .execute(&state.pool)
-        .await?;
-    Ok(Json(serde_json::json!({ "plano": body.novo_plano })))
+    if plano_atual == body.novo_plano {
+        return Ok(Json(serde_json::json!({ "plano": body.novo_plano })));
+    }
+
+    // timed: downgrade perde desconto pra sempre; lifetime: upgrade remove.
+    if plans::is_downgrade(&plano_atual, &body.novo_plano) && coupon_kind.as_deref() == Some("timed") {
+        coupons::revoke_subscriber_coupon(&state.pool, &claims.sub, "downgrade").await?;
+    }
+    if plans::is_upgrade(&plano_atual, &body.novo_plano)
+        && coupon_kind.as_deref() == Some("lifetime_current_plan")
+    {
+        coupons::revoke_subscriber_coupon(&state.pool, &claims.sub, "upgrade").await?;
+    }
+
+    let monthly =
+        coupons::effective_monthly(&state.pool, &claims.sub, &body.novo_plano, list_monthly).await?;
+    let cycle = BillingCycle::parse(&billing_cycle).unwrap_or(BillingCycle::Mensal);
+    let charge = gateway::charge_amount(monthly, cycle);
+
+    if let (Some(gw), Some(ext)) = (gateway_kind.as_deref(), external_id.as_deref()) {
+        gateway::update_amount(&state, gw, ext, charge).await?;
+    }
+
+    sqlx::query(
+        "UPDATE subscribers SET plan_code = $1, valor_mensal = $2, updated_at = now() WHERE id = $3",
+    )
+    .bind(&body.novo_plano)
+    .bind(monthly)
+    .bind(&claims.sub)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "plano": body.novo_plano,
+        "valor_mensal": monthly,
+        "valor_cobrado_ciclo": charge,
+    })))
 }
 
 pub async fn cancelar(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<serde_json::Value>, AppError> {

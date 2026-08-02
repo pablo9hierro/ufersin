@@ -362,3 +362,58 @@ async fn cancel_preapproval_id(state: &AppState, token: &str, preapproval_id: &s
     }
     Ok(())
 }
+
+/// Atualiza o valor da cobrança recorrente (upgrade/downgrade / cupom).
+pub async fn update_subscription_amount(
+    state: &AppState,
+    stored_id: &str,
+    amount_reais: f64,
+) -> Result<(), AppError> {
+    if stored_id.starts_with("mock-") {
+        return Ok(());
+    }
+    let token = state
+        .mp_token
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
+
+    // Preferência: se for plan_…, atualiza o plano; senão PUT no preapproval.
+    if let Some(plan_id) = plan_id_from_stored(stored_id) {
+        let url = format!("https://api.mercadopago.com/preapproval_plan/{plan_id}");
+        let resp = state
+            .http
+            .put(&url)
+            .bearer_auth(token)
+            .json(&json!({
+                "auto_recurring": { "transaction_amount": amount_reais }
+            }))
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            tracing::error!("mercado pago update plan amount failed: {text}");
+            return Err(AppError::Internal("falha ao atualizar valor no Mercado Pago".to_string()));
+        }
+        return Ok(());
+    }
+
+    let url = format!("https://api.mercadopago.com/preapproval/{stored_id}");
+    let resp = state
+        .http
+        .put(&url)
+        .bearer_auth(token)
+        .json(&json!({
+            "auto_recurring": { "transaction_amount": amount_reais }
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago update preapproval amount failed: {text}");
+        return Err(AppError::Internal("falha ao atualizar valor no Mercado Pago".to_string()));
+    }
+    Ok(())
+}

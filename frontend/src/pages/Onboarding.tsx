@@ -7,6 +7,7 @@ import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
 import AddressField from '../components/AddressField'
 import { isValidDocumento, onlyDigits } from '../lib/documento'
+import { resolveSessionHome } from '../lib/sessionHome'
 import type { StorefrontStyle } from '../lib/storefrontStyles'
 
 const CORES_DEFAULT = '#0f5132'
@@ -63,6 +64,7 @@ export default function Onboarding() {
   const [integracao, setIntegracao] = useState<IntegracaoPagamento>('nao_integrar')
   const [credencial, setCredencial] = useState('')
   const [venderExternamente, setVenderExternamente] = useState(true)
+  const [vendeMais18, setVendeMais18] = useState(false)
   const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
   const [whatsappHabilitado, setWhatsappHabilitado] = useState(true)
 
@@ -117,6 +119,7 @@ export default function Onboarding() {
         tipo_documento: tipoDocumento,
         instagram: instagram.trim().replace(/^@/, ''),
         vender_externamente: venderExternamente,
+        vende_mais_18: vendeMais18,
         whatsapp_habilitado: whatsappHabilitado,
         forma_pagamento: formaPagamento,
         plataforma_pagamento: plataformaPagamento,
@@ -125,7 +128,7 @@ export default function Onboarding() {
         layout_style: venderExternamente ? layoutStyle : 'ufersin',
       })
       setDone(true)
-      setTimeout(() => navigate('/dashboard'), 2200)
+      resolveSessionHome().then((dest) => setTimeout(() => navigate(dest), 2200))
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível finalizar o onboarding.')
     } finally {
@@ -287,6 +290,19 @@ export default function Onboarding() {
             <span className="text-xs text-uf-silver-dim">
               <span className="block text-uf-silver font-semibold mb-0.5">Quer vender pro público externo</span>
               Vitrine online (catálogo, carrinho, checkout). Desmarque pra usar só painel/PDV.
+            </span>
+          </label>
+
+          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={vendeMais18}
+              onChange={(e) => setVendeMais18(e.target.checked)}
+              className="w-4 h-4 mt-0.5"
+            />
+            <span className="text-xs text-uf-silver-dim">
+              <span className="block text-uf-silver font-semibold mb-0.5">Minha loja vende produtos para maiores de 18 anos</span>
+              Se marcado, o checkout do cliente exige consentimento de compra normal + 18+.
             </span>
           </label>
 

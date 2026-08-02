@@ -1,9 +1,12 @@
 mod abacatepay_gateway;
 mod auth;
+mod coupons;
 mod error;
 mod gateway;
 mod jwks;
 mod mercadopago;
+mod pandadoc;
+mod plans;
 mod routes;
 mod state;
 
@@ -11,7 +14,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::http::HeaderValue;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::Router;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -88,6 +91,9 @@ async fn main() -> anyhow::Result<()> {
     let http = reqwest::Client::new();
     let supabase_jwks = jwks::JwksVerifier::new(&supabase_url, http.clone());
 
+    let pandadoc = pandadoc::PandadocConfig::from_env();
+    tracing::info!("{}", pandadoc::status(&pandadoc).message);
+
     let state = AppState {
         pool,
         http,
@@ -98,6 +104,7 @@ async fn main() -> anyhow::Result<()> {
         back_url: Arc::new(back_url),
         ecommerce_internal_url: Arc::new(ecommerce_internal_url),
         ecommerce_internal_key: Arc::new(ecommerce_internal_key),
+        pandadoc,
     };
 
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
@@ -130,7 +137,43 @@ async fn main() -> anyhow::Result<()> {
             post(routes::onboarding::onboarding).put(routes::onboarding::editar_onboarding),
         )
         .route("/api/public/tenant-config/{slug}", get(routes::onboarding::tenant_config))
+        .route("/api/public/contratos/catalog", get(routes::contratos::catalog))
+        .route(
+            "/api/public/contratos/accept-checkout",
+            post(routes::contratos::accept_checkout),
+        )
+        .route("/api/contratos/me", get(routes::contratos::me_documents))
+        .route("/api/contratos/accept", post(routes::contratos::accept))
+        .route(
+            "/api/public/contratos/pandadoc/status",
+            get(routes::contratos::pandadoc_status),
+        )
+        .route(
+            "/api/contratos/pandadoc/session",
+            post(routes::contratos::pandadoc_session),
+        )
         .route("/api/webhooks/abacatepay", post(routes::webhooks::abacatepay_webhook))
+        .route("/api/public/plans", get(routes::plans::list_public))
+        .route("/api/public/content", get(routes::plans::list_content))
+        .route("/api/public/coupons/preview", post(routes::plans::coupon_preview))
+        .route("/api/superadmin/whoami", get(routes::superadmin::whoami))
+        .route("/api/superadmin/overview", get(routes::superadmin::overview))
+        .route("/api/superadmin/stores", get(routes::superadmin::list_stores))
+        .route(
+            "/api/superadmin/stores/{id}/coupon",
+            post(routes::superadmin::apply_coupon_to_store),
+        )
+        .route(
+            "/api/superadmin/plans",
+            get(routes::superadmin::list_plans_admin).post(routes::superadmin::create_plan),
+        )
+        .route("/api/superadmin/plans/{code}", put(routes::superadmin::update_plan))
+        .route("/api/superadmin/content", put(routes::superadmin::upsert_content))
+        .route("/api/superadmin/costs", get(routes::superadmin::list_costs).post(routes::superadmin::create_cost))
+        .route(
+            "/api/superadmin/coupons",
+            get(routes::superadmin::list_coupons).post(routes::superadmin::create_coupon),
+        )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Loader2, Rocket } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
+import { resolveSessionHome } from '../lib/sessionHome'
 import PasswordField from '../components/PasswordField'
 
 function formatPhone(value: string) {
@@ -62,7 +63,8 @@ export default function CompletarConta() {
         whatsapp: `55${digits}`,
         senha,
       })
-      navigate('/dashboard', { replace: true })
+      const dest = await resolveSessionHome()
+      navigate(dest, { replace: true })
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível concluir sua conta.')
     } finally {

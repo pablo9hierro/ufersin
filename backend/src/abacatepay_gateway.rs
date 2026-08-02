@@ -280,7 +280,11 @@ fn sandbox_mock_charge(state: &AppState, external_reference: &str) -> GatewayCha
 
 fn err_message(err: &AppError) -> &str {
     match err {
-        AppError::BadRequest(m) | AppError::Internal(m) | AppError::Unauthorized(m) | AppError::NotFound(m) => m.as_str(),
+        AppError::BadRequest(m)
+        | AppError::Internal(m)
+        | AppError::Unauthorized(m)
+        | AppError::Forbidden(m)
+        | AppError::NotFound(m) => m.as_str(),
     }
 }
 

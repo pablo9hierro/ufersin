@@ -63,6 +63,8 @@ export interface AssinarPlanoInput {
   metodo: MetodoPagamento
   /** mensal (default) | semestral (6 meses com 5% de desconto). */
   ciclo?: BillingCycle
+  /** Cupom opcional — valor cobrado só no servidor. */
+  cupom?: string
 }
 export interface AssinaturaCriada {
   id: string
@@ -71,6 +73,83 @@ export interface AssinaturaCriada {
   pix_qr_base64: string | null
   /** Homologação AbacatePay — permite simular pagamento. */
   sandbox?: boolean
+  valor_mensal?: number
+  valor_cobrado?: number
+}
+
+export interface PlatformPlan {
+  code: PlanoCode
+  name: string
+  price_monthly: number
+  tagline: string
+  features: string[] | unknown
+  highlight: boolean
+  active: boolean
+  sort_order: number
+}
+
+export interface PlatformContentItem {
+  key: string
+  value: string
+}
+
+export interface CouponPreview {
+  code: string
+  discount_type: 'fixed' | 'percent' | string
+  discount_value: number
+  duration_kind: string
+  duration_days: number | null
+  monthly_before: number
+  monthly_after: number
+}
+
+export interface SuperadminWhoami {
+  superadmin: true
+  user_id: string
+  email: string | null
+}
+
+export interface SuperadminOverview {
+  lojas_ativas: number
+  lojas_total: number
+  mrr: number
+  custos_mensais: number
+  lucro_estimado: number
+}
+
+export interface SuperadminStore {
+  id: string
+  loja_nome: string
+  email: string
+  whatsapp: string
+  slug: string | null
+  plan_code: string | null
+  valor_mensal: number | null
+  status: string
+  onboarding_status: string
+  coupon_code: string | null
+  created_at: string
+}
+
+export interface SuperadminCost {
+  id: string
+  label: string
+  amount_monthly: number
+  notes: string
+  active: boolean
+}
+
+export interface SuperadminCoupon {
+  id: string
+  code: string
+  discount_type: string
+  discount_value: number
+  duration_kind: string
+  duration_days: number | null
+  max_redemptions: number | null
+  redemptions: number
+  active: boolean
+  notes: string
 }
 
 export interface StatusAssinatura {
@@ -109,12 +188,37 @@ export interface MeResponse {
   documento: string | null
   tipo_documento: TipoDocumento | null
   vender_externamente: boolean
+  vende_mais_18: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento: PlataformaPagamento | null
   layout_style: 'ufersin' | 'burgerbite' | 'burgerhouse'
   instagram: string | null
+  facebook: string | null
+  coupon_code: string | null
   proxima_cobranca: string | null
+}
+
+export type ContractKind = 'platform_subscription' | 'checkout_compra_normal' | 'checkout_mais18'
+/** E-sign PandaDoc — exclusivo do contrato lojista em /assinar. */
+export type PlatformContractKind = 'platform_subscription'
+
+export interface PandadocStatus {
+  enabled: boolean
+  sandbox: boolean
+  platform_template_configured: boolean
+  platform_signing_ready: boolean
+  checkout_uses_pandadoc: boolean
+  message: string
+}
+
+export interface ContractCatalogItem {
+  kind: ContractKind
+  title: string
+  description: string | null
+  version: number | null
+  version_status: string | null
+  pandadoc_ready: boolean
 }
 
 export interface OnboardingInput {
@@ -131,6 +235,7 @@ export interface OnboardingInput {
   tipo_documento: TipoDocumento
   instagram?: string
   vender_externamente: boolean
+  vende_mais_18?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -154,12 +259,30 @@ export interface EditOnboardingInput {
   documento?: string
   tipo_documento?: TipoDocumento
   instagram?: string
+  facebook?: string
   vender_externamente?: boolean
+  vende_mais_18?: boolean
   whatsapp_habilitado?: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
   plataforma_credenciais?: Record<string, string>
   layout_style?: 'ufersin' | 'burgerbite' | 'burgerhouse'
+}
+
+function normalizePlan(p: PlatformPlan): PlatformPlan {
+  const features = Array.isArray(p.features)
+    ? p.features.map(String)
+    : typeof p.features === 'string'
+      ? (() => {
+          try {
+            const j = JSON.parse(p.features as string)
+            return Array.isArray(j) ? j.map(String) : []
+          } catch {
+            return []
+          }
+        })()
+      : []
+  return { ...p, features }
 }
 
 export const api = {
@@ -170,6 +293,59 @@ export const api = {
   simularPagamento: () =>
     request<StatusAssinatura>('/api/assinaturas/simular-pagamento', { method: 'POST', body: '{}' }),
 
+  listPublicPlans: async () => {
+    const rows = await request<PlatformPlan[]>('/api/public/plans')
+    return rows.map(normalizePlan)
+  },
+  listPublicContent: () => request<PlatformContentItem[]>('/api/public/content'),
+  previewCoupon: (code: string, plano: PlanoCode) =>
+    request<CouponPreview>('/api/public/coupons/preview', {
+      method: 'POST',
+      body: JSON.stringify({ code, plano }),
+    }),
+
+  /** Gate do /dashboard — 403 se autenticado mas não é dono da plataforma. */
+  superadminWhoami: () => request<SuperadminWhoami>('/api/superadmin/whoami'),
+  superadminOverview: () => request<SuperadminOverview>('/api/superadmin/overview'),
+  superadminStores: () => request<SuperadminStore[]>('/api/superadmin/stores'),
+  superadminApplyStoreCoupon: (id: string, code: string) =>
+    request<{ ok: boolean; code: string; valor_mensal: number }>(`/api/superadmin/stores/${id}/coupon`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+  superadminPlans: async () => {
+    const rows = await request<PlatformPlan[]>('/api/superadmin/plans')
+    return rows.map(normalizePlan)
+  },
+  superadminCreatePlan: (body: {
+    code: PlanoCode
+    name: string
+    price_monthly: number
+    tagline?: string
+    features?: string[]
+    highlight?: boolean
+    sort_order?: number
+  }) => request<PlatformPlan>('/api/superadmin/plans', { method: 'POST', body: JSON.stringify(body) }),
+  superadminUpdatePlan: (
+    code: string,
+    body: Partial<{ name: string; price_monthly: number; tagline: string; features: string[]; highlight: boolean; active: boolean }>,
+  ) => request<PlatformPlan>(`/api/superadmin/plans/${code}`, { method: 'PUT', body: JSON.stringify(body) }),
+  superadminUpsertContent: (key: string, value: string) =>
+    request<{ ok: boolean }>('/api/superadmin/content', { method: 'PUT', body: JSON.stringify({ key, value }) }),
+  superadminCosts: () => request<SuperadminCost[]>('/api/superadmin/costs'),
+  superadminCreateCost: (body: { label: string; amount_monthly: number; notes?: string }) =>
+    request<SuperadminCost>('/api/superadmin/costs', { method: 'POST', body: JSON.stringify(body) }),
+  superadminCoupons: () => request<SuperadminCoupon[]>('/api/superadmin/coupons'),
+  superadminCreateCoupon: (body: {
+    code: string
+    discount_type: 'fixed' | 'percent'
+    discount_value: number
+    duration_kind: 'timed' | 'lifetime_current_plan'
+    duration_days?: number | null
+    max_redemptions?: number | null
+    notes?: string
+  }) => request<{ id: string; code: string }>('/api/superadmin/coupons', { method: 'POST', body: JSON.stringify(body) }),
+
   me: () => request<MeResponse>('/api/me'),
   mudarPlano: (novo_plano: PlanoCode) =>
     request<{ plano: PlanoCode }>('/api/me/plano', { method: 'POST', body: JSON.stringify({ novo_plano }) }),
@@ -178,4 +354,34 @@ export const api = {
   onboarding: (input: OnboardingInput) => request<OnboardingOutput>('/api/onboarding', { method: 'POST', body: JSON.stringify(input) }),
   editarOnboarding: (input: EditOnboardingInput) =>
     request<{ updated: boolean }>('/api/onboarding', { method: 'PUT', body: JSON.stringify(input) }),
+
+  getPandadocStatus: () => request<PandadocStatus>('/api/public/contratos/pandadoc/status'),
+  contratosCatalog: () => request<ContractCatalogItem[]>('/api/public/contratos/catalog'),
+  contratosAccept: (kind: ContractKind, channel = 'checkbox') =>
+    request<{ id: string; kind: string; accepted: boolean }>('/api/contratos/accept', {
+      method: 'POST',
+      body: JSON.stringify({ kind, channel }),
+    }),
+  contratosMe: () =>
+    request<
+      Array<{
+        id: string
+        kind: string
+        status: string
+        pandadoc_share_link: string | null
+        signed_at: string | null
+      }>
+    >('/api/contratos/me'),
+  /** Só `platform_subscription` — checkout kinds usam checkbox no e-commerce. */
+  contratosPandadocSession: (signer_email: string, signer_name?: string) =>
+    request<{
+      ready: boolean
+      mode: string
+      message: string
+      session_id: string | null
+      share_link: string | null
+    }>('/api/contratos/pandadoc/session', {
+      method: 'POST',
+      body: JSON.stringify({ kind: 'platform_subscription' satisfies PlatformContractKind, signer_email, signer_name }),
+    }),
 }

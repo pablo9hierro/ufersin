@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from '../../lib/tenantRouter'
-import { Clock, MapPin, MessageCircle } from 'lucide-react'
+import { MapPin } from 'lucide-react'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import { tenantWhatsAppHref } from '../../lib/tenantConfig'
+import { tenantFullAddress, tenantMapsHref, tenantShareLinks } from '../../lib/tenantConfig'
 import { getStoreOpenState } from '../../lib/storeHours'
 import { useCustomerAuth } from '../../store/customerAuth'
 import Shell from '../components/Shell'
 import AuthModal from '../components/AuthModal'
 import PromoCarousel from '../components/PromoCarousel'
+import StoreHoursToggle from '../../components/landing/StoreHoursToggle'
+import ShareButton from '../../components/landing/ShareButton'
 
 // Hero em tipografia CONDENSADA gigante (igual à referência: "BURGER" em
 // caixa alta enorme + selo de preço/eyebrow pequeno + link de ação
@@ -19,7 +21,6 @@ export default function Uiux4Landing() {
   const customerAuth = useCustomerAuth()
   const { data: storeStatus } = useStoreStatus()
   const tenantConfig = useTenantConfig()
-  const whatsappHref = tenantWhatsAppHref(tenantConfig)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
   const openState = storeStatus ? getStoreOpenState(storeStatus) : null
@@ -64,27 +65,13 @@ export default function Uiux4Landing() {
         </div>
 
         <div className="flex flex-col gap-3 text-sm u4-dim">
-          <a
-            href="https://www.google.com/maps/search/?api=1&query=Avenida+Central%2C+500+-+Centro%2C+Jo%C3%A3o+Pessoa+-+PB"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5"
-          >
-            <MapPin className="w-4 h-4 shrink-0" /> Avenida Central, 500 - Centro, João Pessoa - PB
-          </a>
-          <p className="flex items-center gap-1.5">
-            <Clock className="w-4 h-4 shrink-0" /> Todos os dias, 18h às 23h
-          </p>
-          {whatsappHref && (
-            <a
-              href={whatsappHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="u4-btn-primary inline-flex items-center gap-2 px-4 py-2.5 w-fit mt-1"
-            >
-              <MessageCircle className="w-4 h-4" /> Falar no WhatsApp
+          {tenantMapsHref(tenantConfig) && (
+            <a href={tenantMapsHref(tenantConfig)!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+              <MapPin className="w-4 h-4 shrink-0" /> {tenantFullAddress(tenantConfig)}
             </a>
           )}
+          <StoreHoursToggle hours={storeStatus?.hours} variant="u4" />
+          <ShareButton links={tenantShareLinks(tenantConfig)} variant="u4" />
         </div>
       </div>
 

@@ -2,22 +2,11 @@ use axum::{extract::Path, extract::State, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthSubscriber;
+use crate::coupons;
 use crate::error::AppError;
 use crate::gateway::{self, BillingCycle, PaymentMethod};
+use crate::plans;
 use crate::state::AppState;
-
-fn valid_plan(code: &str) -> bool {
-    matches!(code, "essential" | "management" | "premium")
-}
-
-fn plan_monthly_price(code: &str, default_price: f64) -> f64 {
-    match code {
-        "essential" => 60.0,
-        "management" => 250.0,
-        "premium" => 350.0,
-        _ => default_price,
-    }
-}
 
 #[derive(Debug, Deserialize)]
 pub struct AssinarPlanoInput {
@@ -27,6 +16,15 @@ pub struct AssinarPlanoInput {
     /// mensal (default) | semestral (6 meses com 5% de desconto).
     #[serde(default = "default_cycle")]
     pub ciclo: String,
+    /// Cupom opcional — validado e aplicado só no servidor.
+    pub cupom: Option<String>,
+    /// Ignorado de propósito se o cliente mandar (anti-tamper).
+    #[serde(default)]
+    pub valor: Option<f64>,
+    #[serde(default)]
+    pub amount: Option<f64>,
+    #[serde(default)]
+    pub price: Option<f64>,
 }
 fn default_method() -> PaymentMethod {
     PaymentMethod::Cartao
@@ -43,21 +41,24 @@ pub struct AssinaturaCriada {
     pub pix_qr_base64: Option<String>,
     /// Homologação AbacatePay (`abc_dev_`) — front pode oferecer "Simular pagamento".
     pub sandbox: bool,
+    pub valor_mensal: f64,
+    pub valor_cobrado: f64,
 }
 
 /// Atrela um plano à conta já existente e dispara a cobrança recorrente.
-/// Permite retry quando status é `pendente` / `cancelado` / `sem_assinatura`
-/// (bloqueia só `ativo` e `pausado`).
+/// Preço vem exclusivamente de `platform_plans` (+ cupom server-side).
 pub async fn assinar_plano(
     State(state): State<AppState>,
     AuthSubscriber(claims): AuthSubscriber,
     Json(body): Json<AssinarPlanoInput>,
 ) -> Result<Json<AssinaturaCriada>, AppError> {
-    if !valid_plan(&body.plano) {
-        return Err(AppError::BadRequest("plano inválido".to_string()));
-    }
+    // Qualquer valor enviado pelo cliente é descartado.
+    let _ignored = (body.valor, body.amount, body.price);
+
     let cycle = BillingCycle::parse(&body.ciclo)
         .ok_or_else(|| AppError::BadRequest("ciclo inválido — use mensal ou semestral".to_string()))?;
+
+    let list_monthly = plans::monthly_price(&state.pool, &body.plano).await?;
 
     let row: Option<(String, String, String)> =
         sqlx::query_as("SELECT loja_nome, email, status FROM subscribers WHERE id = $1")
@@ -70,11 +71,17 @@ pub async fn assinar_plano(
         return Err(AppError::BadRequest("essa conta já tem uma assinatura ativa".to_string()));
     }
 
-    let monthly = plan_monthly_price(&body.plano, state.valor_padrao);
+    let monthly = if let Some(code) = body.cupom.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let (after, _) = coupons::redeem_on_subscribe(&state.pool, &claims.sub, &body.plano, code).await?;
+        after
+    } else {
+        list_monthly
+    };
+
     let valor = gateway::charge_amount(monthly, cycle);
     let gateway_kind = gateway::resolve_gateway_kind(&state);
     let reason = format!(
-        "Assinatura Rodoletas ({}/{}) — {}",
+        "Assinatura Resolutoo ({}/{}) — {}",
         body.plano,
         cycle.as_str(),
         loja_nome.trim()
@@ -92,8 +99,6 @@ pub async fn assinar_plano(
     )
     .await?;
 
-    // Homologação (mock-*): libera assinatura na hora — senão o onboarding
-    // trava em "pagamento ainda não foi confirmado" se o usuário pular o botão.
     let (status, onboarding) = if charge.sandbox && charge.external_id.starts_with("mock-") {
         ("ativo", "aguardando_onboarding")
     } else {
@@ -121,6 +126,8 @@ pub async fn assinar_plano(
         pix_qr_code: charge.pix_qr_code,
         pix_qr_base64: charge.pix_qr_base64,
         sandbox: charge.sandbox,
+        valor_mensal: monthly,
+        valor_cobrado: valor,
     }))
 }
 
@@ -131,9 +138,6 @@ pub struct StatusAssinatura {
     pub sandbox: bool,
 }
 
-/// O front chama isso em polling depois de redirecionar o lojista pro
-/// checkout — quando o gateway confirma o pagamento, o status muda de
-/// "pendente" pra "ativo".
 pub async fn status_assinatura(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -164,8 +168,6 @@ pub async fn status_assinatura(
         _ => "pendente",
     };
 
-    // Nunca rebaixar ativo→pendente por leitura ambígua do gateway
-    // (sandbox/simular + poll em /obrigado). Cancelamento/pausa explícitos ok.
     if status_atual == "ativo" && novo_status == "pendente" {
         novo_status = "ativo";
     }
@@ -192,8 +194,6 @@ pub async fn status_assinatura(
     }))
 }
 
-/// Homologação: marca a assinatura como paga sem cobrança real.
-/// Só funciona com chave `abc_dev_` / mock.
 pub async fn simular_pagamento(
     State(state): State<AppState>,
     AuthSubscriber(claims): AuthSubscriber,

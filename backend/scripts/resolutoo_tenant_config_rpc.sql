@@ -5,7 +5,9 @@
 
 ALTER TABLE IF EXISTS resolutoo.subscribers
   ADD COLUMN IF NOT EXISTS instagram text,
-  ADD COLUMN IF NOT EXISTS endereco_numero text;
+  ADD COLUMN IF NOT EXISTS endereco_numero text,
+  ADD COLUMN IF NOT EXISTS facebook text,
+  ADD COLUMN IF NOT EXISTS vende_mais_18 boolean NOT NULL DEFAULT false;
 
 CREATE OR REPLACE FUNCTION resolutoo.get_public_tenant_config(p_slug text)
 RETURNS json
@@ -25,7 +27,11 @@ AS $$
     'plataforma_pagamento', plataforma_pagamento,
     'layout_style', coalesce(nullif(layout_style, ''), 'ufersin'),
     'cor_principal', cor_principal,
-    'instagram', instagram
+    'instagram', instagram,
+    'facebook', facebook,
+    'endereco', endereco,
+    'endereco_numero', endereco_numero,
+    'vende_mais_18', coalesce(vende_mais_18, false)
   )
   FROM resolutoo.subscribers
   WHERE lower(slug) = lower(p_slug)

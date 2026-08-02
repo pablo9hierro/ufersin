@@ -5,7 +5,8 @@ import { DeliveryPositionSchema, OrderSchema, type DeliveryType, type PaymentMet
 export interface CreateOrderPayload {
   customer_name: string
   customer_whatsapp: string
-  customer_birthdate: string
+  /** Obrigatório só quando a loja tem `vende_mais_18`; senão opcional. */
+  customer_birthdate?: string
   delivery_type: Extract<DeliveryType, 'entrega' | 'retirada'>
   neighborhood?: string
   address?: string

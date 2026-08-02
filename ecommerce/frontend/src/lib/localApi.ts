@@ -162,7 +162,7 @@ async function productSalesCounts(): Promise<{ product_id: string; sold_count: n
 async function createOrder(payload: {
   customer_name: string
   customer_whatsapp: string
-  customer_birthdate: string
+  customer_birthdate?: string
   delivery_type: 'entrega' | 'retirada'
   neighborhood?: string
   address?: string
@@ -188,13 +188,14 @@ async function createOrder(payload: {
   if (!payload.customer_name.trim() || !payload.customer_whatsapp.trim()) {
     throw new ApiError(400, 'customer_name and customer_whatsapp are required')
   }
-  if (!payload.customer_birthdate) {
-    throw new ApiError(400, 'birthdate is required')
-  }
-  const birthdate = new Date(payload.customer_birthdate)
-  const age = (Date.now() - birthdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
-  if (age < 18) {
-    throw new ApiError(400, 'you must be 18 or older to purchase tobacco products')
+  // Birthdate só é obrigatório quando a loja exige 18+ (UI/tenant); se vier,
+  // valida maioridade. Sem data = permitido (compra normal sem mais18).
+  if (payload.customer_birthdate) {
+    const birthdate = new Date(payload.customer_birthdate)
+    const age = (Date.now() - birthdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+    if (Number.isNaN(birthdate.getTime()) || age < 18) {
+      throw new ApiError(400, 'you must be 18 or older')
+    }
   }
 
   let promotion: Promotion | undefined
@@ -271,7 +272,9 @@ async function createOrder(payload: {
     else if (promotion.shipping_discount_type === 'fixed') shippingDiscount += promotion.shipping_discount_value ?? 0
   }
 
-  const birthMonth = new Date(payload.customer_birthdate).getMonth()
+  const birthMonth = payload.customer_birthdate
+    ? new Date(payload.customer_birthdate).getMonth()
+    : -1
   let couponCode: string | null = null
   if (payload.coupon_code && payload.coupon_code.trim()) {
     const coupon = (db.coupons ?? []).find((c) => c.code.toUpperCase() === payload.coupon_code!.trim().toUpperCase())
@@ -286,8 +289,11 @@ async function createOrder(payload: {
     if (promotion && !coupon.allow_promotion_checkout) {
       throw new ApiError(400, 'this coupon cannot be combined with a promotion checkout')
     }
-    if (coupon.kind === 'aniversario' && new Date().getMonth() !== birthMonth) {
-      throw new ApiError(400, 'this coupon is only valid during your birthday month')
+    if (coupon.kind === 'aniversario') {
+      if (birthMonth < 0) throw new ApiError(400, 'birthdate is required for birthday coupons')
+      if (new Date().getMonth() !== birthMonth) {
+        throw new ApiError(400, 'this coupon is only valid during your birthday month')
+      }
     }
     // Cupom alvo (com concessões, ou nascido de uma campanha orientation=
     // evento que ainda não disparou pra ninguém): intransferível, consome a

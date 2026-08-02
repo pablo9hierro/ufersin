@@ -17,6 +17,10 @@ import { useCustomer } from '../store/customer'
 import { useCustomerAuth } from '../store/customerAuth'
 import CustomerAuthModal from '../components/CustomerAuthModal'
 import { isDemoModeActive } from '../lib/demoMode'
+import { useTenantConfig } from '../hooks/useTenantConfig'
+import { resolveTenantSlug } from '../lib/tenantConfig'
+
+const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -39,6 +43,9 @@ export default function Checkout() {
   const { items, clear } = useCart()
   const customer = useCustomer()
   const customerAuth = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
+  const [aceiteCompraNormal, setAceiteCompraNormal] = useState(false)
+  const [aceiteMais18, setAceiteMais18] = useState(false)
 
   const [products, setProducts] = useState<Product[]>([])
   const [pickupAtStore, setPickupAtStore] = useState(false)
@@ -298,16 +305,21 @@ export default function Checkout() {
       setError('Informe um WhatsApp válido.')
       return
     }
-    if (!customer.birthdate) {
-      setError('Informe sua data de nascimento.')
-      return
-    }
-    // Exigência de maioridade é específica de tabacaria (venda de fumo) —
-    // não se aplica ao ramo lanchonete simulado na demo.
-    if (!isDemoModeActive()) {
-      const age = (Date.now() - new Date(customer.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
-      if (age < 18) {
-        setError('Você precisa ser maior de idade para comprar produtos de tabacaria.')
+    // Idade só é obrigatória quando o lojista marcou vende_mais_18 no onboarding.
+    if (tenantConfig?.vende_mais_18) {
+      if (!customer.birthdate) {
+        setError('Informe sua data de nascimento.')
+        return
+      }
+      if (!isDemoModeActive()) {
+        const age = (Date.now() - new Date(customer.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
+        if (age < 18) {
+          setError('Você precisa ser maior de 18 anos para comprar nesta loja.')
+          return
+        }
+      }
+      if (!aceiteMais18) {
+        setError('Aceite o consentimento para compra de produtos 18+ para continuar.')
         return
       }
     }
@@ -315,13 +327,39 @@ export default function Checkout() {
       setError('Escolha sua localização no mapa ou marque retirada no local.')
       return
     }
+    if (!aceiteCompraNormal) {
+      setError('Aceite os termos de consentimento de compra para continuar.')
+      return
+    }
 
     setSubmitting(true)
     try {
+      const slug = resolveTenantSlug() || tenantConfig?.slug
+      const acceptKinds = tenantConfig?.vende_mais_18
+        ? (['checkout_compra_normal', 'checkout_mais18'] as const)
+        : (['checkout_compra_normal'] as const)
+      if (slug) {
+        await Promise.allSettled(
+          acceptKinds.map((kind) =>
+            fetch(`${RODOLETAS_API_URL}/api/public/contratos/accept-checkout`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                kind,
+                tenant_slug: slug,
+                acceptor_email: customerAuth.customer?.email ?? undefined,
+                acceptor_name: customer.name.trim(),
+                channel: 'checkbox',
+              }),
+            }),
+          ),
+        )
+      }
+
       const order = await orderService.create({
         customer_name: customer.name.trim(),
         customer_whatsapp: `55${digits}`,
-        customer_birthdate: customer.birthdate,
+        customer_birthdate: tenantConfig?.vende_mais_18 ? customer.birthdate : customer.birthdate || undefined,
         delivery_type: pickupAtStore ? 'retirada' : 'entrega',
         neighborhood: pickupAtStore ? undefined : customer.neighborhood,
         address: pickupAtStore ? undefined : customer.address,
@@ -406,13 +444,15 @@ export default function Checkout() {
             </div>
           </div>
 
-          <div>
-            <label className="label">Data de nascimento *</label>
-            <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
-            <p className="text-xs text-son-silver-dim mt-1">
-              {isDemoModeActive() ? 'Pra te avisar em datas especiais e promoções de aniversário.' : 'Exigido por lei — venda de produtos de tabacaria só para maiores de 18 anos.'}
-            </p>
-          </div>
+          {tenantConfig?.vende_mais_18 && (
+            <div>
+              <label className="label">Data de nascimento *</label>
+              <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
+              <p className="text-xs text-son-silver-dim mt-1">
+                Obrigatório — esta loja vende produtos para maiores de 18 anos.
+              </p>
+            </div>
+          )}
 
           <label className="flex items-center gap-2 text-sm text-son-silver">
             <input
@@ -722,9 +762,42 @@ export default function Checkout() {
             </div>
           </div>
 
+          <div className="space-y-2 pt-1">
+            <label className="flex items-start gap-2.5 cursor-pointer text-xs text-son-silver-dim">
+              <input
+                type="checkbox"
+                checked={aceiteCompraNormal}
+                onChange={(e) => setAceiteCompraNormal(e.target.checked)}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span>
+                <span className="block text-white font-semibold mb-0.5">Aceito os termos de compra</span>
+                Consentimento de compra normal registrado localmente (checkbox).
+              </span>
+            </label>
+            {tenantConfig?.vende_mais_18 && (
+              <label className="flex items-start gap-2.5 cursor-pointer text-xs text-son-silver-dim">
+                <input
+                  type="checkbox"
+                  checked={aceiteMais18}
+                  onChange={(e) => setAceiteMais18(e.target.checked)}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span>
+                  <span className="block text-white font-semibold mb-0.5">Aceito os termos para maiores de 18</span>
+                  Esta loja pode vender produtos 18+ — os dois consentimentos se aplicam ao checkout.
+                </span>
+              </label>
+            )}
+          </div>
+
           {error && <p className="error-msg">{error}</p>}
 
-          <button onClick={handleFinalizeClick} disabled={submitting} className="btn-primary sunset-checkout-submit w-full text-base py-4">
+          <button
+            onClick={handleFinalizeClick}
+            disabled={submitting || !aceiteCompraNormal || (tenantConfig?.vende_mais_18 && !aceiteMais18)}
+            className="btn-primary sunset-checkout-submit w-full text-base py-4"
+          >
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Finalizar pedido
           </button>

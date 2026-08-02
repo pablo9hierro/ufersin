@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from '../../lib/tenantRouter'
-import { Clock, MapPin, MessageCircle, ShoppingBag, Star, Truck, Wallet } from 'lucide-react'
+import { MapPin, ShoppingBag, Star, Truck, Wallet } from 'lucide-react'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import { tenantWhatsAppHref } from '../../lib/tenantConfig'
+import { tenantFullAddress, tenantMapsHref, tenantShareLinks } from '../../lib/tenantConfig'
 import { getStoreOpenState } from '../../lib/storeHours'
 import { useCustomerAuth } from '../../store/customerAuth'
 import Shell from '../components/Shell'
 import AuthModal from '../components/AuthModal'
 import PromoCarousel from '../components/PromoCarousel'
+import StoreHoursToggle from '../../components/landing/StoreHoursToggle'
+import ShareButton from '../../components/landing/ShareButton'
 
 const DESTAQUES = [
   { icon: Truck, title: 'Entrega rápida', desc: 'Pedido pronto em até 20 minutos' },
@@ -24,7 +26,6 @@ export default function Uiux2Landing() {
   const customerAuth = useCustomerAuth()
   const { data: storeStatus } = useStoreStatus()
   const tenantConfig = useTenantConfig()
-  const whatsappHref = tenantWhatsAppHref(tenantConfig)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
   const openState = storeStatus ? getStoreOpenState(storeStatus) : null
@@ -72,27 +73,18 @@ export default function Uiux2Landing() {
           </div>
 
           <div className="flex flex-col gap-3 text-sm u2-oncanvas-dim">
-            <a
-              href="https://www.google.com/maps/search/?api=1&query=Avenida+Central,+500+-+Centro,+João+Pessoa+-+PB"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-1.5 hover:opacity-80 transition-opacity"
-            >
-              <MapPin className="w-4 h-4 shrink-0" /> Avenida Central, 500 - Centro, João Pessoa - PB
-            </a>
-            <p className="flex items-center justify-center gap-1.5">
-              <Clock className="w-4 h-4 shrink-0" /> Todos os dias, 18h às 23h
-            </p>
-            {whatsappHref && (
+            {tenantMapsHref(tenantConfig) && (
               <a
-                href={whatsappHref}
+                href={tenantMapsHref(tenantConfig)!}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="u2-btn-primary inline-flex items-center justify-center gap-2 px-4 py-2.5 mx-auto mt-1"
+                className="flex items-center justify-center gap-1.5 hover:opacity-80 transition-opacity"
               >
-                <MessageCircle className="w-4 h-4" /> Falar no WhatsApp
+                <MapPin className="w-4 h-4 shrink-0" /> {tenantFullAddress(tenantConfig)}
               </a>
             )}
+            <StoreHoursToggle hours={storeStatus?.hours} variant="u2" />
+            <ShareButton links={tenantShareLinks(tenantConfig)} variant="u2" />
           </div>
         </div>
       </div>

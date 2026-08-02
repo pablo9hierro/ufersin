@@ -22,6 +22,20 @@ export interface TenantConfig {
   plataforma_pagamento: 'mercado_pago' | 'abacate_pay' | null
   layout_style: 'ufersin' | 'burgerbite' | 'burgerhouse'
   cor_principal: string | null
+  /** Checkout exige consentimento 18+ além da compra normal. */
+  vende_mais_18: boolean
+  endereco: string
+  endereco_numero: string
+  instagram: string
+  facebook: string
+}
+
+export type ShareNetwork = 'whatsapp' | 'instagram' | 'facebook'
+
+export interface ShareLink {
+  network: ShareNetwork
+  href: string
+  label: string
 }
 
 /** Fail-closed: essential + sem pedidos externos até a config real chegar
@@ -37,6 +51,11 @@ const DEFAULT_CONFIG: TenantConfig = {
   plataforma_pagamento: null,
   layout_style: 'ufersin',
   cor_principal: null,
+  vende_mais_18: false,
+  endereco: '',
+  endereco_numero: '',
+  instagram: '',
+  facebook: '',
 }
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
@@ -148,7 +167,12 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     ...data,
     slug,
     whatsapp,
+    endereco: String(data.endereco ?? '').trim(),
+    endereco_numero: String(data.endereco_numero ?? '').trim(),
+    instagram: String(data.instagram ?? '').trim(),
+    facebook: String(data.facebook ?? '').trim(),
     layout_style: normalizeLayoutStyle(data.layout_style),
+    vende_mais_18: Boolean(data.vende_mais_18),
   }
 }
 
@@ -206,6 +230,48 @@ export function tenantWhatsAppHref(config: TenantConfig | null | undefined): str
   const digits = (config.whatsapp || '').replace(/\D/g, '')
   if (digits.length < 10) return null
   return `https://wa.me/${digits}`
+}
+
+/** Rua + número do onboarding; `null` se ambos vazios. */
+export function tenantFullAddress(config: TenantConfig | null | undefined): string | null {
+  const street = (config?.endereco ?? '').trim()
+  const num = (config?.endereco_numero ?? '').trim()
+  if (!street && !num) return null
+  if (street && num) return `${street}, ${num}`
+  return street || num
+}
+
+export function tenantMapsHref(config: TenantConfig | null | undefined): string | null {
+  const addr = tenantFullAddress(config)
+  if (!addr) return null
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`
+}
+
+export function tenantInstagramHref(config: TenantConfig | null | undefined): string | null {
+  const raw = (config?.instagram ?? '').trim().replace(/^@+/, '')
+  if (!raw) return null
+  if (/^https?:\/\//i.test(raw)) return raw
+  return `https://www.instagram.com/${encodeURIComponent(raw)}`
+}
+
+export function tenantFacebookHref(config: TenantConfig | null | undefined): string | null {
+  const raw = (config?.facebook ?? '').trim()
+  if (!raw) return null
+  if (/^https?:\/\//i.test(raw)) return raw
+  const handle = raw.replace(/^@+/, '')
+  return `https://www.facebook.com/${encodeURIComponent(handle)}`
+}
+
+/** Redes preenchidas no tenant — ordem fixa pra UI de compartilhar. */
+export function tenantShareLinks(config: TenantConfig | null | undefined): ShareLink[] {
+  const links: ShareLink[] = []
+  const wa = tenantWhatsAppHref(config)
+  if (wa) links.push({ network: 'whatsapp', href: wa, label: 'WhatsApp' })
+  const ig = tenantInstagramHref(config)
+  if (ig) links.push({ network: 'instagram', href: ig, label: 'Instagram' })
+  const fb = tenantFacebookHref(config)
+  if (fb) links.push({ network: 'facebook', href: fb, label: 'Facebook' })
+  return links
 }
 
 /** Busca (e cacheia em memória por pouco tempo) a config real do tenant. */

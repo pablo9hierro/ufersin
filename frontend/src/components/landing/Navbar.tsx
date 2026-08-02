@@ -56,7 +56,7 @@ export default function Navbar() {
 
         <div className="flex items-center gap-2 sm:gap-3">
           {isAuthenticated ? (
-            <Link to="/dashboard" className="btn-secondary px-3 sm:px-4 py-2 text-sm">
+            <Link to="/meu-plano" className="btn-secondary px-3 sm:px-4 py-2 text-sm">
               Meu painel
             </Link>
           ) : (

@@ -28,8 +28,13 @@ pub struct OnboardingInput {
     pub tipo_documento: String, // 'cnpj' | 'cpf'
     #[serde(default)]
     pub instagram: Option<String>,
+    #[serde(default)]
+    pub facebook: Option<String>,
     #[serde(default = "default_true")]
     pub vender_externamente: bool,
+    /// Loja vende produtos para maiores de 18 — ativa consentimento checkout_mais18.
+    #[serde(default)]
+    pub vende_mais_18: bool,
 
     // WhatsApp: só a flag aqui; QR connect fica na etapa 2 do painel da loja.
     #[serde(default = "default_true")]
@@ -158,6 +163,12 @@ pub async fn onboarding(
         .map(|s| s.trim().trim_start_matches('@'))
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
+    let facebook = body
+        .facebook
+        .as_deref()
+        .map(|s| s.trim().trim_start_matches('@'))
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
 
     let payload = ProvisionRequest {
         organization_name: body.nome_loja.trim(),
@@ -199,7 +210,8 @@ pub async fn onboarding(
          cor_principal = $6, banner_url = $7, loja_nome = $8, whatsapp = $9, onboarding_status = 'provisionado', \
          documento = $11, tipo_documento = $12, vender_externamente = $13, whatsapp_habilitado = $14, \
          forma_pagamento = $15, plataforma_pagamento = $16, plataforma_credenciais = $17, \
-         layout_style = $18, instagram = $19, endereco_numero = $20, updated_at = now() \
+         layout_style = $18, instagram = $19, endereco_numero = $20, vende_mais_18 = $21, \
+         facebook = $22, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -222,6 +234,8 @@ pub async fn onboarding(
     .bind(&body.layout_style)
     .bind(&instagram)
     .bind(body.endereco_numero.as_deref().map(str::trim).filter(|s| !s.is_empty()))
+    .bind(body.vende_mais_18)
+    .bind(&facebook)
     .execute(&state.pool)
     .await?;
 
@@ -334,7 +348,11 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub instagram: Option<String>,
     #[serde(default)]
+    pub facebook: Option<String>,
+    #[serde(default)]
     pub vender_externamente: Option<bool>,
+    #[serde(default)]
+    pub vende_mais_18: Option<bool>,
     #[serde(default)]
     pub whatsapp_habilitado: Option<bool>,
     #[serde(default)]
@@ -414,6 +432,10 @@ pub async fn editar_onboarding(
         let t = s.trim().trim_start_matches('@');
         t.to_string()
     });
+    let facebook = body.facebook.as_ref().map(|s| {
+        let t = s.trim().trim_start_matches('@');
+        t.to_string()
+    });
 
     sqlx::query(
         "UPDATE subscribers SET \
@@ -424,8 +446,9 @@ pub async fn editar_onboarding(
          forma_pagamento = COALESCE($10, forma_pagamento), plataforma_pagamento = COALESCE($11, plataforma_pagamento), \
          plataforma_credenciais = COALESCE($12, plataforma_credenciais), \
          loja_nome = COALESCE($13, loja_nome), layout_style = COALESCE($14, layout_style), \
-         instagram = COALESCE($15, instagram), endereco_numero = COALESCE($16, endereco_numero), updated_at = now() \
-         WHERE id = $17",
+         instagram = COALESCE($15, instagram), endereco_numero = COALESCE($16, endereco_numero), \
+         vende_mais_18 = COALESCE($17, vende_mais_18), facebook = COALESCE($18, facebook), updated_at = now() \
+         WHERE id = $19",
     )
     .bind(&body.categoria)
     .bind(&body.whatsapp)
@@ -443,6 +466,8 @@ pub async fn editar_onboarding(
     .bind(&body.layout_style)
     .bind(&instagram)
     .bind(body.endereco_numero.as_deref().map(str::trim))
+    .bind(body.vende_mais_18)
+    .bind(&facebook)
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
@@ -498,6 +523,12 @@ pub struct TenantConfigResponse {
     pub plataforma_pagamento: Option<String>,
     pub layout_style: String,
     pub cor_principal: Option<String>,
+    /// Checkout deve exigir consentimento mais18 além da compra normal.
+    pub vende_mais_18: bool,
+    pub endereco: Option<String>,
+    pub endereco_numero: Option<String>,
+    pub instagram: Option<String>,
+    pub facebook: Option<String>,
 }
 
 /// Endpoint PÚBLICO (sem auth) que o motor de e-commerce (ecommerce/
@@ -520,10 +551,17 @@ pub async fn tenant_config(
         Option<String>,
         String,
         Option<String>,
+        bool,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
     )> = sqlx::query_as(
         "SELECT loja_nome, plan_code, vender_externamente, whatsapp_habilitado, whatsapp, \
          forma_pagamento, plataforma_pagamento, \
-         COALESCE(layout_style, 'ufersin') as layout_style, cor_principal \
+         COALESCE(layout_style, 'ufersin') as layout_style, cor_principal, \
+         COALESCE(vende_mais_18, false) as vende_mais_18, \
+         endereco, endereco_numero, instagram, facebook \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
     )
     .bind(&slug)
@@ -539,6 +577,11 @@ pub async fn tenant_config(
         plataforma_pagamento,
         layout_style,
         cor_principal,
+        vende_mais_18,
+        endereco,
+        endereco_numero,
+        instagram,
+        facebook,
     ) = row.ok_or_else(|| AppError::NotFound("loja não encontrada".to_string()))?;
 
     let whatsapp: String = whatsapp_raw
@@ -561,5 +604,10 @@ pub async fn tenant_config(
             _ => "ufersin".to_string(),
         },
         cor_principal,
+        vende_mais_18,
+        endereco,
+        endereco_numero,
+        instagram,
+        facebook,
     }))
 }

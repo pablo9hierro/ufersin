@@ -1,34 +1,52 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, AtSign, CreditCard, ExternalLink, Loader2, Palette, Save, Sparkles, Store } from 'lucide-react'
-import { api, ApiError, type FormaPagamento, type MeResponse, type PlanoCode, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
-import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
-import { PLAN_MAP } from '../lib/plans'
+import {
+  AlertTriangle,
+  AtSign,
+  CreditCard,
+  ExternalLink,
+  Loader2,
+  LogOut,
+  Palette,
+  Save,
+  Share2,
+  Sparkles,
+} from 'lucide-react'
+import {
+  api,
+  ApiError,
+  type FormaPagamento,
+  type MeResponse,
+  type PlataformaPagamento,
+  type TipoDocumento,
+} from '../lib/api'
+import { authStore, useAuthReady, useIsAuthenticated } from '../lib/authStore'
+import { fetchPlans, formatBRL, getPlanMap, PLAN_ORDER, priceForCycle } from '../lib/plans'
 import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
 import AddressField from '../components/AddressField'
-import { isValidDocumento, onlyDigits } from '../lib/documento'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
 import { supabase } from '../lib/supabaseClient'
 
-const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
 const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
   { value: 'mercado_pago', label: 'Mercado Pago' },
   { value: 'abacate_pay', label: 'Abacate Pay' },
 ]
 
+type Tab = 'plano' | 'layout' | 'financeiro' | 'redes'
 type IntegracaoPagamento = 'mercado_pago' | 'abacate_pay' | 'nao_integrar'
 
-/** CPF (PF) → só Mercado Pago; CNPJ → AbacatePay ou Mercado Pago. */
 function plataformasParaDocumento(tipo: TipoDocumento) {
   if (tipo === 'cpf') return PLATAFORMAS.filter((p) => p.value === 'mercado_pago')
   return PLATAFORMAS
 }
 
-// /meu-plano: editar etapa 1 + etapa 2 do onboarding a qualquer momento
-// (nunca re-provisiona o tenant — PUT /api/onboarding) + trocar de plano.
+function contentMap(items: { key: string; value: string }[]) {
+  return Object.fromEntries(items.map((i) => [i.key, i.value]))
+}
+
 export default function MeuPlano() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
@@ -39,43 +57,48 @@ export default function MeuPlano() {
   const [busyPlano, setBusyPlano] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [tab, setTab] = useState<Tab>('plano')
+  const [content, setContent] = useState<Record<string, string>>({})
+  const [plansLoaded, setPlansLoaded] = useState(false)
 
-  // Etapa 1
   const [nomeLoja, setNomeLoja] = useState('')
   const [endereco, setEndereco] = useState('')
   const [enderecoNumero, setEnderecoNumero] = useState('')
-  const [instagram, setInstagram] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
   const [corPrincipal, setCorPrincipal] = useState(CORES[0])
   const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
-  const [documento, setDocumento] = useState('')
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('cnpj')
-  const [venderExternamente, setVenderExternamente] = useState(true)
 
-  // Pagamento & WhatsApp
   const [whatsapp, setWhatsapp] = useState('')
-  const [whatsappHabilitado, setWhatsappHabilitado] = useState(true)
+  const [instagram, setInstagram] = useState('')
+  const [facebook, setFacebook] = useState('')
   const [integracao, setIntegracao] = useState<IntegracaoPagamento>('nao_integrar')
   const [credencial, setCredencial] = useState('')
 
   useEffect(() => {
     if (!isAuthenticated) return
+    // Superadmin não é lojista — painel é /dashboard.
     api
-      .me()
-      .then((m) => {
+      .superadminWhoami()
+      .then(() => navigate('/dashboard', { replace: true }))
+      .catch(() => {
+        /* lojista */
+      })
+    Promise.all([api.me(), api.listPublicContent(), fetchPlans()])
+      .then(([m, ct]) => {
         setMe(m)
+        setContent(contentMap(ct))
+        setPlansLoaded(true)
         setNomeLoja(m.loja_nome ?? '')
         setEndereco(m.endereco ?? '')
         setEnderecoNumero(m.endereco_numero ?? '')
-        setInstagram((m.instagram ?? '').replace(/^@/, ''))
         setLogoUrl(m.logo_url ?? '')
         setCorPrincipal(m.cor_principal || CORES[0])
         setLayoutStyle(isStorefrontStyle(m.layout_style) ? m.layout_style : 'ufersin')
-        setDocumento(m.documento ?? '')
         setTipoDocumento(m.tipo_documento ?? 'cnpj')
-        setVenderExternamente(m.vender_externamente)
         setWhatsapp(m.whatsapp ?? '')
-        setWhatsappHabilitado(m.whatsapp_habilitado)
+        setInstagram((m.instagram ?? '').replace(/^@/, ''))
+        setFacebook(m.facebook ?? '')
         if (m.forma_pagamento === 'plataforma' && m.plataforma_pagamento) {
           const plat = m.tipo_documento === 'cpf' ? 'mercado_pago' : m.plataforma_pagamento
           setIntegracao(plat)
@@ -93,7 +116,7 @@ export default function MeuPlano() {
       .finally(() => setLoading(false))
   }, [isAuthenticated, navigate])
 
-  if (!ready) {
+  if (!ready || loading) {
     return (
       <main className="min-h-screen bg-uf-black flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
@@ -101,69 +124,51 @@ export default function MeuPlano() {
     )
   }
   if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (!me) {
+    return (
+      <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 text-center">
+        <p className="text-uf-silver-dim">{error || 'Não foi possível carregar seu plano.'}</p>
+      </main>
+    )
+  }
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const planMap = getPlanMap()
+  const hasActiveSub = me.plano != null && me.status === 'ativo'
+  const tabLocked = content['meu_plano.tab_locked'] ?? 'Você ainda não assinou um plano para gerenciar.'
+  const panelUrl = me.onboarding_status === 'provisionado' && me.slug ? storeAdminLoginUrl(me.slug, me.email) : null
+  const publicUrl = me.onboarding_status === 'provisionado' && me.slug ? storePublicUrl(me.slug) : null
+
+  const handleLogout = async () => {
+    await authStore.signOut()
+    navigate('/')
+  }
+
+  const handleCancelar = async () => {
+    if (!confirm('Tem certeza que quer cancelar sua assinatura?')) return
+    setBusyPlano(true)
+    try {
+      await api.cancelar()
+      setMe((prev) => (prev ? { ...prev, status: 'cancelado' } : prev))
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível cancelar.')
+    } finally {
+      setBusyPlano(false)
+    }
+  }
+
+  const saveOnboarding = async (fields: Parameters<typeof api.editarOnboarding>[0]) => {
     setError(null)
     setSaved(false)
-    if (!nomeLoja.trim()) {
-      setError('Informe o nome da empresa.')
-      return
-    }
-    if (documento && !isValidDocumento(tipoDocumento, documento)) {
-      setError(`${tipoDocumento.toUpperCase()} inválido — confira os dígitos.`)
-      return
-    }
-    let formaPagamento: FormaPagamento = 'manual'
-    let plataformaPagamento: PlataformaPagamento | undefined
-    if (integracao === 'mercado_pago' || integracao === 'abacate_pay') {
-      formaPagamento = 'plataforma'
-      plataformaPagamento = tipoDocumento === 'cpf' ? 'mercado_pago' : integracao
-    }
     setSaving(true)
     try {
-      await api.editarOnboarding({
-        nome_loja: nomeLoja.trim(),
-        endereco: endereco.trim() || undefined,
-        endereco_numero: enderecoNumero.trim() || undefined,
-        instagram: instagram.trim().replace(/^@/, '') || undefined,
-        logo_url: logoUrl.trim() || undefined,
-        cor_principal: corPrincipal,
-        layout_style: venderExternamente ? layoutStyle : 'ufersin',
-        documento: onlyDigits(documento) || undefined,
-        tipo_documento: tipoDocumento,
-        vender_externamente: venderExternamente,
-        whatsapp: whatsappHabilitado ? whatsapp.trim() || undefined : '',
-        whatsapp_habilitado: whatsappHabilitado,
-        forma_pagamento: formaPagamento,
-        plataforma_pagamento: plataformaPagamento,
-        plataforma_credenciais: formaPagamento === 'plataforma' && credencial.trim() ? { token: credencial.trim() } : undefined,
-      })
-      // Espelha layout_style direto no schema resolutoo — o Railway API em
-      // produção às vezes ignora o campo (binário antigo / search_path).
-      const styleToSave = venderExternamente ? layoutStyle : 'ufersin'
-      const { error: layoutErr } = await supabase.schema('resolutoo').rpc('set_my_layout_style', {
-        p_style: styleToSave,
-      })
-      if (layoutErr) {
-        console.warn('set_my_layout_style:', layoutErr.message)
+      await api.editarOnboarding(fields)
+      if (fields.layout_style) {
+        const { error: layoutErr } = await supabase.schema('resolutoo').rpc('set_my_layout_style', {
+          p_style: fields.layout_style,
+        })
+        if (layoutErr) console.warn('set_my_layout_style:', layoutErr.message)
       }
-      setMe((prev) =>
-        prev
-          ? {
-              ...prev,
-              loja_nome: nomeLoja.trim(),
-              cor_principal: corPrincipal,
-              layout_style: venderExternamente ? layoutStyle : 'ufersin',
-              vender_externamente: venderExternamente,
-              whatsapp_habilitado: whatsappHabilitado,
-              instagram: instagram.trim().replace(/^@/, '') || null,
-              endereco_numero: enderecoNumero.trim() || null,
-              forma_pagamento: formaPagamento,
-              plataforma_pagamento: plataformaPagamento ?? null,
-            }
-          : prev
-      )
+      setMe((prev) => (prev ? { ...prev, ...mapFieldsToMe(prev, fields) } : prev))
       setSaved(true)
       setCredencial('')
       window.setTimeout(() => setSaved(false), 3000)
@@ -174,293 +179,326 @@ export default function MeuPlano() {
     }
   }
 
-  const handleMudarPlano = async (novo: PlanoCode) => {
-    if (!me || busyPlano) return
-    setBusyPlano(true)
-    try {
-      await api.mudarPlano(novo)
-      setMe((prev) => (prev ? { ...prev, plano: novo } : prev))
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Não foi possível trocar de plano.')
-    } finally {
-      setBusyPlano(false)
+  const handleSaveLayout = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!nomeLoja.trim()) {
+      setError('Informe o nome da empresa.')
+      return
     }
+    saveOnboarding({
+      nome_loja: nomeLoja.trim(),
+      endereco: endereco.trim() || undefined,
+      endereco_numero: enderecoNumero.trim() || undefined,
+      logo_url: logoUrl.trim() || undefined,
+      cor_principal: corPrincipal,
+      layout_style: layoutStyle,
+    })
   }
 
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-uf-black flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
-      </main>
-    )
+  const handleSaveFinanceiro = (e: React.FormEvent) => {
+    e.preventDefault()
+    let formaPagamento: FormaPagamento = 'manual'
+    let plataformaPagamento: PlataformaPagamento | undefined
+    if (integracao === 'mercado_pago' || integracao === 'abacate_pay') {
+      formaPagamento = 'plataforma'
+      plataformaPagamento = tipoDocumento === 'cpf' ? 'mercado_pago' : integracao
+    }
+    saveOnboarding({
+      forma_pagamento: formaPagamento,
+      plataforma_pagamento: plataformaPagamento,
+      plataforma_credenciais: formaPagamento === 'plataforma' && credencial.trim() ? { token: credencial.trim() } : undefined,
+    })
   }
 
-  if (!me) {
-    return (
-      <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 text-center">
-        <p className="text-uf-silver-dim">{error || 'Não foi possível carregar seu plano.'}</p>
-      </main>
-    )
+  const handleSaveRedes = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!whatsapp.trim()) {
+      setError('WhatsApp é obrigatório.')
+      return
+    }
+    saveOnboarding({
+      whatsapp: whatsapp.trim(),
+      whatsapp_habilitado: true,
+      instagram: instagram.trim().replace(/^@/, '') || undefined,
+      facebook: facebook.trim() || undefined,
+    })
   }
+
+  const TABS: { id: Tab; label: string }[] = [
+    { id: 'plano', label: 'Meu plano atual' },
+    { id: 'layout', label: 'Layout' },
+    { id: 'financeiro', label: 'Financeiro' },
+    { id: 'redes', label: 'Redes sociais' },
+  ]
 
   if (!me.plano) {
+    const noPlanMsg = content['meu_plano.no_plan'] ?? 'Escolha um plano pra começar.'
     return (
-      <main className="min-h-screen bg-uf-black text-uf-silver px-5 py-16 relative">
+      <main className="min-h-screen bg-uf-black text-uf-silver relative">
         <div className="uf-mesh" />
-        <div className="max-w-2xl mx-auto relative z-10">
-          <button onClick={() => navigate('/dashboard')} className="btn-ghost text-sm mb-6">
-            <ArrowLeft className="w-4 h-4" /> Voltar ao painel
-          </button>
-          <h1 className="text-2xl font-black mb-2">Meu plano</h1>
-          <p className="text-sm text-uf-silver-dim mb-8">Você ainda não assinou — escolha um plano pra liberar a loja.</p>
-          <div className="grid sm:grid-cols-3 gap-3">
-            {PLAN_ORDER.map((code) => (
-              <Link key={code} to={`/assinar?plano=${code}`} className="uf-glass uf-glass-hover rounded-2xl p-4 block">
-                <p className="font-bold text-sm">{PLAN_MAP[code].name}</p>
-                <p className="text-lg font-black uf-text mt-1">R$ {PLAN_MAP[code].price}/mês</p>
+        <header className="border-b border-white/5 px-5 py-4 relative z-10">
+          <div className="uf-container flex items-center justify-between">
+            <Link to="/" className="text-lg font-black uf-text">
+              Resolutoo
+            </Link>
+            <div className="flex items-center gap-3">
+              <Link to="/esqueci-senha" className="btn-ghost text-sm">
+                Trocar senha
               </Link>
-            ))}
+              <button onClick={handleLogout} className="btn-ghost text-sm">
+                <LogOut className="w-4 h-4" />
+                Sair
+              </button>
+            </div>
+          </div>
+        </header>
+        <div className="uf-container px-5 py-12 relative z-10 max-w-3xl mx-auto">
+          <h1 className="text-2xl font-black mb-2">Meu plano</h1>
+          <p className="text-sm text-uf-silver-dim mb-8">{noPlanMsg}</p>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {plansLoaded &&
+              PLAN_ORDER.map((code) => {
+                const p = planMap[code]
+                if (!p) return null
+                return (
+                  <Link key={code} to={`/assinar?plano=${code}`} className="uf-glass uf-glass-hover rounded-2xl p-4 block">
+                    <p className="font-bold text-sm">{p.name}</p>
+                    <p className="text-lg font-black uf-text mt-1">R$ {formatBRL(p.price)}/mês</p>
+                  </Link>
+                )
+              })}
           </div>
         </div>
       </main>
     )
   }
 
-  const canEditOnboarding = me.onboarding_status === 'provisionado'
-  const panelUrl =
-    me.onboarding_status === 'provisionado' && me.slug ? storeAdminLoginUrl(me.slug, me.email) : null
-  const publicUrl =
-    me.onboarding_status === 'provisionado' && me.slug ? storePublicUrl(me.slug) : null
-
   return (
-    <main className="min-h-screen bg-uf-black text-uf-silver px-5 py-16 relative">
+    <main className="min-h-screen bg-uf-black text-uf-silver relative">
       <div className="uf-mesh" />
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="max-w-2xl mx-auto relative z-10">
-        <button onClick={() => navigate('/dashboard')} className="btn-ghost text-sm mb-6">
-          <ArrowLeft className="w-4 h-4" /> Voltar ao painel
-        </button>
-
-        <h1 className="text-2xl sm:text-3xl font-black mb-1">Meu plano</h1>
-        <p className="text-sm text-uf-silver-dim mb-8">Gerencie sua assinatura, os dados da loja e o acesso ao painel.</p>
-
-        <section className="uf-glass rounded-2xl p-6 mb-6">
-          <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
-            <Sparkles className="w-4 h-4" /> Plano atual: {PLAN_MAP[me.plano].name}
-          </h2>
-          <p className="text-sm text-uf-silver-dim mb-4">
-            Status: {me.status} · R$ {(me.valor_mensal ?? 0).toFixed(2)}/mês
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {PLAN_ORDER.filter((p) => p !== me.plano).map((p) => (
-              <button key={p} onClick={() => handleMudarPlano(p)} disabled={busyPlano} className="btn-secondary text-xs px-3 py-2">
-                Mudar pra {PLAN_MAP[p].name}
-              </button>
-            ))}
+      <header className="border-b border-white/5 px-5 py-4 relative z-10">
+        <div className="uf-container flex items-center justify-between">
+          <Link to="/" className="text-lg font-black uf-text">
+            Resolutoo
+          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/esqueci-senha" className="btn-ghost text-sm hidden sm:inline-flex">
+              Trocar senha
+            </Link>
+            <button onClick={handleLogout} className="btn-ghost text-sm">
+              <LogOut className="w-4 h-4" />
+              Sair
+            </button>
           </div>
-        </section>
+        </div>
+      </header>
 
-        {(panelUrl || publicUrl) && (
-          <section className="uf-glass rounded-2xl p-6 mb-6">
-            <h2 className="font-bold mb-3 text-sm text-uf-silver-dim uppercase tracking-wide">Loja &amp; painel</h2>
-            <div className="flex flex-wrap gap-2">
+      <div className="uf-container px-5 py-8 relative z-10 max-w-2xl mx-auto">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <h1 className="text-2xl font-black mb-1">{me.loja_nome}</h1>
+          <p className="text-sm text-uf-silver-dim mb-6">Hub do lojista — plano, layout e integrações.</p>
+
+          {(panelUrl || publicUrl) && (
+            <div className="flex flex-wrap gap-2 mb-6">
               {publicUrl && (
-                <a href={publicUrl} target="_blank" rel="noreferrer" className="btn-primary text-sm px-4 py-2.5 inline-flex">
-                  Ver minha loja
+                <a href={publicUrl} target="_blank" rel="noreferrer" className="btn-primary text-xs px-3 py-2 inline-flex">
+                  Ver loja
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
               {panelUrl && (
-                <a href={panelUrl} target="_blank" rel="noreferrer" className="btn-secondary text-sm px-4 py-2.5 inline-flex">
-                  Entrar no painel
+                <a href={panelUrl} target="_blank" rel="noreferrer" className="btn-secondary text-xs px-3 py-2 inline-flex">
+                  Painel da loja
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
             </div>
-            {publicUrl && (
-              <p className="text-[11px] text-uf-silver-dim mt-2 font-mono break-all">{publicUrl.replace(/^https?:\/\//, '')}</p>
-            )}
-            <p className="text-[11px] text-uf-silver-dim mt-1">O layout da vitrine só aparece com <span className="font-mono">?tenant=</span> no link.</p>
-          </section>
-        )}
+          )}
 
-        {!canEditOnboarding && (
-          <div className="uf-glass rounded-2xl p-5 mb-6 border-uf-blue/30">
-            <p className="font-semibold text-sm mb-1">Onboarding ainda não finalizado</p>
-            <p className="text-xs text-uf-silver-dim mb-3">Complete a configuração inicial pra liberar a edição contínua e o painel da loja.</p>
-            <Link to="/onboarding" className="btn-primary text-sm px-4 py-2.5 inline-flex">
-              Continuar onboarding
-            </Link>
+          <div className="flex gap-1 mb-6 overflow-x-auto pb-1">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`px-3 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap transition-colors ${
+                  tab === t.id ? 'bg-white/10 text-white font-semibold' : 'text-uf-silver-dim hover:text-uf-silver'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
-        )}
 
-        <form onSubmit={handleSave} className={`space-y-6 ${!canEditOnboarding ? 'opacity-60 pointer-events-none' : ''}`}>
-          <section className="uf-glass rounded-2xl p-6 space-y-4">
-            <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide flex items-center gap-2">
-              <Store className="w-4 h-4" /> Empresa &amp; vitrine
-            </h2>
+          {error && <p className="error-msg mb-4">{error}</p>}
+          {saved && <p className="text-sm text-emerald-400 mb-4">Salvo!</p>}
 
-            <div>
-              <label className="label">Nome da empresa</label>
-              <input className="input-field" value={nomeLoja} onChange={(e) => setNomeLoja(e.target.value)} />
-            </div>
-
-            <div>
-              <label className="label">Documento</label>
-              <div className="flex gap-2 mb-2">
-                {(['cnpj', 'cpf'] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => {
-                      setTipoDocumento(t)
-                      if (t === 'cpf' && integracao === 'abacate_pay') setIntegracao('mercado_pago')
-                    }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase ${tipoDocumento === t ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'}`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <input className="input-field" value={documento} onChange={(e) => setDocumento(e.target.value)} />
-            </div>
-
-            <AddressField
-              endereco={endereco}
-              numero={enderecoNumero}
-              onEnderecoChange={setEndereco}
-              onNumeroChange={setEnderecoNumero}
-            />
-
-            <div>
-              <label className="label flex items-center gap-1.5">
-                <AtSign className="w-3.5 h-3.5" /> Instagram
-              </label>
-              <div className="flex items-center gap-1 input-field !py-0 !px-3">
-                <span className="text-uf-silver-dim text-sm">@</span>
-                <input
-                  className="flex-1 bg-transparent outline-none py-2.5 text-sm"
-                  value={instagram}
-                  onChange={(e) => setInstagram(e.target.value.replace(/^@/, ''))}
-                  placeholder="sua_loja"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="label">Logo (link da imagem)</label>
-              <input className="input-field" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
-            </div>
-
-            <div>
-              <label className="label flex items-center gap-1.5">
-                <Palette className="w-3.5 h-3.5" /> Cor principal
-              </label>
-              <div className="flex gap-2">
-                {CORES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setCorPrincipal(c)}
-                    className={`w-9 h-9 rounded-full border-2 transition-transform ${corPrincipal === c ? 'scale-110 border-white' : 'border-transparent'}`}
-                    style={{ background: c }}
-                    aria-label={c}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={venderExternamente}
-                onChange={(e) => setVenderExternamente(e.target.checked)}
-                className="w-4 h-4 mt-0.5"
-              />
-              <span className="text-xs text-uf-silver-dim">
-                <span className="block text-uf-silver font-semibold mb-0.5">Quer vender pro público externo</span>
-                Desative pra usar só painel/PDV — a escolha de layout some.
-              </span>
-            </label>
-
-            {venderExternamente && (
-              <StorefrontStylePicker value={layoutStyle} onChange={setLayoutStyle} lojaNome={nomeLoja} corPrincipal={corPrincipal} />
-            )}
-          </section>
-
-          <section className="uf-glass rounded-2xl p-6 space-y-4">
-            <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide flex items-center gap-2">
-              <CreditCard className="w-4 h-4" /> Pagamento &amp; WhatsApp
-            </h2>
-
-            <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-              <input type="checkbox" checked={whatsappHabilitado} onChange={(e) => setWhatsappHabilitado(e.target.checked)} className="w-4 h-4 mt-0.5" />
-              <span className="text-xs text-uf-silver-dim">
-                <span className="block text-uf-silver font-semibold mb-0.5">Usar WhatsApp pra mensageria</span>
-                Conecte o QR em Configurações do painel da loja.
-              </span>
-            </label>
-
-            {whatsappHabilitado && (
-              <div>
-                <label className="label">WhatsApp da loja (contato)</label>
-                <input className="input-field" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} type="tel" inputMode="numeric" />
-              </div>
-            )}
-
-            <div>
-              <label className="label">Integrar com</label>
-              <div className="space-y-2">
-                {plataformasParaDocumento(tipoDocumento).map((p) => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    onClick={() => setIntegracao(p.value)}
-                    className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${
-                      integracao === p.value ? 'border-uf-blue' : 'border-transparent'
-                    }`}
-                  >
-                    <span className="block text-sm font-semibold text-uf-silver">{p.label}</span>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setIntegracao('nao_integrar')}
-                  className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${
-                    integracao === 'nao_integrar' ? 'border-uf-blue' : 'border-transparent'
-                  }`}
-                >
-                  <span className="block text-sm font-semibold text-uf-silver">Não integrar plataforma de pagamentos</span>
+          {tab === 'plano' && me.plano && (
+            <section className="uf-glass rounded-2xl p-6">
+              <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
+                <Sparkles className="w-4 h-4" /> {planMap[me.plano]?.name ?? me.plano}
+              </h2>
+              <p className="text-sm text-uf-silver-dim mb-1">
+                Status: <span className="text-uf-silver">{me.status}</span>
+              </p>
+              <p className="text-2xl font-black mb-1">R$ {formatBRL(me.valor_mensal ?? planMap[me.plano]?.price ?? 0)}/mês</p>
+              {me.billing_cycle === 'semestral' && (
+                <p className="text-xs text-uf-silver-dim mb-4">
+                  Ciclo semestral · R$ {formatBRL(priceForCycle(me.valor_mensal ?? 0, 'semestral'))} por período
+                </p>
+              )}
+              {me.coupon_code && (
+                <p className="text-xs text-emerald-400 mb-4">Cupom ativo: {me.coupon_code}</p>
+              )}
+              {me.status !== 'cancelado' && (
+                <button onClick={handleCancelar} disabled={busyPlano} className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Cancelar assinatura
                 </button>
+              )}
+            </section>
+          )}
+
+          {tab === 'layout' && !hasActiveSub && (
+            <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{tabLocked}</p>
+          )}
+          {tab === 'layout' && hasActiveSub && (
+            <form onSubmit={handleSaveLayout} className="uf-glass rounded-2xl p-6 space-y-4">
+              <p className="text-xs text-uf-silver-dim">{content['meu_plano.layout_hint'] ?? 'Nome, logo, cor e endereço da vitrine.'}</p>
+              <div>
+                <label className="label">Nome da empresa</label>
+                <input className="input-field" value={nomeLoja} onChange={(e) => setNomeLoja(e.target.value)} />
               </div>
-              {tipoDocumento === 'cpf' && (
-                <p className="text-[11px] text-uf-silver-dim mt-2">Com CPF só Mercado Pago está disponível.</p>
-              )}
+              <AddressField endereco={endereco} numero={enderecoNumero} onEnderecoChange={setEndereco} onNumeroChange={setEnderecoNumero} />
+              <div>
+                <label className="label">Logo (URL)</label>
+                <input className="input-field" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
+              </div>
+              <div>
+                <label className="label flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5" /> Cor principal
+                </label>
+                <div className="flex gap-2">
+                  {CORES.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCorPrincipal(c)}
+                      className={`w-9 h-9 rounded-full border-2 ${corPrincipal === c ? 'scale-110 border-white' : 'border-transparent'}`}
+                      style={{ background: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <StorefrontStylePicker value={layoutStyle} onChange={setLayoutStyle} lojaNome={nomeLoja} corPrincipal={corPrincipal} />
+              <button type="submit" disabled={saving} className="btn-primary w-full py-3">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salvar layout
+              </button>
+            </form>
+          )}
+
+          {tab === 'financeiro' && !hasActiveSub && (
+            <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{tabLocked}</p>
+          )}
+          {tab === 'financeiro' && hasActiveSub && (
+            <form onSubmit={handleSaveFinanceiro} className="uf-glass rounded-2xl p-6 space-y-4">
+              <p className="text-xs text-uf-silver-dim">{content['meu_plano.financeiro_hint'] ?? 'Forma de pagamento e credenciais da loja.'}</p>
+              <div>
+                <label className="label flex items-center gap-1.5">
+                  <CreditCard className="w-4 h-4" /> Plataforma
+                </label>
+                <div className="space-y-2">
+                  {plataformasParaDocumento(tipoDocumento).map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => setIntegracao(p.value)}
+                      className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${integracao === p.value ? 'border-uf-blue' : 'border-transparent'}`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setIntegracao('nao_integrar')}
+                    className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${integracao === 'nao_integrar' ? 'border-uf-blue' : 'border-transparent'}`}
+                  >
+                    Não integrar plataforma
+                  </button>
+                </div>
+              </div>
               {(integracao === 'mercado_pago' || integracao === 'abacate_pay') && (
-                <input
-                  className="input-field mt-2"
-                  value={credencial}
-                  onChange={(e) => setCredencial(e.target.value)}
-                  placeholder="Nova credencial (deixe em branco pra manter a atual)"
-                />
+                <div>
+                  <label className="label">Credencial (token)</label>
+                  <input
+                    className="input-field"
+                    value={credencial}
+                    onChange={(e) => setCredencial(e.target.value)}
+                    placeholder="Deixe em branco pra manter a atual"
+                  />
+                </div>
               )}
-            </div>
-          </section>
+              <button type="submit" disabled={saving} className="btn-primary w-full py-3">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salvar financeiro
+              </button>
+            </form>
+          )}
 
-          {error && <p className="error-msg">{error}</p>}
-          {saved && <p className="text-sm text-emerald-400">Salvo!</p>}
-
-          <button type="submit" disabled={saving} className="btn-primary w-full py-3">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Salvar alterações
-          </button>
-        </form>
-
-        <p className="text-center mt-6">
-          <Link to="/dashboard" className="text-xs text-uf-silver-dim hover:text-uf-silver">
-            Voltar ao painel
-          </Link>
-        </p>
-      </motion.div>
+          {tab === 'redes' && !hasActiveSub && (
+            <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{tabLocked}</p>
+          )}
+          {tab === 'redes' && hasActiveSub && (
+            <form onSubmit={handleSaveRedes} className="uf-glass rounded-2xl p-6 space-y-4">
+              <p className="text-xs text-uf-silver-dim">{content['meu_plano.redes_hint'] ?? 'WhatsApp obrigatório. Instagram e Facebook opcionais.'}</p>
+              <div>
+                <label className="label">WhatsApp *</label>
+                <input className="input-field" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} type="tel" required />
+              </div>
+              <div>
+                <label className="label flex items-center gap-1.5">
+                  <AtSign className="w-3.5 h-3.5" /> Instagram
+                </label>
+                <div className="flex items-center gap-1 input-field !py-0 !px-3">
+                  <span className="text-uf-silver-dim text-sm">@</span>
+                  <input
+                    className="flex-1 bg-transparent outline-none py-2.5 text-sm"
+                    value={instagram}
+                    onChange={(e) => setInstagram(e.target.value.replace(/^@/, ''))}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="label flex items-center gap-1.5">
+                  <Share2 className="w-3.5 h-3.5" /> Facebook
+                </label>
+                <input className="input-field" value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="URL ou @página" />
+              </div>
+              <button type="submit" disabled={saving} className="btn-primary w-full py-3">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salvar redes
+              </button>
+            </form>
+          )}
+        </motion.div>
+      </div>
     </main>
   )
+}
+
+function mapFieldsToMe(prev: MeResponse, fields: Parameters<typeof api.editarOnboarding>[0]): Partial<MeResponse> {
+  const patch: Partial<MeResponse> = {}
+  if (fields.nome_loja != null) patch.loja_nome = fields.nome_loja
+  if (fields.endereco !== undefined) patch.endereco = fields.endereco ?? null
+  if (fields.endereco_numero !== undefined) patch.endereco_numero = fields.endereco_numero ?? null
+  if (fields.logo_url !== undefined) patch.logo_url = fields.logo_url ?? null
+  if (fields.cor_principal != null) patch.cor_principal = fields.cor_principal
+  if (fields.layout_style != null) patch.layout_style = fields.layout_style
+  if (fields.forma_pagamento != null) patch.forma_pagamento = fields.forma_pagamento
+  if (fields.plataforma_pagamento !== undefined) patch.plataforma_pagamento = fields.plataforma_pagamento ?? null
+  if (fields.whatsapp !== undefined) patch.whatsapp = fields.whatsapp ?? ''
+  if (fields.instagram !== undefined) patch.instagram = fields.instagram ?? null
+  if (fields.facebook !== undefined) patch.facebook = fields.facebook ?? null
+  return { ...prev, ...patch }
 }

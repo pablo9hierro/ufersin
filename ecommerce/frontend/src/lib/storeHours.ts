@@ -1,6 +1,28 @@
-import type { StoreStatus } from '../types'
+import type { StoreHourDay, StoreStatus } from '../types'
 
 export const DAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+
+/** "18:00" → "18h"; "18:30" → "18h30". */
+export function formatTime24(hhmm: string): string {
+  const [hRaw, mRaw] = hhmm.split(':')
+  const h = Number(hRaw)
+  const m = Number(mRaw)
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm
+  if (m === 0) return `${h}h`
+  return `${h}h${String(m).padStart(2, '0')}`
+}
+
+export function formatDayHours(day: StoreHourDay): string {
+  if (!day.is_open || day.intervals.length === 0) return 'Fechado'
+  return day.intervals
+    .filter((iv) => iv.opens_at && iv.closes_at)
+    .map((iv) => `${formatTime24(iv.opens_at)} às ${formatTime24(iv.closes_at)}`)
+    .join(', ')
+}
+
+export function sortedStoreHours(hours: StoreHourDay[]): StoreHourDay[] {
+  return [...hours].sort((a, b) => a.day_of_week - b.day_of_week)
+}
 
 // Considera só o horário semanal (ignora fechamento manual) — usado pra
 // decidir se fechar manualmente agora exige justificativa. Um dia pode ter

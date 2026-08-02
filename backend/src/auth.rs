@@ -9,8 +9,12 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 /// Claims do JWT emitido pelo Supabase Auth (não um token nosso) — ver
-/// ARQUITETURA.md §6. `sub` é o uuid do usuário no projeto Supabase, que
-/// passa a ser usado diretamente como `subscribers.id`.
+/// ARQUITETURA.md §6.
+///
+/// Identidades distintas no mesmo projeto Auth:
+/// - **lojista**: `sub` = `subscribers.id` (bootstrap/cadastro)
+/// - **superadmin**: `sub` ∈ `platform_admins.user_id` — **não** assina plano
+///   e **não** precisa de linha em `subscribers`
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SupabaseClaims {
     pub sub: String,
@@ -62,5 +66,29 @@ impl FromRequestParts<AppState> for AuthSubscriber {
         let data = decode::<SupabaseClaims>(token, &decoding_key, &validation)
             .map_err(|_| AppError::Unauthorized("invalid or expired token".to_string()))?;
         Ok(AuthSubscriber(data.claims))
+    }
+}
+
+/// Dono da plataforma Resolutoo.
+///
+/// Gate único do `/dashboard`: JWT Supabase válido **e** membership em
+/// `platform_admins`. Independente de assinatura/plano/`subscribers`.
+pub struct AuthSuperadmin(pub SupabaseClaims);
+
+impl FromRequestParts<AppState> for AuthSuperadmin {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let AuthSubscriber(claims) = AuthSubscriber::from_request_parts(parts, state).await?;
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT 1::bigint FROM platform_admins WHERE user_id = $1",
+        )
+        .bind(&claims.sub)
+        .fetch_optional(&state.pool)
+        .await?;
+        if row.is_none() {
+            return Err(AppError::Forbidden("superadmin required".to_string()));
+        }
+        Ok(AuthSuperadmin(claims))
     }
 }

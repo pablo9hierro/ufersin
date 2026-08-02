@@ -1,24 +1,31 @@
-import { useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Loader2, MailCheck, RotateCw } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { translateAuthError } from '../lib/authErrors'
+import { resolveSessionHome } from '../lib/sessionHome'
 
-/** Confirmação de e-mail é 100% do Supabase agora (link real por e-mail,
- * não código de 6 dígitos) -- esta tela só existe pra quem está logado com
- * uma sessão ainda não confirmada e quer reenviar o link (ver
- * ARQUITETURA.md §6). */
 export default function VerificarEmail() {
+  const navigate = useNavigate()
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
   const session = useSession()
   const [resending, setResending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resent, setResent] = useState(false)
+  const [routing, setRouting] = useState(false)
 
-  if (!ready) {
+  useEffect(() => {
+    if (!session?.user.email_confirmed_at) return
+    setRouting(true)
+    resolveSessionHome()
+      .then((to) => navigate(to, { replace: true }))
+      .finally(() => setRouting(false))
+  }, [session?.user.email_confirmed_at, navigate])
+
+  if (!ready || routing) {
     return (
       <main className="min-h-screen bg-uf-black flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
@@ -26,7 +33,6 @@ export default function VerificarEmail() {
     )
   }
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (session?.user.email_confirmed_at) return <Navigate to="/dashboard" replace />
 
   const handleReenviar = async () => {
     setResending(true)
@@ -59,17 +65,15 @@ export default function VerificarEmail() {
         <p className="text-sm text-uf-silver-dim mb-6">
           Clique no link que enviamos pra <span className="text-uf-silver">{session?.user.email}</span>.
         </p>
-
-        {error && <p className="error-msg text-center mb-4">{error}</p>}
-
-        <button onClick={handleReenviar} disabled={resending} className="btn-primary px-5 py-2.5 inline-flex mx-auto">
-          {resending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
-          {resent ? 'E-mail reenviado' : 'Reenviar e-mail'}
+        {error && <p className="error-msg mb-4">{error}</p>}
+        {resent && <p className="text-sm text-emerald-400 mb-4">E-mail reenviado!</p>}
+        <button onClick={handleReenviar} disabled={resending} className="btn-secondary w-full py-3 mb-4">
+          {resending ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : <RotateCw className="w-4 h-4 inline mr-2" />}
+          Reenviar link
         </button>
-
-        <p className="text-xs text-uf-silver-dim mt-6">
-          <Link to="/dashboard" className="hover:text-uf-silver">
-            Fazer isso depois
+        <p className="text-xs text-uf-silver-dim">
+          <Link to="/meu-plano" className="hover:text-uf-silver">
+            Voltar ao hub
           </Link>
         </p>
       </motion.div>

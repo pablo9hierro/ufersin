@@ -165,3 +165,21 @@ pub async fn simulate_payment(state: &AppState, gateway: &str, external_id: &str
         _ => Ok(()), // mock MP — ativação local basta
     }
 }
+
+/// Atualiza o valor recorrente no gateway após upgrade/downgrade.
+pub async fn update_amount(
+    state: &AppState,
+    gateway: &str,
+    external_id: &str,
+    amount_reais: f64,
+) -> Result<(), AppError> {
+    match gateway {
+        "abacatepay" => {
+            tracing::warn!(
+                "abacatepay update_amount não implementado — valor local={amount_reais}; external_id={external_id}"
+            );
+            Ok(())
+        }
+        _ => mercadopago::update_subscription_amount(state, external_id, amount_reais).await,
+    }
+}

@@ -1,21 +1,23 @@
-﻿import { useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Check, Loader2 } from 'lucide-react'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
-import { formatBRL, PLANS, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
+import { fetchPlans, formatBRL, getPlans, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
 import type { BillingCycle } from '../lib/api'
 
-/** Mesmos cards da Pricing da Landing, mas pra quem já está logado e ainda
- * não escolheu plano (`me.plano === null`) -- pula direto pro pagamento em
- * /assinar em vez de passar pelo cadastro de novo. */
 export default function Planos() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
   const navigate = useNavigate()
   const [ciclo, setCiclo] = useState<BillingCycle>('mensal')
+  const [plansReady, setPlansReady] = useState(false)
 
-  if (!ready) {
+  useEffect(() => {
+    fetchPlans().finally(() => setPlansReady(true))
+  }, [])
+
+  if (!ready || !plansReady) {
     return (
       <main className="min-h-screen bg-uf-black flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
@@ -23,6 +25,8 @@ export default function Planos() {
     )
   }
   if (!isAuthenticated) return <Navigate to="/login" replace />
+
+  const plans = getPlans()
 
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver px-5 py-16 relative">
@@ -56,15 +60,10 @@ export default function Planos() {
               <span className="ml-1.5 text-[11px] font-bold text-emerald-600">−{Math.round(SEMESTRAL_DISCOUNT * 100)}%</span>
             </button>
           </div>
-          {ciclo === 'semestral' && (
-            <p className="mt-3 text-sm text-emerald-400/90">
-              Assine semestralmente e ganhe {Math.round(SEMESTRAL_DISCOUNT * 100)}% de desconto no total do semestre.
-            </p>
-          )}
         </motion.div>
 
         <div className="grid md:grid-cols-3 gap-5 max-w-5xl mx-auto">
-          {PLANS.map((plan, i) => {
+          {plans.map((plan, i) => {
             const charged = priceForCycle(plan.price, ciclo)
             return (
               <motion.div
@@ -81,15 +80,6 @@ export default function Planos() {
                     MAIS ESCOLHIDO
                   </span>
                 )}
-                {ciclo === 'semestral' && (
-                  <span
-                    className={`absolute top-4 right-4 text-[10px] font-bold px-2 py-1 rounded-md ${
-                      plan.highlight ? 'bg-white/20 text-white' : 'bg-emerald-500/15 text-emerald-300'
-                    }`}
-                  >
-                    {Math.round(SEMESTRAL_DISCOUNT * 100)}% OFF
-                  </span>
-                )}
                 <h3 className={`font-black text-xl ${plan.highlight ? 'text-white' : ''}`}>{plan.name}</h3>
                 <p className={`text-sm mt-1 ${plan.highlight ? 'text-white/80' : 'text-uf-silver-dim'}`}>{plan.tagline}</p>
 
@@ -103,9 +93,6 @@ export default function Planos() {
                     <>
                       <span className={`text-4xl font-black ${plan.highlight ? 'text-white' : ''}`}>R$ {formatBRL(charged)}</span>
                       <span className={`text-sm ${plan.highlight ? 'text-white/70' : 'text-uf-silver-dim'}`}>/semestre</span>
-                      <p className={`text-xs mt-1 ${plan.highlight ? 'text-white/70' : 'text-uf-silver-dim'}`}>
-                        equiv. R$ {formatBRL(charged / 6)}/mês
-                      </p>
                     </>
                   )}
                 </div>

@@ -335,19 +335,19 @@ BEGIN
     RAISE EXCEPTION 'customer location (lat/lng) is required for entrega';
   END IF;
 
-  IF p_customer_birthdate IS NULL OR trim(p_customer_birthdate) = '' THEN
-    RAISE EXCEPTION 'birthdate is required';
-  END IF;
-  BEGIN
-    v_birthdate := p_customer_birthdate::date;
-  EXCEPTION WHEN OTHERS THEN
-    RAISE EXCEPTION 'invalid birthdate';
-  END;
-  IF v_birthdate > current_date THEN
-    RAISE EXCEPTION 'invalid birthdate';
-  END IF;
-  IF extract(year FROM age(current_date, v_birthdate)) < 18 THEN
-    RAISE EXCEPTION 'you must be 18 or older to purchase tobacco products';
+  -- Opcional: só valida 18+ quando a data veio preenchida (loja com vende_mais_18).
+  IF p_customer_birthdate IS NOT NULL AND trim(p_customer_birthdate) <> '' THEN
+    BEGIN
+      v_birthdate := p_customer_birthdate::date;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE EXCEPTION 'invalid birthdate';
+    END;
+    IF v_birthdate > current_date THEN
+      RAISE EXCEPTION 'invalid birthdate';
+    END IF;
+    IF extract(year FROM age(current_date, v_birthdate)) < 18 THEN
+      RAISE EXCEPTION 'you must be 18 or older';
+    END IF;
   END IF;
 
   IF p_promotion_id IS NOT NULL THEN

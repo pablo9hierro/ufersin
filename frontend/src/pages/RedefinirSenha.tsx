@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { KeyRound, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import { translateAuthError } from '../lib/authErrors'
+import { resolveSessionHome } from '../lib/sessionHome'
 import PasswordField from '../components/PasswordField'
 
 /** Landing do link de "esqueci minha senha" -- o supabase-js já estabelece
@@ -27,7 +28,8 @@ export default function RedefinirSenha() {
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password: novaSenha })
       if (updateError) throw updateError
-      navigate('/dashboard')
+      const dest = await resolveSessionHome()
+      navigate(dest)
     } catch (e) {
       setError(e instanceof Error ? translateAuthError(e.message) : 'Não foi possível redefinir sua senha. Peça um novo link.')
     } finally {

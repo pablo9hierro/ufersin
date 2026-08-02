@@ -9,6 +9,8 @@ use serde_json::json;
 pub enum AppError {
     BadRequest(String),
     Unauthorized(String),
+    /// Autenticado, mas sem permissão (ex.: lojista em rota de superadmin).
+    Forbidden(String),
     NotFound(String),
     Internal(String),
 }
@@ -18,6 +20,7 @@ impl IntoResponse for AppError {
         let (status, msg) = match self {
             AppError::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
             AppError::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m),
+            AppError::Forbidden(m) => (StatusCode::FORBIDDEN, m),
             AppError::NotFound(m) => (StatusCode::NOT_FOUND, m),
             AppError::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
         };

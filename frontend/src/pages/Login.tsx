@@ -1,5 +1,5 @@
-﻿import { useState } from 'react'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+﻿import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { LogIn, Loader2 } from 'lucide-react'
 import { supabase, supabaseConfigured } from '../lib/supabaseClient'
@@ -8,6 +8,7 @@ import { translateAuthError } from '../lib/authErrors'
 import { clearAuthFailures, getAuthLockMessage, recordAuthFailure } from '../lib/authRateLimit'
 import PasswordField from '../components/PasswordField'
 import { PLAN_MAP } from '../lib/plans'
+import { resolveSessionHome } from '../lib/sessionHome'
 import type { BillingCycle, PlanoCode } from '../lib/api'
 
 export default function Login() {
@@ -22,11 +23,27 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [loading, setLoading] = useState(false)
+  const [routing, setRouting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (ready && isAuthenticated) {
-    return <Navigate to={plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/dashboard'} replace />
-  }
+  useEffect(() => {
+    if (!ready || !isAuthenticated) return
+    let cancelled = false
+    setRouting(true)
+    resolveSessionHome({ plano, ciclo })
+      .then((to) => {
+        if (!cancelled) navigate(to, { replace: true })
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Não foi possível abrir seu painel.')
+      })
+      .finally(() => {
+        if (!cancelled) setRouting(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ready, isAuthenticated, plano, ciclo, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -49,14 +66,23 @@ export default function Login() {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
       if (signInError) throw signInError
       clearAuthFailures()
-      navigate(plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/dashboard')
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Não foi possível entrar. Tente novamente.'
+      const to = await resolveSessionHome({ plano, ciclo })
+      navigate(to, { replace: true })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Não foi possível entrar. Tente novamente.'
       recordAuthFailure()
       setError(getAuthLockMessage() || translateAuthError(msg))
     } finally {
       setLoading(false)
     }
+  }
+
+  if (ready && isAuthenticated && routing) {
+    return (
+      <main className="min-h-screen bg-uf-black flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+      </main>
+    )
   }
 
   return (
@@ -73,7 +99,7 @@ export default function Login() {
             Resolutoo
           </Link>
           <p className="text-uf-silver-dim text-sm mt-2">
-            {plano ? `Entre pra assinar o plano ${PLAN_MAP[plano].name}.` : 'Entre no seu painel de assinante.'}
+            {plano ? `Entre pra assinar o plano ${PLAN_MAP[plano].name}.` : 'Entre na sua conta.'}
           </p>
         </div>
 

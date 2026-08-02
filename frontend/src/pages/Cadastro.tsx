@@ -11,7 +11,8 @@ import { finishSignupAfterConfirm } from '../lib/finishSignup'
 import { PENDING_SIGNUP_KEY } from '../lib/pendingSignup'
 import { authRedirectUrl } from '../lib/siteUrl'
 import PasswordField from '../components/PasswordField'
-import { formatBRL, PLAN_MAP, priceForCycle } from '../lib/plans'
+import { resolveSessionHome } from '../lib/sessionHome'
+import { formatBRL, fetchPlans, getPlanMap, priceForCycle } from '../lib/plans'
 import type { BillingCycle, PlanoCode } from '../lib/api'
 
 export { PENDING_SIGNUP_KEY }
@@ -30,10 +31,15 @@ export default function Cadastro() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
   const planoParam = searchParams.get('plano') as PlanoCode | null
-  const plano: PlanoCode | null = planoParam && planoParam in PLAN_MAP ? planoParam : null
+  const planMap = getPlanMap()
+  const plano: PlanoCode | null = planoParam && planoParam in planMap ? planoParam : null
   const cicloParam = searchParams.get('ciclo') as BillingCycle | null
   const ciclo: BillingCycle = cicloParam === 'semestral' ? 'semestral' : 'mensal'
-  const planInfo = plano ? PLAN_MAP[plano] : null
+  const planInfo = plano ? planMap[plano] : null
+
+  useEffect(() => {
+    void fetchPlans()
+  }, [])
 
   const [lojaNome, setLojaNome] = useState('')
   const [responsavelNome, setResponsavelNome] = useState('')
@@ -135,7 +141,8 @@ export default function Cadastro() {
           senha,
         })
         clearAuthFailures()
-        navigate(plano ? `/assinar?plano=${plano}&ciclo=${ciclo}` : '/dashboard')
+        const dest = await resolveSessionHome({ plano, ciclo })
+        navigate(dest)
       } else {
         localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify(pending))
         clearAuthFailures()
@@ -184,7 +191,7 @@ export default function Cadastro() {
           <h1 className="text-xl font-black mb-2">Confirme seu e-mail</h1>
           <p className="text-sm text-uf-silver-dim mb-6">
             Enviamos um link de confirmação pra <span className="text-uf-silver">{email.trim()}</span>. Clique nele pra continuar
-            {plano ? ` e assinar o plano ${PLAN_MAP[plano].name}` : ''}.
+            {plano ? ` e assinar o plano ${planMap[plano].name}` : ''}.
           </p>
           <p className="text-xs text-uf-silver-dim mb-4">Já confirmou? Atualize a página (F5) ou volte a esta aba — a gente te leva pro painel.</p>
           {error && <p className="error-msg mb-4">{error}</p>}

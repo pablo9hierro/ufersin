@@ -117,7 +117,7 @@ export const supabasePublicApi = {
     create: async (payload: {
       customer_name: string
       customer_whatsapp: string
-      customer_birthdate: string
+      customer_birthdate?: string
       delivery_type: 'entrega' | 'retirada'
       neighborhood?: string
       address?: string
@@ -140,7 +140,7 @@ export const supabasePublicApi = {
         p_customer_lat: payload.customer_lat ?? null,
         p_customer_lng: payload.customer_lng ?? null,
         p_reference_point: payload.reference_point ?? null,
-        p_customer_birthdate: payload.customer_birthdate,
+        p_customer_birthdate: payload.customer_birthdate?.trim() || null,
         p_coupon_code: payload.coupon_code || null,
         p_promotion_id: payload.promotion_id || null,
       })

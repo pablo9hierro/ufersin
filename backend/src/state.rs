@@ -2,6 +2,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 
 use crate::jwks::JwksVerifier;
+use crate::pandadoc::PandadocConfig;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -31,4 +32,6 @@ pub struct AppState {
     /// navegador; é uma chamada backend-a-backend.
     pub ecommerce_internal_url: Arc<String>,
     pub ecommerce_internal_key: Arc<String>,
+    /// PandaDoc (sandbox/prod). Sem API key = stub de contratos.
+    pub pandadoc: PandadocConfig,
 }
