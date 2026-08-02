@@ -1,7 +1,5 @@
-# RAILPACK: Metal Docker builds stick at "scheduling build on Metal builder".
-# Keep Dockerfile as Dockerfile.local only so Railway does not auto-select DOCKERFILE.
 [build]
-builder = "RAILPACK"
+builder = "NIXPACKS"
 watchPatterns = ["src/**", "migrations/**", "Cargo.toml", "Cargo.lock", "railway.toml"]
 
 [deploy]
