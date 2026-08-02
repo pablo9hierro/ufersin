@@ -10,3 +10,6 @@
 .vercel-static-deploy/
 .vercel/
 .DS_Store
+
+backend/.deploy-bin/
+backend/.tmp*
