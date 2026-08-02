@@ -5,6 +5,7 @@ export const ADMIN_NAV_PLAN: Record<string, PlanoCode> = {
   '/admin/pedidos': 'essential',
   '/admin/pdv': 'essential',
   '/admin/produtos': 'essential',
+  '/admin/produtos/xml': 'essential',
   '/admin/motoboys': 'management',
   '/admin/crm': 'premium',
   '/admin/promocoes': 'management',

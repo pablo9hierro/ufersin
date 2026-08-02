@@ -57,6 +57,7 @@ import AdminLogin from './pages/admin/AdminLogin'
 import FuncionarioLogin from './pages/admin/FuncionarioLogin'
 import AdminPedidos from './pages/admin/AdminPedidos'
 import AdminProdutos from './pages/admin/AdminProdutos'
+import AdminProdutosXml from './pages/admin/AdminProdutosXml'
 import AdminMotoboys from './pages/admin/AdminMotoboys'
 import AdminFinanceiro from './pages/admin/AdminFinanceiro'
 import AdminSenha from './pages/admin/AdminSenha'
@@ -262,6 +263,7 @@ export default function App() {
             }
           />
           <Route path="produtos" element={<AdminProdutos />} />
+          <Route path="produtos/xml" element={<AdminProdutosXml />} />
           <Route path="motoboys" element={<AdminMotoboys />} />
           <Route path="crm" element={<AdminCrm />} />
           <Route path="promocoes" element={<AdminPromocoes />} />

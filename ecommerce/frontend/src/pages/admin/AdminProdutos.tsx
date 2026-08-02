@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Barcode, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { AlertTriangle, Barcode, FileUp, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import BarcodePreview from '../../components/admin/BarcodePreview'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
@@ -10,6 +11,7 @@ import {
   isLowStock,
   isOutOfStock,
 } from '../../lib/productHelpers'
+import { countIncompleteNfeDrafts } from '../../lib/nfeImportDrafts'
 import type { Category, Product } from '../../types'
 
 // Timestamp (10 dígitos) + 2 dígitos aleatórios — não é um EAN de verdade
@@ -48,6 +50,7 @@ export default function AdminProdutos() {
   const [stockProduct, setStockProduct] = useState<Product | null>(null)
   const [stockValue, setStockValue] = useState('')
   const [stockSaving, setStockSaving] = useState(false)
+  const [xmlPending, setXmlPending] = useState(0)
 
   const load = () => {
     setLoading(true)
@@ -60,6 +63,13 @@ export default function AdminProdutos() {
   }
 
   useEffect(load, [])
+
+  useEffect(() => {
+    const refresh = () => setXmlPending(countIncompleteNfeDrafts())
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [])
 
   const openNew = () => {
     setEditing(null)
@@ -171,9 +181,15 @@ export default function AdminProdutos() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-black">Produtos</h1>
         {tab === 'todos' && (
-          <button onClick={openNew} className="btn-primary text-sm py-2 px-4">
-            <Plus className="w-4 h-4" /> Novo produto
-          </button>
+          <div className="flex items-center gap-2">
+            <Link to="/admin/produtos/xml" className="btn-secondary text-sm py-2 px-4">
+              <FileUp className="w-4 h-4" />
+              {xmlPending > 0 ? `Importar XML (${xmlPending})` : 'Importar XML'}
+            </Link>
+            <button onClick={openNew} className="btn-primary text-sm py-2 px-4">
+              <Plus className="w-4 h-4" /> Novo produto
+            </button>
+          </div>
         )}
       </div>
 

@@ -6,6 +6,7 @@ describe('plan gating', () => {
   it('essential: PDV/Produtos/Pedidos/Relatórios/Conta liberados; Motoboys/CRM não', () => {
     expect(canAccessAdminRoute('/admin/pdv', 'essential')).toBe(true)
     expect(canAccessAdminRoute('/admin/produtos', 'essential')).toBe(true)
+    expect(canAccessAdminRoute('/admin/produtos/xml', 'essential')).toBe(true)
     expect(canAccessAdminRoute('/admin/motoboys', 'essential')).toBe(false)
     expect(canAccessAdminRoute('/admin/crm', 'essential')).toBe(false)
     expect(canAccessAdminRoute('/admin/promocoes', 'essential')).toBe(false)

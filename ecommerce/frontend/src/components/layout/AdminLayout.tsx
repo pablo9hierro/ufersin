@@ -220,7 +220,9 @@ export default function AdminLayout() {
     )
   }
 
-  const currentItem = NAV_ITEMS.find((i) => i.href === location.pathname)
+  const currentItem =
+    NAV_ITEMS.find((i) => i.href === location.pathname) ??
+    NAV_ITEMS.find((i) => i.href !== '/admin' && location.pathname.startsWith(`${i.href}/`))
   if (currentItem && !planAllows(currentItem.requiredPlan, demo, tenantPlano)) {
     return <Navigate to="/admin/pdv" replace />
   }
@@ -255,7 +257,7 @@ export default function AdminLayout() {
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {visibleItems.map(({ href, label, icon: Icon }) => {
-            const active = location.pathname === href
+            const active = location.pathname === href || location.pathname.startsWith(`${href}/`)
             return (
               <Link
                 key={href}
@@ -291,7 +293,7 @@ export default function AdminLayout() {
         </header>
         <nav className="md:hidden flex gap-2 overflow-x-auto px-4 py-3 bg-son-black border-b border-white/5 scrollbar-hide sticky top-[65px] z-10">
           {visibleItems.map(({ href, label, icon: Icon }) => {
-            const active = location.pathname === href
+            const active = location.pathname === href || location.pathname.startsWith(`${href}/`)
             return (
               <Link
                 key={href}
