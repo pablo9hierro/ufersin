@@ -377,7 +377,7 @@ export default function Dashboard() {
             {label}
           </Link>
         ))}
-        <div className="mt-auto pt-4 border-t border-white/5">
+        <div className="mt-auto min-h-[72px] py-6 border-t border-white/5 flex flex-col justify-center">
           {adminEmail && <p className="text-[10px] text-uf-silver-dim px-3 mb-2 truncate">{adminEmail}</p>}
           <button onClick={handleLogout} className="btn-ghost text-sm w-full justify-start px-3">
             <LogOut className="w-4 h-4" />
