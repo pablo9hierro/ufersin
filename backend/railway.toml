@@ -1,9 +1,14 @@
+# RAILPACK (not DOCKERFILE): Metal Docker builds have been stuck at
+# "scheduling build on Metal builder" since the superadmin commit, so
+# production never received /api/superadmin/*. Dockerfile.local is kept
+# for local/docker experimentation only.
 [build]
 builder = "RAILPACK"
-watchPatterns = ["src/**", "migrations/**", "Cargo.toml", "Cargo.lock", "Dockerfile"]
+watchPatterns = ["src/**", "migrations/**", "Cargo.toml", "Cargo.lock", "railway.toml"]
 
 [deploy]
+startCommand = "./target/release/ufersin_backend"
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 90
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
