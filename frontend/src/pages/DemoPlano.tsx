@@ -81,8 +81,8 @@ export default function DemoPlano() {
         </div>
 
         <div className="grid sm:grid-cols-2 gap-4">
-          {AREAS.map((a, i) => {
-            const unlocked = isUnlocked(a) && !a.comingSoon
+          {AREAS.filter(isUnlocked).map((a, i) => {
+            const available = !a.comingSoon
             return (
               <motion.button
                 key={a.key}
@@ -90,9 +90,9 @@ export default function DemoPlano() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: i * 0.06 }}
                 onClick={() => handleClick(a)}
-                disabled={!unlocked}
+                disabled={!available}
                 className={`text-left uf-glass rounded-2xl p-5 flex items-start gap-4 transition-colors ${
-                  unlocked ? 'uf-glass-hover cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                  available ? 'uf-glass-hover cursor-pointer' : 'opacity-50 cursor-not-allowed'
                 }`}
               >
                 <div className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
@@ -101,10 +101,10 @@ export default function DemoPlano() {
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm">{a.label}</p>
                   <p className="text-xs text-uf-silver-dim mt-1">{a.desc}</p>
-                  {!unlocked && (
+                  {!available && (
                     <p className="text-[11px] text-uf-silver-dim/70 mt-2 flex items-center gap-1">
                       <Lock className="w-3 h-3" />
-                      {a.comingSoon ? 'Em breve' : `Disponível a partir do ${PLAN_NAMES[a.requiredPlan as PlanoCode]}`}
+                      Em breve
                     </p>
                   )}
                 </div>
