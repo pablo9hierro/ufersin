@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { CreditCard, ExternalLink, Loader2, QrCode, Rocket, Tag } from 'lucide-react'
 import { api, ApiError, type BillingCycle, type CouponPreview, type MetodoPagamento, type PandadocStatus, type PlanoCode } from '../lib/api'
+import { CmsEditProvider, CmsText, usePlatformContent } from '../lib/cms'
 import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlanMap, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
@@ -30,6 +31,7 @@ export default function Assinar() {
   const [error, setError] = useState<string | null>(null)
   const [pandadocStatus, setPandadocStatus] = useState<PandadocStatus | null>(null)
   const [pandadocShareLink, setPandadocShareLink] = useState<string | null>(null)
+  const { content, ready: contentReady } = usePlatformContent()
 
   useEffect(() => {
     fetchPlans().finally(() => setPlansReady(true))
@@ -74,7 +76,7 @@ export default function Assinar() {
     return () => window.clearTimeout(t)
   }, [cupom, plano])
 
-  if (!ready || !plansReady) {
+  if (!ready || !plansReady || !contentReady) {
     return (
       <main className="min-h-screen bg-uf-black flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
@@ -141,6 +143,7 @@ export default function Assinar() {
   }
 
   return (
+    <CmsEditProvider editable={false} content={content}>
     <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 py-16 relative">
       <div className="uf-mesh" />
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md relative z-10">
@@ -148,7 +151,7 @@ export default function Assinar() {
           <Link to="/" className="text-2xl font-black uf-text">
             Resolutoo
           </Link>
-          <p className="text-uf-silver-dim text-sm mt-2">Escolha o ciclo e como pagar.</p>
+          <CmsText contentKey="assinar.title" as="p" className="text-uf-silver-dim text-sm mt-2 block" />
         </div>
 
         <div className="uf-glass rounded-2xl p-6 mb-6 text-center">
@@ -255,5 +258,6 @@ export default function Assinar() {
         </form>
       </motion.div>
     </main>
+    </CmsEditProvider>
   )
 }

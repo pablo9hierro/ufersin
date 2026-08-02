@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { Check, Loader2, MousePointerClick } from 'lucide-react'
+import { CmsText } from '../../lib/cms'
 import { fetchPlans, formatBRL, getPlans, priceForCycle, SEMESTRAL_DISCOUNT } from '../../lib/plans'
 import type { BillingCycle } from '../../lib/api'
 
@@ -26,12 +27,16 @@ export default function Pricing() {
           className="text-center mb-10"
         >
           <span className="uf-eyebrow mb-4">Planos</span>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mt-4">
-            Um plano pra <span className="uf-text">cada momento</span> do seu negócio
-          </h2>
-          <p className="mt-4 text-uf-silver-dim max-w-xl mx-auto">
-            Comece simples e evolua quando precisar. Trocar de plano é instantâneo, sem taxa, direto pelo seu painel.
-          </p>
+          <CmsText
+            contentKey="landing.pricing.title"
+            as="h2"
+            className="text-3xl sm:text-4xl md:text-5xl font-black mt-4 block"
+          />
+          <CmsText
+            contentKey="landing.pricing.sub"
+            as="p"
+            className="mt-4 text-uf-silver-dim max-w-xl mx-auto block"
+          />
 
           <div className="mt-8 inline-flex rounded-xl border border-white/10 p-1 bg-white/5">
             <button

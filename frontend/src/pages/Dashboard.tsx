@@ -10,7 +10,6 @@ import {
   LogOut,
   Percent,
   Plus,
-  Save,
   Store,
   Tag,
 } from 'lucide-react'
@@ -25,8 +24,10 @@ import {
   type SuperadminStore,
 } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
+import { contentMapFromItems, CONTENT_DEFAULTS } from '../lib/cms'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
-import { formatBRL } from '../lib/plans'
+import { fetchPlans, formatBRL, invalidatePlansCache } from '../lib/plans'
+import LayoutCmsEditor, { defaultPlansSeed } from '../components/cms/LayoutCmsEditor'
 
 type Section = 'relatorios' | 'lojas' | 'layout' | 'cupons'
 
@@ -35,13 +36,6 @@ const NAV: { id: Section; label: string; icon: typeof BarChart3 }[] = [
   { id: 'lojas', label: 'Lojas', icon: Store },
   { id: 'layout', label: 'Layout', icon: LayoutTemplate },
   { id: 'cupons', label: 'Cupons', icon: Tag },
-]
-
-const LANDING_KEYS = [
-  'landing.hero.headline',
-  'landing.hero.sub',
-  'landing.pricing.title',
-  'landing.pricing.sub',
 ]
 
 export default function Dashboard() {
@@ -65,8 +59,7 @@ export default function Dashboard() {
   const [storeCoupons, setStoreCoupons] = useState<Record<string, string>>({})
 
   const [content, setContent] = useState<PlatformContentItem[]>([])
-  const [editingKey, setEditingKey] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState('')
+  const [contentMap, setContentMap] = useState<Record<string, string>>({ ...CONTENT_DEFAULTS })
   const [plans, setPlans] = useState<PlatformPlan[]>([])
   const [planPrices, setPlanPrices] = useState<Record<string, string>>({})
 
@@ -138,8 +131,11 @@ export default function Dashboard() {
   const loadLayout = useCallback(async () => {
     const [ct, pl] = await Promise.all([api.listPublicContent(), api.superadminPlans()])
     setContent(ct)
+    setContentMap(contentMapFromItems(ct))
     setPlans(pl)
     setPlanPrices(Object.fromEntries(pl.map((p) => [p.code, String(p.price_monthly)])))
+    invalidatePlansCache()
+    await fetchPlans()
   }, [])
 
   const loadCupons = useCallback(async () => {
@@ -230,10 +226,19 @@ export default function Dashboard() {
     setBusy(true)
     try {
       await api.superadminUpsertContent(key, value)
-      setContent((prev) => prev.map((c) => (c.key === key ? { ...c, value } : c)))
-      setEditingKey(null)
+      setContent((prev) => {
+        const idx = prev.findIndex((c) => c.key === key)
+        if (idx >= 0) {
+          const next = [...prev]
+          next[idx] = { ...next[idx], value }
+          return next
+        }
+        return [...prev, { key, value }]
+      })
+      setContentMap((prev) => ({ ...prev, [key]: value }))
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Erro ao salvar texto.')
+      throw e
     } finally {
       setBusy(false)
     }
@@ -248,6 +253,59 @@ export default function Dashboard() {
       await loadLayout()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Erro ao salvar plano.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const savePlanName = async (code: string, name: string) => {
+    setBusy(true)
+    try {
+      await api.superadminUpdatePlan(code, { name })
+      await loadLayout()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao salvar nome do plano.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const togglePlanActive = async (code: string, active: boolean) => {
+    setBusy(true)
+    try {
+      await api.superadminUpdatePlan(code, { active })
+      await loadLayout()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao atualizar plano.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const seedDefaultPlans = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      for (const p of defaultPlansSeed()) {
+        await api.superadminCreatePlan({
+          code: p.code,
+          name: p.name,
+          price_monthly: p.price,
+          tagline: p.tagline,
+          features: p.features,
+          highlight: !!p.highlight,
+          sort_order: p.sort_order,
+        })
+      }
+      // Ensure CMS keys exist for demo/assinar tabs.
+      for (const [key, value] of Object.entries(CONTENT_DEFAULTS)) {
+        if (!content.find((c) => c.key === key)) {
+          await api.superadminUpsertContent(key, value)
+        }
+      }
+      await loadLayout()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao criar planos padrão.')
     } finally {
       setBusy(false)
     }
@@ -274,8 +332,6 @@ export default function Dashboard() {
       setBusy(false)
     }
   }
-
-  const landingContent = LANDING_KEYS.map((key) => content.find((c) => c.key === key) ?? { key, value: '' })
 
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver flex">
@@ -309,10 +365,13 @@ export default function Dashboard() {
       <div className="flex-1 overflow-auto">
         <header className="border-b border-white/5 px-6 py-4">
           <h1 className="text-xl font-black">{NAV.find((n) => n.id === section)?.label}</h1>
+          {section === 'layout' && (
+            <p className="text-xs text-uf-silver-dim mt-1">Visual CMS — preview 1:1 com edição inline</p>
+          )}
         </header>
 
-        <div className="p-6 max-w-4xl">
-          {error && <p className="error-msg mb-4">{error}</p>}
+        <div className={`p-6 ${section === 'layout' ? 'max-w-6xl' : 'max-w-4xl'}`}>
+          {error && section !== 'layout' && <p className="error-msg mb-4">{error}</p>}
 
           {section === 'relatorios' && overview && (
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -425,67 +484,21 @@ export default function Dashboard() {
           )}
 
           {section === 'layout' && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <section className="uf-glass rounded-2xl p-5">
-                <h2 className="font-bold text-sm mb-3">Textos da landing</h2>
-                <p className="text-xs text-uf-silver-dim mb-4">Duplo clique num texto para editar.</p>
-                <dl className="space-y-3">
-                  {landingContent.map(({ key, value }) => (
-                    <div key={key}>
-                      <dt className="text-[10px] text-uf-silver-dim font-mono mb-1">{key}</dt>
-                      {editingKey === key ? (
-                        <div className="flex gap-2">
-                          <input
-                            className="input-field flex-1 text-sm"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveContent(key, editValue)
-                              if (e.key === 'Escape') setEditingKey(null)
-                            }}
-                          />
-                          <button type="button" disabled={busy} onClick={() => saveContent(key, editValue)} className="btn-primary px-3 py-2">
-                            <Save className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <dd
-                          className="text-sm cursor-pointer hover:bg-white/5 rounded-lg px-2 py-1.5 -mx-2"
-                          onDoubleClick={() => {
-                            setEditingKey(key)
-                            setEditValue(value)
-                          }}
-                        >
-                          {value || <span className="text-uf-silver-dim italic">(vazio)</span>}
-                        </dd>
-                      )}
-                    </div>
-                  ))}
-                </dl>
-              </section>
-
-              <section className="uf-glass rounded-2xl p-5">
-                <h2 className="font-bold text-sm mb-4">Preços dos planos</h2>
-                <div className="space-y-3">
-                  {plans.map((p) => (
-                    <div key={p.code} className="flex flex-wrap items-center gap-3">
-                      <span className="font-semibold text-sm w-28">{p.name}</span>
-                      <input
-                        className="input-field w-28 text-sm"
-                        value={planPrices[p.code] ?? ''}
-                        onChange={(e) => setPlanPrices((prev) => ({ ...prev, [p.code]: e.target.value }))}
-                        inputMode="decimal"
-                      />
-                      <span className="text-xs text-uf-silver-dim">R$/mês</span>
-                      <button type="button" disabled={busy} onClick={() => savePlanPrice(p.code)} className="btn-secondary text-xs px-3 py-2">
-                        Salvar
-                      </button>
-                    </div>
-                  ))}
-                  {plans.length === 0 && <p className="text-sm text-uf-silver-dim">Nenhum plano no banco — cadastre via API ou migration.</p>}
-                </div>
-              </section>
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+              <LayoutCmsEditor
+                content={contentMap}
+                onContentChange={(key, value) => setContentMap((prev) => ({ ...prev, [key]: value }))}
+                onSaveContent={saveContent}
+                plans={plans}
+                planPrices={planPrices}
+                onPlanPriceChange={(code, value) => setPlanPrices((prev) => ({ ...prev, [code]: value }))}
+                onSavePlan={savePlanPrice}
+                onToggleActive={togglePlanActive}
+                onSavePlanName={savePlanName}
+                onSeedDefaultPlans={seedDefaultPlans}
+                busy={busy}
+                error={error}
+              />
             </motion.div>
           )}
 

@@ -11,6 +11,7 @@ import FAQ from '../components/landing/FAQ'
 import Contact from '../components/landing/Contact'
 import Footer from '../components/landing/Footer'
 import { api } from '../lib/api'
+import { CmsEditProvider, usePlatformContent } from '../lib/cms'
 import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { resolveSessionHome } from '../lib/sessionHome'
@@ -25,6 +26,7 @@ export default function Landing() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
   const session = useSession()
+  const { content, ready: contentReady } = usePlatformContent()
   const [allowLanding, setAllowLanding] = useState(false)
 
   useEffect(() => {
@@ -64,7 +66,7 @@ export default function Landing() {
     }
   }, [ready, isAuthenticated, session?.user?.email, navigate])
 
-  if (!ready || !allowLanding) {
+  if (!ready || !allowLanding || !contentReady) {
     return (
       <main className="min-h-screen bg-uf-black flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
@@ -73,16 +75,18 @@ export default function Landing() {
   }
 
   return (
-    <main className="min-h-screen bg-uf-black text-uf-silver">
-      <Navbar />
-      <Hero />
-      <Features />
-      <Pricing />
-      <HowItWorks />
-      <Demo />
-      <FAQ />
-      <Contact />
-      <Footer />
-    </main>
+    <CmsEditProvider editable={false} content={content}>
+      <main className="min-h-screen bg-uf-black text-uf-silver">
+        <Navbar />
+        <Hero />
+        <Features />
+        <Pricing />
+        <HowItWorks />
+        <Demo />
+        <FAQ />
+        <Contact />
+        <Footer />
+      </main>
+    </CmsEditProvider>
   )
 }

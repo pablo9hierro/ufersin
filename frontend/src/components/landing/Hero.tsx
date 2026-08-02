@@ -1,5 +1,6 @@
 ﻿import { motion } from 'framer-motion'
 import { ArrowRight, PlayCircle, Sparkles } from 'lucide-react'
+import { CmsText } from '../../lib/cms'
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
@@ -23,26 +24,21 @@ export default function Hero() {
           Sua loja online no ar em dias, não em meses
         </motion.div>
 
-        <motion.h1
-          variants={fadeUp}
-          initial="hidden"
-          animate="show"
-          custom={1}
-          className="text-4xl sm:text-6xl md:text-7xl font-black leading-[1.05] tracking-tight max-w-4xl mx-auto"
-        >
-          A plataforma que <span className="uf-text">transforma seu negócio</span> numa loja online completa
-        </motion.h1>
+        <motion.div variants={fadeUp} initial="hidden" animate="show" custom={1}>
+          <CmsText
+            contentKey="landing.hero.headline"
+            as="h1"
+            className="text-4xl sm:text-6xl md:text-7xl font-black leading-[1.05] tracking-tight max-w-4xl mx-auto block"
+          />
+        </motion.div>
 
-        <motion.p
-          variants={fadeUp}
-          initial="hidden"
-          animate="show"
-          custom={2}
-          className="mt-6 text-base sm:text-lg text-uf-silver-dim max-w-2xl mx-auto"
-        >
-          Catálogo, checkout, Pix, WhatsApp e gestão de pedidos prontos pra usar. Você assina, a gente
-          configura — sem contratar equipe de tecnologia, sem meses de desenvolvimento.
-        </motion.p>
+        <motion.div variants={fadeUp} initial="hidden" animate="show" custom={2}>
+          <CmsText
+            contentKey="landing.hero.sub"
+            as="p"
+            className="mt-6 text-base sm:text-lg text-uf-silver-dim max-w-2xl mx-auto block"
+          />
+        </motion.div>
 
         <motion.div
           variants={fadeUp}

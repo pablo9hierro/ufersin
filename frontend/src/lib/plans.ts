@@ -63,6 +63,11 @@ function rowToPlanInfo(row: PlatformPlan): PlanInfo {
   }
 }
 
+/** Limpa cache em memória (após superadmin editar preços). */
+export function invalidatePlansCache() {
+  loadedPlans = null
+}
+
 /** Carrega planos da API; em falha mantém fallback em memória. */
 export async function fetchPlans(): Promise<PlanInfo[]> {
   try {
