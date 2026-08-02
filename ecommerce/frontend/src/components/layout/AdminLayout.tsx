@@ -230,6 +230,12 @@ export default function AdminLayout() {
 
   const handleLogout = () => {
     logout()
+    // Demo pública: nunca mandar pro formulário de login (autofill da
+    // plataforma no mesmo domínio). Volta pra vitrine mock da aba.
+    if (demo) {
+      navigate('/', { replace: true })
+      return
+    }
     navigate('/admin/login')
   }
 

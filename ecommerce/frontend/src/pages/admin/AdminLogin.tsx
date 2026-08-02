@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, Loader2, Lock, Users } from 'lucide-react'
 import Logo from '../../components/ui/Logo'
 import { ApiError } from '../../lib/apiError'
+import { isDemoModeActive } from '../../lib/demoMode'
 import { authService } from '../../services/authService'
 import { useAdminAuth } from '../../store/adminAuth'
 import { persistTenantSlug, resetTenantConfigCache, resolveTenantSlug } from '../../lib/tenantConfig'
@@ -19,15 +20,17 @@ import { persistTenantSlug, resetTenantConfigCache, resolveTenantSlug } from '..
 // VITE_TENANT_SLUG) — o assinante tem uma loja por assinatura, então não
 // pedimos o identificador no formulário. `?email=` ainda vem do dashboard
 // Resolutoo ("Entrar no painel da loja").
+//
+// Demo pública NUNCA deve cair aqui — /demo-entrar já autentica com mock.
 export default function AdminLogin() {
   const { token, login } = useAdminAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const emailFromUrl = (searchParams.get('email') || '').trim()
-  // Prefer ?tenant= do React Router (MemoryRouter / SPA), depois localStorage /
-  // VITE_TENANT_SLUG via resolveTenantSlug (window.location + storage).
-  const tenantSlug =
-    (searchParams.get('tenant') || '').trim().toLowerCase() || resolveTenantSlug()
+  // Só aceita e-mail da query quando há tenant (deep link do Meu Plano).
+  // Sem tenant, ignorar ?email= evita vazar e-mail de outra sessão/plataforma.
+  const tenantFromUrl = (searchParams.get('tenant') || '').trim().toLowerCase()
+  const emailFromUrl = tenantFromUrl ? (searchParams.get('email') || '').trim() : ''
+  const tenantSlug = tenantFromUrl || resolveTenantSlug()
 
   const [email, setEmail] = useState(emailFromUrl)
   const [password, setPassword] = useState('')
@@ -35,6 +38,8 @@ export default function AdminLogin() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
+  // Demo ativa nesta aba: pular o formulário (nunca pedir senha / autofill).
+  if (isDemoModeActive()) return <Navigate to="/admin/pedidos" replace />
   if (token) return <Navigate to="/admin/pedidos" replace />
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,9 +65,18 @@ export default function AdminLogin() {
     }
   }
 
+  // Deep link do Meu Plano: permite gerenciador de senhas do lojista.
+  // Sem tenant: desliga autocomplete pra não colar credenciais da plataforma
+  // Resolutoo (mesmo domínio /loja) no formulário do ecommerce.
+  const allowPasswordManager = Boolean(tenantFromUrl && emailFromUrl)
+
   return (
     <main className="min-h-screen bg-son-black text-white flex items-center justify-center px-5">
-      <form onSubmit={handleSubmit} className="sunset-login-card w-full max-w-sm rounded-2xl p-8">
+      <form
+        onSubmit={handleSubmit}
+        className="sunset-login-card w-full max-w-sm rounded-2xl p-8"
+        autoComplete={allowPasswordManager ? 'on' : 'off'}
+      >
         <div className="text-center mb-6">
           <Logo size="lg" />
           <p className="text-son-silver-dim text-sm mt-2 flex items-center justify-center gap-1.5">
@@ -75,10 +89,12 @@ export default function AdminLogin() {
             <input
               className="input-field"
               type="email"
+              name="loja-admin-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               autoFocus={!emailFromUrl}
+              autoComplete={allowPasswordManager ? 'username' : 'off'}
             />
           </div>
           <div>
@@ -87,11 +103,12 @@ export default function AdminLogin() {
               <input
                 className="input-field pr-12"
                 type={showPassword ? 'text' : 'password'}
+                name="loja-admin-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoFocus={Boolean(emailFromUrl)}
-                autoComplete="current-password"
+                autoComplete={allowPasswordManager ? 'current-password' : 'off'}
               />
               <button
                 type="button"

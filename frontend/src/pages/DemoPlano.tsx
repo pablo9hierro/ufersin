@@ -1,21 +1,19 @@
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Lock, ShoppingBag, Users2 } from 'lucide-react'
+import { ArrowLeft, Lock, ShoppingBag, Truck, Users, Users2 } from 'lucide-react'
 import type { PlanoCode } from '../lib/api'
-import { demoLojaUrl } from '../lib/ecommerceUrl'
+import { demoExperienceUrl, type DemoRole } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
 const PLAN_NAMES: Record<PlanoCode, string> = { essential: 'Essential', management: 'Management', premium: 'Premium' }
 
 interface AreaDef {
-  key: 'vitrine' | 'admin' | 'motoboy' | 'vendedor'
+  key: DemoRole
   label: string
   desc: string
   icon: typeof ShoppingBag
   /** null = disponível em todo plano; senão, o plano mínimo que libera. */
   requiredPlan: PlanoCode | null
-  /** Áreas ainda não plugadas na demo (dependem de uma peça que falta —
-   *  ver comentário abaixo) ficam com essa flag em vez de fingir funcionar. */
   comingSoon?: boolean
 }
 
@@ -34,6 +32,20 @@ const AREAS: AreaDef[] = [
     icon: Users2,
     requiredPlan: null,
   },
+  {
+    key: 'vendedor',
+    label: 'Painel vendedor',
+    desc: 'PDV e pedidos do vendedor de balcão.',
+    icon: Users,
+    requiredPlan: 'management',
+  },
+  {
+    key: 'motoboy',
+    label: 'App motoboy',
+    desc: 'Fila de entregas e corridas em andamento.',
+    icon: Truck,
+    requiredPlan: 'management',
+  },
 ]
 
 export default function DemoPlano() {
@@ -46,13 +58,11 @@ export default function DemoPlano() {
   const planoIndex = PLAN_ORDER.indexOf(planoCode)
   const isUnlocked = (a: AreaDef) => a.requiredPlan === null || PLAN_ORDER.indexOf(a.requiredPlan) <= planoIndex
 
-  // Sem backend nenhum envolvido: /demo-entrar (no frontend do motor) só
-  // ativa o modo demonstração já existente por lá (localApi/localStorage,
-  // seedado com dado fake) nessa aba e loga sozinho — ver
-  // ecommerce/frontend/src/lib/demoMode.ts.
+  // Abre `/demo/{role}/{plano}` (URL canônica Resolutoo). A página embute
+  // o motor via iframe já autenticado — nunca /loja/admin/login.
   const handleClick = (area: AreaDef) => {
     if (area.comingSoon || !isUnlocked(area)) return
-    window.open(`${demoLojaUrl()}/demo-entrar?role=${area.key}&plano=${planoCode}`, '_blank', 'noopener,noreferrer')
+    window.open(demoExperienceUrl(area.key, planoCode), '_blank', 'noopener,noreferrer')
   }
 
   return (

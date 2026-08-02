@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import Landing from './pages/Landing'
 import Demo from './pages/Demo'
 import DemoPlano from './pages/DemoPlano'
+import DemoExperience from './pages/DemoExperience'
 import Cadastro from './pages/Cadastro'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
@@ -21,6 +22,16 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/demo" element={<Demo />} />
+      {/* Experiências mock — URL canônica na barra de endereço Resolutoo */}
+      <Route path="/demo/vitrine" element={<DemoExperience />} />
+      <Route path="/demo/vitrine/:plano" element={<DemoExperience />} />
+      <Route path="/demo/admin" element={<DemoExperience />} />
+      <Route path="/demo/admin/:plano" element={<DemoExperience />} />
+      <Route path="/demo/vendedor" element={<DemoExperience />} />
+      <Route path="/demo/vendedor/:plano" element={<DemoExperience />} />
+      <Route path="/demo/motoboy" element={<DemoExperience />} />
+      <Route path="/demo/motoboy/:plano" element={<DemoExperience />} />
+      {/* Escolha de área por plano (essential|management|premium) */}
       <Route path="/demo/:plano" element={<DemoPlano />} />
       <Route path="/cadastro" element={<Cadastro />} />
       <Route path="/login" element={<Login />} />

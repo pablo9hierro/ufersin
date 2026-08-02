@@ -24,9 +24,34 @@ function resolveEcommerceFrontendUrl(): string {
   return `${window.location.origin}/loja`
 }
 
+export type DemoRole = 'vitrine' | 'admin' | 'motoboy' | 'vendedor'
+
 /** Vitrine/admin mockados da demo pública (`/demo`). */
 export function demoLojaUrl(): string {
   return resolveEcommerceFrontendUrl()
+}
+
+/**
+ * URL pública canônica da demo (barra de endereço Resolutoo).
+ * Ex.: `/demo/admin/essential`, `/demo/vitrine/premium`
+ */
+export function demoExperiencePath(role: DemoRole, plano: string): string {
+  return `/demo/${role}/${plano}`
+}
+
+/** Absolute URL for `window.open` from /demo/:plano CTAs. */
+export function demoExperienceUrl(role: DemoRole, plano: string): string {
+  if (typeof window === 'undefined') return demoExperiencePath(role, plano)
+  return `${window.location.origin}${demoExperiencePath(role, plano)}`
+}
+
+/**
+ * URL interna do motor embutido — só usada pelo iframe de DemoExperience.
+ * Já autentica com mock (nunca /admin/login).
+ */
+export function demoEntrarUrl(role: DemoRole, plano: string): string {
+  const q = new URLSearchParams({ role, plano })
+  return `${demoLojaUrl()}/demo-entrar?${q.toString()}`
 }
 
 /** Painel da loja do assinante (pós-onboarding). */

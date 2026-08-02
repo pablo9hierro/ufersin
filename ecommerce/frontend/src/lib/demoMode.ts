@@ -1,4 +1,4 @@
-import { getCachedTenantConfig, resolveTenantSlug } from './tenantConfig'
+import { clearTenantSlug, getCachedTenantConfig, resolveTenantSlug, resetTenantConfigCache } from './tenantConfig'
 
 export type PlanoCode = 'essential' | 'management' | 'premium'
 
@@ -14,14 +14,25 @@ const PLANO_KEY = 'rodoletas_demo_plano'
 export function activateDemoMode(plano: PlanoCode) {
   sessionStorage.setItem(ACTIVE_KEY, 'true')
   sessionStorage.setItem(PLANO_KEY, plano)
+  // Slug de loja real em localStorage (visita anterior a /loja/?tenant=…)
+  // NÃO pode sequestrar a demo — senão isDemoModeActive falhava, o token
+  // mock batia na API real → 401 → /admin/login com autofill do superadmin.
+  clearTenantSlug()
+  resetTenantConfigCache()
 }
 
 export function isDemoModeActive(): boolean {
   if (typeof window === 'undefined') return false
-  // Vitrine real (?tenant= / slug persistido) nunca fica em modo demo —
-  // senão o zustand rodoletas_demo_layout_style sobrescreve layout_style do Meu plano.
-  if (resolveTenantSlug()) return false
-  return sessionStorage.getItem(ACTIVE_KEY) === 'true'
+  if (sessionStorage.getItem(ACTIVE_KEY) !== 'true') return false
+  // Só ?tenant= explícito na URL cancela o modo demo (vitrine real).
+  // Slug persistido em localStorage NÃO cancela — era o bug de produção.
+  try {
+    const q = new URLSearchParams(window.location.search).get('tenant')?.trim()
+    if (q) return false
+  } catch {
+    /* ignore */
+  }
+  return true
 }
 
 export function getDemoPlano(): PlanoCode | null {

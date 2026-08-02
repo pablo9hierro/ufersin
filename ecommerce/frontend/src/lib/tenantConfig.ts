@@ -91,6 +91,16 @@ export function persistTenantSlug(slug: string) {
   }
 }
 
+/** Remove slug persistido (entrada na demo pública / logout limpo). */
+export function clearTenantSlug() {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem(SLUG_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 export function resolveTenantSlug(): string {
   if (typeof window === 'undefined') return ENV_TENANT_SLUG
   // Query ?tenant= manda no path público da loja — tem prioridade sobre
@@ -99,6 +109,15 @@ export function resolveTenantSlug(): string {
   try {
     const q = new URLSearchParams(window.location.search).get('tenant')?.trim()
     if (q) return q.toLowerCase()
+  } catch {
+    /* ignore */
+  }
+  // Demo pública ativa: nunca herda slug de sessão anterior na mesma origem.
+  // (sessionStorage direto pra evitar import circular com demoMode.ts)
+  try {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('rodoletas_demo_active') === 'true') {
+      return ''
+    }
   } catch {
     /* ignore */
   }
