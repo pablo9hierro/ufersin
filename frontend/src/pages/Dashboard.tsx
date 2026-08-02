@@ -600,68 +600,142 @@ export default function Dashboard() {
                   <Percent className="w-4 h-4" /> Novo cupom
                 </h3>
                 <form onSubmit={handleCreateCoupon} className="space-y-3">
-                  <input
-                    className="input-field"
-                    placeholder="Código"
-                    value={couponForm.code}
-                    onChange={(e) => setCouponForm((f) => ({ ...f, code: e.target.value }))}
-                    required
-                  />
-                  <div className="grid grid-cols-2 gap-3">
-                    <select
-                      className="input-field"
-                      value={couponForm.discount_type}
-                      onChange={(e) => setCouponForm((f) => ({ ...f, discount_type: e.target.value as 'fixed' | 'percent' }))}
-                    >
-                      <option value="percent">Percentual</option>
-                      <option value="fixed">Valor fixo</option>
-                    </select>
+                  <div>
+                    <label className="label" htmlFor="coupon-code">
+                      Código
+                    </label>
                     <input
+                      id="coupon-code"
                       className="input-field"
-                      placeholder="Valor"
-                      value={couponForm.discount_value}
-                      onChange={(e) => setCouponForm((f) => ({ ...f, discount_value: e.target.value }))}
-                      inputMode="decimal"
+                      placeholder="Ex.: VITALICIO10"
+                      value={couponForm.code}
+                      onChange={(e) => setCouponForm((f) => ({ ...f, code: e.target.value }))}
                       required
                     />
                   </div>
-                  <select
-                    className="input-field"
-                    value={couponForm.duration_kind}
-                    onChange={(e) =>
-                      setCouponForm((f) => ({
-                        ...f,
-                        duration_kind: e.target.value as 'timed' | 'lifetime_current_plan',
-                        // Limpa teto ao voltar pra vitalício — não deve ir no payload.
-                        max_redemptions: e.target.value === 'lifetime_current_plan' ? '' : f.max_redemptions,
-                      }))
-                    }
-                  >
-                    <option value="lifetime_current_plan">Vitalício no plano atual</option>
-                    <option value="timed">Por tempo limitado</option>
-                  </select>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label" htmlFor="coupon-discount-type">
+                        Tipo de desconto
+                      </label>
+                      <select
+                        id="coupon-discount-type"
+                        className="input-field"
+                        value={couponForm.discount_type}
+                        onChange={(e) =>
+                          setCouponForm((f) => ({ ...f, discount_type: e.target.value as 'fixed' | 'percent' }))
+                        }
+                      >
+                        <option value="percent">Percentual</option>
+                        <option value="fixed">Valor fixo</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label" htmlFor="coupon-discount-value">
+                        Valor
+                      </label>
+                      <input
+                        id="coupon-discount-value"
+                        className="input-field"
+                        placeholder={couponForm.discount_type === 'percent' ? '10' : '50'}
+                        value={couponForm.discount_value}
+                        onChange={(e) => setCouponForm((f) => ({ ...f, discount_value: e.target.value }))}
+                        inputMode="decimal"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <fieldset className="space-y-2">
+                    <legend className="label mb-0">Duração do desconto</legend>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Duração do desconto">
+                      <button
+                        type="button"
+                        role="radio"
+                        className={`rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                          couponForm.duration_kind === 'lifetime_current_plan'
+                            ? 'border-uf-blue bg-uf-blue/15 text-uf-silver'
+                            : 'border-white/10 bg-white/[0.03] text-uf-silver-dim hover:border-white/20'
+                        }`}
+                        aria-checked={couponForm.duration_kind === 'lifetime_current_plan'}
+                        onClick={() =>
+                          setCouponForm((f) => ({
+                            ...f,
+                            duration_kind: 'lifetime_current_plan',
+                            max_redemptions: '',
+                          }))
+                        }
+                      >
+                        <span className="block font-semibold text-uf-silver">Vitalício no plano atual</span>
+                        <span className="block text-[11px] mt-0.5 text-uf-silver-dim">Sem prazo e sem limite de resgates</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        className={`rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                          couponForm.duration_kind === 'timed'
+                            ? 'border-uf-blue bg-uf-blue/15 text-uf-silver'
+                            : 'border-white/10 bg-white/[0.03] text-uf-silver-dim hover:border-white/20'
+                        }`}
+                        aria-checked={couponForm.duration_kind === 'timed'}
+                        onClick={() => setCouponForm((f) => ({ ...f, duration_kind: 'timed' }))}
+                      >
+                        <span className="block font-semibold text-uf-silver">Por tempo limitado</span>
+                        <span className="block text-[11px] mt-0.5 text-uf-silver-dim">Define dias e máx. resgates</span>
+                      </button>
+                    </div>
+                    {/* Hidden select keeps both values in the DOM for QA / crawlers / older muscle memory. */}
+                    <select
+                      id="coupon-duration-kind"
+                      className="sr-only"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      value={couponForm.duration_kind}
+                      onChange={(e) =>
+                        setCouponForm((f) => ({
+                          ...f,
+                          duration_kind: e.target.value as 'timed' | 'lifetime_current_plan',
+                          max_redemptions: e.target.value === 'lifetime_current_plan' ? '' : f.max_redemptions,
+                        }))
+                      }
+                    >
+                      <option value="lifetime_current_plan">Vitalício no plano atual</option>
+                      <option value="timed">Por tempo limitado</option>
+                    </select>
+                  </fieldset>
                   {couponForm.duration_kind === 'lifetime_current_plan' ? (
                     <p className="text-[11px] text-uf-silver-dim">
                       Desconto enquanto o lojista permanecer no plano do resgate. Sem prazo e sem limite de resgates.
                     </p>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
-                      <input
-                        className="input-field"
-                        placeholder="Dias de validade"
-                        value={couponForm.duration_days}
-                        onChange={(e) => setCouponForm((f) => ({ ...f, duration_days: e.target.value }))}
-                        inputMode="numeric"
-                        required
-                      />
-                      <input
-                        className="input-field"
-                        placeholder="Máx. resgates"
-                        value={couponForm.max_redemptions}
-                        onChange={(e) => setCouponForm((f) => ({ ...f, max_redemptions: e.target.value }))}
-                        inputMode="numeric"
-                        required
-                      />
+                      <div>
+                        <label className="label" htmlFor="coupon-duration-days">
+                          Dias de validade
+                        </label>
+                        <input
+                          id="coupon-duration-days"
+                          className="input-field"
+                          placeholder="30"
+                          value={couponForm.duration_days}
+                          onChange={(e) => setCouponForm((f) => ({ ...f, duration_days: e.target.value }))}
+                          inputMode="numeric"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor="coupon-max-redemptions">
+                          Máx. resgates
+                        </label>
+                        <input
+                          id="coupon-max-redemptions"
+                          className="input-field"
+                          placeholder="100"
+                          value={couponForm.max_redemptions}
+                          onChange={(e) => setCouponForm((f) => ({ ...f, max_redemptions: e.target.value }))}
+                          inputMode="numeric"
+                          required
+                        />
+                      </div>
                     </div>
                   )}
                   {error && section === 'cupons' && <p className="text-sm text-red-400">{error}</p>}

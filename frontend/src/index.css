@@ -159,6 +159,11 @@ body {
 .input-field:focus {
   border-color: var(--color-uf-blue);
 }
+/* Native <select> popups often ignore parent theme; force readable option paint. */
+.input-field option {
+  background-color: var(--color-uf-surface);
+  color: var(--color-uf-silver);
+}
 
 .label {
   display: block;
