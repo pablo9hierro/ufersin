@@ -6,7 +6,7 @@ import { ApiError } from '../../lib/apiError'
 import { getDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
 import { authService } from '../../services/authService'
 import { useAdminAuth } from '../../store/adminAuth'
-import { persistTenantSlug, resetTenantConfigCache, resolveTenantSlug } from '../../lib/tenantConfig'
+import { persistTenantSlug, resetTenantConfigCache } from '../../lib/tenantConfig'
 
 // Login exclusivo do admin — não tenta mais vendedor/motoboy em cascata
 // (isso causava logins acidentais na conta admin: o campo de e-mail vinha
@@ -16,22 +16,19 @@ import { persistTenantSlug, resetTenantConfigCache, resolveTenantSlug } from '..
 // cada um na própria sessão (useVendedorAuth/useMotoboyAuth) — useAdminAuth
 // aqui é 100% exclusivo do admin.
 //
-// Tenant vem de `resolveTenantSlug()` (?tenant=, localStorage pós-login,
-// VITE_TENANT_SLUG) — o assinante tem uma loja por assinatura, então não
-// pedimos o identificador no formulário. `?email=` ainda vem do dashboard
-// Resolutoo ("Entrar no painel da loja").
+// Tenant: o backend resolve pelo e-mail+senha. `?tenant=` no deep link do
+// dashboard Resolutoo ("Entrar no painel da loja") é só hint opcional.
+// `?email=` só vem junto com `?tenant=` pra não vazar e-mail de outra sessão.
 //
 // Demo pública NUNCA deve cair aqui — /demo-entrar já autentica com mock.
 export default function AdminLogin() {
-  const { token, login, tenantSlug: authTenantSlug } = useAdminAuth()
+  const { token, login } = useAdminAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   // Só aceita e-mail da query quando há tenant (deep link do Meu Plano).
   // Sem tenant, ignorar ?email= evita vazar e-mail de outra sessão/plataforma.
   const tenantFromUrl = (searchParams.get('tenant') || '').trim().toLowerCase()
   const emailFromUrl = tenantFromUrl ? (searchParams.get('email') || '').trim() : ''
-  const tenantSlug =
-    tenantFromUrl || resolveTenantSlug() || (authTenantSlug || '').trim().toLowerCase()
 
   const [email, setEmail] = useState(emailFromUrl)
   const [password, setPassword] = useState('')
@@ -58,24 +55,28 @@ export default function AdminLogin() {
     if (emailVal !== email) setEmail(emailVal)
     if (passwordVal !== password) setPassword(passwordVal)
 
-    const slug =
-      (searchParams.get('tenant') || '').trim().toLowerCase() ||
-      resolveTenantSlug() ||
-      (authTenantSlug || '').trim().toLowerCase()
-    if (!slug) {
-      setError('Loja não identificada. Abra o login pelo link do painel Resolutoo.')
-      return
-    }
     if (!emailVal || !passwordVal) {
       setError('Informe e-mail e senha.')
       return
     }
+
+    // Só manda slug quando veio do deep link (?tenant=). localStorage /
+    // VITE_TENANT_SLUG / sessão anterior NÃO são hint: um slug antigo
+    // forçaria login na loja errada e falharia mesmo com e-mail+senha
+    // corretos da loja atual — o backend resolve pelo credential.
+    const hintSlug = tenantFromUrl || undefined
+
     setLoading(true)
     try {
-      const res = await authService.staff.adminLogin(emailVal, passwordVal, slug)
-      persistTenantSlug(slug)
+      const res = await authService.staff.adminLogin(emailVal, passwordVal, hintSlug)
+      const resolvedSlug = (res.tenant_slug || hintSlug || '').trim().toLowerCase()
+      if (!resolvedSlug) {
+        setError('Não foi possível identificar a loja. Tente de novo ou use o link do painel Resolutoo.')
+        return
+      }
+      persistTenantSlug(resolvedSlug)
       resetTenantConfigCache()
-      login(res.token, res.name, slug)
+      login(res.token, res.name, resolvedSlug)
       navigate('/admin/pedidos')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao entrar.')
@@ -147,17 +148,10 @@ export default function AdminLogin() {
               </p>
             </div>
           )}
-          {/* Só loading desabilita — falta de tenant valida no submit (Entrar
-              travado por !tenantSlug impedia re-login após wipe da demo). */}
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Entrar
           </button>
-          {!tenantSlug ? (
-            <p className="text-xs text-son-silver-dim text-center">
-              Abra esta página pelo link &quot;Entrar no painel da loja&quot; no Resolutoo.
-            </p>
-          ) : null}
           <Link to="/funcionarios/login" className="btn-secondary w-full flex items-center justify-center gap-2 text-sm">
             <Users className="w-4 h-4" /> Sou vendedor ou motoboy
           </Link>

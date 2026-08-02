@@ -270,13 +270,12 @@ pub struct RequestLocationResult {
 
 #[derive(Debug, Deserialize)]
 pub struct LoginInput {
-    /// Which tenant this login is for. Required for now because email is
-    /// only unique *within* a tenant (two stores can each have their own
-    /// admin@... account) and there's no subdomain/domain routing yet to
-    /// infer it automatically — the frontend will get this from the
-    /// subdomain once that's built (see ufersin's multi-tenancy plan) and
-    /// this field can stay, just pre-filled instead of typed.
-    pub tenant_slug: String,
+    /// Optional store slug (deep link from Resolutoo "Entrar no painel").
+    /// When omitted, admin login resolves the tenant from email+password.
+    /// Email is unique per tenant (`UNIQUE (tenant_id, email)`); if the same
+    /// email+password matches more than one store, the client must pass a slug.
+    #[serde(default)]
+    pub tenant_slug: Option<String>,
     pub email: String,
     pub password: String,
 }
@@ -285,6 +284,9 @@ pub struct LoginInput {
 pub struct LoginResponse {
     pub token: String,
     pub name: String,
+    /// Tenant the session belongs to (always set so the client can persist it
+    /// after credential-based resolution without a prior `?tenant=`).
+    pub tenant_slug: String,
 }
 
 // ---------- Financeiro ----------

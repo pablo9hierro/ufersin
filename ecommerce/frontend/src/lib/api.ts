@@ -213,20 +213,18 @@ const remoteApi = {
         body: JSON.stringify({ order_id: orderId }),
       }),
   },
-  // Login: com tenant_slug (link do dashboard Resolutoo) → motor Railway
-  // (Argon2 + JWT com tenant_id). Sem slug → RPC Supabase legada (Sunset).
+  // Login admin → motor Railway (Argon2 + JWT com tenant_id).
+  // `tenant_slug` é opcional: o backend resolve a loja pelo e-mail+senha.
+  // Deep link do dashboard Resolutoo ainda pode pré-preencher o slug.
   auth: {
     adminLogin: async (email: string, password: string, tenantSlug?: string) => {
-      const slug = tenantSlug?.trim()
-      if (slug) {
-        return request<{ token: string; name: string }>('/api/auth/admin/login', {
-          method: 'POST',
-          body: JSON.stringify({ email, password, tenant_slug: slug }),
-        })
-      }
-      const { data, error } = await supabase.rpc('admin_login', { p_email: email, p_password: password })
-      if (error) throw new ApiError(401, 'Credenciais inválidas.')
-      return data as { token: string; name: string }
+      const slug = tenantSlug?.trim().toLowerCase()
+      const body: { email: string; password: string; tenant_slug?: string } = { email, password }
+      if (slug) body.tenant_slug = slug
+      return request<{ token: string; name: string; tenant_slug: string }>('/api/auth/admin/login', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
     },
     motoboyLogin: async (email: string, password: string) => {
       const { data, error } = await supabase.rpc('motoboy_login', { p_email: email, p_password: password })

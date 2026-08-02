@@ -546,9 +546,13 @@ async function simulatePixPaid(id: string): Promise<Order> {
 
 // ---------- auth ----------
 
-async function adminLogin(email: string, password: string): Promise<{ token: string; name: string }> {
+async function adminLogin(
+  email: string,
+  password: string,
+  _tenantSlug?: string,
+): Promise<{ token: string; name: string; tenant_slug: string }> {
   if (email === ADMIN_CREDENTIALS.email && password === ADMIN_CREDENTIALS.password) {
-    return { token: 'local-admin-token', name: ADMIN_CREDENTIALS.name }
+    return { token: 'local-admin-token', name: ADMIN_CREDENTIALS.name, tenant_slug: 'demo' }
   }
   throw new ApiError(401, 'invalid credentials')
 }

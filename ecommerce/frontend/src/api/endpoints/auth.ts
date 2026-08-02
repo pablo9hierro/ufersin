@@ -2,7 +2,12 @@ import { z } from 'zod'
 import { api } from '../../lib/api'
 import { validate } from '../validate'
 
-const LoginResultSchema = z.object({ token: z.string(), name: z.string() })
+const LoginResultSchema = z.object({
+  token: z.string(),
+  name: z.string(),
+  // Backend multi-tenant sempre devolve; RPC/local demo podem omitir.
+  tenant_slug: z.string().optional(),
+})
 
 // Módulo Perfil (staff) — login de admin/motoboy/vendedor. Único ponto do
 // app autorizado a chamar `api.auth.*`.

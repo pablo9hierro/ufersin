@@ -39,12 +39,12 @@ lógica do ufersin").
 - **Google Routes API**: já era uma única chave global compartilhada
   (`GOOGLE_ROUTES_API_KEY`) antes mesmo desse refactor — comportamento
   mantido, exatamente como pedido ("nunca criar chave por loja").
-- **Login sabe de tenant**: `POST /api/auth/admin/login` e
-  `/api/auth/motoboy/login` agora exigem `tenant_slug` no corpo (email só é
-  único DENTRO de um tenant agora, não mais globalmente) — o JWT emitido
-  carrega `tenant_id`. Isso é um "selo de tenant" explícito por enquanto,
-  já preparado pra virar automático quando existir roteamento por
-  subdomínio (ver plano original do ufersin).
+- **Login resolve tenant**: `POST /api/auth/admin/login` aceita
+  `tenant_slug` opcional. Com slug (deep link Resolutoo) autentica naquela
+  loja; sem slug, resolve pelo e-mail+senha entre `admins` e devolve
+  `tenant_slug` no body — o JWT sempre carrega `tenant_id`. Se o mesmo
+  e-mail+senha bater em mais de uma loja, exige o link com slug.
+  `/api/auth/motoboy/login` ainda exige `tenant_slug`.
 - **Banco local, sem Supabase**: `backend/docker-compose.yml` sobe um
   Postgres local na porta 5433. `backend/.env` já aponta pra ele. Rodando
   `cargo run` de dentro de `backend/`, as migrations (incluindo a nova

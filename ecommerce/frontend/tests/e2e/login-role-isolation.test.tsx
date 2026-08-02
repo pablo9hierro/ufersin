@@ -29,9 +29,13 @@ vi.mock('../../src/lib/api', async () => {
     ApiError,
     api: {
       auth: {
-        adminLogin: vi.fn(async (email: string, password: string) => {
+        adminLogin: vi.fn(async (email: string, password: string, tenantSlug?: string) => {
           if (email === 'admin@sunset.com' && password === 'senha-admin') {
-            return { token: 'tok-admin-real', name: 'Admin Real' }
+            return {
+              token: 'tok-admin-real',
+              name: 'Admin Real',
+              tenant_slug: tenantSlug?.trim() || 'loja-por-email',
+            }
           }
           throw new ApiError(401, 'Credenciais inválidas')
         }),
@@ -87,6 +91,20 @@ describe('fluxo completo de login (tela → API mockada → store) não cruza se
     expect(useAdminAuth.getState().tenantSlug).toBe('test-loja')
     expect(useVendedorAuth.getState().token).toBeNull()
     expect(useMotoboyAuth.getState().token).toBeNull()
+  })
+
+  it('logar como admin sem ?tenant= resolve tenant pelo retorno da API', async () => {
+    render(
+      <MemoryRouter initialEntries={['/admin/login']}>
+        <AdminLogin />
+      </MemoryRouter>
+    )
+
+    expect(screen.queryByText(/abra esta página pelo link/i)).not.toBeInTheDocument()
+    await submitLogin('admin@sunset.com', 'senha-admin')
+
+    await waitFor(() => expect(useAdminAuth.getState().token).toBe('tok-admin-real'))
+    expect(useAdminAuth.getState().tenantSlug).toBe('loja-por-email')
   })
 
   it('logar como vendedor pela tela grava só em useVendedorAuth e preserva sessão admin já ativa', async () => {
