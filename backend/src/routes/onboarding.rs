@@ -243,6 +243,20 @@ pub async fn onboarding(
     .execute(&state.pool)
     .await?;
 
+    // Push payment gateway credentials to ecommerce-api (best-effort) so Pix
+    // create/refund can use the store Mercado Pago token.
+    if let Err(e) = sync_store_payment_credentials(
+        &state,
+        &slug,
+        &body.forma_pagamento,
+        body.plataforma_pagamento.as_deref(),
+        body.plataforma_credenciais.as_ref(),
+    )
+    .await
+    {
+        tracing::warn!("sync-payment-credentials after onboarding failed: {e:?}");
+    }
+
     Ok(Json(OnboardingOutput { tenant_id: parsed.tenant_id, slug, admin_login_hint: email }))
 }
 
@@ -541,7 +555,67 @@ pub async fn editar_onboarding(
         }
     }
 
+    // Sync payment credentials when any payment field was touched.
+    if body.forma_pagamento.is_some()
+        || body.plataforma_pagamento.is_some()
+        || body.plataforma_credenciais.is_some()
+    {
+        let row: Option<(String, Option<String>, Option<serde_json::Value>)> = sqlx::query_as(
+            "SELECT forma_pagamento, plataforma_pagamento, plataforma_credenciais \
+             FROM subscribers WHERE id = $1",
+        )
+        .bind(&claims.sub)
+        .fetch_optional(&state.pool)
+        .await?;
+        if let Some((fp, pp, creds)) = row {
+            if let Err(e) =
+                sync_store_payment_credentials(&state, &slug, &fp, pp.as_deref(), creds.as_ref())
+                    .await
+            {
+                tracing::warn!("sync-payment-credentials after edit failed: {e:?}");
+            }
+        }
+    }
+
     Ok(Json(serde_json::json!({ "updated": true })))
+}
+
+async fn sync_store_payment_credentials(
+    state: &AppState,
+    slug: &str,
+    forma_pagamento: &str,
+    plataforma_pagamento: Option<&str>,
+    plataforma_credenciais: Option<&serde_json::Value>,
+) -> Result<(), AppError> {
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Ok(());
+    }
+    let url = format!(
+        "{}/internal/sync-payment-credentials",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "tenant_slug": slug,
+            "forma_pagamento": forma_pagamento,
+            "plataforma_pagamento": plataforma_pagamento,
+            "plataforma_credenciais": plataforma_credenciais,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("sync-payment-credentials unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!(
+            "sync-payment-credentials failed: {status} {text}"
+        )));
+    }
+    Ok(())
 }
 
 async fn teardown_store_whatsapp(state: &AppState, slug: &str) -> Result<(), AppError> {

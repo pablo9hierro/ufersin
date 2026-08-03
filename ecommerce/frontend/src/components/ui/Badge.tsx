@@ -12,6 +12,7 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   retiradas: 'bg-son-gold/15 text-son-gold',
   entregas: 'bg-son-pink/15 text-son-pink',
   concluido: 'bg-emerald-500/20 text-emerald-400',
+  cancelado: 'bg-red-500/15 text-red-400',
 }
 
 export function StatusBadge({

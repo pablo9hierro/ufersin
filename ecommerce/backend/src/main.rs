@@ -1,8 +1,10 @@
 mod abacatepay;
 mod auth;
+mod cancel;
 mod error;
 mod features;
 mod google_routes;
+mod mercadopago;
 mod models;
 mod orders_common;
 mod routes;
@@ -164,7 +166,22 @@ async fn main() -> anyhow::Result<()> {
         .execute(&pool)
         .await?;
 
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    // Prod may have an older checksum for 0001_init.sql after an accidental
+    // in-place edit (entregas status belongs in 0011). Prefer booting with
+    // public catalog routes over crash-looping on VersionMismatch.
+    match sqlx::migrate!("./migrations").run(&pool).await {
+        Ok(()) => {}
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("previously applied but has been modified") {
+                tracing::error!(
+                    "sqlx migration checksum mismatch (continuing): {msg}"
+                );
+            } else {
+                return Err(e.into());
+            }
+        }
+    }
 
     seed::seed_if_empty(&pool).await?;
     seed::seed_demo_tenant(&pool).await?;
@@ -241,6 +258,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/orders/{id}/simulate-pix-paid",
             post(routes::public::simulate_pix_paid),
         )
+        .route(
+            "/api/orders/{id}/cancel",
+            post(routes::public::cancel_order),
+        )
         .route("/api/orders/notify-created", post(routes::public::notify_order_created))
         .route(
             "/api/orders/{id}/notify-payment-received",
@@ -300,6 +321,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/orders/{id}/status",
             patch(routes::admin::update_order_status),
         )
+        .route(
+            "/api/admin/orders/{id}/cancel",
+            post(routes::admin::cancel_order),
+        )
         .route("/api/admin/financeiro", get(routes::admin::financeiro))
         .route("/api/admin/financeiro/lucro", get(routes::admin::financeiro_lucro))
         .route("/api/admin/whatsapp/status", get(routes::admin::whatsapp_status))
@@ -358,6 +383,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/internal/health", get(routes::internal::health))
         .route("/internal/provision-tenant", post(routes::internal::provision_tenant))
         .route("/internal/teardown-whatsapp", post(routes::internal::teardown_whatsapp))
+        .route(
+            "/internal/sync-payment-credentials",
+            post(routes::internal::sync_payment_credentials),
+        )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         // Axum's próprio default é 2MB — baixo demais pra banner de campanha

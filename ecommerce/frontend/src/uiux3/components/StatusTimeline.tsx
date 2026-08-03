@@ -16,6 +16,9 @@ const PICKUP_STEPS: { key: OrderStatus[]; label: string }[] = [
 ]
 
 export default function StatusTimeline({ status, deliveryType }: { status: OrderStatus; deliveryType: DeliveryType }) {
+  if (status === 'cancelado') {
+    return <p className="text-xs text-red-500 font-semibold mt-3">Pedido cancelado</p>
+  }
   const steps = deliveryType === 'retirada' ? PICKUP_STEPS : DELIVERY_STEPS
   const currentIndex = Math.max(0, steps.findIndex((s) => s.key.includes(status)))
 

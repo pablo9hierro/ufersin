@@ -35,6 +35,8 @@ export const ordersEndpoint = {
     validate(OrderSchema, await api.orders.createPixPayment(id, force), 'orders.createPixPayment'),
   refreshPayment: async (id: string) => validate(OrderSchema, await api.orders.refreshPayment(id), 'orders.refreshPayment'),
   simulatePixPaid: async (id: string) => validate(OrderSchema, await api.orders.simulatePixPaid(id), 'orders.simulatePixPaid'),
+  cancel: async (id: string, whatsapp: string) =>
+    validate(OrderSchema, await api.orders.cancel(id, whatsapp), 'orders.cancel'),
   notifyCreated: async (orderId: string) => api.orders.notifyCreated(orderId),
 
   // /cliente/historico — pedidos do cliente logado.

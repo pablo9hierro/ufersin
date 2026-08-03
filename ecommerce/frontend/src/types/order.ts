@@ -39,11 +39,21 @@ export const OrderSchema = z.object({
   pix_payment_id: z.string().nullable().optional(),
   pix_qr_base64: z.string().nullable().optional(),
   pix_copia_cola: z.string().nullable().optional(),
+  pix_provider: z.enum(['mercado_pago', 'abacate_pay', 'mock']).nullable().optional(),
   customer_lat: z.number().nullable().optional(),
   customer_lng: z.number().nullable().optional(),
   motoboy_paid_at: z.string().nullable().optional(),
   delivery_started_at: z.string().nullable().optional(),
   delivered_at: z.string().nullable().optional(),
+  cancel_reason: z.string().nullable().optional(),
+  cancel_by: z.enum(['cliente', 'admin']).nullable().optional(),
+  cancel_note: z.string().nullable().optional(),
+  canceled_at: z.string().nullable().optional(),
+  refund_status: z
+    .enum(['none', 'not_applicable', 'pending', 'refunded', 'refund_failed'])
+    .nullable()
+    .optional(),
+  refund_id: z.string().nullable().optional(),
   items: z.array(OrderItemSchema),
   created_at: z.string(),
   updated_at: z.string().optional(),

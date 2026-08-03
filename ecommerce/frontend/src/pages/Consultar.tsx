@@ -6,6 +6,7 @@ import PageTransition from '../components/layout/PageTransition'
 import CartFab from '../components/CartFab'
 import { StatusBadge } from '../components/ui/Badge'
 import DeliveryTrackingMap from '../components/map/DeliveryTrackingMap'
+import OrderCancelButton from '../components/OrderCancelButton'
 import { orderService } from '../services/orderService'
 import type { Order } from '../types'
 import { useCustomer } from '../store/customer'
@@ -114,6 +115,13 @@ export default function Consultar() {
                   </span>
                   <span className="sunset-text font-bold">{currency(order.total)}</span>
                 </div>
+                <OrderCancelButton
+                  order={order}
+                  phoneHint={phone || order.customer_whatsapp}
+                  onCanceled={(updated) =>
+                    setOrders((prev) => (prev ? prev.map((o) => (o.id === updated.id ? updated : o)) : [updated]))
+                  }
+                />
                 {order.status === 'em_rota_de_entrega' && (
                   <>
                     {order.motoboy_whatsapp && (

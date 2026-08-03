@@ -961,6 +961,13 @@ Dinâmicas obrigatórias entre os HTML:
   número de telefone dele.
 - Esta página NÃO exige login — qualquer visitante que souber o número de
   telefone usado no pedido consegue consultar.
+- Cancelamento pelo cliente: botão "Cancelar pedido" só aparece enquanto o
+  status ainda NÃO chegou em "saiu para entrega" (`em_rota_de_entrega` no
+  fluxo com motoboy, ou `entregas` no fluxo Essential sem motoboy). A partir
+  desses status (inclusive) o cliente não cancela. Confirmação obrigatória
+  antes de cancelar. Pedido pago via Pix online no Mercado Pago tenta
+  estorno automático; sem MP / cobrança manual, só cancela o pedido e a
+  loja acerta devolução offline se já tiver recebido.
 
 
 --------------------------------------------------------------------------------

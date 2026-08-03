@@ -13,9 +13,72 @@ pub struct Tenant {
     pub pickup_address: String,
 }
 
+/// Payment gateway flags + token synced from Resolutoo platform
+/// (`POST /internal/sync-payment-credentials`). Token never leaves the server.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct TenantPayment {
+    pub forma_pagamento: String,
+    pub plataforma_pagamento: Option<String>,
+    pub plataforma_credenciais: Option<serde_json::Value>,
+}
+
+impl TenantPayment {
+    pub fn mp_access_token(&self) -> Option<&str> {
+        if self.forma_pagamento != "plataforma" {
+            return None;
+        }
+        if self.plataforma_pagamento.as_deref() != Some("mercado_pago") {
+            return None;
+        }
+        self.plataforma_credenciais
+            .as_ref()
+            .and_then(|v| v.get("token"))
+            .and_then(|t| t.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    }
+
+    pub fn abacate_token(&self) -> Option<&str> {
+        if self.forma_pagamento != "plataforma" {
+            return None;
+        }
+        if self.plataforma_pagamento.as_deref() != Some("abacate_pay") {
+            return None;
+        }
+        self.plataforma_credenciais
+            .as_ref()
+            .and_then(|v| v.get("token"))
+            .and_then(|t| t.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    }
+
+    pub fn online_provider(&self) -> Option<&'static str> {
+        if self.forma_pagamento != "plataforma" {
+            return None;
+        }
+        match self.plataforma_pagamento.as_deref() {
+            Some("mercado_pago") if self.mp_access_token().is_some() => Some("mercado_pago"),
+            Some("abacate_pay") if self.abacate_token().is_some() => Some("abacate_pay"),
+            _ => None,
+        }
+    }
+}
+
 pub async fn load_tenant(pool: &PgPool, tenant_id: &str) -> Result<Tenant, AppError> {
     sqlx::query_as(
         "SELECT id, name, whatsapp_instance, pickup_address FROM tenants WHERE id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::Internal("tenant not found".to_string()))
+}
+
+pub async fn load_tenant_payment(pool: &PgPool, tenant_id: &str) -> Result<TenantPayment, AppError> {
+    sqlx::query_as(
+        "SELECT forma_pagamento, plataforma_pagamento, plataforma_credenciais \
+         FROM tenants WHERE id = $1",
     )
     .bind(tenant_id)
     .fetch_optional(pool)

@@ -546,6 +546,67 @@ pub async fn update_order_status(
     Ok(Json(dto))
 }
 
+pub async fn cancel_order(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<crate::models::AdminCancelInput>,
+) -> Result<Json<OrderDto>, AppError> {
+    let reason = input.reason.trim().to_string();
+    let note = input.note.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+
+    if reason == crate::cancel::ADMIN_REASON_OUTRO && note.is_none() {
+        return Err(AppError::BadRequest(
+            "justificativa obrigatória quando o motivo é Outro".to_string(),
+        ));
+    }
+    if reason != crate::cancel::ADMIN_REASON_CLIENTE && reason != crate::cancel::ADMIN_REASON_OUTRO {
+        return Err(AppError::BadRequest(
+            "motivo inválido — use \"A pedido do cliente\" ou \"Outro\"".to_string(),
+        ));
+    }
+
+    let payment = tenant::load_tenant_payment(&state.pool, &claims.tenant_id).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+
+    let Some(order) = crate::orders_common::fetch_order_row(&mut *tx, &claims.tenant_id, &id).await? else {
+        return Err(AppError::NotFound("order not found".to_string()));
+    };
+
+    if !crate::cancel::admin_can_cancel(&order.status) {
+        return Err(AppError::BadRequest(
+            "não é possível cancelar um pedido concluído ou já cancelado".to_string(),
+        ));
+    }
+
+    crate::cancel::apply_cancel(
+        &state,
+        &mut *tx,
+        &claims.tenant_id,
+        &order,
+        &payment,
+        crate::cancel::CancelInput {
+            cancel_by: "admin",
+            cancel_reason: reason,
+            cancel_note: note,
+        },
+    )
+    .await?;
+
+    let dto = crate::orders_common::fetch_order_dto(&mut tx, &claims.tenant_id, &id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("order not found".to_string()))?;
+    tx.commit().await?;
+
+    // Notify customer (best-effort).
+    let store = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
+    let digits = whatsapp::digits_only(&order.customer_whatsapp);
+    let msg = "Seu pedido foi cancelado pela loja. Se pagou via Pix online, o estorno é automático quando a loja usa Mercado Pago; caso contrário a loja acerta a devolução manualmente.".to_string();
+    whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
+
+    Ok(Json(dto))
+}
+
 // ---------- Financeiro ----------
 
 pub async fn financeiro(

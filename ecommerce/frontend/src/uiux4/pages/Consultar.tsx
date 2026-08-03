@@ -10,6 +10,7 @@ import { currency } from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
 import StatusTimeline from '../components/StatusTimeline'
 import DeliveryTrackingMap from '../../components/map/DeliveryTrackingMap'
+import OrderCancelButton from '../../components/OrderCancelButton'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -86,6 +87,14 @@ export default function Uiux4Consultar() {
                 </div>
 
                 <StatusTimeline status={order.status} deliveryType={order.delivery_type} />
+
+                <OrderCancelButton
+                  order={order}
+                  phoneHint={phone || order.customer_whatsapp}
+                  onCanceled={(updated) =>
+                    setOrders((prev) => (prev ? prev.map((o) => (o.id === updated.id ? updated : o)) : [updated]))
+                  }
+                />
 
                 {order.status === 'em_rota_de_entrega' && (
                   <>

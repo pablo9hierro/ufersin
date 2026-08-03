@@ -6,6 +6,7 @@ import type { Order } from '../../types'
 import { STATUS_LABELS } from '../../types'
 import { useCustomer } from '../../store/customer'
 import DeliveryTrackingMap from '../../components/map/DeliveryTrackingMap'
+import OrderCancelButton from '../../components/OrderCancelButton'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
@@ -86,6 +87,14 @@ export default function Uiux2Consultar() {
                 </div>
 
                 <StatusTimeline status={order.status} deliveryType={order.delivery_type} />
+
+                <OrderCancelButton
+                  order={order}
+                  phoneHint={phone || order.customer_whatsapp}
+                  onCanceled={(updated) =>
+                    setOrders((prev) => (prev ? prev.map((o) => (o.id === updated.id ? updated : o)) : [updated]))
+                  }
+                />
 
                 {order.status === 'em_rota_de_entrega' && (
                   <>

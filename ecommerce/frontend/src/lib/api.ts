@@ -263,6 +263,12 @@ const remoteApi = {
       callRailwayPixApi(id, 'create-pix-payment', force),
     refreshPayment: (id: string) => callRailwayPixApi(id, 'refresh-payment'),
     simulatePixPaid: (id: string) => callRailwayPixApi(id, 'simulate-pix-paid'),
+    /** Cancelamento pelo cliente (/consultar) — ownership via WhatsApp. */
+    cancel: (id: string, whatsapp: string) =>
+      request<Order>(`/api/orders/${id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ whatsapp }),
+      }),
     // Público — dispara logo após o checkout, avisando que o pedido chegou.
     notifyCreated: (orderId: string) =>
       request<void>('/api/orders/notify-created', {
@@ -833,6 +839,12 @@ const remoteApi = {
               p_status: status,
               p_payment_confirmed: paymentConfirmed ?? null,
             }),
+      /** Cancel + optional MP refund — always via Railway (refund needs secrets). */
+      cancel: (id: string, reason: string, note?: string) =>
+        railwayAdmin<Order>(`/api/admin/orders/${id}/cancel`, {
+          method: 'POST',
+          body: JSON.stringify({ reason, note: note ?? null }),
+        }),
       // Backend Rust monta o texto (varia por entrega/retirada) e manda pelo
       // WhatsApp da loja.
       notifyReady: (orderId: string) =>

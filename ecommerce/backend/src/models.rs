@@ -154,10 +154,17 @@ pub struct OrderRow {
     pub pix_payment_id: Option<String>,
     pub pix_qr_base64: Option<String>,
     pub pix_copia_cola: Option<String>,
+    pub pix_provider: Option<String>,
     pub customer_lat: Option<f64>,
     pub customer_lng: Option<f64>,
     pub sold_by_role: Option<String>,
     pub sold_by_id: Option<String>,
+    pub cancel_reason: Option<String>,
+    pub cancel_by: Option<String>,
+    pub cancel_note: Option<String>,
+    pub canceled_at: Option<String>,
+    pub refund_status: Option<String>,
+    pub refund_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -190,11 +197,18 @@ pub struct OrderDto {
     pub pix_payment_id: Option<String>,
     pub pix_qr_base64: Option<String>,
     pub pix_copia_cola: Option<String>,
+    pub pix_provider: Option<String>,
     pub customer_lat: Option<f64>,
     pub customer_lng: Option<f64>,
     pub sold_by_role: Option<String>,
     pub sold_by_id: Option<String>,
     pub sold_by_name: Option<String>,
+    pub cancel_reason: Option<String>,
+    pub cancel_by: Option<String>,
+    pub cancel_note: Option<String>,
+    pub canceled_at: Option<String>,
+    pub refund_status: Option<String>,
+    pub refund_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub items: Vec<OrderItemDto>,
@@ -229,16 +243,38 @@ impl OrderDto {
             pix_payment_id: row.pix_payment_id,
             pix_qr_base64: row.pix_qr_base64,
             pix_copia_cola: row.pix_copia_cola,
+            pix_provider: row.pix_provider,
             customer_lat: row.customer_lat,
             customer_lng: row.customer_lng,
             sold_by_role,
             sold_by_id,
             sold_by_name,
+            cancel_reason: row.cancel_reason,
+            cancel_by: row.cancel_by,
+            cancel_note: row.cancel_note,
+            canceled_at: row.canceled_at,
+            refund_status: row.refund_status,
+            refund_id: row.refund_id,
             created_at: row.created_at,
             updated_at: row.updated_at,
             items,
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AdminCancelInput {
+    /// "A pedido do cliente" | "Outro"
+    pub reason: String,
+    /// Required when reason is "Outro".
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CustomerCancelInput {
+    /// WhatsApp used on the order — ownership proof for /consultar (no JWT).
+    pub whatsapp: String,
 }
 
 #[derive(Debug, Deserialize)]

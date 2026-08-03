@@ -12,6 +12,7 @@ export const orderService = {
   createPixPayment: (id: string, force = false) => ordersEndpoint.createPixPayment(id, force),
   refreshPayment: ordersEndpoint.refreshPayment,
   simulatePixPaid: ordersEndpoint.simulatePixPaid,
+  cancel: ordersEndpoint.cancel,
   notifyCreated: ordersEndpoint.notifyCreated,
   listMine: ordersEndpoint.listMine,
 }

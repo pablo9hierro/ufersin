@@ -2213,6 +2213,57 @@ async function adminUpdateStatus(id: string, status: string, paymentConfirmed?: 
   return withSoldByName(db, order)
 }
 
+function digitsOnly(s: string) {
+  return s.replace(/\D/g, '')
+}
+
+async function adminCancelOrder(id: string, reason: string, note?: string): Promise<Order> {
+  const db = loadDb()
+  const order = db.orders.find((o) => o.id === id)
+  if (!order) throw new ApiError(404, 'order not found')
+  if (order.status === 'concluido' || order.status === 'cancelado') {
+    throw new ApiError(400, 'não é possível cancelar um pedido concluído ou já cancelado')
+  }
+  if (reason === 'Outro' && !note?.trim()) {
+    throw new ApiError(400, 'justificativa obrigatória quando o motivo é Outro')
+  }
+  order.status = 'cancelado'
+  order.cancel_by = 'admin'
+  order.cancel_reason = reason
+  order.cancel_note = note?.trim() || null
+  order.canceled_at = nowIso()
+  if (order.payment_method === 'pix' && order.payment_status === 'pago' && order.pix_payment_id) {
+    // Demo: no real MP — mark not_applicable (manual refund if needed).
+    order.refund_status = 'not_applicable'
+  } else {
+    order.refund_status = 'not_applicable'
+  }
+  order.updated_at = nowIso()
+  saveDb(db)
+  return withSoldByName(db, order)
+}
+
+async function customerCancelOrder(id: string, whatsapp: string): Promise<Order> {
+  const db = loadDb()
+  const order = db.orders.find((o) => o.id === id)
+  if (!order) throw new ApiError(404, 'order not found')
+  if (digitsOnly(whatsapp) !== digitsOnly(order.customer_whatsapp)) {
+    throw new ApiError(403, 'whatsapp não confere com o pedido')
+  }
+  const blocked = ['em_rota_de_entrega', 'entregas', 'entregue', 'concluido', 'cancelado']
+  if (blocked.includes(order.status)) {
+    throw new ApiError(400, 'não é possível cancelar após o pedido sair para entrega')
+  }
+  order.status = 'cancelado'
+  order.cancel_by = 'cliente'
+  order.cancel_reason = 'Cancelado pelo cliente'
+  order.canceled_at = nowIso()
+  order.refund_status = 'not_applicable'
+  order.updated_at = nowIso()
+  saveDb(db)
+  return order
+}
+
 async function getShippingSettings(): Promise<ShippingSettings> {
   const db = loadDb()
   return { price_per_km: db.pricePerKm, max_km: db.maxKm ?? null }
@@ -2780,6 +2831,7 @@ export const localApi = {
     createPixPayment,
     refreshPayment,
     simulatePixPaid,
+    cancel: customerCancelOrder,
     notifyCreated: async () => {},
   },
   auth: { adminLogin, motoboyLogin, vendedorLogin, setAdminPassword },
@@ -2847,7 +2899,12 @@ export const localApi = {
       delete: deletePromotion,
     },
     pageDecorations: { save: savePageDecoration },
-    orders: { list: adminListOrders, updateStatus: adminUpdateStatus, notifyReady: async () => {} },
+    orders: {
+      list: adminListOrders,
+      updateStatus: adminUpdateStatus,
+      cancel: adminCancelOrder,
+      notifyReady: async () => {},
+    },
     shippingSettings: { get: getShippingSettings, update: updateShippingSettings },
     siteSettings: { updateHeroImage, updateBackground, updateSmoke: updateSmokeSettings, updateBadges, updateCarouselStyle },
     storeStatus: { get: getStoreStatus, setHours: setStoreHours, setManualStatus: setStoreManualStatus },

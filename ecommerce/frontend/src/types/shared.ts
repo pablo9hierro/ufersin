@@ -14,6 +14,7 @@ export const OrderStatusSchema = z.enum([
   'retiradas',
   'entregas',
   'concluido',
+  'cancelado',
 ])
 export type OrderStatus = z.infer<typeof OrderStatusSchema>
 
@@ -23,7 +24,7 @@ export type DeliveryType = z.infer<typeof DeliveryTypeSchema>
 export const PaymentMethodSchema = z.enum(['pix', 'cartao', 'dinheiro'])
 export type PaymentMethod = z.infer<typeof PaymentMethodSchema>
 
-export const PaymentStatusSchema = z.enum(['pendente', 'pago'])
+export const PaymentStatusSchema = z.enum(['pendente', 'pago', 'reembolsado'])
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>
 
 export const DiscountTypeSchema = z.enum(['percent', 'fixed'])

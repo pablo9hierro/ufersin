@@ -26,4 +26,15 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
   retiradas: 'Aguardando retirada',
   entregas: 'Aguardando entrega',
   concluido: 'Concluído',
+  cancelado: 'Cancelado',
+}
+
+/** Customer may cancel only before "saiu para entrega" (em_rota / entregas). */
+export function customerCanCancelOrder(status: OrderStatus): boolean {
+  return !['em_rota_de_entrega', 'entregas', 'entregue', 'concluido', 'cancelado'].includes(status)
+}
+
+/** Merchant may cancel any status except concluido / cancelado. */
+export function adminCanCancelOrder(status: OrderStatus): boolean {
+  return status !== 'concluido' && status !== 'cancelado'
 }

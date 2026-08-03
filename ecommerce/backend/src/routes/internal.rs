@@ -189,3 +189,56 @@ pub async fn teardown_whatsapp(
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SyncPaymentCredentialsInput {
+    pub tenant_slug: String,
+    pub forma_pagamento: String,
+    #[serde(default)]
+    pub plataforma_pagamento: Option<String>,
+    /// `{ "token": "..." }` — never logged. Null clears credentials.
+    #[serde(default)]
+    pub plataforma_credenciais: Option<serde_json::Value>,
+}
+
+/// Resolutoo pushes payment gateway settings after onboarding / Meu plano
+/// so ecommerce-api can create & refund Mercado Pago Pix with the store token.
+pub async fn sync_payment_credentials(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SyncPaymentCredentialsInput>,
+) -> Result<StatusCode, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = input.tenant_slug.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest("tenant_slug obrigatório".to_string()));
+    }
+    if !matches!(input.forma_pagamento.as_str(), "manual" | "plataforma") {
+        return Err(AppError::BadRequest(
+            "forma_pagamento deve ser 'manual' ou 'plataforma'".to_string(),
+        ));
+    }
+    if let Some(pp) = &input.plataforma_pagamento {
+        if !matches!(pp.as_str(), "mercado_pago" | "abacate_pay") {
+            return Err(AppError::BadRequest(
+                "plataforma_pagamento deve ser 'mercado_pago' ou 'abacate_pay'".to_string(),
+            ));
+        }
+    }
+
+    let result = sqlx::query(
+        "UPDATE tenants SET forma_pagamento = $1, plataforma_pagamento = $2, \
+         plataforma_credenciais = $3 WHERE slug = $4",
+    )
+    .bind(&input.forma_pagamento)
+    .bind(&input.plataforma_pagamento)
+    .bind(&input.plataforma_credenciais)
+    .bind(&slug)
+    .execute(&state.pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}

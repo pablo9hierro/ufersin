@@ -4,9 +4,11 @@ use axum::Json;
 use serde::Deserialize;
 
 use crate::abacatepay;
+use crate::cancel;
 use crate::error::AppError;
 use crate::google_routes::{self, Ponto, RotaResult};
-use crate::models::{Category, OrderDto, ProductDto, ProductRow};
+use crate::mercadopago;
+use crate::models::{Category, CustomerCancelInput, OrderDto, ProductDto, ProductRow};
 use crate::orders_common::{fetch_items, fetch_order_dto, fetch_order_row, row_to_dto, short_id};
 use crate::state::AppState;
 use crate::tenant;
@@ -174,8 +176,8 @@ fn force_flag(q: &CreatePixQuery) -> bool {
     )
 }
 
-/// Cria a cobrança Pix de verdade na AbacatePay (ou fake em modo mock) pro
-/// pedido. Idempotente: se já tiver cobrança e `force` não veio, devolve
+/// Cria a cobrança Pix (Mercado Pago por tenant, AbacatePay legado/global,
+/// ou QR mock). Idempotente: se já tiver cobrança e `force` não veio, devolve
 /// como está. Com `?force=1` (e pagamento ainda pendente), gera outra.
 pub async fn create_pix_payment(
     State(state): State<AppState>,
@@ -184,6 +186,7 @@ pub async fn create_pix_payment(
 ) -> Result<Json<OrderDto>, AppError> {
     let force = force_flag(&q);
     let store = tenant::tenant_for_order(&state.pool, &id).await?;
+    let payment_cfg = tenant::load_tenant_payment(&state.pool, &store.id).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
     let Some(order) = fetch_order_row(&mut *tx, &store.id, &id).await? else {
         return Err(AppError::NotFound("order not found".to_string()));
@@ -204,17 +207,47 @@ pub async fn create_pix_payment(
     }
 
     let digits = whatsapp::digits_only(&order.customer_whatsapp);
-    let pix = abacatepay::create_pix_charge(&state, &store.name, order.total, &order.customer_name, &digits).await?;
+    let (pix, provider) = match payment_cfg.online_provider() {
+        Some("mercado_pago") => {
+            let token = payment_cfg.mp_access_token().unwrap();
+            let pix = mercadopago::create_pix_charge(
+                &state,
+                token,
+                &store.name,
+                order.total,
+                &order.customer_name,
+                None,
+                &order.id,
+            )
+            .await?;
+            (pix, "mercado_pago")
+        }
+        Some("abacate_pay") | None => {
+            // Tenant Abacate token (if synced) else global ABACATEPAY_API_KEY / mock.
+            let pix =
+                abacatepay::create_pix_charge(&state, &store.name, order.total, &order.customer_name, &digits)
+                    .await?;
+            let provider = if state.abacatepay_key.is_some() || payment_cfg.abacate_token().is_some() {
+                "abacate_pay"
+            } else {
+                "mock"
+            };
+            (pix, provider)
+        }
+        _ => unreachable!(),
+    };
 
     sqlx::query(
         "UPDATE orders SET pix_payment_id = $1, pix_qr_base64 = $2, pix_copia_cola = $3, \
+         pix_provider = $4, \
          payment_status = CASE WHEN payment_status = 'pago' THEN payment_status ELSE 'pendente' END, \
          updated_at = now()::text \
-         WHERE tenant_id = $4 AND id = $5",
+         WHERE tenant_id = $5 AND id = $6",
     )
     .bind(&pix.payment_id)
     .bind(&pix.qr_code_base64)
     .bind(&pix.qr_code)
+    .bind(provider)
     .bind(&store.id)
     .bind(&id)
     .execute(&mut *tx)
@@ -385,6 +418,7 @@ pub async fn refresh_payment(
     Path(id): Path<String>,
 ) -> Result<Json<OrderDto>, AppError> {
     let store = tenant::tenant_for_order(&state.pool, &id).await?;
+    let payment_cfg = tenant::load_tenant_payment(&state.pool, &store.id).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
     let Some(order) = fetch_order_row(&mut *tx, &store.id, &id).await? else {
         return Err(AppError::NotFound("order not found".to_string()));
@@ -396,15 +430,29 @@ pub async fn refresh_payment(
         return Ok(Json(dto));
     }
 
-    let (Some(payment_id), true) = (order.pix_payment_id.clone(), state.abacatepay_key.is_some()) else {
-        // Mock mode (or no payment id yet): nothing to check against the real API.
+    let Some(payment_id) = order.pix_payment_id.clone() else {
         let dto = row_to_dto(&mut tx, &store.id, order).await?;
         tx.commit().await?;
         return Ok(Json(dto));
     };
 
-    let status = abacatepay::get_charge_status(&state, &payment_id).await?;
-    if status == "PAID" {
+    let provider = order.pix_provider.as_deref().unwrap_or("");
+    let paid = if provider == "mercado_pago" || (provider.is_empty() && payment_cfg.mp_access_token().is_some()) {
+        let Some(token) = payment_cfg.mp_access_token() else {
+            let dto = row_to_dto(&mut tx, &store.id, order).await?;
+            tx.commit().await?;
+            return Ok(Json(dto));
+        };
+        let status = mercadopago::get_payment_status(&state, token, &payment_id).await?;
+        status.eq_ignore_ascii_case("approved")
+    } else if state.abacatepay_key.is_some() {
+        let status = abacatepay::get_charge_status(&state, &payment_id).await?;
+        status == "PAID"
+    } else {
+        false
+    };
+
+    if paid {
         sqlx::query("UPDATE orders SET payment_status = 'pago', updated_at = now()::text WHERE tenant_id = $1 AND id = $2")
             .bind(&store.id)
             .bind(&id)
@@ -413,8 +461,6 @@ pub async fn refresh_payment(
 
         let digits = whatsapp::digits_only(&order.customer_whatsapp);
         if !digits.is_empty() {
-            // Msg 3 — só após pagamento confirmado. Balcão: obrigado + total;
-            // online: mensagem de preparo.
             let msg = if order.delivery_type == "balcao" {
                 let total_str = format!("{:.2}", order.total).replace('.', ",");
                 format!(
@@ -430,6 +476,56 @@ pub async fn refresh_payment(
             whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
         }
     }
+
+    let dto = fetch_order_dto(&mut tx, &store.id, &id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("order not found".to_string()))?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+/// Customer cancel from /consultar. Ownership = WhatsApp digits on the order
+/// (same trust model as track-by-phone). Blocked once status reaches
+/// "saiu para entrega" (`em_rota_de_entrega` / `entregas`).
+pub async fn cancel_order(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<CustomerCancelInput>,
+) -> Result<Json<OrderDto>, AppError> {
+    let store = tenant::tenant_for_order(&state.pool, &id).await?;
+    let payment_cfg = tenant::load_tenant_payment(&state.pool, &store.id).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let Some(order) = fetch_order_row(&mut *tx, &store.id, &id).await? else {
+        return Err(AppError::NotFound("order not found".to_string()));
+    };
+
+    let provided = whatsapp::digits_only(&input.whatsapp);
+    let on_order = whatsapp::digits_only(&order.customer_whatsapp);
+    if provided.is_empty() || provided != on_order {
+        return Err(AppError::Forbidden(
+            "whatsapp não confere com o pedido".to_string(),
+        ));
+    }
+
+    if !cancel::customer_can_cancel(&order.status) {
+        return Err(AppError::BadRequest(
+            "não é possível cancelar após o pedido sair para entrega".to_string(),
+        ));
+    }
+
+    cancel::apply_cancel(
+        &state,
+        &mut *tx,
+        &store.id,
+        &order,
+        &payment_cfg,
+        cancel::CancelInput {
+            cancel_by: "cliente",
+            cancel_reason: "Cancelado pelo cliente".to_string(),
+            cancel_note: None,
+        },
+    )
+    .await?;
 
     let dto = fetch_order_dto(&mut tx, &store.id, &id)
         .await?

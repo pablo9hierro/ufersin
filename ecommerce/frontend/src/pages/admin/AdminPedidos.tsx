@@ -8,7 +8,7 @@ import { ApiError } from '../../lib/apiError'
 import { planoAtLeast } from '../../lib/demoMode'
 import { adminService } from '../../services/adminService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import type { Order } from '../../types'
+import { adminCanCancelOrder, type Order } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -23,11 +23,15 @@ const BASE_FILTERS = [
 
 const ENTREGAS_FILTER = { value: 'entregas', label: 'Entregas' } as const
 const CONCLUIDO_FILTER = { value: 'concluido', label: 'Concluídos' } as const
+const CANCELADO_FILTER = { value: 'cancelado', label: 'Cancelados' } as const
 
 type FilterValue =
   | (typeof BASE_FILTERS)[number]['value']
   | typeof ENTREGAS_FILTER.value
   | typeof CONCLUIDO_FILTER.value
+  | typeof CANCELADO_FILTER.value
+
+const ADMIN_CANCEL_REASONS = ['A pedido do cliente', 'Outro'] as const
 
 /** Essential (no Motoboy): delivery prontos go to admin Entregas.
  *  Management/Premium: delivery stays for the motoboy queue. */
@@ -62,22 +66,21 @@ function OrderCard({
   order,
   busyId,
   advance,
+  onCancel,
   manualPaymentMode,
   adminDelivery,
 }: {
   order: Order
   busyId: string | null
   advance: (order: Order, requirePayment: boolean) => void
+  onCancel: (order: Order) => void
   manualPaymentMode: boolean
   adminDelivery: boolean
 }) {
   const dragControls = useDragControls()
   const next = nextStatusFor(order, adminDelivery)
   const canAdvance = !!next
-  // Retirada/entrega com pagamento não-Pix sempre exige confirmação manual
-  // (entrega física em mãos / cobrada offline). Onboarding "cobrança manual"
-  // (sem Pix de plataforma) estende a mesma confirmação pra QUALQUER pedido
-  // ainda não pago.
+  const canCancel = adminCanCancelOrder(order.status)
   const requiresPaymentConfirm =
     order.payment_status !== 'pago' &&
     (manualPaymentMode ||
@@ -122,18 +125,40 @@ function OrderCard({
         {order.reference_point && (
           <p className="text-xs text-son-silver-dim italic mb-2">{order.reference_point}</p>
         )}
-        {canAdvance && (
-          <button
-            onClick={() => advance(order, requiresPaymentConfirm)}
-            disabled={busyId === order.id}
-            className="btn-secondary w-full text-sm py-2"
-          >
-            {busyId === order.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-            {actionLabel}
-          </button>
+        {order.status === 'cancelado' && (
+          <p className="text-xs text-red-400 mb-2">
+            Cancelado{order.cancel_by === 'cliente' ? ' pelo cliente' : ' pela loja'}
+            {order.cancel_reason ? ` — ${order.cancel_reason}` : ''}
+            {order.refund_status === 'refunded'
+              ? ' · Pix estornado'
+              : order.payment_status === 'pago' || order.refund_status === 'not_applicable'
+                ? ' · Sem estorno automático (acerte devolução manualmente se já recebeu)'
+                : ''}
+          </p>
         )}
+        <div className="flex flex-col gap-2">
+          {canAdvance && (
+            <button
+              onClick={() => advance(order, requiresPaymentConfirm)}
+              disabled={busyId === order.id}
+              className="btn-secondary w-full text-sm py-2"
+            >
+              {busyId === order.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              {actionLabel}
+            </button>
+          )}
+          {canCancel && (
+            <button
+              onClick={() => onCancel(order)}
+              disabled={busyId === order.id}
+              className="w-full text-sm py-2 rounded-xl border border-red-500/40 text-red-400 hover:bg-red-500/10"
+            >
+              Cancelar pedido
+            </button>
+          )}
+        </div>
         {order.status === 'pedido_pronto' && order.delivery_type === 'entrega' && !adminDelivery && (
-          <p className="text-xs text-son-silver-dim text-center">Aguardando motoboy</p>
+          <p className="text-xs text-son-silver-dim text-center mt-2">Aguardando motoboy</p>
         )}
       </Card>
     </Reorder.Item>
@@ -143,13 +168,13 @@ function OrderCard({
 export default function AdminPedidos() {
   const tenantConfig = useTenantConfig()
   const manualPaymentMode = tenantConfig?.forma_pagamento === 'manual'
-  // Motoboy is Management+; Essential merchants arrange delivery themselves.
+  const onlinePix = tenantConfig?.forma_pagamento === 'plataforma'
   const adminDelivery = !planoAtLeast(tenantConfig?.plano ?? 'essential', 'management')
   const filters = useMemo(
     () =>
       adminDelivery
-        ? [...BASE_FILTERS, ENTREGAS_FILTER, CONCLUIDO_FILTER]
-        : [...BASE_FILTERS, CONCLUIDO_FILTER],
+        ? [...BASE_FILTERS, ENTREGAS_FILTER, CONCLUIDO_FILTER, CANCELADO_FILTER]
+        : [...BASE_FILTERS, CONCLUIDO_FILTER, CANCELADO_FILTER],
     [adminDelivery]
   )
 
@@ -157,10 +182,12 @@ export default function AdminPedidos() {
   const [filter, setFilter] = useState<FilterValue>('pendente')
   const [loading, setLoading] = useState(true)
   const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null)
+  const [cancelingOrder, setCancelingOrder] = useState<Order | null>(null)
+  const [cancelConfirm, setCancelConfirm] = useState(false)
+  const [cancelReason, setCancelReason] = useState<(typeof ADMIN_CANCEL_REASONS)[number]>('A pedido do cliente')
+  const [cancelNote, setCancelNote] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // Local drag-and-drop order for the currently visible filter — purely a
-  // front-end display convenience, never persisted to the backend.
   const [visible, setVisible] = useState<Order[]>([])
 
   const load = () => {
@@ -219,7 +246,42 @@ export default function AdminPedidos() {
     }
   }
 
+  const openCancel = (order: Order) => {
+    setCancelingOrder(order)
+    setCancelConfirm(false)
+    setCancelReason('A pedido do cliente')
+    setCancelNote('')
+    setError(null)
+  }
+
+  const submitCancel = async () => {
+    if (!cancelingOrder || !cancelConfirm) return
+    if (cancelReason === 'Outro' && !cancelNote.trim()) {
+      setError('Informe a justificativa do cancelamento.')
+      return
+    }
+    setError(null)
+    setBusyId(cancelingOrder.id)
+    try {
+      await adminService.orders.cancel(
+        cancelingOrder.id,
+        cancelReason,
+        cancelReason === 'Outro' ? cancelNote.trim() : undefined
+      )
+      setCancelingOrder(null)
+      load()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível cancelar o pedido.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const confirmingIsEntrega = confirmingOrder?.status === 'entregas'
+  const cancelPaidOnline =
+    cancelingOrder?.payment_method === 'pix' &&
+    cancelingOrder?.payment_status === 'pago' &&
+    !!cancelingOrder?.pix_payment_id
 
   return (
     <div>
@@ -258,6 +320,7 @@ export default function AdminPedidos() {
               order={order}
               busyId={busyId}
               advance={advance}
+              onCancel={openCancel}
               manualPaymentMode={manualPaymentMode}
               adminDelivery={adminDelivery}
             />
@@ -289,11 +352,79 @@ export default function AdminPedidos() {
             </p>
             <div className="flex gap-2">
               <button onClick={() => setConfirmingOrder(null)} className="btn-secondary flex-1">
-                Cancelar
+                Voltar
               </button>
               <button onClick={confirmPayment} disabled={busyId === confirmingOrder.id} className="btn-primary flex-1">
                 {busyId === confirmingOrder.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelingOrder && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setCancelingOrder(null)}
+        >
+          <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-white mb-2">Cancelar pedido</h3>
+            <p className="text-sm text-son-silver-dim mb-4">
+              Pedido #{cancelingOrder.id.slice(0, 8)} · {currency(cancelingOrder.total)}
+            </p>
+
+            <label className="flex items-center gap-2 text-sm text-son-silver mb-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={cancelConfirm}
+                onChange={(e) => setCancelConfirm(e.target.checked)}
+                className="rounded border-white/20"
+              />
+              Deseja cancelar este pedido?
+            </label>
+
+            <label className="block text-xs text-son-silver-dim mb-1">Motivo</label>
+            <select
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value as (typeof ADMIN_CANCEL_REASONS)[number])}
+              className="w-full mb-3 bg-son-surface-light border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+            >
+              {ADMIN_CANCEL_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+
+            {cancelReason === 'Outro' && (
+              <textarea
+                value={cancelNote}
+                onChange={(e) => setCancelNote(e.target.value)}
+                placeholder="Justificativa obrigatória"
+                rows={3}
+                className="w-full mb-3 bg-son-surface-light border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+              />
+            )}
+
+            {cancelPaidOnline && (
+              <p className="text-xs text-son-silver-dim mb-4">
+                {onlinePix && (cancelingOrder.pix_provider === 'mercado_pago' || !cancelingOrder.pix_provider)
+                  ? 'Se o Pix foi cobrado online via Mercado Pago, o estorno total será tentado automaticamente antes de cancelar.'
+                  : 'Pagamento online sem estorno automático via Mercado Pago — se você já recebeu o valor, acerte a devolução manualmente com o cliente.'}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={() => setCancelingOrder(null)} className="btn-secondary flex-1">
+                Voltar
+              </button>
+              <button
+                onClick={submitCancel}
+                disabled={!cancelConfirm || busyId === cancelingOrder.id}
+                className="flex-1 py-2 rounded-xl bg-red-500/90 text-white text-sm font-semibold disabled:opacity-40"
+              >
+                {busyId === cancelingOrder.id ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirmar cancelamento'}
               </button>
             </div>
           </div>
