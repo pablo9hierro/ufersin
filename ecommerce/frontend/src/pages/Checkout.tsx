@@ -539,6 +539,8 @@ export default function Checkout() {
           
             </>
           )}
+            </>
+          )}
 
 {pickerOpen && !apenasRetirada && (
             <LocationPicker

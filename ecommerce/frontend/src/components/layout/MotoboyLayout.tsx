@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, MessageCircle, Moon, Navigation, Sun, Truck, Wallet } from 'lucide-react'
+import { Loader2, LogOut, MessageCircle, Moon, Navigation, Sun, Truck, Wallet } from 'lucide-react'
 import Logo from '../ui/Logo'
 import { motoboyService } from '../../services/motoboyService'
 import {
@@ -110,7 +110,15 @@ export default function MotoboyLayout() {
         </button>
       )}
       <main className="p-4 sm:p-8 max-w-4xl mx-auto">
-        <Outlet />
+        <Suspense
+          fallback={
+            <div className="flex justify-center py-16">
+              <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
+            </div>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   )

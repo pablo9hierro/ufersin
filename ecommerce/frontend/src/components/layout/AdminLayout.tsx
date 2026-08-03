@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   ClipboardList,
+  Loader2,
   LogOut,
   MapPinned,
   Megaphone,
@@ -24,6 +25,7 @@ import {
   type PlanoCode,
 } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { resolveTenantSlug } from '../../lib/tenantConfig'
 import { adminService } from '../../services/adminService'
 import { subscribeWhatsAppGateChange } from '../../lib/whatsappGateEvents'
 import {
@@ -55,6 +57,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/conta', label: 'Configurações', icon: Settings, requiredPlan: 'essential' },
 ]
 
+/** Avoid re-running the full WA gate after every tenantConfig object refresh. */
+const GATE_SESSION_TTL_MS = 60_000
+type GateSession = { slug: string; locked: boolean; hoursDone: boolean; at: number }
+let gateSession: GateSession | null = null
+
 function planAllows(required: PlanoCode, demo: boolean, tenantPlano: PlanoCode | undefined): boolean {
   if (demo) return planoIncludes(required)
   return planoAtLeast(tenantPlano ?? 'essential', required)
@@ -66,6 +73,14 @@ function navVisible(item: NavItem, demo: boolean, tenantPlano: PlanoCode | undef
   if (!item.hideAtOrAbove) return true
   if (demo) return !planoIncludes(item.hideAtOrAbove)
   return !planoAtLeast(tenantPlano ?? 'essential', item.hideAtOrAbove)
+}
+
+function AdminRouteFallback() {
+  return (
+    <div className="flex justify-center py-16">
+      <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
+    </div>
+  )
 }
 
 export default function AdminLayout() {
@@ -81,10 +96,22 @@ export default function AdminLayout() {
   const tenantPlano = tenantConfig?.plano
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
   const whatsappRequired = tenantConfig?.whatsapp_habilitado === true
+  const tenantReady = tenantConfig != null
 
   // null = ainda checando; true = gate ativo; false = liberado
-  const [gateLocked, setGateLocked] = useState<boolean | null>(demo ? false : null)
-  const [hoursDone, setHoursDone] = useState(false)
+  const [gateLocked, setGateLocked] = useState<boolean | null>(() => {
+    if (demo) return false
+    const slug = resolveTenantSlug()
+    if (
+      gateSession &&
+      gateSession.slug === slug &&
+      Date.now() - gateSession.at < GATE_SESSION_TTL_MS
+    ) {
+      return gateSession.locked
+    }
+    return null
+  })
+  const [hoursDone, setHoursDone] = useState(() => gateSession?.hoursDone ?? false)
 
   const hoursDoneRef = useRef(hoursDone)
   const gateLockedRef = useRef(gateLocked)
@@ -95,74 +122,120 @@ export default function AdminLayout() {
   gateLockedRef.current = gateLocked
   whatsappRequiredRef.current = whatsappRequired
 
-  const applyVerdict = useCallback((verdict: Exclude<WaVerdict, 'pending'>, hours: boolean) => {
-    if (!hours) {
-      setGateLocked(true)
-      return
+  const persistGate = useCallback((locked: boolean, hours: boolean) => {
+    gateSession = {
+      slug: resolveTenantSlug(),
+      locked,
+      hoursDone: hours,
+      at: Date.now(),
     }
-    if (!whatsappRequiredRef.current) {
-      setGateLocked(false)
-      return
-    }
-    // Definitive only: open unlocks, closed locks. Never toggle on pending.
-    setGateLocked(verdict !== 'open')
   }, [])
 
-  /** Initial mount + full re-eval. Waits for a definitive WA reading (no false unlock). */
-  const bootstrapGate = useCallback(async () => {
-    if (demo) {
-      setGateLocked(false)
-      return
-    }
-    if (tenantConfig == null) return
-
-    debouncerRef.current.reset()
-
-    // Hours: fail-open if API missing (lojas antigas), fail-closed when false.
-    let hours = true
-    try {
-      const gate = await adminService.onboardingGate.get()
-      hours = !!gate.onboarding_hours_done
-    } catch {
-      hours = true
-    }
-    setHoursDone(hours)
-
-    if (!hours) {
-      setGateLocked(true)
-      return
-    }
-    if (!whatsappRequired) {
-      setGateLocked(false)
-      return
-    }
-
-    // Keep "Carregando…" until a definitive open/closed — never unlock on blip.
-    for (let attempt = 0; attempt < 6; attempt++) {
-      try {
-        const verdict = classifyWaStatusPayload(await adminService.whatsapp.status())
-        if (verdict === 'pending') {
-          await new Promise((r) => setTimeout(r, 700))
-          continue
-        }
-        applyVerdict(verdict, hours)
+  const applyVerdict = useCallback(
+    (verdict: Exclude<WaVerdict, 'pending'>, hours: boolean) => {
+      if (!hours) {
+        setGateLocked(true)
+        persistGate(true, hours)
         return
-      } catch {
-        // Network/401 flash — do not lock or unlock; retry.
-        await new Promise((r) => setTimeout(r, 700))
       }
-    }
-    // Still unsettled after retries: stay locked only if we never unlocked before.
-    // Prefer keeping the loading spinner (null) over a wrong unlock on reload.
-    if (gateLockedRef.current === null) {
-      // Conservative: if WA is required and we couldn't confirm open, show reconnect gate.
-      // User asked gate to survive reload when disconnected — better lock than unlock.
-      setGateLocked(true)
-    }
-  }, [demo, tenantConfig, whatsappRequired, applyVerdict])
+      if (!whatsappRequiredRef.current) {
+        setGateLocked(false)
+        persistGate(false, hours)
+        return
+      }
+      // Definitive only: open unlocks, closed locks. Never toggle on pending.
+      const locked = verdict !== 'open'
+      setGateLocked(locked)
+      persistGate(locked, hours)
+    },
+    [persistGate],
+  )
+
+  /** Initial mount + full re-eval. Waits for a definitive WA reading (no false unlock). */
+  const bootstrapGate = useCallback(
+    async (signal?: AbortSignal) => {
+      if (demo) {
+        setGateLocked(false)
+        return
+      }
+      if (!tenantReady) return
+
+      const slug = resolveTenantSlug()
+      if (
+        gateSession &&
+        gateSession.slug === slug &&
+        Date.now() - gateSession.at < GATE_SESSION_TTL_MS &&
+        gateLockedRef.current !== null
+      ) {
+        // Fresh session cache — skip Railway round-trip on StrictMode remount / soft refresh.
+        return
+      }
+
+      debouncerRef.current.reset()
+
+      // Hours + WA status in parallel (independent endpoints).
+      const hoursPromise = adminService.onboardingGate
+        .get()
+        .then((gate) => !!gate.onboarding_hours_done)
+        .catch(() => true)
+
+      const waPromise = whatsappRequired
+        ? adminService.whatsapp
+            .status()
+            .then((payload) => classifyWaStatusPayload(payload))
+            .catch(() => 'pending' as const)
+        : Promise.resolve('open' as const)
+
+      const [hours, firstWa] = await Promise.all([hoursPromise, waPromise])
+      if (signal?.aborted) return
+
+      setHoursDone(hours)
+
+      if (!hours) {
+        setGateLocked(true)
+        persistGate(true, hours)
+        return
+      }
+      if (!whatsappRequired) {
+        setGateLocked(false)
+        persistGate(false, hours)
+        return
+      }
+
+      if (firstWa !== 'pending') {
+        applyVerdict(firstWa, hours)
+        return
+      }
+
+      // Keep "Carregando…" until a definitive open/closed — never unlock on blip.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        if (signal?.aborted) return
+        await new Promise((r) => setTimeout(r, 500))
+        if (signal?.aborted) return
+        try {
+          const verdict = classifyWaStatusPayload(await adminService.whatsapp.status())
+          if (verdict === 'pending') continue
+          applyVerdict(verdict, hours)
+          return
+        } catch {
+          // Network/401 flash — do not lock or unlock; retry.
+        }
+      }
+      // Still unsettled after retries: stay locked only if we never unlocked before.
+      // Prefer keeping the loading spinner (null) over a wrong unlock on reload.
+      if (gateLockedRef.current === null) {
+        // Conservative: if WA is required and we couldn't confirm open, show reconnect gate.
+        setGateLocked(true)
+        persistGate(true, hours)
+      }
+    },
+    [demo, tenantReady, whatsappRequired, applyVerdict, persistGate],
+  )
 
   useEffect(() => {
-    void bootstrapGate()
+    const ac = new AbortController()
+    void bootstrapGate(ac.signal)
+    return () => ac.abort()
   }, [bootstrapGate])
 
   // Manual disconnect is authoritative (immediate lock). Connected events only hint —
@@ -245,6 +318,7 @@ export default function AdminLayout() {
         onUnlocked={() => {
           debouncerRef.current.force('open')
           setGateLocked(false)
+          persistGate(false, true)
         }}
       />
     )
@@ -271,6 +345,7 @@ export default function AdminLayout() {
       navigate('/', { replace: true })
       return
     }
+    gateSession = null
     logout()
     navigate('/admin/login')
   }
@@ -346,7 +421,9 @@ export default function AdminLayout() {
           })}
         </nav>
         <main className="p-5 sm:p-8 max-w-6xl mx-auto">
-          <Outlet />
+          <Suspense fallback={<AdminRouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

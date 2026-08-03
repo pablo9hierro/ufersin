@@ -19,12 +19,24 @@ function pageKeyForPath(pathname: string): PageKey | null {
 export default function CustomerPageDecorations() {
   const { pathname } = useLocation()
   const [all, setAll] = useState<PageDecoration[]>([])
+  const pageKey = pageKeyForPath(pathname)
+  const isCustomerSurface = pageKey != null
 
   useEffect(() => {
-    pageDecorationService.list().then(setAll).catch(() => {})
-  }, [])
+    // Admin/funcionários não precisam desse fetch — evita request extra no boot do painel.
+    if (!isCustomerSurface) return
+    let cancelled = false
+    pageDecorationService
+      .list()
+      .then((rows) => {
+        if (!cancelled) setAll(rows)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [isCustomerSurface])
 
-  const pageKey = pageKeyForPath(pathname)
   if (!pageKey) return null
   const decoration = all.find((d) => d.page_key === pageKey)
   if (!decoration) return null
@@ -35,7 +47,7 @@ export default function CustomerPageDecorations() {
         <div className="sunset-page-decor-bg" style={{ backgroundImage: `url(${decoration.background_image_url})` }} />
       )}
       {decoration.elements.map((el) =>
-        el.type === 'smoke' ? <SmokeDecor key={el.id} el={el} /> : <FireDecor key={el.id} el={el} />
+        el.type === 'smoke' ? <SmokeDecor key={el.id} el={el} /> : <FireDecor key={el.id} el={el} />,
       )}
     </div>
   )

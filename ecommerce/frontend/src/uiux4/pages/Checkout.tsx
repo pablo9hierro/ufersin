@@ -317,12 +317,7 @@ export default function Uiux4Checkout() {
                   <MapPin className="w-3.5 h-3.5" /> Endereço de entrega *
                 </label>
                 <button type="button" onClick={() => setPickerOpen(true)}
-
-
-            </>
-
-
-          )} className="u4-input w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left">
+                  className="u4-input w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left">
                   <MapPin className="w-4 h-4 u4-accent shrink-0" />
                   <span className="flex-1 text-sm truncate">{customer.address || 'Escolher localização no mapa'}</span>
                   {customer.lat != null && <span className="text-xs u4-dim shrink-0">Editar</span>}
@@ -332,6 +327,8 @@ export default function Uiux4Checkout() {
                 <label className="text-xs font-semibold u4-dim">Ponto de referência</label>
                 <input className={inputClass} value={customer.referencePoint} onChange={(e) => customer.set({ referencePoint: e.target.value })} placeholder="Opcional" />
               </div>
+            </>
+          )}
             </>
           )}
 

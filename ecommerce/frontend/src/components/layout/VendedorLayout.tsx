@@ -1,4 +1,6 @@
+import { Suspense } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 import { ClipboardList, LogOut, ShoppingCart, Wallet } from 'lucide-react'
 import Logo from '../ui/Logo'
 import { clearDemoStaffSession, getDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
@@ -101,7 +103,15 @@ export default function VendedorLayout() {
           })}
         </nav>
         <main className="p-5 sm:p-8 max-w-6xl mx-auto">
-          <Outlet />
+          <Suspense
+            fallback={
+              <div className="flex justify-center py-16">
+                <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

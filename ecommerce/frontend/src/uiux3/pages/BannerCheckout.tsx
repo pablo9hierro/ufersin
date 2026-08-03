@@ -247,12 +247,7 @@ export default function Uiux3BannerCheckout() {
                 </label>
                 {customer.lat != null && customer.lng != null ? (
                   <button type="button" onClick={() => setPickerOpen(true)}
-
-
-            </>
-
-
-          )} className="u3-panel w-full flex items-center gap-3 px-3.5 py-2.5 text-left">
+                  className="u3-panel w-full flex items-center gap-3 px-3.5 py-2.5 text-left">
                     <MapPin className="w-4 h-4 u3-accent shrink-0" />
                     <span className="flex-1 text-sm truncate">{customer.address || 'Endereço selecionado'}</span>
                     <span className="text-xs u3-dim shrink-0">Editar</span>
@@ -267,6 +262,8 @@ export default function Uiux3BannerCheckout() {
                 <label className="text-xs font-semibold u3-dim">Ponto de referência</label>
                 <input className={inputClass} value={customer.referencePoint} onChange={(e) => customer.set({ referencePoint: e.target.value })} placeholder="Opcional" />
               </div>
+            </>
+          )}
             </>
           )}
 
