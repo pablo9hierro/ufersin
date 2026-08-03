@@ -642,12 +642,11 @@ Dinâmicas obrigatórias entre os HTML:
 --------------------------------------------------------------------------------
 /carrinho
 --------------------------------------------------------------------------------
-Nota: a revisão da sacola no drawer continua via ícone do header (exceto
-Landing), "Ver sacola" / openDrawer ao adicionar. A rota /carrinho
-continua funcional (lista + total + "Continuar para o checkout") como
-fallback/legado. Há FAB flutuante (canto inferior esquerdo) fora da Landing.
-A aba "Finalizar" da navegação inferior NÃO aponta mais pra /carrinho —
-aponta pra /checkout.
+Nota: a revisão da sacola no drawer continua via FAB flutuante (canto
+inferior esquerdo, exceto Landing), "Ver sacola" / openDrawer ao adicionar.
+A rota /carrinho continua funcional (lista + total + "Continuar para o
+checkout") como fallback/legado. A aba "Finalizar" da navegação inferior
+NÃO aponta mais pra /carrinho — aponta pra /checkout.
 
 HTML obrigatórios:
 - botão de alternar para visualização em grade
