@@ -140,7 +140,8 @@ export default function MeuPlano() {
         setFacebook(m.facebook ?? '')
         setVendeMais18(!!m.vende_mais_18)
         setVenderExternamente(m.vender_externamente !== false)
-        setHasCredenciais(!!m.has_plataforma_credenciais)
+        // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
+        setHasCredenciais(!!m.has_plataforma_credenciais || m.forma_pagamento === 'plataforma')
         if (m.plataforma_pagamento) {
           const plat = m.tipo_documento === 'cpf' ? 'mercado_pago' : m.plataforma_pagamento
           setIntegracao(plat)
@@ -557,20 +558,6 @@ export default function MeuPlano() {
                   if (patch.cartFabAnimate != null) setCartFabAnimate(patch.cartFabAnimate)
                 }}
               />
-              <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={vendeMais18}
-                  onChange={(e) => setVendeMais18(e.target.checked)}
-                  className="w-4 h-4 mt-0.5"
-                />
-                <span className="text-xs text-uf-silver-dim">
-                  <span className="block text-uf-silver font-semibold mb-0.5">
-                    Minha loja vende produtos para maiores de 18 anos
-                  </span>
-                  Se marcado, o checkout do cliente exige data de nascimento e consentimento 18+.
-                </span>
-              </label>
               <button type="submit" disabled={saving} className="btn-primary w-full py-3">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Salvar layout
