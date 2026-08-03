@@ -140,8 +140,7 @@ export default function MeuPlano() {
         setFacebook(m.facebook ?? '')
         setVendeMais18(!!m.vende_mais_18)
         setVenderExternamente(m.vender_externamente !== false)
-        // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
-        setHasCredenciais(!!m.has_plataforma_credenciais || m.forma_pagamento === 'plataforma')
+        setHasCredenciais(!!m.has_plataforma_credenciais)
         if (m.plataforma_pagamento) {
           const plat = m.tipo_documento === 'cpf' ? 'mercado_pago' : m.plataforma_pagamento
           setIntegracao(plat)
