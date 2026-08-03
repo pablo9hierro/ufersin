@@ -45,6 +45,8 @@ struct SubscriberRow {
     endereco_numero: Option<String>,
     vende_mais_18: bool,
     apenas_retirada: bool,
+    pagamento_na_retirada: bool,
+    entrega_somente_pix: bool,
     coupon_code: Option<String>,
     landing_headline: Option<String>,
     landing_sub: Option<String>,
@@ -92,6 +94,8 @@ pub struct MeResponse {
     pub endereco_numero: Option<String>,
     pub vende_mais_18: bool,
     pub apenas_retirada: bool,
+    pub pagamento_na_retirada: bool,
+    pub entrega_somente_pix: bool,
     pub coupon_code: Option<String>,
     /// Próxima cobrança / histórico de faturas dependem de consultar o
     /// gateway (Mercado Pago não expõe isso na mesma chamada de status) ou
@@ -120,7 +124,9 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 ) IS NOT NULL as has_plataforma_credenciais,
                 COALESCE(layout_style, 'ufersin') as layout_style, instagram, facebook, endereco_numero,
                 COALESCE(vende_mais_18, false) as vende_mais_18,
-                COALESCE(apenas_retirada, false) as apenas_retirada, coupon_code,
+                COALESCE(apenas_retirada, false) as apenas_retirada,
+                COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada,
+                COALESCE(entrega_somente_pix, false) as entrega_somente_pix, coupon_code,
                 landing_headline, landing_sub, landing_badge,
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
                 COALESCE(cart_fab_animate, false) as cart_fab_animate
@@ -168,6 +174,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         endereco_numero: row.endereco_numero,
         vende_mais_18: row.vende_mais_18,
         apenas_retirada: row.apenas_retirada,
+        pagamento_na_retirada: row.pagamento_na_retirada,
+        entrega_somente_pix: row.entrega_somente_pix,
         coupon_code: row.coupon_code,
         proxima_cobranca: None,
         landing_headline: row.landing_headline,

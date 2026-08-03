@@ -737,6 +737,11 @@ Dinâmicas obrigatórias entre os HTML:
   também é removido automaticamente.
 - Clicar num dos 3 botões de forma de pagamento seleciona aquela forma —
   só uma pode estar selecionada de cada vez.
+- Preferências da loja (tenant_config): `apenas_retirada` força retirada
+  (sem endereço); `pagamento_na_retirada` + retirada confirma o pedido
+  sem ir a `/pagamento` (cobrança na loja); `entrega_somente_pix` bloqueia
+  entrega com cartão/dinheiro (só Pix pago no checkout; sem Pix de
+  plataforma, entrega fica bloqueada — use retirada).
 - O resumo (subtotal, descontos, frete, total) recalcula instantaneamente
   a cada mudança: quantidade de itens, cupom aplicado/removido, marcar/
   desmarcar retirada.
@@ -753,8 +758,9 @@ Dinâmicas obrigatórias entre os HTML:
   desabilita o botão, mostra um indicador de carregamento nele, e envia o
   pedido.
 - Se o envio do pedido tiver sucesso, o carrinho é esvaziado e a página
-  navega pra tela de pagamento (se a forma escolhida foi Pix) ou pra tela
-  de consulta do pedido (se foi cartão ou dinheiro).
+  navega pra tela de pagamento (se a forma escolhida foi Pix e a loja
+  cobra Pix online, exceto retirada com `pagamento_na_retirada`) ou pra
+  tela de consulta do pedido (cartão/dinheiro, ou Pix na retirada).
 - Se o envio do pedido falhar, mostra uma mensagem de erro e reabilita o
   botão "Finalizar pedido", sem perder o que já foi preenchido.
 

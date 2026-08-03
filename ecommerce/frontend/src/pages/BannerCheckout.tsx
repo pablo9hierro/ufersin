@@ -15,6 +15,7 @@ import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, Sh
 import { useBannerCart } from '../store/bannerCart'
 import { useCustomer } from '../store/customer'
 import { useTenantConfig } from '../hooks/useTenantConfig'
+import { deliveryPixOnlyError } from '../lib/tenantConfig'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -42,6 +43,8 @@ export default function BannerCheckout() {
   const [pickupAtStore, setPickupAtStore] = useState(false)
   const apenasRetirada = !!tenantConfig?.apenas_retirada
   const pickup = apenasRetirada || pickupAtStore
+  const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
+  const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -144,6 +147,11 @@ export default function BannerCheckout() {
       return
     }
 
+    const deliveryErr = deliveryPixOnlyError(tenantConfig, pickup, paymentMethod)
+    if (deliveryErr) {
+      setError(deliveryErr)
+      return
+    }
     setSubmitting(true)
     try {
       const order = await orderService.create({
@@ -163,7 +171,7 @@ export default function BannerCheckout() {
       })
       bannerCart.clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma') {
+      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma' && !payAtPickup) {
         navigate(`/pagamento/${order.id}`)
       } else {
         navigate(`/consultar?order=${order.id}`)

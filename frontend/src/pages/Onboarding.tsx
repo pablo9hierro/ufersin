@@ -66,6 +66,8 @@ export default function Onboarding() {
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
+  const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
+  const [entregaSomentePix, setEntregaSomentePix] = useState(false)
   const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
   const [whatsappHabilitado, setWhatsappHabilitado] = useState(true)
 
@@ -123,6 +125,8 @@ export default function Onboarding() {
         vender_externamente: venderExternamente,
         vende_mais_18: vendeMais18,
         apenas_retirada: apenasRetirada,
+        pagamento_na_retirada: pagamentoNaRetirada,
+        entrega_somente_pix: entregaSomentePix,
         whatsapp_habilitado: whatsappHabilitado,
         forma_pagamento: formaPagamento,
         plataforma_pagamento: plataformaPagamento,
@@ -306,6 +310,32 @@ export default function Onboarding() {
             <span className="text-xs text-uf-silver-dim">
               <span className="block text-uf-silver font-semibold mb-0.5">Aceitar apenas compras com retirada na loja</span>
               Clientes da vitrine só podem comprar com retirada — sem entrega, frete ou motoboy.
+            </span>
+          </label>
+
+          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={pagamentoNaRetirada}
+              onChange={(e) => setPagamentoNaRetirada(e.target.checked)}
+              className="w-4 h-4 mt-0.5"
+            />
+            <span className="text-xs text-uf-silver-dim">
+              <span className="block text-uf-silver font-semibold mb-0.5">Pagamento só no ato da retirada</span>
+              Pagamento de pedidos para retirada só é processado no ato da retirada na loja.
+            </span>
+          </label>
+
+          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={entregaSomentePix}
+              onChange={(e) => setEntregaSomentePix(e.target.checked)}
+              className="w-4 h-4 mt-0.5"
+            />
+            <span className="text-xs text-uf-silver-dim">
+              <span className="block text-uf-silver font-semibold mb-0.5">Só aceito pedidos de entrega pagos com Pix no checkout</span>
+              Entrega só com Pix já pago online. Cartão e dinheiro ficam só para retirada na loja.
             </span>
           </label>
 

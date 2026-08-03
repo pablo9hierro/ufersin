@@ -18,7 +18,7 @@ import EmptyState from '../components/EmptyState'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
-import { resolveTenantSlug } from '../../lib/tenantConfig'
+import { deliveryPixOnlyError, resolveTenantSlug } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
@@ -45,6 +45,8 @@ export default function Uiux3Checkout() {
   const [pickupAtStore, setPickupAtStore] = useState(false)
   const apenasRetirada = !!tenantConfig?.apenas_retirada
   const pickup = apenasRetirada || pickupAtStore
+  const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
+  const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,6 +80,10 @@ export default function Uiux3Checkout() {
   useEffect(() => {
     if (apenasRetirada) setPickupAtStore(true)
   }, [apenasRetirada])
+
+  useEffect(() => {
+    if (entregaSomentePix && !pickup && paymentMethod !== 'pix') setPaymentMethod('pix')
+  }, [entregaSomentePix, pickup, paymentMethod])
 
   // Se o cliente já tinha escolhido um local numa visita anterior, revalida
   // o frete (o preço por km pode ter mudado desde então).
@@ -240,6 +246,11 @@ export default function Uiux3Checkout() {
     if (!pickup && (customer.lat == null || customer.lng == null)) return setError('Escolha sua localização no mapa ou marque retirada no local.')
     if (!aceiteCompraNormal) return setError('Aceite os termos de consentimento de compra para continuar.')
 
+    const deliveryErr = deliveryPixOnlyError(tenantConfig, pickup, paymentMethod)
+    if (deliveryErr) {
+      setError(deliveryErr)
+      return
+    }
     setSubmitting(true)
     try {
       const slug = resolveTenantSlug() || tenantConfig?.slug
@@ -280,7 +291,7 @@ export default function Uiux3Checkout() {
       })
       clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma') navigate(`/pagamento/${order.id}`)
+      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma' && !payAtPickup) navigate(`/pagamento/${order.id}`)
       else navigate(`/consultar?order=${order.id}`)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível enviar seu pedido. Tente novamente.')

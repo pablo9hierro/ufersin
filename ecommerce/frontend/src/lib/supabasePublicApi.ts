@@ -135,6 +135,18 @@ export const supabasePublicApi = {
         if (cfg.apenas_retirada) {
           throw new ApiError(400, 'Esta loja aceita apenas retirada no local')
         }
+        if (cfg.entrega_somente_pix && payload.payment_method !== 'pix') {
+          throw new ApiError(
+            400,
+            'Compras com entrega só são aceitas com Pix pago no checkout. Outras formas de pagamento são só para retirada na loja.',
+          )
+        }
+        if (cfg.entrega_somente_pix && cfg.forma_pagamento !== 'plataforma') {
+          throw new ApiError(
+            400,
+            'Esta loja só aceita entrega com Pix pago no checkout. Escolha retirada na loja.',
+          )
+        }
       }
       const { data, error } = await supabase.rpc('create_order', {
         p_customer_name: payload.customer_name,

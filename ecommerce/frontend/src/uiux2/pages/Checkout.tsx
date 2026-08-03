@@ -18,7 +18,7 @@ import EmptyState from '../components/EmptyState'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
-import { resolveTenantSlug } from '../../lib/tenantConfig'
+import { deliveryPixOnlyError, resolveTenantSlug } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
@@ -45,6 +45,8 @@ export default function Uiux2Checkout() {
   const [pickupAtStore, setPickupAtStore] = useState(false)
   const apenasRetirada = !!tenantConfig?.apenas_retirada
   const pickup = apenasRetirada || pickupAtStore
+  const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
+  const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,6 +77,10 @@ export default function Uiux2Checkout() {
   useEffect(() => {
     if (apenasRetirada) setPickupAtStore(true)
   }, [apenasRetirada])
+
+  useEffect(() => {
+    if (entregaSomentePix && !pickup && paymentMethod !== 'pix') setPaymentMethod('pix')
+  }, [entregaSomentePix, pickup, paymentMethod])
 
   // Se o cliente já tinha escolhido um endereço numa visita anterior,
   // revalida o frete (o preço por km pode ter mudado desde então).
@@ -233,6 +239,11 @@ export default function Uiux2Checkout() {
     if (!pickup && (customer.lat == null || customer.lng == null)) return setError('Escolha sua localização no mapa ou marque retirada no local.')
     if (!aceiteCompraNormal) return setError('Aceite os termos de consentimento de compra para continuar.')
 
+    const deliveryErr = deliveryPixOnlyError(tenantConfig, pickup, paymentMethod)
+    if (deliveryErr) {
+      setError(deliveryErr)
+      return
+    }
     setSubmitting(true)
     try {
       const slug = resolveTenantSlug() || tenantConfig?.slug
@@ -273,7 +284,7 @@ export default function Uiux2Checkout() {
       })
       clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma') {
+      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma' && !payAtPickup) {
         navigate(`/pagamento/${order.id}`)
       } else {
         navigate(`/consultar?order=${order.id}`)
@@ -389,6 +400,16 @@ export default function Uiux2Checkout() {
 
           <div>
             <label className="text-xs font-semibold u2-dim">Forma de pagamento *</label>
+            {payAtPickup && (
+              <p className="text-xs u2-dim mt-1 mb-2">
+                O pagamento será processado no ato da retirada na loja — sem cobrança Pix agora.
+              </p>
+            )}
+            {entregaSomentePix && !pickup && (
+              <p className="text-xs u2-dim mt-1 mb-2">
+                Entrega só com Pix pago no checkout. Cartão e dinheiro são só para retirada na loja.
+              </p>
+            )}
             <div className="grid grid-cols-3 gap-2 mt-1">
               {(
                 [
@@ -396,7 +417,9 @@ export default function Uiux2Checkout() {
                   { value: 'cartao', label: 'Cartão', icon: CreditCard },
                   { value: 'dinheiro', label: 'Dinheiro', icon: Wallet },
                 ] as const
-              ).map(({ value, label, icon: Icon }) => (
+              )
+                .filter(({ value }) => !(entregaSomentePix && !pickup && value !== 'pix'))
+                .map(({ value, label, icon: Icon }) => (
                 <button key={value} type="button" onClick={() => setPaymentMethod(value)} className={paymentMethod === value ? 'u2-btn-primary flex flex-col items-center gap-1.5 py-3 text-sm' : 'u2-btn-secondary flex flex-col items-center gap-1.5 py-3 text-sm'}>
                   <Icon className="w-4 h-4" />
                   {label}

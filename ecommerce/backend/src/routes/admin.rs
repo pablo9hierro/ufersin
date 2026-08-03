@@ -480,6 +480,65 @@ pub async fn update_order_status(
         return Err(AppError::NotFound("order not found".to_string()));
     };
 
+    if let Some(ref method) = input.payment_method {
+        if !matches!(method.as_str(), "pix" | "cartao" | "dinheiro") {
+            return Err(AppError::BadRequest(
+                "payment_method must be pix, cartao or dinheiro".to_string(),
+            ));
+        }
+    }
+
+    // Optional settlement metadata (pay-at-pickup form) before transition.
+    let payment_method = input
+        .payment_method
+        .as_deref()
+        .unwrap_or(order.payment_method.as_str())
+        .to_string();
+    let customer_name = input
+        .customer_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(order.customer_name.as_str())
+        .to_string();
+    let customer_whatsapp = input
+        .customer_whatsapp
+        .as_deref()
+        .map(|s| s.chars().filter(|c| c.is_ascii_digit()).collect::<String>())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| order.customer_whatsapp.clone());
+
+    let meta_changed = input.payment_method.is_some()
+        || input.customer_name.is_some()
+        || input.customer_whatsapp.is_some();
+    if meta_changed {
+        sqlx::query(
+            "UPDATE orders SET payment_method = $1, customer_name = $2, customer_whatsapp = $3, \
+             updated_at = now()::text WHERE tenant_id = $4 AND id = $5",
+        )
+        .bind(&payment_method)
+        .bind(&customer_name)
+        .bind(&customer_whatsapp)
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    // Metadata-only PATCH (stay on same status) — used before generating PIX QR.
+    if input.status == order.status {
+        let dto = row_to_dto(
+            &mut tx,
+            &claims.tenant_id,
+            crate::orders_common::fetch_order_row(&mut *tx, &claims.tenant_id, &id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("order not found".to_string()))?,
+        )
+        .await?;
+        tx.commit().await?;
+        return Ok(Json(dto));
+    }
+
     // Essential admin delivery tray — Management/Premium keep delivery on the
     // motoboy queue; refuse admin `entregas` transitions when Motoboy is on.
     if status_flow::is_admin_delivery_transition(&order.status, &input.status) {
@@ -494,7 +553,7 @@ pub async fn update_order_status(
         &order.status,
         &input.status,
         &order.delivery_type,
-        &order.payment_method,
+        &payment_method,
         &order.payment_status,
         input.payment_confirmed,
     )?;
@@ -522,7 +581,7 @@ pub async fn update_order_status(
 
     if input.status == "retiradas" {
         let store = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
-        let digits = whatsapp::digits_only(&order.customer_whatsapp);
+        let digits = whatsapp::digits_only(&customer_whatsapp);
         let msg = format!(
             "Seu pedido está pronto! Pode vir buscar 😊 Local de retirada: {}",
             store.pickup_address
@@ -532,7 +591,7 @@ pub async fn update_order_status(
 
     if input.status == "entregas" {
         let store = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
-        let digits = whatsapp::digits_only(&order.customer_whatsapp);
+        let digits = whatsapp::digits_only(&customer_whatsapp);
         let msg =
             "Seu pedido saiu para entrega! Em breve você recebe. Qualquer dúvida, fale com a loja pelo WhatsApp."
                 .to_string();

@@ -108,8 +108,17 @@ export const adminEndpoint = {
   },
   orders: {
     list: async (status?: string) => validateList(OrderSchema, await api.admin.orders.list(status), 'admin.orders.list'),
-    updateStatus: async (id: string, status: string, paymentConfirmed?: boolean) =>
-      validate(OrderSchema, await api.admin.orders.updateStatus(id, status, paymentConfirmed), 'admin.orders.updateStatus'),
+    updateStatus: async (
+      id: string,
+      status: string,
+      paymentConfirmed?: boolean,
+      extras?: { payment_method?: string; customer_name?: string; customer_whatsapp?: string },
+    ) =>
+      validate(
+        OrderSchema,
+        await api.admin.orders.updateStatus(id, status, paymentConfirmed, extras),
+        'admin.orders.updateStatus',
+      ),
     cancel: async (id: string, reason: string, note?: string) =>
       validate(OrderSchema, await api.admin.orders.cancel(id, reason, note), 'admin.orders.cancel'),
     notifyReady: async (orderId: string) => api.admin.orders.notifyReady(orderId),

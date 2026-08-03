@@ -97,6 +97,8 @@ export default function MeuPlano() {
   const [facebook, setFacebook] = useState('')
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
+  const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
+  const [entregaSomentePix, setEntregaSomentePix] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [integracao, setIntegracao] = useState<IntegracaoPagamento>('mercado_pago')
   const [credencial, setCredencial] = useState('')
@@ -141,6 +143,8 @@ export default function MeuPlano() {
         setFacebook(m.facebook ?? '')
         setVendeMais18(!!m.vende_mais_18)
         setApenasRetirada(!!m.apenas_retirada)
+        setPagamentoNaRetirada(!!m.pagamento_na_retirada)
+        setEntregaSomentePix(!!m.entrega_somente_pix)
         setVenderExternamente(m.vender_externamente !== false)
         // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
         setHasCredenciais(!!m.has_plataforma_credenciais || m.forma_pagamento === 'plataforma')
@@ -151,7 +155,7 @@ export default function MeuPlano() {
           setIntegracao('mercado_pago')
         }
         // Preferências de venda: reconcile via RPC pública se a API Railway
-        // ainda não expõe `apenas_retirada` no /api/me.
+        // ainda não expõe flags novas no /api/me.
         if (m.slug) {
           try {
             const { data: pub } = await supabase.schema('resolutoo').rpc('get_public_tenant_config', {
@@ -160,10 +164,14 @@ export default function MeuPlano() {
             if (pub && typeof pub === 'object') {
               const row = pub as {
                 apenas_retirada?: boolean
+                pagamento_na_retirada?: boolean
+                entrega_somente_pix?: boolean
                 vende_mais_18?: boolean
                 vender_externamente?: boolean
               }
               if (typeof row.apenas_retirada === 'boolean') setApenasRetirada(row.apenas_retirada)
+              if (typeof row.pagamento_na_retirada === 'boolean') setPagamentoNaRetirada(row.pagamento_na_retirada)
+              if (typeof row.entrega_somente_pix === 'boolean') setEntregaSomentePix(row.entrega_somente_pix)
               if (typeof row.vende_mais_18 === 'boolean') setVendeMais18(row.vende_mais_18)
               if (typeof row.vender_externamente === 'boolean') setVenderExternamente(row.vender_externamente)
             }
@@ -241,6 +249,8 @@ export default function MeuPlano() {
       }
       if (
         fields.apenas_retirada != null ||
+        fields.pagamento_na_retirada != null ||
+        fields.entrega_somente_pix != null ||
         fields.vende_mais_18 != null ||
         fields.vender_externamente != null
       ) {
@@ -248,6 +258,8 @@ export default function MeuPlano() {
           p_apenas_retirada: fields.apenas_retirada ?? null,
           p_vende_mais_18: fields.vende_mais_18 ?? null,
           p_vender_externamente: fields.vender_externamente ?? null,
+          p_pagamento_na_retirada: fields.pagamento_na_retirada ?? null,
+          p_entrega_somente_pix: fields.entrega_somente_pix ?? null,
         })
         if (prefsErr) console.warn('set_my_sale_prefs:', prefsErr.message)
       }
@@ -342,6 +354,8 @@ export default function MeuPlano() {
       vende_mais_18: vendeMais18,
       vender_externamente: venderExternamente,
       apenas_retirada: apenasRetirada,
+      pagamento_na_retirada: pagamentoNaRetirada,
+      entrega_somente_pix: entregaSomentePix,
     })
   }
 
@@ -523,6 +537,35 @@ export default function MeuPlano() {
                         Aceitar apenas compras com retirada na loja
                       </span>
                       Clientes da vitrine só podem comprar com retirada — sem entrega, frete ou motoboy.
+                    </span>
+                  </label>
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={pagamentoNaRetirada}
+                      onChange={(e) => setPagamentoNaRetirada(e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">
+                        Pagamento só no ato da retirada
+                      </span>
+                      Pagamento de pedidos para retirada só é processado no ato da retirada na loja —
+                      o checkout confirma o pedido sem cobrar Pix online.
+                    </span>
+                  </label>
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={entregaSomentePix}
+                      onChange={(e) => setEntregaSomentePix(e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">
+                        Só aceito pedidos de entrega pagos com Pix no checkout
+                      </span>
+                      Entrega só com Pix já pago online. Cartão e dinheiro ficam só para retirada na loja.
                     </span>
                   </label>
                   <button type="submit" disabled={saving} className="btn-primary w-full py-3">
@@ -728,5 +771,7 @@ function mapFieldsToMe(prev: MeResponse, fields: Parameters<typeof api.editarOnb
   if (fields.vende_mais_18 != null) patch.vende_mais_18 = fields.vende_mais_18
   if (fields.vender_externamente != null) patch.vender_externamente = fields.vender_externamente
   if (fields.apenas_retirada != null) patch.apenas_retirada = fields.apenas_retirada
+  if (fields.pagamento_na_retirada != null) patch.pagamento_na_retirada = fields.pagamento_na_retirada
+  if (fields.entrega_somente_pix != null) patch.entrega_somente_pix = fields.entrega_somente_pix
   return { ...prev, ...patch }
 }

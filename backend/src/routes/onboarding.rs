@@ -38,6 +38,12 @@ pub struct OnboardingInput {
     /// Vitrine: só aceita retirada no local (sem entrega/frete/motoboy).
     #[serde(default)]
     pub apenas_retirada: bool,
+    /// Pagamento de pedidos de retirada só no ato da retirada na loja.
+    #[serde(default)]
+    pub pagamento_na_retirada: bool,
+    /// Entrega só com Pix já pago no checkout.
+    #[serde(default)]
+    pub entrega_somente_pix: bool,
 
     // WhatsApp: só a flag aqui; QR connect fica na etapa 2 do painel da loja.
     #[serde(default = "default_true")]
@@ -214,7 +220,8 @@ pub async fn onboarding(
          documento = $11, tipo_documento = $12, vender_externamente = $13, whatsapp_habilitado = $14, \
          forma_pagamento = $15, plataforma_pagamento = $16, plataforma_credenciais = $17, \
          layout_style = $18, instagram = $19, endereco_numero = $20, vende_mais_18 = $21, \
-         facebook = $22, apenas_retirada = $23, updated_at = now() \
+         facebook = $22, apenas_retirada = $23, pagamento_na_retirada = $24, \
+         entrega_somente_pix = $25, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -240,6 +247,8 @@ pub async fn onboarding(
     .bind(body.vende_mais_18)
     .bind(&facebook)
     .bind(body.apenas_retirada)
+    .bind(body.pagamento_na_retirada)
+    .bind(body.entrega_somente_pix)
     .execute(&state.pool)
     .await?;
 
@@ -389,6 +398,10 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub apenas_retirada: Option<bool>,
     #[serde(default)]
+    pub pagamento_na_retirada: Option<bool>,
+    #[serde(default)]
+    pub entrega_somente_pix: Option<bool>,
+    #[serde(default)]
     pub whatsapp_habilitado: Option<bool>,
     #[serde(default)]
     pub forma_pagamento: Option<String>,
@@ -517,8 +530,10 @@ pub async fn editar_onboarding(
          landing_headline = COALESCE($19, landing_headline), landing_sub = COALESCE($20, landing_sub), \
          landing_badge = COALESCE($21, landing_badge), cart_fab_style = COALESCE($22, cart_fab_style), \
          cart_fab_animate = COALESCE($23, cart_fab_animate), \
-         apenas_retirada = COALESCE($24, apenas_retirada), updated_at = now() \
-         WHERE id = $25",
+         apenas_retirada = COALESCE($24, apenas_retirada), \
+         pagamento_na_retirada = COALESCE($25, pagamento_na_retirada), \
+         entrega_somente_pix = COALESCE($26, entrega_somente_pix), updated_at = now() \
+         WHERE id = $27",
     )
     .bind(&body.categoria)
     .bind(&body.whatsapp)
@@ -544,6 +559,8 @@ pub async fn editar_onboarding(
     .bind(&body.cart_fab_style)
     .bind(body.cart_fab_animate)
     .bind(body.apenas_retirada)
+    .bind(body.pagamento_na_retirada)
+    .bind(body.entrega_somente_pix)
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
@@ -663,6 +680,10 @@ pub struct TenantConfigResponse {
     pub vende_mais_18: bool,
     /// Vitrine: só retirada no local (sem entrega).
     pub apenas_retirada: bool,
+    /// Pagamento de pedidos de retirada só no ato da retirada.
+    pub pagamento_na_retirada: bool,
+    /// Entrega só com Pix já pago no checkout.
+    pub entrega_somente_pix: bool,
     pub endereco: Option<String>,
     pub endereco_numero: Option<String>,
     pub instagram: Option<String>,
@@ -688,6 +709,8 @@ struct TenantConfigRow {
     cor_principal: Option<String>,
     vende_mais_18: bool,
     apenas_retirada: bool,
+    pagamento_na_retirada: bool,
+    entrega_somente_pix: bool,
     endereco: Option<String>,
     endereco_numero: Option<String>,
     instagram: Option<String>,
@@ -716,6 +739,8 @@ pub async fn tenant_config(
          COALESCE(layout_style, 'ufersin') as layout_style, cor_principal, \
          COALESCE(vende_mais_18, false) as vende_mais_18, \
          COALESCE(apenas_retirada, false) as apenas_retirada, \
+         COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada, \
+         COALESCE(entrega_somente_pix, false) as entrega_somente_pix, \
          endereco, endereco_numero, instagram, facebook, logo_url, \
          landing_headline, landing_sub, landing_badge, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
@@ -745,6 +770,8 @@ pub async fn tenant_config(
         cor_principal: row.cor_principal,
         vende_mais_18: row.vende_mais_18,
         apenas_retirada: row.apenas_retirada,
+        pagamento_na_retirada: row.pagamento_na_retirada,
+        entrega_somente_pix: row.entrega_somente_pix,
         endereco: row.endereco,
         endereco_numero: row.endereco_numero,
         instagram: row.instagram,

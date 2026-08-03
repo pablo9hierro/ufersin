@@ -13,6 +13,7 @@ import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, Sh
 import { useBannerCart } from '../../store/bannerCart'
 import { useCustomer } from '../../store/customer'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { deliveryPixOnlyError } from '../../lib/tenantConfig'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 
@@ -44,6 +45,8 @@ export default function Uiux3BannerCheckout() {
   const [pickupAtStore, setPickupAtStore] = useState(false)
   const apenasRetirada = !!tenantConfig?.apenas_retirada
   const pickup = apenasRetirada || pickupAtStore
+  const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
+  const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -136,6 +139,11 @@ export default function Uiux3BannerCheckout() {
     if (age < 18) return setError('Você precisa ser maior de idade para comprar produtos de tabacaria.')
     if (!pickup && (customer.lat == null || customer.lng == null)) return setError('Escolha sua localização no mapa ou marque retirada no local.')
 
+    const deliveryErr = deliveryPixOnlyError(tenantConfig, pickup, paymentMethod)
+    if (deliveryErr) {
+      setError(deliveryErr)
+      return
+    }
     setSubmitting(true)
     try {
       const order = await orderService.create({
@@ -155,7 +163,7 @@ export default function Uiux3BannerCheckout() {
       })
       bannerCart.clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma') navigate(`/pagamento/${order.id}`)
+      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma' && !payAtPickup) navigate(`/pagamento/${order.id}`)
       else navigate(`/consultar?order=${order.id}`)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível enviar seu pedido. Tente novamente.')

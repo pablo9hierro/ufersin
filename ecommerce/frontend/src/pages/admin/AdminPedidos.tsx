@@ -1,17 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
-import { GripVertical, Loader2, Package } from 'lucide-react'
+import { Copy, GripVertical, Loader2, Package, QrCode, X } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { StatusBadge } from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
 import WhatsAppLink from '../../components/ui/WhatsAppLink'
 import { ApiError } from '../../lib/apiError'
 import { planoAtLeast } from '../../lib/demoMode'
 import { adminService } from '../../services/adminService'
+import { orderService } from '../../services/orderService'
+import { pdvService } from '../../services/pdvService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import { adminCanCancelOrder, type Order } from '../../types'
+import { adminCanCancelOrder, type Order, type PaymentMethod } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
+}
+
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, '')
+  if (digits.length <= 2) return `(${digits}`
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+  if (digits.length <= 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
 }
 
 const BASE_FILTERS = [
@@ -69,6 +80,7 @@ function OrderCard({
   onCancel,
   manualPaymentMode,
   adminDelivery,
+  payAtPickupMode,
 }: {
   order: Order
   busyId: string | null
@@ -76,12 +88,19 @@ function OrderCard({
   onCancel: (order: Order) => void
   manualPaymentMode: boolean
   adminDelivery: boolean
+  payAtPickupMode: boolean
 }) {
   const dragControls = useDragControls()
   const next = nextStatusFor(order, adminDelivery)
   const canAdvance = !!next
   const canCancel = adminCanCancelOrder(order.status)
+  const settleAtPickup =
+    payAtPickupMode &&
+    order.status === 'retiradas' &&
+    order.delivery_type === 'retirada' &&
+    order.payment_status !== 'pago'
   const requiresPaymentConfirm =
+    !settleAtPickup &&
     order.payment_status !== 'pago' &&
     (manualPaymentMode ||
       ((order.status === 'retiradas' || order.status === 'entregas') && order.payment_method !== 'pix'))
@@ -89,7 +108,9 @@ function OrderCard({
   const actionLabel =
     order.status === 'pedido_pronto' && order.delivery_type === 'entrega' && adminDelivery
       ? 'Pronto pra entrega'
-      : NEXT_LABEL[order.status]
+      : settleAtPickup
+        ? 'Dar baixa / finalizar venda'
+        : NEXT_LABEL[order.status]
 
   return (
     <Reorder.Item value={order} dragListener={false} dragControls={dragControls}>
@@ -119,6 +140,7 @@ function OrderCard({
         <div className="flex items-center justify-between text-sm mb-1">
           <span className="text-son-silver-dim">
             {order.delivery_type === 'retirada' ? 'Retirada' : `Entrega · ${order.neighborhood}`} · {order.payment_method}
+            {order.payment_status !== 'pago' ? ' · pendente' : ''}
           </span>
           <span className="sunset-text font-bold">{currency(order.total)}</span>
         </div>
@@ -139,7 +161,7 @@ function OrderCard({
         <div className="flex flex-col gap-2">
           {canAdvance && (
             <button
-              onClick={() => advance(order, requiresPaymentConfirm)}
+              onClick={() => advance(order, settleAtPickup || requiresPaymentConfirm)}
               disabled={busyId === order.id}
               className="btn-secondary w-full text-sm py-2"
             >
@@ -169,6 +191,7 @@ export default function AdminPedidos() {
   const tenantConfig = useTenantConfig()
   const manualPaymentMode = tenantConfig?.forma_pagamento === 'manual'
   const onlinePix = tenantConfig?.forma_pagamento === 'plataforma'
+  const payAtPickupMode = !!tenantConfig?.pagamento_na_retirada
   const adminDelivery = !planoAtLeast(tenantConfig?.plano ?? 'essential', 'management')
   const filters = useMemo(
     () =>
@@ -182,6 +205,15 @@ export default function AdminPedidos() {
   const [filter, setFilter] = useState<FilterValue>('pendente')
   const [loading, setLoading] = useState(true)
   const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null)
+  const [settlingOrder, setSettlingOrder] = useState<Order | null>(null)
+  const [settleMethod, setSettleMethod] = useState<PaymentMethod>('pix')
+  const [settleName, setSettleName] = useState('')
+  const [settleWhatsapp, setSettleWhatsapp] = useState('')
+  const [skipQrcode, setSkipQrcode] = useState(false)
+  const [confirmReceived, setConfirmReceived] = useState(false)
+  const [pixOrder, setPixOrder] = useState<Order | null>(null)
+  const [copiedPix, setCopiedPix] = useState(false)
+  const [regeneratingPix, setRegeneratingPix] = useState(false)
   const [cancelingOrder, setCancelingOrder] = useState<Order | null>(null)
   const [cancelConfirm, setCancelConfirm] = useState(false)
   const [cancelReason, setCancelReason] = useState<(typeof ADMIN_CANCEL_REASONS)[number]>('A pedido do cliente')
@@ -205,9 +237,50 @@ export default function AdminPedidos() {
     setVisible(orders.filter((o) => o.status === filter))
   }, [orders, filter])
 
+  useEffect(() => {
+    if (!pixOrder || pixOrder.payment_status === 'pago') return
+    const tick = async () => {
+      try {
+        const refreshed = await orderService.refreshPayment(pixOrder.id)
+        setPixOrder(refreshed)
+        if (refreshed.payment_status === 'pago') {
+          await adminService.orders.updateStatus(refreshed.id, 'concluido')
+          setPixOrder(null)
+          setSettlingOrder(null)
+          load()
+        }
+      } catch {
+        /* keep polling */
+      }
+    }
+    const interval = setInterval(tick, 4000)
+    return () => clearInterval(interval)
+  }, [pixOrder])
+
   const counts = Object.fromEntries(filters.map((f) => [f.value, orders.filter((o) => o.status === f.value).length]))
 
+  const openSettlement = (order: Order) => {
+    setSettlingOrder(order)
+    setSettleMethod((order.payment_method as PaymentMethod) || 'pix')
+    setSettleName(order.customer_name || '')
+    const digits = order.customer_whatsapp?.replace(/\D/g, '') || ''
+    const local = digits.startsWith('55') ? digits.slice(2) : digits
+    setSettleWhatsapp(local ? formatPhone(local) : '')
+    setSkipQrcode(!onlinePix)
+    setConfirmReceived(false)
+    setError(null)
+  }
+
   const advance = async (order: Order, requirePayment: boolean) => {
+    const settleAtPickup =
+      payAtPickupMode &&
+      order.status === 'retiradas' &&
+      order.delivery_type === 'retirada' &&
+      order.payment_status !== 'pago'
+    if (settleAtPickup) {
+      openSettlement(order)
+      return
+    }
     if (requirePayment) {
       setConfirmingOrder(order)
       return
@@ -244,6 +317,90 @@ export default function AdminPedidos() {
     } finally {
       setBusyId(null)
     }
+  }
+
+  const settleExtras = () => {
+    const waDigits = settleWhatsapp.replace(/\D/g, '')
+    return {
+      payment_method: settleMethod,
+      customer_name: settleName.trim() || undefined,
+      customer_whatsapp: waDigits ? `55${waDigits}` : undefined,
+    }
+  }
+
+  const finalizeSettlement = async () => {
+    if (!settlingOrder) return
+    setError(null)
+    setBusyId(settlingOrder.id)
+
+    const extras = settleExtras()
+    const usePixQr = settleMethod === 'pix' && onlinePix && !skipQrcode
+
+    try {
+      // Persist method + optional contact (stay on retiradas).
+      await adminService.orders.updateStatus(settlingOrder.id, 'retiradas', undefined, extras)
+
+      if (usePixQr) {
+        let withPix = settlingOrder
+        try {
+          withPix = await orderService.createPixPayment(settlingOrder.id)
+          if (!withPix.pix_copia_cola) throw new ApiError(502, 'Cobrança Pix sem QR / copia-e-cola.')
+        } catch (e) {
+          setError(
+            e instanceof ApiError
+              ? e.message
+              : 'Não foi possível gerar o QR Pix. Marque cobrança manual ou tente de novo.',
+          )
+          return
+        }
+        setPixOrder(withPix)
+        if (extras.customer_name && extras.customer_whatsapp) {
+          pdvService.notifyPixCharge(withPix.id).catch(() => {})
+        }
+        return
+      }
+
+      if (!confirmReceived) {
+        setError('Confirme que o pagamento foi recebido para finalizar.')
+        return
+      }
+      await adminService.orders.updateStatus(settlingOrder.id, 'concluido', true, extras)
+      if (extras.customer_whatsapp) {
+        pdvService.notifySale(settlingOrder.id).catch(() => {})
+      }
+      setSettlingOrder(null)
+      load()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const regeneratePixCharge = async () => {
+    if (!pixOrder) return
+    setRegeneratingPix(true)
+    setError(null)
+    try {
+      const withPix = await orderService.createPixPayment(pixOrder.id, true)
+      if (!withPix.pix_copia_cola) throw new ApiError(502, 'Nova cobrança criada sem QR / copia-e-cola.')
+      setPixOrder(withPix)
+      if (withPix.customer_whatsapp?.replace(/\D/g, '')) {
+        pdvService.notifyPixCharge(withPix.id).catch(() => {})
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível gerar nova cobrança Pix.')
+    } finally {
+      setRegeneratingPix(false)
+    }
+  }
+
+  const copyPixCode = () => {
+    if (!pixOrder?.pix_copia_cola) return
+    navigator.clipboard.writeText(pixOrder.pix_copia_cola).then(() => {
+      setCopiedPix(true)
+      setTimeout(() => setCopiedPix(false), 2000)
+    })
   }
 
   const openCancel = (order: Order) => {
@@ -323,9 +480,160 @@ export default function AdminPedidos() {
               onCancel={openCancel}
               manualPaymentMode={manualPaymentMode}
               adminDelivery={adminDelivery}
+              payAtPickupMode={payAtPickupMode}
             />
           ))}
         </Reorder.Group>
+      )}
+
+      {settlingOrder && !pixOrder && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => !busyId && setSettlingOrder(null)}
+        >
+          <div className="glass rounded-2xl p-6 max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h3 className="font-bold text-white">Finalizar retirada</h3>
+                <p className="text-sm text-son-silver-dim">
+                  Pedido #{settlingOrder.id.slice(0, 8)} ·{' '}
+                  <span className="sunset-text font-bold">{currency(settlingOrder.total)}</span>
+                </p>
+              </div>
+              <button type="button" onClick={() => setSettlingOrder(null)} className="text-son-silver-dim hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <label className="label">Método de pagamento</label>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {(['pix', 'dinheiro', 'cartao'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSettleMethod(value)}
+                  className={`py-2.5 rounded-2xl border text-sm font-medium capitalize ${
+                    settleMethod === value
+                      ? 'sunset-bg text-white border-transparent'
+                      : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
+                  }`}
+                >
+                  {value === 'cartao' ? 'Cartão' : value === 'dinheiro' ? 'Dinheiro' : 'Pix'}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="label">Nome cliente (opcional)</label>
+                <input className="input-field" value={settleName} onChange={(e) => setSettleName(e.target.value)} placeholder="Nome" />
+              </div>
+              <div>
+                <label className="label">WhatsApp (opcional)</label>
+                <input
+                  className="input-field"
+                  value={settleWhatsapp}
+                  onChange={(e) => setSettleWhatsapp(formatPhone(e.target.value))}
+                  placeholder="(83) 99999-9999"
+                  type="tel"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+
+            {settleMethod === 'pix' && (
+              <label
+                className={`mb-4 flex items-start gap-2.5 rounded-2xl border border-white/10 bg-son-surface px-3 py-2.5 ${
+                  onlinePix ? 'cursor-pointer' : 'opacity-70'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={skipQrcode || !onlinePix}
+                  disabled={!onlinePix}
+                  onChange={(e) => setSkipQrcode(e.target.checked)}
+                  className="mt-0.5 w-4 h-4"
+                />
+                <span className="text-xs text-son-silver-dim">
+                  <QrCode className="w-3.5 h-3.5 inline mr-1" />
+                  <span className="text-white font-semibold">Não gerar QR Code - cobrança manual</span>
+                  <br />
+                  {onlinePix
+                    ? 'Se marcado, confirma o Pix recebido sem gerar cobrança na plataforma.'
+                    : 'Loja em cobrança manual — Pix na retirada é confirmação sem QR de plataforma.'}
+                </span>
+              </label>
+            )}
+
+            {(settleMethod !== 'pix' || skipQrcode || !onlinePix) && (
+              <label className="mb-4 flex items-center gap-2 text-sm text-son-silver cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={confirmReceived}
+                  onChange={(e) => setConfirmReceived(e.target.checked)}
+                  className="rounded border-white/20"
+                />
+                Confirmar pagamento recebido
+              </label>
+            )}
+
+            <button
+              type="button"
+              onClick={finalizeSettlement}
+              disabled={busyId === settlingOrder.id}
+              className="btn-primary w-full py-3"
+            >
+              {busyId === settlingOrder.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Finalizar venda
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pixOrder && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div id="containerQrCobrança" className="glass rounded-2xl p-6 max-w-lg w-full text-center relative">
+            <button
+              type="button"
+              onClick={() => {
+                setPixOrder(null)
+                setSettlingOrder(null)
+                load()
+              }}
+              disabled={regeneratingPix}
+              className="absolute top-3 right-3 text-son-silver-dim hover:text-white disabled:opacity-40"
+              aria-label="Fechar cobrança Pix"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="font-bold text-white mb-1 pr-6">Pix da retirada</h3>
+            <p className="text-sm text-son-silver-dim mb-4">
+              Peça ao cliente para escanear o QR ou use o copia-e-cola.
+              {pixOrder.customer_whatsapp?.replace(/\D/g, '')
+                ? ' Enviamos o resumo e o código no WhatsApp informado.'
+                : ''}{' '}
+              A confirmação chega automaticamente quando o Pix for pago — aí o pedido vai para concluído.
+            </p>
+            <p className="sunset-text font-black text-xl mb-4">{currency(pixOrder.total)}</p>
+            <div className="bg-white rounded-2xl p-4 inline-block mb-4">
+              {pixOrder.pix_copia_cola ? (
+                <QRCodeSVG value={pixOrder.pix_copia_cola} size={350} />
+              ) : (
+                <div className="w-[350px] h-[350px] flex items-center justify-center text-gray-400 text-sm">QR indisponível</div>
+              )}
+            </div>
+            {pixOrder.pix_copia_cola && (
+              <button type="button" onClick={copyPixCode} className="btn-secondary w-full mb-3 text-sm">
+                <Copy className="w-4 h-4" />
+                {copiedPix ? 'Copiado!' : 'Copiar Pix copia-e-cola'}
+              </button>
+            )}
+            <button type="button" onClick={regeneratePixCharge} disabled={regeneratingPix} className="btn-secondary w-full text-sm">
+              {regeneratingPix ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+              Gerar nova cobrança
+            </button>
+          </div>
+        </div>
       )}
 
       {confirmingOrder && (

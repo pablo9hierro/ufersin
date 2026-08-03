@@ -28,6 +28,10 @@ export interface TenantConfig {
   vende_mais_18: boolean
   /** Vitrine: só aceita retirada no local (sem entrega/frete/motoboy). */
   apenas_retirada: boolean
+  /** Pagamento de pedidos de retirada só no ato da retirada na loja. */
+  pagamento_na_retirada: boolean
+  /** Entrega só com Pix já pago no checkout. */
+  entrega_somente_pix: boolean
   endereco: string
   endereco_numero: string
   instagram: string
@@ -53,6 +57,30 @@ export function tenantHasOnlinePix(config: TenantConfig | null | undefined): boo
   return config?.forma_pagamento === 'plataforma'
 }
 
+/** True when pickup orders should skip online Pix and settle at the store. */
+export function tenantPaysAtPickup(
+  config: TenantConfig | null | undefined,
+  isPickup: boolean,
+): boolean {
+  return !!config?.pagamento_na_retirada && isPickup
+}
+
+/** Error when delivery + non-Pix (or no online Pix) under entrega_somente_pix. */
+export function deliveryPixOnlyError(
+  config: TenantConfig | null | undefined,
+  isPickup: boolean,
+  paymentMethod: string,
+): string | null {
+  if (!config?.entrega_somente_pix || isPickup) return null
+  if (!tenantHasOnlinePix(config)) {
+    return 'Esta loja só aceita entrega com Pix pago no checkout. Escolha retirada na loja ou use Pix online (loja precisa ter Pix de plataforma configurado).'
+  }
+  if (paymentMethod !== 'pix') {
+    return 'Compras com entrega só são aceitas com Pix pago no checkout. Outras formas de pagamento são só para retirada na loja.'
+  }
+  return null
+}
+
 /** Fail-closed: essential + sem pedidos externos até a config real chegar
  *  (evita flash de menu completo → sumir, que parece "bug de tela verde"). */
 const DEFAULT_CONFIG: TenantConfig = {
@@ -68,6 +96,8 @@ const DEFAULT_CONFIG: TenantConfig = {
   cor_principal: null,
   vende_mais_18: false,
   apenas_retirada: false,
+  pagamento_na_retirada: false,
+  entrega_somente_pix: false,
   endereco: '',
   endereco_numero: '',
   instagram: '',
@@ -235,6 +265,8 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     layout_style: normalizeLayoutStyle(data.layout_style),
     vende_mais_18: Boolean(data.vende_mais_18),
     apenas_retirada: Boolean(data.apenas_retirada),
+    pagamento_na_retirada: Boolean(data.pagamento_na_retirada),
+    entrega_somente_pix: Boolean(data.entrega_somente_pix),
     logo_url: data.logo_url ? String(data.logo_url) : null,
     landing_headline: data.landing_headline ? String(data.landing_headline) : null,
     landing_sub: data.landing_sub ? String(data.landing_sub) : null,

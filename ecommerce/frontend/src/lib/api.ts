@@ -824,13 +824,20 @@ const remoteApi = {
               status ? `/api/admin/orders?status=${encodeURIComponent(status)}` : '/api/admin/orders'
             )
           : rpc<Order[]>('admin_list_orders', { p_token: adminToken(), p_status: status ?? null }),
-      updateStatus: (id: string, status: string, paymentConfirmed?: boolean) =>
+      updateStatus: (id: string, status: string, paymentConfirmed?: boolean, extras?: {
+        payment_method?: string
+        customer_name?: string
+        customer_whatsapp?: string
+      }) =>
         isRailwayAdminJwt()
           ? railwayAdmin<Order>(`/api/admin/orders/${id}/status`, {
               method: 'PATCH',
               body: JSON.stringify({
                 status,
                 payment_confirmed: paymentConfirmed ?? null,
+                payment_method: extras?.payment_method ?? null,
+                customer_name: extras?.customer_name ?? null,
+                customer_whatsapp: extras?.customer_whatsapp ?? null,
               }),
             })
           : rpc<Order>('admin_update_order_status', {

@@ -298,6 +298,13 @@ pub struct UpdateStatusInput {
     pub status: String,
     #[serde(default)]
     pub payment_confirmed: Option<bool>,
+    /// Optional settlement override (pay-at-pickup / baixa na retirada).
+    #[serde(default)]
+    pub payment_method: Option<String>,
+    #[serde(default)]
+    pub customer_name: Option<String>,
+    #[serde(default)]
+    pub customer_whatsapp: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

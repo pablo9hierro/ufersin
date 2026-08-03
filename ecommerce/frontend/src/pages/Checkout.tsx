@@ -20,7 +20,7 @@ import CustomerAuthModal from '../components/CustomerAuthModal'
 import { isDemoModeActive } from '../lib/demoMode'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import { useStoreStatus } from '../hooks/useStoreStatus'
-import { resolveTenantSlug } from '../lib/tenantConfig'
+import { deliveryPixOnlyError, resolveTenantSlug } from '../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../lib/storeHours'
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
@@ -55,6 +55,8 @@ export default function Checkout() {
   const [pickupAtStore, setPickupAtStore] = useState(false)
   const apenasRetirada = !!tenantConfig?.apenas_retirada
   const pickup = apenasRetirada || pickupAtStore
+  const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
+  const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -100,6 +102,10 @@ export default function Checkout() {
   useEffect(() => {
     if (apenasRetirada) setPickupAtStore(true)
   }, [apenasRetirada])
+
+  useEffect(() => {
+    if (entregaSomentePix && !pickup && paymentMethod !== 'pix') setPaymentMethod('pix')
+  }, [entregaSomentePix, pickup, paymentMethod])
 
   useEffect(() => {
     if (!promotionId) return
@@ -356,6 +362,11 @@ export default function Checkout() {
       return
     }
 
+    const deliveryErr = deliveryPixOnlyError(tenantConfig, pickup, paymentMethod)
+    if (deliveryErr) {
+      setError(deliveryErr)
+      return
+    }
     setSubmitting(true)
     try {
       const slug = resolveTenantSlug() || tenantConfig?.slug
@@ -399,7 +410,7 @@ export default function Checkout() {
       // carrinho quando o pedido realmente veio dele.
       if (!promotion)       clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma') {
+      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma' && !payAtPickup) {
         navigate(`/pagamento/${order.id}`)
       } else {
         navigate(`/consultar?order=${order.id}`)

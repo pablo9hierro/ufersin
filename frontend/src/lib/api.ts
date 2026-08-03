@@ -195,6 +195,10 @@ export interface MeResponse {
   vende_mais_18: boolean
   /** Vitrine: só aceita retirada no local (sem entrega). */
   apenas_retirada: boolean
+  /** Pagamento de pedidos de retirada só no ato da retirada na loja. */
+  pagamento_na_retirada: boolean
+  /** Entrega só com Pix já pago no checkout. */
+  entrega_somente_pix: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento: PlataformaPagamento | null
@@ -250,6 +254,8 @@ export interface OnboardingInput {
   vender_externamente: boolean
   vende_mais_18?: boolean
   apenas_retirada?: boolean
+  pagamento_na_retirada?: boolean
+  entrega_somente_pix?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -277,6 +283,8 @@ export interface EditOnboardingInput {
   vender_externamente?: boolean
   vende_mais_18?: boolean
   apenas_retirada?: boolean
+  pagamento_na_retirada?: boolean
+  entrega_somente_pix?: boolean
   whatsapp_habilitado?: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento

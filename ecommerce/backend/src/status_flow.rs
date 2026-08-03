@@ -107,19 +107,23 @@ fn confirm_payment_if_needed(
     payment_status: &str,
     payment_confirmed: Option<bool>,
 ) -> Result<bool, AppError> {
-    if payment_method == "pix" {
-        if payment_status != "pago" {
-            return Err(AppError::BadRequest(
-                "pix payment has not been confirmed yet".to_string(),
-            ));
-        }
-        Ok(false)
-    } else {
-        if payment_confirmed != Some(true) {
-            return Err(AppError::BadRequest(
-                "payment_confirmed: true is required to complete this order".to_string(),
-            ));
-        }
-        Ok(true)
+    if payment_status == "pago" {
+        return Ok(false);
     }
+    // Unpaid Pix: allow admin manual confirm (pay-at-pickup / cobrança
+    // manual sem QR). Online Pix that already settled stays `pago` above.
+    if payment_method == "pix" {
+        if payment_confirmed == Some(true) {
+            return Ok(true);
+        }
+        return Err(AppError::BadRequest(
+            "pix payment has not been confirmed yet".to_string(),
+        ));
+    }
+    if payment_confirmed != Some(true) {
+        return Err(AppError::BadRequest(
+            "payment_confirmed: true is required to complete this order".to_string(),
+        ));
+    }
+    Ok(true)
 }
