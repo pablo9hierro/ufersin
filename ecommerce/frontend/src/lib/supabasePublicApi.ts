@@ -218,7 +218,7 @@ export const supabasePublicApi = {
     // assim que o produto entra no carrinho, sem digitar código.
     listPromotionalProducts: async () => {
       const { data, error } = await supabase.rpc('list_promotional_products')
-      if (error) throw new ApiError(400, error.message)
+      if (error) return []
       return (data ?? []) as PromotionalProduct[]
     },
   },
