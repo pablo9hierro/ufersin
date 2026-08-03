@@ -1,3 +1,4 @@
+import { tenantHasOnlinePix } from '../../lib/tenantConfig'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from '../../lib/tenantRouter'
 import { Check, Copy, Loader2, PartyPopper } from 'lucide-react'
@@ -16,7 +17,7 @@ export default function Uiux4Pagamento() {
   const { orderId } = useParams<{ orderId: string }>()
   const navigate = useNavigate()
   const tenantConfig = useTenantConfig()
-  const onlinePix = tenantConfig?.forma_pagamento === 'plataforma'
+  const onlinePix = tenantHasOnlinePix(tenantConfig)
   const [order, setOrder] = useState<Order | null>(null)
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)

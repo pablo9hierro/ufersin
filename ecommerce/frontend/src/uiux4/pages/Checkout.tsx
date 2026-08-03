@@ -16,7 +16,7 @@ import EmptyState from '../components/EmptyState'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
-import { deliveryPixOnlyError, resolveTenantSlug } from '../../lib/tenantConfig'
+import { deliveryPixOnlyError, resolveTenantSlug, tenantHasOnlinePix} from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 import LocationPicker from '../../components/checkout/LocationPicker'
 import PickupOnlyNotice from '../../components/checkout/PickupOnlyNotice'
@@ -273,7 +273,7 @@ export default function Uiux4Checkout() {
       })
       clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma' && !payAtPickup) navigate(`/pagamento/${order.id}`)
+      if (paymentMethod === 'pix' && tenantHasOnlinePix(tenantConfig) && !payAtPickup) navigate(`/pagamento/${order.id}`)
       else navigate(`/consultar?order=${order.id}`)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível enviar seu pedido. Tente novamente.')

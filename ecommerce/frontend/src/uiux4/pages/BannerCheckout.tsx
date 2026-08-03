@@ -10,7 +10,7 @@ import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, Sh
 import { useBannerCart } from '../../store/bannerCart'
 import { useCustomer } from '../../store/customer'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import { deliveryPixOnlyError } from '../../lib/tenantConfig'
+import { deliveryPixOnlyError, tenantHasOnlinePix} from '../../lib/tenantConfig'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 import LocationPicker from '../../components/checkout/LocationPicker'
@@ -161,7 +161,7 @@ export default function Uiux4BannerCheckout() {
       })
       bannerCart.clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma' && !payAtPickup) navigate(`/pagamento/${order.id}`)
+      if (paymentMethod === 'pix' && tenantHasOnlinePix(tenantConfig) && !payAtPickup) navigate(`/pagamento/${order.id}`)
       else navigate(`/consultar?order=${order.id}`)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível enviar seu pedido. Tente novamente.')

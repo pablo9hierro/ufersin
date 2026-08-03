@@ -1,3 +1,4 @@
+import { tenantHasOnlinePix, tenantUsesManualPayment } from '../../lib/tenantConfig'
 import { useEffect, useMemo, useState } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
 import { Copy, GripVertical, Loader2, Package, QrCode, X } from 'lucide-react'
@@ -191,8 +192,8 @@ function OrderCard({
 
 export default function AdminPedidos() {
   const tenantConfig = useTenantConfig()
-  const manualPaymentMode = tenantConfig?.forma_pagamento === 'manual'
-  const onlinePix = tenantConfig?.forma_pagamento === 'plataforma'
+  const manualPaymentMode = tenantUsesManualPayment(tenantConfig)
+  const onlinePix = tenantHasOnlinePix(tenantConfig)
   const payAtPickupMode = !!tenantConfig?.pagamento_na_retirada
   const adminDelivery = !planoAtLeast(tenantConfig?.plano ?? 'essential', 'management')
   const filters = useMemo(

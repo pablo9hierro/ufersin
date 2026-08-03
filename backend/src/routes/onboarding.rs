@@ -44,6 +44,9 @@ pub struct OnboardingInput {
     /// Entrega só com Pix já pago no checkout.
     #[serde(default)]
     pub entrega_somente_pix: bool,
+    /// Modo pagamento manual (confirmação offline; sem QR Pix no checkout).
+    #[serde(default)]
+    pub pagamento_manual: bool,
 
     // WhatsApp: só a flag aqui; QR connect fica na etapa 2 do painel da loja.
     #[serde(default = "default_true")]
@@ -221,7 +224,7 @@ pub async fn onboarding(
          forma_pagamento = $15, plataforma_pagamento = $16, plataforma_credenciais = $17, \
          layout_style = $18, instagram = $19, endereco_numero = $20, vende_mais_18 = $21, \
          facebook = $22, apenas_retirada = $23, pagamento_na_retirada = $24, \
-         entrega_somente_pix = $25, updated_at = now() \
+         entrega_somente_pix = $25, pagamento_manual = $26, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -249,6 +252,7 @@ pub async fn onboarding(
     .bind(body.apenas_retirada)
     .bind(body.pagamento_na_retirada)
     .bind(body.entrega_somente_pix)
+    .bind(body.pagamento_manual)
     .execute(&state.pool)
     .await?;
 
@@ -402,6 +406,8 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub entrega_somente_pix: Option<bool>,
     #[serde(default)]
+    pub pagamento_manual: Option<bool>,
+    #[serde(default)]
     pub whatsapp_habilitado: Option<bool>,
     #[serde(default)]
     pub forma_pagamento: Option<String>,
@@ -532,8 +538,9 @@ pub async fn editar_onboarding(
          cart_fab_animate = COALESCE($23, cart_fab_animate), \
          apenas_retirada = COALESCE($24, apenas_retirada), \
          pagamento_na_retirada = COALESCE($25, pagamento_na_retirada), \
-         entrega_somente_pix = COALESCE($26, entrega_somente_pix), updated_at = now() \
-         WHERE id = $27",
+         entrega_somente_pix = COALESCE($26, entrega_somente_pix), \
+         pagamento_manual = COALESCE($27, pagamento_manual), updated_at = now() \
+         WHERE id = $28",
     )
     .bind(&body.categoria)
     .bind(&body.whatsapp)
@@ -561,6 +568,7 @@ pub async fn editar_onboarding(
     .bind(body.apenas_retirada)
     .bind(body.pagamento_na_retirada)
     .bind(body.entrega_somente_pix)
+    .bind(body.pagamento_manual)
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
@@ -684,6 +692,8 @@ pub struct TenantConfigResponse {
     pub pagamento_na_retirada: bool,
     /// Entrega só com Pix já pago no checkout.
     pub entrega_somente_pix: bool,
+    /// Preferência: confirmação manual (sem QR Pix online).
+    pub pagamento_manual: bool,
     pub endereco: Option<String>,
     pub endereco_numero: Option<String>,
     pub instagram: Option<String>,
@@ -711,6 +721,7 @@ struct TenantConfigRow {
     apenas_retirada: bool,
     pagamento_na_retirada: bool,
     entrega_somente_pix: bool,
+    pagamento_manual: bool,
     endereco: Option<String>,
     endereco_numero: Option<String>,
     instagram: Option<String>,
@@ -741,6 +752,7 @@ pub async fn tenant_config(
          COALESCE(apenas_retirada, false) as apenas_retirada, \
          COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada, \
          COALESCE(entrega_somente_pix, false) as entrega_somente_pix, \
+         COALESCE(pagamento_manual, false) as pagamento_manual, \
          endereco, endereco_numero, instagram, facebook, logo_url, \
          landing_headline, landing_sub, landing_badge, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
@@ -772,6 +784,7 @@ pub async fn tenant_config(
         apenas_retirada: row.apenas_retirada,
         pagamento_na_retirada: row.pagamento_na_retirada,
         entrega_somente_pix: row.entrega_somente_pix,
+        pagamento_manual: row.pagamento_manual,
         endereco: row.endereco,
         endereco_numero: row.endereco_numero,
         instagram: row.instagram,

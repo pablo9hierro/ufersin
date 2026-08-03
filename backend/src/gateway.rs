@@ -159,6 +159,25 @@ pub async fn cancel(state: &AppState, gateway: &str, external_id: &str) {
     }
 }
 
+/// Estorna a cobrança mais recente da assinatura (janela de 7 dias).
+/// Retorna `Ok(Some(refund_id))` se estornou, `Ok(None)` se não havia
+/// pagamento localizável (mock / ainda não debitou).
+pub async fn refund_latest_subscription_payment(
+    state: &AppState,
+    gateway: &str,
+    external_id: &str,
+) -> Result<Option<String>, AppError> {
+    match gateway {
+        "abacatepay" => {
+            tracing::warn!(
+                "abacatepay subscription refund não implementado — external_id={external_id}"
+            );
+            Ok(None)
+        }
+        _ => mercadopago::refund_latest_subscription_payment(state, external_id).await,
+    }
+}
+
 pub async fn simulate_payment(state: &AppState, gateway: &str, external_id: &str) -> Result<(), AppError> {
     match gateway {
         "abacatepay" => abacatepay_gateway::simulate_payment(state, external_id).await,

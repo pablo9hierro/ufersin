@@ -1,3 +1,4 @@
+import { tenantHasOnlinePix } from '../../lib/tenantConfig'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import type { IScannerControls } from '@zxing/browser'
@@ -49,7 +50,7 @@ interface CartLine {
 
 export default function AdminPdv() {
   const tenantConfig = useTenantConfig()
-  const plataformaPix = tenantConfig?.forma_pagamento === 'plataforma'
+  const plataformaPix = tenantHasOnlinePix(tenantConfig)
 
   const [products, setProducts] = useState<Product[]>([])
   const [loadingProducts, setLoadingProducts] = useState(true)

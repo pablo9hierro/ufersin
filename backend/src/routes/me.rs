@@ -47,6 +47,7 @@ struct SubscriberRow {
     apenas_retirada: bool,
     pagamento_na_retirada: bool,
     entrega_somente_pix: bool,
+    pagamento_manual: bool,
     coupon_code: Option<String>,
     landing_headline: Option<String>,
     landing_sub: Option<String>,
@@ -96,6 +97,8 @@ pub struct MeResponse {
     pub apenas_retirada: bool,
     pub pagamento_na_retirada: bool,
     pub entrega_somente_pix: bool,
+    /// Preferência /meu-plano: força confirmação manual (sem QR Pix online).
+    pub pagamento_manual: bool,
     pub coupon_code: Option<String>,
     /// Próxima cobrança / histórico de faturas dependem de consultar o
     /// gateway (Mercado Pago não expõe isso na mesma chamada de status) ou
@@ -109,6 +112,8 @@ pub struct MeResponse {
     pub landing_badge: Option<String>,
     pub cart_fab_style: String,
     pub cart_fab_animate: bool,
+    /// True se cancelar agora gera estorno automático (≤7 dias desde assinante_desde).
+    pub refund_eligible_on_cancel: bool,
 }
 
 pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<MeResponse>, AppError> {
@@ -126,7 +131,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 COALESCE(vende_mais_18, false) as vende_mais_18,
                 COALESCE(apenas_retirada, false) as apenas_retirada,
                 COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada,
-                COALESCE(entrega_somente_pix, false) as entrega_somente_pix, coupon_code,
+                COALESCE(entrega_somente_pix, false) as entrega_somente_pix,
+                COALESCE(pagamento_manual, false) as pagamento_manual, coupon_code,
                 landing_headline, landing_sub, landing_badge,
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
                 COALESCE(cart_fab_animate, false) as cart_fab_animate
@@ -139,6 +145,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
     let row = row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
     let metodo_pagamento = row.gateway.as_deref().map(|g| if g == "abacatepay" { "Pix" } else { "Cartão de crédito" }.to_string());
     let dominio = row.slug.as_ref().map(|s| format!("resolutoo.com/loja/?tenant={s}"));
+    let refund_eligible_on_cancel = within_cancel_refund_window(row.created_at);
 
     Ok(Json(MeResponse {
         id: row.id,
@@ -176,6 +183,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         apenas_retirada: row.apenas_retirada,
         pagamento_na_retirada: row.pagamento_na_retirada,
         entrega_somente_pix: row.entrega_somente_pix,
+        pagamento_manual: row.pagamento_manual,
         coupon_code: row.coupon_code,
         proxima_cobranca: None,
         landing_headline: row.landing_headline,
@@ -183,7 +191,13 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         landing_badge: row.landing_badge,
         cart_fab_style: row.cart_fab_style,
         cart_fab_animate: row.cart_fab_animate,
+        refund_eligible_on_cancel,
     }))
+}
+
+fn within_cancel_refund_window(assinante_desde: chrono::DateTime<chrono::Utc>) -> bool {
+    let age = chrono::Utc::now().signed_duration_since(assinante_desde);
+    age.num_days() < 7
 }
 
 /// Multipart upload ("file") → Supabase Storage → atualiza `logo_url`.
@@ -288,23 +302,126 @@ pub async fn mudar_plano(
     })))
 }
 
-pub async fn cancelar(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<serde_json::Value>, AppError> {
-    let row: Option<(Option<String>, Option<String>)> = sqlx::query_as("SELECT gateway, mp_preapproval_id FROM subscribers WHERE id = $1")
-        .bind(&claims.sub)
-        .fetch_optional(&state.pool)
-        .await?;
-    let (gw, external_id) = row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
+#[derive(Debug, Deserialize)]
+pub struct CancelarInput {
+    /// Confirmação explícita ("Quer realmente cancelar?").
+    #[serde(default)]
+    pub confirm: bool,
+    /// Motivos multi-select (códigos estáveis).
+    #[serde(default)]
+    pub reasons: Vec<String>,
+    /// Texto opcional sob "encontrei outro sistema" (ex.: concorrente).
+    #[serde(default)]
+    pub competitor_note: Option<String>,
+    /// Texto sob "Outro".
+    #[serde(default)]
+    pub other_note: Option<String>,
+    /// Complemento livre opcional / motivo escrito.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+const CANCEL_REASON_CODES: &[&str] = &["unexpected", "found_better", "other"];
+
+pub async fn cancelar(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<CancelarInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !body.confirm {
+        return Err(AppError::BadRequest(
+            "marque a confirmação \"Quer realmente cancelar?\" para continuar".to_string(),
+        ));
+    }
+    if body.reasons.is_empty() {
+        return Err(AppError::BadRequest("selecione pelo menos um motivo do cancelamento".to_string()));
+    }
+    for r in &body.reasons {
+        if !CANCEL_REASON_CODES.contains(&r.as_str()) {
+            return Err(AppError::BadRequest(format!("motivo inválido: {r}")));
+        }
+    }
+    if body.reasons.iter().any(|r| r == "other") {
+        let other = body.other_note.as_deref().unwrap_or("").trim();
+        if other.is_empty() {
+            return Err(AppError::BadRequest("descreva o motivo em \"Outro\"".to_string()));
+        }
+    }
+
+    let row: Option<(Option<String>, Option<String>, chrono::DateTime<chrono::Utc>, String)> = sqlx::query_as(
+        "SELECT gateway, mp_preapproval_id, created_at, status FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (gw, external_id, created_at, status) =
+        row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
+    if status == "cancelado" {
+        return Ok(Json(serde_json::json!({ "status": "cancelado", "refund_status": "not_applicable" })));
+    }
     let Some(gw) = gw else {
         return Err(AppError::BadRequest("nenhuma assinatura pra cancelar".to_string()));
     };
 
-    if let Some(external_id) = external_id {
-        gateway::cancel(&state, &gw, &external_id).await;
+    let refund_eligible = within_cancel_refund_window(created_at);
+    let mut refund_status = if refund_eligible {
+        "pending".to_string()
+    } else {
+        "not_applicable".to_string()
+    };
+    let mut refund_id: Option<String> = None;
+
+    if refund_eligible {
+        if let Some(external_id) = external_id.as_deref() {
+            match gateway::refund_latest_subscription_payment(&state, &gw, external_id).await {
+                Ok(Some(id)) => {
+                    refund_status = "refunded".to_string();
+                    refund_id = Some(id);
+                }
+                Ok(None) => {
+                    // Sem cobrança localizável (mock / ainda não debitou) — cancela sem estorno.
+                    refund_status = "not_applicable".to_string();
+                }
+                Err(e) => {
+                    tracing::warn!("subscription refund failed (proceeding with cancel): {e:?}");
+                    refund_status = "refund_failed".to_string();
+                }
+            }
+        } else {
+            refund_status = "not_applicable".to_string();
+        }
     }
 
-    sqlx::query("UPDATE subscribers SET status = 'cancelado', updated_at = now() WHERE id = $1")
-        .bind(&claims.sub)
-        .execute(&state.pool)
-        .await?;
-    Ok(Json(serde_json::json!({ "status": "cancelado" })))
+    if let Some(external_id) = external_id.as_deref() {
+        gateway::cancel(&state, &gw, external_id).await;
+    }
+
+    let reasons_json = serde_json::json!({
+        "reasons": body.reasons,
+        "competitor_note": body.competitor_note.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+        "other_note": body.other_note.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+        "note": body.note.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+    });
+    let cancel_note = body.note.as_deref().map(str::trim).filter(|s| !s.is_empty());
+
+    sqlx::query(
+        "UPDATE subscribers SET status = 'cancelado', updated_at = now(), \
+         cancelled_at = now(), cancel_reasons = $2, cancel_note = $3, \
+         cancel_refund_status = $4, cancel_refund_id = $5 \
+         WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .bind(&reasons_json)
+    .bind(cancel_note)
+    .bind(&refund_status)
+    .bind(&refund_id)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "status": "cancelado",
+        "refund_eligible": refund_eligible,
+        "refund_status": refund_status,
+        "refund_id": refund_id,
+    })))
 }

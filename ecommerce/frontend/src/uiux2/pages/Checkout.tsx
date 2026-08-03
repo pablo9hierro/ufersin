@@ -18,7 +18,7 @@ import EmptyState from '../components/EmptyState'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
-import { deliveryPixOnlyError, resolveTenantSlug } from '../../lib/tenantConfig'
+import { deliveryPixOnlyError, resolveTenantSlug, tenantHasOnlinePix} from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal } from '../../lib/cashMask'
@@ -291,7 +291,7 @@ export default function Uiux2Checkout() {
       })
       clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma' && !payAtPickup) {
+      if (paymentMethod === 'pix' && tenantHasOnlinePix(tenantConfig) && !payAtPickup) {
         navigate(`/pagamento/${order.id}`)
       } else {
         navigate(`/consultar?order=${order.id}`)

@@ -131,6 +131,7 @@ export default function Pricing() {
                   <Link
                     to={`/cadastro?plano=${plan.code}&ciclo=${ciclo}`}
                     className={`mt-8 w-full py-3 text-sm text-center ${plan.highlight ? 'btn-secondary !bg-white !text-uf-black hover:!bg-white/90' : 'btn-primary'}`}
+                    data-testid={`plan-cta-${plan.code}`}
                   >
                     Assinar {plan.name}
                   </Link>

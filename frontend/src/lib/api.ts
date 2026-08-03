@@ -199,6 +199,8 @@ export interface MeResponse {
   pagamento_na_retirada: boolean
   /** Entrega só com Pix já pago no checkout. */
   entrega_somente_pix: boolean
+  /** Preferência: confirmação manual (sem QR Pix online). */
+  pagamento_manual: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento: PlataformaPagamento | null
@@ -214,6 +216,8 @@ export interface MeResponse {
   landing_badge: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
   cart_fab_animate: boolean
+  /** True se cancelar agora gera estorno automático (≤7 dias). */
+  refund_eligible_on_cancel: boolean
 }
 
 export type ContractKind = 'platform_subscription' | 'checkout_compra_normal' | 'checkout_mais18'
@@ -256,6 +260,7 @@ export interface OnboardingInput {
   apenas_retirada?: boolean
   pagamento_na_retirada?: boolean
   entrega_somente_pix?: boolean
+  pagamento_manual?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -285,6 +290,7 @@ export interface EditOnboardingInput {
   apenas_retirada?: boolean
   pagamento_na_retirada?: boolean
   entrega_somente_pix?: boolean
+  pagamento_manual?: boolean
   whatsapp_habilitado?: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -295,6 +301,23 @@ export interface EditOnboardingInput {
   landing_badge?: string
   cart_fab_style?: 'sacola' | 'cart_icon'
   cart_fab_animate?: boolean
+}
+
+export type CancelReasonCode = 'unexpected' | 'found_better' | 'other'
+
+export interface CancelarAssinaturaInput {
+  confirm: boolean
+  reasons: CancelReasonCode[]
+  competitor_note?: string
+  other_note?: string
+  note?: string
+}
+
+export interface CancelarAssinaturaResult {
+  status: string
+  refund_eligible?: boolean
+  refund_status?: string
+  refund_id?: string | null
 }
 
 function normalizePlan(p: PlatformPlan): PlatformPlan {
@@ -382,7 +405,8 @@ export const api = {
   },
   mudarPlano: (novo_plano: PlanoCode) =>
     request<{ plano: PlanoCode }>('/api/me/plano', { method: 'POST', body: JSON.stringify({ novo_plano }) }),
-  cancelar: () => request<{ status: string }>('/api/me/cancelar', { method: 'POST' }),
+  cancelar: (input: CancelarAssinaturaInput) =>
+    request<CancelarAssinaturaResult>('/api/me/cancelar', { method: 'POST', body: JSON.stringify(input) }),
 
   onboarding: (input: OnboardingInput) => request<OnboardingOutput>('/api/onboarding', { method: 'POST', body: JSON.stringify(input) }),
   editarOnboarding: (input: EditOnboardingInput) =>

@@ -217,7 +217,7 @@ async function createOrder(payload: {
         'Compras com entrega só são aceitas com Pix pago no checkout. Outras formas de pagamento são só para retirada na loja.',
       )
     }
-    if (cfg.entrega_somente_pix && cfg.forma_pagamento !== 'plataforma') {
+    if (cfg.entrega_somente_pix && (cfg.forma_pagamento !== 'plataforma' || cfg.pagamento_manual)) {
       throw new ApiError(
         400,
         'Esta loja só aceita entrega com Pix pago no checkout. Escolha retirada na loja.',

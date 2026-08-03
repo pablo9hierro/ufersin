@@ -417,3 +417,121 @@ pub async fn update_subscription_amount(
     }
     Ok(())
 }
+
+#[derive(Debug, Deserialize)]
+struct MpAuthorizedPayment {
+    id: Option<i64>,
+    payment: Option<MpAuthorizedPaymentInner>,
+    status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MpAuthorizedPaymentInner {
+    id: Option<i64>,
+    status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MpAuthorizedSearch {
+    results: Option<Vec<MpAuthorizedPayment>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MpRefundResponse {
+    id: Option<i64>,
+}
+
+/// Estorna o pagamento mais recente ligado à assinatura (preapproval).
+/// Usado no cancelamento dentro da janela de 7 dias.
+pub async fn refund_latest_subscription_payment(
+    state: &AppState,
+    stored_id: &str,
+) -> Result<Option<String>, AppError> {
+    if stored_id.starts_with("mock-") {
+        return Ok(None);
+    }
+    let token = state
+        .mp_token
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
+
+    let preapproval_id = if let Some(plan_id) = plan_id_from_stored(stored_id) {
+        let results = search_preapprovals_for_plan(state, token, plan_id).await?;
+        let authorized = results.into_iter().find(|r| {
+            matches!(
+                r.status.as_deref(),
+                Some("authorized") | Some("paused") | Some("pending")
+            )
+        });
+        match authorized {
+            Some(r) => r.id,
+            None => return Ok(None),
+        }
+    } else {
+        stored_id.to_string()
+    };
+
+    let url = format!(
+        "https://api.mercadopago.com/authorized_payments/search?preapproval_id={preapproval_id}"
+    );
+    let resp = state
+        .http
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago authorized_payments search failed: {text}");
+        return Err(AppError::Internal("falha ao localizar cobrança da assinatura".to_string()));
+    }
+    let parsed: MpAuthorizedSearch = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago parse error: {e}")))?;
+
+    let payment_id = parsed.results.unwrap_or_default().into_iter().find_map(|ap| {
+        let ok = matches!(
+            ap.status
+                .as_deref()
+                .or(ap.payment.as_ref().and_then(|p| p.status.as_deref())),
+            Some("approved") | Some("authorized") | Some("processed")
+        );
+        if !ok {
+            return None;
+        }
+        ap.payment
+            .as_ref()
+            .and_then(|p| p.id)
+            .or(ap.id)
+            .map(|id| id.to_string())
+    });
+
+    let Some(payment_id) = payment_id else {
+        return Ok(None);
+    };
+
+    let refund_url = format!("https://api.mercadopago.com/v1/payments/{payment_id}/refunds");
+    let resp = state
+        .http
+        .post(&refund_url)
+        .bearer_auth(token)
+        .json(&json!({}))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago refund failed: {e}")))?;
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago refund failed: {text}");
+        return Err(AppError::Internal("falha ao estornar pagamento no Mercado Pago".to_string()));
+    }
+    let refund: MpRefundResponse = resp.json().await.unwrap_or(MpRefundResponse { id: None });
+    Ok(Some(
+        refund
+            .id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| format!("refund-{payment_id}")),
+    ))
+}

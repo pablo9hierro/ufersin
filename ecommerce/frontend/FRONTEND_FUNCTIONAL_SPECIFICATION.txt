@@ -338,9 +338,14 @@ Navbar (vitrine uiux2/3/4 + SiteHeader):
   empilhados e centralizados (flex-col items-center, text-center).
 - Demais páginas de cliente: bloco da marca CENTRALIZADO no navbar, com
   o mesmo empilhamento interno (logo acima, nome abaixo, text-center).
+- Ícone Favoritos no header/navbar em TODAS as páginas de cliente
+  (uiux2/3/4 + SiteHeader): logado → /cliente/favoritos; deslogado →
+  modal/menu Entrar/Criar conta.
 - Ícone de sacola/carrinho no header em TODAS as páginas de cliente
   EXCETO a Landing (`/`); abre o CartDrawer. SEM FAB flutuante.
   A aba "Sacola" da navegação inferior (e abas desktop) vai pra /checkout.
+  CTA "Finalizar compra" do CartDrawer também navega pra /checkout.
+- Contrato idêntico em demo e produção (mesmo shell/nav por layout_style).
 
 HTML obrigatórios:
 - texto do nome da loja

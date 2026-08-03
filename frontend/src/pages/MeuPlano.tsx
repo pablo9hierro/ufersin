@@ -17,6 +17,7 @@ import {
 import {
   api,
   ApiError,
+  type CancelReasonCode,
   type FormaPagamento,
   type MeResponse,
   type PlataformaPagamento,
@@ -99,10 +100,19 @@ export default function MeuPlano() {
   const [apenasRetirada, setApenasRetirada] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
   const [entregaSomentePix, setEntregaSomentePix] = useState(false)
+  const [pagamentoManual, setPagamentoManual] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [integracao, setIntegracao] = useState<IntegracaoPagamento>('mercado_pago')
   const [credencial, setCredencial] = useState('')
   const [hasCredenciais, setHasCredenciais] = useState(false)
+
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelConfirm, setCancelConfirm] = useState(false)
+  const [cancelReasons, setCancelReasons] = useState<CancelReasonCode[]>([])
+  const [competitorNote, setCompetitorNote] = useState('')
+  const [otherNote, setOtherNote] = useState('')
+  const [cancelNote, setCancelNote] = useState('')
+  const [cancelResultMsg, setCancelResultMsg] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -145,6 +155,7 @@ export default function MeuPlano() {
         setApenasRetirada(!!m.apenas_retirada)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
         setEntregaSomentePix(!!m.entrega_somente_pix)
+        setPagamentoManual(!!m.pagamento_manual)
         setVenderExternamente(m.vender_externamente !== false)
         // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
         setHasCredenciais(!!m.has_plataforma_credenciais || m.forma_pagamento === 'plataforma')
@@ -166,12 +177,14 @@ export default function MeuPlano() {
                 apenas_retirada?: boolean
                 pagamento_na_retirada?: boolean
                 entrega_somente_pix?: boolean
+                pagamento_manual?: boolean
                 vende_mais_18?: boolean
                 vender_externamente?: boolean
               }
               if (typeof row.apenas_retirada === 'boolean') setApenasRetirada(row.apenas_retirada)
               if (typeof row.pagamento_na_retirada === 'boolean') setPagamentoNaRetirada(row.pagamento_na_retirada)
               if (typeof row.entrega_somente_pix === 'boolean') setEntregaSomentePix(row.entrega_somente_pix)
+              if (typeof row.pagamento_manual === 'boolean') setPagamentoManual(row.pagamento_manual)
               if (typeof row.vende_mais_18 === 'boolean') setVendeMais18(row.vende_mais_18)
               if (typeof row.vender_externamente === 'boolean') setVenderExternamente(row.vender_externamente)
             }
@@ -223,16 +236,49 @@ export default function MeuPlano() {
   }
 
   const handleCancelar = async () => {
-    if (!confirm('Tem certeza que quer cancelar sua assinatura?')) return
+    if (!cancelConfirm) {
+      setError('Marque "Quer realmente cancelar?" para continuar.')
+      return
+    }
+    if (cancelReasons.length === 0) {
+      setError('Selecione pelo menos um motivo do cancelamento.')
+      return
+    }
+    if (cancelReasons.includes('other') && !otherNote.trim()) {
+      setError('Descreva o motivo em "Outro".')
+      return
+    }
     setBusyPlano(true)
+    setError(null)
+    setCancelResultMsg(null)
     try {
-      await api.cancelar()
+      const res = await api.cancelar({
+        confirm: true,
+        reasons: cancelReasons,
+        competitor_note: cancelReasons.includes('found_better') ? competitorNote.trim() || undefined : undefined,
+        other_note: cancelReasons.includes('other') ? otherNote.trim() || undefined : undefined,
+        note: cancelNote.trim() || undefined,
+      })
       setMe((prev) => (prev ? { ...prev, status: 'cancelado' } : prev))
+      setCancelOpen(false)
+      if (res.refund_status === 'refunded') {
+        setCancelResultMsg('Assinatura cancelada. Estorno automático enviado ao pagador via Mercado Pago.')
+      } else if (res.refund_eligible && res.refund_status === 'refund_failed') {
+        setCancelResultMsg('Assinatura cancelada, mas o estorno automático falhou — fale com o suporte.')
+      } else if (res.refund_eligible) {
+        setCancelResultMsg('Assinatura cancelada. Não havia cobrança localizável para estornar automaticamente.')
+      } else {
+        setCancelResultMsg('Assinatura cancelada. Fora da janela de 7 dias — sem estorno automático.')
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível cancelar.')
     } finally {
       setBusyPlano(false)
     }
+  }
+
+  const toggleCancelReason = (code: CancelReasonCode) => {
+    setCancelReasons((prev) => (prev.includes(code) ? prev.filter((r) => r !== code) : [...prev, code]))
   }
 
   const saveOnboarding = async (fields: Parameters<typeof api.editarOnboarding>[0]) => {
@@ -251,6 +297,7 @@ export default function MeuPlano() {
         fields.apenas_retirada != null ||
         fields.pagamento_na_retirada != null ||
         fields.entrega_somente_pix != null ||
+        fields.pagamento_manual != null ||
         fields.vende_mais_18 != null ||
         fields.vender_externamente != null
       ) {
@@ -260,6 +307,7 @@ export default function MeuPlano() {
           p_vender_externamente: fields.vender_externamente ?? null,
           p_pagamento_na_retirada: fields.pagamento_na_retirada ?? null,
           p_entrega_somente_pix: fields.entrega_somente_pix ?? null,
+          p_pagamento_manual: fields.pagamento_manual ?? null,
         })
         if (prefsErr) console.warn('set_my_sale_prefs:', prefsErr.message)
       }
@@ -356,6 +404,7 @@ export default function MeuPlano() {
       apenas_retirada: apenasRetirada,
       pagamento_na_retirada: pagamentoNaRetirada,
       entrega_somente_pix: entregaSomentePix,
+      pagamento_manual: pagamentoManual,
     })
   }
 
@@ -393,7 +442,12 @@ export default function MeuPlano() {
           <div className="grid sm:grid-cols-3 gap-3">
             {plansLoaded &&
               getPlans().map((p) => (
-                <Link key={p.code} to={`/assinar?plano=${p.code}`} className="uf-glass uf-glass-hover rounded-2xl p-4 block">
+                <Link
+                  key={p.code}
+                  to={`/assinar?plano=${p.code}`}
+                  className="uf-glass uf-glass-hover rounded-2xl p-4 block"
+                  data-testid={`plan-cta-${p.code}`}
+                >
                   <p className="font-bold text-sm">{p.name}</p>
                   <p className="text-lg font-black uf-text mt-1">R$ {formatBRL(p.price)}/mês</p>
                 </Link>
@@ -465,33 +519,12 @@ export default function MeuPlano() {
 
           {error && <p className="error-msg mb-4">{error}</p>}
           {saved && <p className="text-sm text-emerald-400 mb-4">Salvo!</p>}
+          {cancelResultMsg && <p className="text-sm text-emerald-400 mb-4">{cancelResultMsg}</p>}
 
           {tab === 'plano' && me.plano && (
             <div className="space-y-4">
-              <section className="uf-glass rounded-2xl p-6">
-                <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
-                  <Sparkles className="w-4 h-4" /> {planMap[me.plano]?.name ?? planDisplayName(me.plano)}
-                </h2>
-                <p className="text-sm text-uf-silver-dim mb-1">
-                  Status: <span className="text-uf-silver">{me.status}</span>
-                </p>
-                <p className="text-2xl font-black mb-1">R$ {formatBRL(me.valor_mensal ?? planMap[me.plano]?.price ?? 0)}/mês</p>
-                {me.billing_cycle === 'semestral' && (
-                  <p className="text-xs text-uf-silver-dim mb-4">
-                    Ciclo semestral · R$ {formatBRL(priceForCycle(me.valor_mensal ?? 0, 'semestral'))} por período
-                  </p>
-                )}
-                {me.coupon_code && <p className="text-xs text-emerald-400 mb-4">Cupom ativo: {me.coupon_code}</p>}
-                {me.status !== 'cancelado' && (
-                  <button onClick={handleCancelar} disabled={busyPlano} className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    Cancelar assinatura
-                  </button>
-                )}
-              </section>
-
               {hasActiveSub && (
-                <form onSubmit={handleSavePreferenciasVenda} className="uf-glass rounded-2xl p-6 space-y-4">
+                <form onSubmit={handleSavePreferenciasVenda} className="uf-glass rounded-2xl p-6 space-y-4" data-testid="preferencias-venda">
                   <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Preferências de venda</h2>
                   <p className="text-xs text-uf-silver-dim">
                     Defina se a loja vende pro público externo, se exige verificação 18+ no checkout e se aceita só retirada.
@@ -502,6 +535,7 @@ export default function MeuPlano() {
                       checked={venderExternamente}
                       onChange={(e) => setVenderExternamente(e.target.checked)}
                       className="w-4 h-4 mt-0.5"
+                      data-testid="pref-vender-externamente"
                     />
                     <span className="text-xs text-uf-silver-dim">
                       <span className="block text-uf-silver font-semibold mb-0.5">
@@ -517,6 +551,7 @@ export default function MeuPlano() {
                       checked={vendeMais18}
                       onChange={(e) => setVendeMais18(e.target.checked)}
                       className="w-4 h-4 mt-0.5"
+                      data-testid="pref-vende-mais-18"
                     />
                     <span className="text-xs text-uf-silver-dim">
                       <span className="block text-uf-silver font-semibold mb-0.5">
@@ -531,6 +566,7 @@ export default function MeuPlano() {
                       checked={apenasRetirada}
                       onChange={(e) => setApenasRetirada(e.target.checked)}
                       className="w-4 h-4 mt-0.5"
+                      data-testid="pref-apenas-retirada"
                     />
                     <span className="text-xs text-uf-silver-dim">
                       <span className="block text-uf-silver font-semibold mb-0.5">
@@ -545,6 +581,7 @@ export default function MeuPlano() {
                       checked={pagamentoNaRetirada}
                       onChange={(e) => setPagamentoNaRetirada(e.target.checked)}
                       className="w-4 h-4 mt-0.5"
+                      data-testid="pref-pagamento-na-retirada"
                     />
                     <span className="text-xs text-uf-silver-dim">
                       <span className="block text-uf-silver font-semibold mb-0.5">
@@ -560,6 +597,7 @@ export default function MeuPlano() {
                       checked={entregaSomentePix}
                       onChange={(e) => setEntregaSomentePix(e.target.checked)}
                       className="w-4 h-4 mt-0.5"
+                      data-testid="pref-entrega-somente-pix"
                     />
                     <span className="text-xs text-uf-silver-dim">
                       <span className="block text-uf-silver font-semibold mb-0.5">
@@ -568,12 +606,174 @@ export default function MeuPlano() {
                       Entrega só com Pix já pago online. Cartão e dinheiro ficam só para retirada na loja.
                     </span>
                   </label>
-                  <button type="submit" disabled={saving} className="btn-primary w-full py-3">
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={pagamentoManual}
+                      onChange={(e) => setPagamentoManual(e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                      data-testid="pref-pagamento-manual"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">
+                        Ativar modo pagamento manual
+                      </span>
+                      PDV, retirada, entrega, vendedor e checkout usam confirmação manual (sem QR Pix).
+                      Desmarque pra voltar ao Pix online quando houver credenciais de plataforma.
+                    </span>
+                  </label>
+                  <button type="submit" disabled={saving} className="btn-primary w-full py-3" data-testid="salvar-preferencias">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Salvar preferências
                   </button>
                 </form>
               )}
+
+              <section className="uf-glass rounded-2xl p-6" data-testid="meu-plano-atual">
+                <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
+                  <Sparkles className="w-4 h-4" /> {planMap[me.plano]?.name ?? planDisplayName(me.plano)}
+                </h2>
+                <p className="text-sm text-uf-silver-dim mb-1">
+                  Status: <span className="text-uf-silver">{me.status}</span>
+                </p>
+                <p className="text-2xl font-black mb-1">R$ {formatBRL(me.valor_mensal ?? planMap[me.plano]?.price ?? 0)}/mês</p>
+                {me.billing_cycle === 'semestral' && (
+                  <p className="text-xs text-uf-silver-dim mb-4">
+                    Ciclo semestral · R$ {formatBRL(priceForCycle(me.valor_mensal ?? 0, 'semestral'))} por período
+                  </p>
+                )}
+                {me.coupon_code && <p className="text-xs text-emerald-400 mb-4">Cupom ativo: {me.coupon_code}</p>}
+                <p className="text-xs text-uf-silver-dim mb-4">
+                  Você pode cancelar a qualquer momento (mês pré-pago).
+                  {me.refund_eligible_on_cancel
+                    ? ' Dentro de 7 dias do início da assinatura, o cancelamento gera estorno automático via Mercado Pago.'
+                    : ' Já passou a janela de 7 dias — cancelar não gera estorno automático.'}
+                </p>
+                {me.status !== 'cancelado' && !cancelOpen && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCancelOpen(true)
+                      setCancelConfirm(false)
+                      setCancelReasons([])
+                      setCompetitorNote('')
+                      setOtherNote('')
+                      setCancelNote('')
+                      setError(null)
+                    }}
+                    disabled={busyPlano}
+                    className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20"
+                    data-testid="abrir-cancelar-assinatura"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Cancelar assinatura
+                  </button>
+                )}
+                {me.status !== 'cancelado' && cancelOpen && (
+                  <div className="mt-4 space-y-3 border-t border-white/10 pt-4" data-testid="cancelar-assinatura-form">
+                    <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={cancelConfirm}
+                        onChange={(e) => setCancelConfirm(e.target.checked)}
+                        className="w-4 h-4 mt-0.5"
+                        data-testid="cancel-confirm"
+                      />
+                      <span className="text-sm text-uf-silver font-semibold">Quer realmente cancelar?</span>
+                    </label>
+
+                    <p className="text-xs text-uf-silver-dim">Motivo (pode marcar mais de um):</p>
+
+                    <label className="uf-glass rounded-xl px-3 py-2.5 flex flex-col gap-2 cursor-pointer">
+                      <span className="flex items-start gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={cancelReasons.includes('unexpected')}
+                          onChange={() => toggleCancelReason('unexpected')}
+                          className="w-4 h-4 mt-0.5"
+                        />
+                        <span className="text-xs text-uf-silver">O sistema não era aquilo que eu esperava :(</span>
+                      </span>
+                      {cancelReasons.includes('unexpected') && (
+                        <textarea
+                          className="input-field text-xs min-h-[4rem]"
+                          placeholder="Complemento opcional"
+                          value={cancelNote}
+                          onChange={(e) => setCancelNote(e.target.value)}
+                        />
+                      )}
+                    </label>
+
+                    <label className="uf-glass rounded-xl px-3 py-2.5 flex flex-col gap-2 cursor-pointer">
+                      <span className="flex items-start gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={cancelReasons.includes('found_better')}
+                          onChange={() => toggleCancelReason('found_better')}
+                          className="w-4 h-4 mt-0.5"
+                        />
+                        <span className="text-xs text-uf-silver">Encontrei outro sistema melhor/mais barato</span>
+                      </span>
+                      {cancelReasons.includes('found_better') && (
+                        <input
+                          className="input-field text-xs"
+                          placeholder="Qual sistema? (opcional)"
+                          value={competitorNote}
+                          onChange={(e) => setCompetitorNote(e.target.value)}
+                        />
+                      )}
+                    </label>
+
+                    <label className="uf-glass rounded-xl px-3 py-2.5 flex flex-col gap-2 cursor-pointer">
+                      <span className="flex items-start gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={cancelReasons.includes('other')}
+                          onChange={() => toggleCancelReason('other')}
+                          className="w-4 h-4 mt-0.5"
+                        />
+                        <span className="text-xs text-uf-silver">Outro</span>
+                      </span>
+                      {cancelReasons.includes('other') && (
+                        <textarea
+                          className="input-field text-xs min-h-[4rem]"
+                          placeholder="Descreva o motivo"
+                          value={otherNote}
+                          onChange={(e) => setOtherNote(e.target.value)}
+                          required
+                        />
+                      )}
+                    </label>
+
+                    <p className="text-xs text-uf-silver-dim">
+                      {me.refund_eligible_on_cancel
+                        ? 'Este cancelamento está na janela de 7 dias: haverá tentativa de estorno automático no Mercado Pago.'
+                        : 'Este cancelamento está fora da janela de 7 dias: sem estorno automático.'}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCancelar}
+                        disabled={busyPlano}
+                        className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20"
+                        data-testid="confirmar-cancelamento"
+                      >
+                        {busyPlano ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                        Confirmar cancelamento
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCancelOpen(false)}
+                        disabled={busyPlano}
+                        className="btn-ghost text-xs px-3 py-2"
+                      >
+                        Voltar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
             </div>
           )}
 
@@ -773,5 +973,6 @@ function mapFieldsToMe(prev: MeResponse, fields: Parameters<typeof api.editarOnb
   if (fields.apenas_retirada != null) patch.apenas_retirada = fields.apenas_retirada
   if (fields.pagamento_na_retirada != null) patch.pagamento_na_retirada = fields.pagamento_na_retirada
   if (fields.entrega_somente_pix != null) patch.entrega_somente_pix = fields.entrega_somente_pix
+  if (fields.pagamento_manual != null) patch.pagamento_manual = fields.pagamento_manual
   return { ...prev, ...patch }
 }

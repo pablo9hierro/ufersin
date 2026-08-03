@@ -18,7 +18,9 @@
     "test:admin:api": "vitest run src/__tests__/admin/api",
     "test:admin:flow": "vitest run src/__tests__/admin/flow",
     "test:admin:schema": "vitest run src/__tests__/admin/schema",
-    "test:admin:smoke": "node src/__tests__/admin/smoke/admin-smoke.mjs"
+    "test:admin:smoke": "node src/__tests__/admin/smoke/admin-smoke.mjs",
+    "test:pablo-hierro": "node tests/e2e-pablo-hierro.mjs",
+    "test:pablo-hierro:e2e": "node tests/e2e-pablo-hierro.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",

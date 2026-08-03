@@ -11,6 +11,7 @@ ALTER TABLE IF EXISTS resolutoo.subscribers
   ADD COLUMN IF NOT EXISTS apenas_retirada boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS pagamento_na_retirada boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS entrega_somente_pix boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS pagamento_manual boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS landing_headline text,
   ADD COLUMN IF NOT EXISTS landing_sub text,
   ADD COLUMN IF NOT EXISTS landing_badge text,
@@ -43,6 +44,7 @@ AS $$
     'apenas_retirada', coalesce(apenas_retirada, false),
     'pagamento_na_retirada', coalesce(pagamento_na_retirada, false),
     'entrega_somente_pix', coalesce(entrega_somente_pix, false),
+    'pagamento_manual', coalesce(pagamento_manual, false),
     'logo_url', logo_url,
     'landing_headline', landing_headline,
     'landing_sub', landing_sub,
@@ -88,7 +90,8 @@ CREATE OR REPLACE FUNCTION resolutoo.set_my_sale_prefs(
   p_vende_mais_18 boolean DEFAULT NULL,
   p_vender_externamente boolean DEFAULT NULL,
   p_pagamento_na_retirada boolean DEFAULT NULL,
-  p_entrega_somente_pix boolean DEFAULT NULL
+  p_entrega_somente_pix boolean DEFAULT NULL,
+  p_pagamento_manual boolean DEFAULT NULL
 )
 RETURNS json
 LANGUAGE plpgsql
@@ -102,6 +105,7 @@ DECLARE
   v_ext boolean;
   v_pag_ret boolean;
   v_ent_pix boolean;
+  v_pag_man boolean;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'não autenticado';
@@ -113,10 +117,11 @@ BEGIN
     vender_externamente = COALESCE(p_vender_externamente, vender_externamente),
     pagamento_na_retirada = COALESCE(p_pagamento_na_retirada, pagamento_na_retirada),
     entrega_somente_pix = COALESCE(p_entrega_somente_pix, entrega_somente_pix),
+    pagamento_manual = COALESCE(p_pagamento_manual, pagamento_manual),
     updated_at = now()
   WHERE id = auth.uid()::text
-  RETURNING slug, apenas_retirada, vende_mais_18, vender_externamente, pagamento_na_retirada, entrega_somente_pix
-    INTO v_slug, v_apenas, v_mais18, v_ext, v_pag_ret, v_ent_pix;
+  RETURNING slug, apenas_retirada, vende_mais_18, vender_externamente, pagamento_na_retirada, entrega_somente_pix, pagamento_manual
+    INTO v_slug, v_apenas, v_mais18, v_ext, v_pag_ret, v_ent_pix, v_pag_man;
   IF v_slug IS NULL THEN
     RAISE EXCEPTION 'assinante não encontrado';
   END IF;
@@ -127,6 +132,7 @@ BEGIN
     'vender_externamente', v_ext,
     'pagamento_na_retirada', v_pag_ret,
     'entrega_somente_pix', v_ent_pix,
+    'pagamento_manual', v_pag_man,
     'updated', true
   );
 END;
@@ -138,4 +144,5 @@ GRANT EXECUTE ON FUNCTION resolutoo.set_my_layout_style(text) TO authenticated, 
 -- Drop prior overloads, then grant current signature.
 DROP FUNCTION IF EXISTS resolutoo.set_my_sale_prefs(boolean, boolean, boolean);
 DROP FUNCTION IF EXISTS resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean);
-GRANT EXECUTE ON FUNCTION resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean, boolean) TO authenticated, service_role;
+DROP FUNCTION IF EXISTS resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean, boolean);
+GRANT EXECUTE ON FUNCTION resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean, boolean, boolean) TO authenticated, service_role;
