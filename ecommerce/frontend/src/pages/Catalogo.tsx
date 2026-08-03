@@ -4,7 +4,6 @@ import { LayoutGrid, List, Loader2, Minus, Package, Plus, Search, X } from 'luci
 import { AnimatePresence, motion } from 'framer-motion'
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
-import CartFab from '../components/CartFab'
 import ProductDetailModal, { OutOfStockRibbon, PromoPriceBlock, PromoRibbon, currency } from '../components/ProductDetailModal'
 import FavoriteHeartButton from '../components/FavoriteHeartButton'
 import ConfirmRemoveDialog from '../components/ConfirmRemoveDialog'
@@ -358,8 +357,7 @@ export default function Catalogo() {
 
   return (
     <main className="min-h-screen text-white">
-      <SiteHeader showCart={false} />
-      <CartFab />
+      <SiteHeader />
       <PageTransition className="max-w-6xl mx-auto px-5 sm:px-10 pt-6 pb-16">
         {/* From Uiverse.io by devkatyall — cores trocadas pra paleta sunset.
             O fundo opaco do input some (!bg-transparent) pra deixar o

@@ -9,9 +9,9 @@ import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { persistTenantSlug, resolveTenantSlug } from '../../lib/tenantConfig'
 
 // Mesmo navbar de /catalogo (moldura sunset-nav-bar), só que com
-// conteúdo próprio da landing: menu / nome da marca no estilo
-// Uiverse.io by Cornerstone-04 (glow em loop contínuo, como já era) /
-// WhatsApp (movido do FAB fixo pra dentro do navbar).
+// conteúdo próprio da landing: menu + brand à esquerda (logo/nome
+// empilhados e centralizados no bloco) / WhatsApp à direita.
+// Sem ícone de sacola na Landing.
 export default function BrandHeader() {
   const navigate = useNavigate()
   const customerAuth = useCustomerAuth()
@@ -29,7 +29,7 @@ export default function BrandHeader() {
   return (
     <header className="px-5 sm:px-10 pt-5 max-w-6xl mx-auto">
       <div className="sunset-nav-bar">
-        <div className="sunset-nav-slot sunset-nav-slot-start">
+        <div className="sunset-nav-slot sunset-nav-slot-start gap-2">
           <div className="relative">
             {menuOpen && <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
             {customerAuth.token ? (
@@ -145,12 +145,15 @@ export default function BrandHeader() {
               </>
             )}
           </div>
-        </div>
-        <div className="sunset-nav-slot sunset-nav-slot-center">
-          <div className="sunset-brand-btn">
-            <span>{name}</span>
+          {/* Landing: brand container stays LEFT; inner stack centered. */}
+          <div className="sunset-brand-btn flex flex-col items-center gap-0.5 text-center ml-1">
+            {tenantConfig?.logo_url ? (
+              <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover" />
+            ) : null}
+            <span className="text-center">{name}</span>
           </div>
         </div>
+        <div className="sunset-nav-slot sunset-nav-slot-center" aria-hidden="true" />
         <div className="sunset-nav-slot sunset-nav-slot-end">
           <WhatsAppFab inline />
         </div>

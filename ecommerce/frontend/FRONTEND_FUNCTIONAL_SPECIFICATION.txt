@@ -333,12 +333,14 @@ isso é 100% do Design System escolhido.
 --------------------------------------------------------------------------------
 / (Landing)
 --------------------------------------------------------------------------------
-Navbar (vitrine uiux2/3/4):
-- logo + nome da loja alinhados à ESQUERDA no header (só na Landing);
-  nas demais páginas de cliente o brand fica centralizado.
-- SEM botão de sacola/carrinho no header e SEM FAB flutuante de carrinho;
-  a aba "Sacola" da navegação inferior (e abas desktop) vai pra /checkout;
-  o drawer da sacola ainda abre via "Ver sacola" / adicionar produto.
+Navbar (vitrine uiux2/3/4 + SiteHeader):
+- Landing (`/`): bloco da marca fica à ESQUERDA; dentro dele logo e nome
+  empilhados e centralizados (flex-col items-center, text-center).
+- Demais páginas de cliente: bloco da marca CENTRALIZADO no navbar, com
+  o mesmo empilhamento interno (logo acima, nome abaixo, text-center).
+- Ícone de sacola/carrinho no header em TODAS as páginas de cliente
+  EXCETO a Landing (`/`); abre o CartDrawer. SEM FAB flutuante.
+  A aba "Sacola" da navegação inferior (e abas desktop) vai pra /checkout.
 
 HTML obrigatórios:
 - texto do nome da loja
@@ -480,9 +482,9 @@ HTML obrigatórios:
 - em cada card: texto do número da quantidade (quando já no carrinho)
 - em cada card: botão de aumentar quantidade (quando já no carrinho)
 - em cada card: texto "Esgotado" (quando sem estoque)
-- (removido) botão flutuante de carrinho / ícone #cart-icon no header/FAB —
-  sacola só via navegação "Sacola" → /checkout ou drawer ao adicionar/"Ver sacola"
-- painel lateral (drawer) da sacola (abre ao adicionar produto ou "Ver sacola")
+- botão/ícone de sacola no header (abre CartDrawer; ausente só na Landing)
+- painel lateral (drawer) da sacola (abre pelo ícone do header, ao
+  adicionar produto ou "Ver sacola") — SEM FAB flutuante de carrinho
 - dentro do drawer: lista de itens, controles +/- / remover, texto do total,
   botão "Finalizar compra"
 - modal de detalhe do produto (toggle que abre ao clicar no card)
@@ -562,11 +564,12 @@ Dinâmicas obrigatórias entre os HTML:
 - Clicar no botão de fechar do modal, ou clicar fora do card do modal,
   fecha o modal — nenhuma alteração já feita (favorito, quantidade) é
   desfeita ao fechar.
-- O drawer da sacola abre ao clicar em "Ver sacola" (ou ao fluxo de
-  adicionar que chama openDrawer). Header cart e FAB flutuante foram
-  removidos. A aba/botão "Sacola" da navegação inferior (e abas desktop
-  equivalentes) navega pra /checkout com os itens atuais do carrinho
-  (ou empty-state se vazio).
+- O drawer da sacola abre pelo ícone de sacola do header (em qualquer
+  página de cliente exceto a Landing), por "Ver sacola", ou ao fluxo de
+  adicionar que chama openDrawer. Não há FAB flutuante de carrinho. A
+  aba/botão "Sacola" da navegação inferior (e abas desktop equivalentes)
+  navega pra /checkout com os itens atuais do carrinho (ou empty-state
+  se vazio).
 - Dentro do drawer: +/- e remover atualizam o carrinho local na hora e
   recalculam o total; clicar em "Finalizar compra" fecha o drawer e
   navega pra /checkout.
@@ -619,9 +622,10 @@ Dinâmicas obrigatórias entre os HTML:
 --------------------------------------------------------------------------------
 /carrinho
 --------------------------------------------------------------------------------
-Nota: a revisão da sacola no drawer continua via "Ver sacola" / openDrawer
-ao adicionar (header cart e FAB removidos). A rota /carrinho continua funcional
-(lista + total + "Continuar para o checkout") como fallback/legado.
+Nota: a revisão da sacola no drawer continua via ícone do header (exceto
+Landing), "Ver sacola" / openDrawer ao adicionar. A rota /carrinho
+continua funcional (lista + total + "Continuar para o checkout") como
+fallback/legado. Não há FAB flutuante.
 A aba "Sacola" da navegação inferior NÃO aponta mais pra /carrinho —
 aponta pra /checkout.
 
@@ -2227,8 +2231,11 @@ seu comportamento devem ser preservados 1:1.
     página inicial (Link → /).
   OBRIGATÓRIO: logo vem de upload de imagem em /meu-plano/layout
     (`logo_url` no tenant-config). No header dos Shells (uiux2/3/4) e
-    SiteHeader, a marca é EMPILHADA e CENTRALIZADA: logo ACIMA, nome da
-    loja ABAIXO (não lado a lado). Sem logo, só o nome (centralizado).
+    SiteHeader, a marca é EMPILHADA: logo ACIMA, nome da loja ABAIXO,
+    com alinhamento interno centralizado (flex-col items-center,
+    text-center). Na Landing o container do brand fica à esquerda do
+    navbar; nas demais páginas o bloco fica centralizado no navbar.
+    Sem logo, só o nome (centralizado no stack).
   Props: size, className (Logo.tsx legado); Shells usam tenantConfig.logo_url.
 
 8.5 — WhatsAppLink (src/components/ui/WhatsAppLink.tsx)
@@ -2255,22 +2262,18 @@ seu comportamento devem ser preservados 1:1.
 8.7 — BrandHeader (cabeçalho especial só da Landing)
   Finalidade: mesma moldura visual do SiteHeader, mas com menu completo
     (Favoritos/Cupons/Histórico/Sair quando logado, ou Entrar/Criar conta
-    quando não) em vez de botão único de voltar.
+    quando não) em vez de botão único de voltar. Brand à esquerda
+    (logo empilhado + nome, items-center). SEM ícone de sacola no header.
   Estados: menuOpen, authMode.
 
-8.8 — CartFab (botão flutuante de carrinho, global)
-  Finalidade: acesso rápido à sacola em QUALQUER página de cliente
-    (/catalogo, /consultar, /cliente/favoritos, /cliente/cupons, etc.),
-    fixo no canto inferior direito, com contador de itens.
-  Estilo OBRIGATÓRIO escolhido pelo lojista em /meu-plano/layout (CMS
-    preview 1:1): `sacola` (ícone de sacola) OU `#cart-icon`
-    (SunsetCartIcon / elemento #cart-icon).
-  Se `cart_icon`: o lojista também escolhe se o ícone fica se mexendo
-    (`cart_fab_animate=true`) ou parado.
-  Decoração opcional (fumaça/fogo) só no modo cart_icon, via admin layout.
-  Estados: elements (decoração), cart_fab_style / cart_fab_animate do
-    tenant-config.
-  Eventos: clicar abre o CartDrawer (mesmo painel do ícone do header).
+8.8 — CartFab (montagem do drawer da sacola)
+  Finalidade: montar o CartDrawer nas páginas que não usam SiteHeader
+    (ou que precisam do drawer além do header), para que openDrawer
+    ("Ver sacola" / adicionar) continue funcionando. NÃO renderiza FAB
+    flutuante — o acesso rápido à sacola é o ícone do header (exceto
+    Landing) e a aba "Sacola" → /checkout.
+  Estados: nenhum próprio (delega ao CartDrawer / useCartDrawer).
+  Eventos: nenhum no wrapper; o drawer reage a openDrawer.
 
 8.8b — CartDrawer (painel lateral da sacola)
   Finalidade: revisão rápida do carrinho sem sair da página atual.
@@ -2278,7 +2281,7 @@ seu comportamento devem ser preservados 1:1.
     normal da tela, anima da direita para a esquerda; lista itens com
     +/- / remover; mostra total; botão "Finalizar compra" → /checkout
     (com tenant query). Empty-state quando sem itens. Aberto via
-    useCartDrawer (Zustand) por qualquer ícone sacola / #cart-icon / FAB.
+    useCartDrawer (Zustand) por qualquer ícone sacola do header / "Ver sacola".
   Estado: store/cartDrawer.ts (open / openDrawer / closeDrawer).
 
 8.9 — WhatsAppFab (botão flutuante ou inline de contato)

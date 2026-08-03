@@ -4,7 +4,6 @@ import { AnimatePresence } from 'framer-motion'
 import { Heart, Loader2, Package } from 'lucide-react'
 import SiteHeader from '../../components/layout/SiteHeader'
 import PageTransition from '../../components/layout/PageTransition'
-import CartFab from '../../components/CartFab'
 import ProductDetailModal, { PromoPriceBlock, PromoRibbon, currency } from '../../components/ProductDetailModal'
 import FavoriteHeartButton from '../../components/FavoriteHeartButton'
 import ConfirmRemoveDialog from '../../components/ConfirmRemoveDialog'
@@ -65,7 +64,7 @@ export default function FavoritosCliente() {
   if (!token) {
     return (
       <main className="min-h-screen text-white">
-        <SiteHeader showCart={false} />
+        <SiteHeader />
         <PageTransition className="max-w-6xl mx-auto px-5 sm:px-10 pt-6 pb-16">
           <div className="glass rounded-3xl p-4 sm:p-6 text-center py-20 text-son-silver-dim">
             <Heart className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -79,8 +78,7 @@ export default function FavoritosCliente() {
 
   return (
     <main className="min-h-screen text-white">
-      <SiteHeader showCart={false} />
-      <CartFab />
+      <SiteHeader />
       <PageTransition className="max-w-6xl mx-auto px-5 sm:px-10 pt-6 pb-16">
         <div className="glass rounded-3xl p-4 sm:p-6">
           {loading ? (

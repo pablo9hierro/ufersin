@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Loader2, Tag } from 'lucide-react'
 import SiteHeader from '../../components/layout/SiteHeader'
 import PageTransition from '../../components/layout/PageTransition'
-import CartFab from '../../components/CartFab'
 import CouponTicket from '../../components/CouponTicket'
 import CouponHistoryTicket from '../../components/CouponHistoryTicket'
 import CouponSlot from '../../components/coupon/CouponSlot'
@@ -160,8 +159,7 @@ export default function CuponsCliente() {
 
   return (
     <main className="min-h-screen text-white">
-      <SiteHeader showCart={false} />
-      <CartFab />
+      <SiteHeader />
 
       {/* Só aparece quando o cliente TEM cupom exclusivo pra resgatar --
           nada de botão morto sem função nenhuma. Fica entre o navbar e

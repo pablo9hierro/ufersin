@@ -3,7 +3,6 @@ import { useSearchParams } from '../lib/tenantRouter'
 import { Loader2, MessageCircle, Package, Search } from 'lucide-react'
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
-import CartFab from '../components/CartFab'
 import { StatusBadge } from '../components/ui/Badge'
 import DeliveryTrackingMap from '../components/map/DeliveryTrackingMap'
 import OrderCancelButton from '../components/OrderCancelButton'
@@ -68,8 +67,7 @@ export default function Consultar() {
 
   return (
     <main className="min-h-screen text-white">
-      <SiteHeader showCart={false} showProfile={false} showWhatsApp />
-      <CartFab />
+      <SiteHeader showProfile={false} showWhatsApp />
       <PageTransition className="max-w-xl mx-auto px-5 sm:px-10 pt-6 pb-20">
         <div className="flex gap-2 mb-8">
           <input

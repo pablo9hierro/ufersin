@@ -106,7 +106,7 @@ export default function Carrinho() {
 
   return (
     <main className="min-h-screen text-white">
-      <SiteHeader showCart={false} />
+      <SiteHeader />
       <PageTransition className="max-w-2xl mx-auto px-5 sm:px-10 pt-6 pb-20">
         {loading ? null : lines.length === 0 ? (
           <div className="text-center py-20 text-son-silver-dim">

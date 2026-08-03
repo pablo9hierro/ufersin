@@ -3,7 +3,6 @@ import { Navigate, useNavigate } from '../../lib/tenantRouter'
 import { Loader2, Package, RotateCcw } from 'lucide-react'
 import SiteHeader from '../../components/layout/SiteHeader'
 import PageTransition from '../../components/layout/PageTransition'
-import CartFab from '../../components/CartFab'
 import { StatusBadge } from '../../components/ui/Badge'
 import { orderService } from '../../services/orderService'
 import { productService } from '../../services/productService'
@@ -84,8 +83,7 @@ export default function HistoricoCliente() {
 
   return (
     <main className="min-h-screen text-white">
-      <SiteHeader showCart={false} />
-      <CartFab />
+      <SiteHeader />
       <PageTransition className="max-w-2xl mx-auto px-5 sm:px-10 pt-6 pb-16">
         <div className="glass rounded-3xl p-4 sm:p-6">
           {loading ? (

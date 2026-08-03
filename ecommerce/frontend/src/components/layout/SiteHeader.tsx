@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from '../../lib/tenantRouter'
 import { Heart, LogIn, UserPlus } from 'lucide-react'
+import SunsetCartIcon from '../SunsetCartIcon'
 import WhatsAppFab from '../WhatsAppFab'
 import CustomerAuthModal from '../CustomerAuthModal'
 import CartDrawer from '../CartDrawer'
+import { useCart } from '../../store/cart'
+import { useCartDrawer } from '../../store/cartDrawer'
 import { useCustomerAuth } from '../../store/customerAuth'
 import { brandName } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { persistTenantSlug, resolveTenantSlug } from '../../lib/tenantConfig'
 
-// O logo clicável (header > div > a > img) foi retirado de todas as
-// páginas de cliente a pedido — só sobra o "Voltar" do lado esquerdo.
-// Header cart / FAB removidos: sacola via bottom-nav ou /checkout; drawer
-// ainda monta pra "Ver sacola" no detalhe do produto.
+// Navbar de páginas de cliente (exceto Landing/BrandHeader): voltar |
+// marca centralizada (logo+nome) | favoritos + sacola. Ícone de sacola
+// abre o CartDrawer; sem FAB flutuante.
 export default function SiteHeader({
   showBack = true,
   showCart = true,
@@ -25,6 +27,8 @@ export default function SiteHeader({
   showWhatsApp?: boolean
 }) {
   const navigate = useNavigate()
+  const count = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
+  const openDrawer = useCartDrawer((s) => s.openDrawer)
   const customerAuth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
   const [guestMenuOpen, setGuestMenuOpen] = useState(false)
@@ -40,7 +44,7 @@ export default function SiteHeader({
   return (
     <header className="px-5 sm:px-10 pt-5 max-w-6xl mx-auto">
       {/* Uiverse.io by Zain-Muhammad — moldura de 3 abas virou a moldura
-          do navbar (voltar / nome da página / favoritos). */}
+          do navbar (voltar / marca / favoritos+sacola). */}
       <div className="sunset-nav-bar">
         <div className="sunset-nav-slot sunset-nav-slot-start">
           {showBack && (
@@ -124,6 +128,24 @@ export default function SiteHeader({
             </div>
           )}
           {showWhatsApp && <WhatsAppFab inline />}
+          {/* #cart-icon puro (sem pílula/texto). overflow-hidden + flex
+              centering: o ícone tem 140x120 nativos e sem conter isso
+              vazava da área pequena do header. */}
+          {showCart && (
+            <button
+              type="button"
+              onClick={openDrawer}
+              className="relative w-11 h-11 flex items-center justify-center overflow-hidden flex-shrink-0"
+              aria-label="Abrir sacola"
+            >
+              <SunsetCartIcon scale={0.32} />
+              {count > 0 && (
+                <span className="absolute top-0 right-0 z-10 w-5 h-5 flex items-center justify-center text-xs font-bold sunset-bg text-white rounded-full">
+                  {count}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </div>
       {showCart && <CartDrawer />}

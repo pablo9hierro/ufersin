@@ -5,7 +5,7 @@ import { useCart } from '../../store/cart'
 import { useCartDrawer } from '../../store/cartDrawer'
 import { useCustomerAuth } from '../../store/customerAuth'
 import UfersinMark from '../../components/ui/UfersinMark'
-import CartFab from '../../components/CartFab'
+import CartDrawer from '../../components/CartDrawer'
 import AuthModal from './AuthModal'
 import { brandName, isDemoModeActive } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
@@ -195,7 +195,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <CartFab />
+      <CartDrawer />
 
       <div className="max-w-5xl mx-auto">{children}</div>
 
