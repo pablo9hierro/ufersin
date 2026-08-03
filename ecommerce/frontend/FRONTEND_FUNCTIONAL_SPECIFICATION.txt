@@ -341,8 +341,10 @@ Navbar (vitrine uiux2/3/4 + SiteHeader):
 - Ícone Favoritos no header/navbar em TODAS as páginas de cliente
   (uiux2/3/4 + SiteHeader): logado → /cliente/favoritos; deslogado →
   modal/menu Entrar/Criar conta.
-- Ícone de sacola/carrinho no header em TODAS as páginas de cliente
-  EXCETO a Landing (`/`); abre o CartDrawer. SEM FAB flutuante.
+- FAB flutuante do carrinho/sacola no canto inferior ESQUERDO em TODAS
+  as páginas de cliente EXCETO a Landing (`/`); abre o CartDrawer.
+  Estilo via tenant-config `cart_fab_style` ('sacola' | 'cart_icon') e
+  `cart_fab_animate` (só cart_icon). SEM ícone de sacola no header.
   A aba "Finalizar" da navegação inferior (e abas desktop) vai pra /checkout.
   CTA "Finalizar compra" do CartDrawer também navega pra /checkout.
 - Contrato idêntico em demo e produção (mesmo shell/nav por layout_style).
@@ -500,9 +502,9 @@ HTML obrigatórios:
 - em cada card: texto do número da quantidade (quando já no carrinho)
 - em cada card: botão de aumentar quantidade (quando já no carrinho)
 - em cada card: texto "Esgotado" (quando sem estoque)
-- botão/ícone de sacola no header (abre CartDrawer; ausente só na Landing)
-- painel lateral (drawer) da sacola (abre pelo ícone do header, ao
-  adicionar produto ou "Ver sacola") — SEM FAB flutuante de carrinho
+- FAB flutuante do carrinho (canto inferior esquerdo; ausente só na Landing)
+- painel lateral (drawer) da sacola (abre pelo FAB, ao adicionar produto
+  ou "Ver sacola") — NÃO fica no header
 - dentro do drawer: lista de itens, controles +/- / remover, texto do total,
   botão "Finalizar compra"
 - modal de detalhe do produto (toggle que abre ao clicar no card)
@@ -582,12 +584,12 @@ Dinâmicas obrigatórias entre os HTML:
 - Clicar no botão de fechar do modal, ou clicar fora do card do modal,
   fecha o modal — nenhuma alteração já feita (favorito, quantidade) é
   desfeita ao fechar.
-- O drawer da sacola abre pelo ícone de sacola do header (em qualquer
-  página de cliente exceto a Landing), por "Ver sacola", ou ao fluxo de
-  adicionar que chama openDrawer. Não há FAB flutuante de carrinho. A
-  aba/botão "Finalizar" da navegação inferior (e abas desktop equivalentes)
-  navega pra /checkout com os itens atuais do carrinho (ou empty-state
-  se vazio).
+- O drawer da sacola abre pelo FAB flutuante (canto inferior esquerdo, em
+  qualquer página de cliente exceto a Landing), por "Ver sacola", ou ao
+  fluxo de adicionar que chama openDrawer. Estilo sacola|#cart_icon via
+  tenant-config. A aba/botão "Finalizar" da navegação inferior (e abas
+  desktop equivalentes) navega pra /checkout com os itens atuais do
+  carrinho (ou empty-state se vazio).
 - Dentro do drawer: +/- e remover atualizam o carrinho local na hora e
   recalculam o total; clicar em "Finalizar compra" fecha o drawer e
   navega pra /checkout.
@@ -643,7 +645,7 @@ Dinâmicas obrigatórias entre os HTML:
 Nota: a revisão da sacola no drawer continua via ícone do header (exceto
 Landing), "Ver sacola" / openDrawer ao adicionar. A rota /carrinho
 continua funcional (lista + total + "Continuar para o checkout") como
-fallback/legado. Não há FAB flutuante.
+fallback/legado. Há FAB flutuante (canto inferior esquerdo) fora da Landing.
 A aba "Finalizar" da navegação inferior NÃO aponta mais pra /carrinho —
 aponta pra /checkout.
 
@@ -2271,31 +2273,33 @@ seu comportamento devem ser preservados 1:1.
 8.6 — SiteHeader (cabeçalho padrão de página de cliente)
   Finalidade: navegação superior de toda página que NÃO é a Landing.
   Props: showBack, showCart, showProfile, showWhatsApp (todos boolean,
-    com defaults sensatos).
+    com defaults sensatos). showCart monta o CartFab/drawer (FAB no canto
+    inferior esquerdo); NÃO há ícone de sacola no header.
   Estados: guestMenuOpen, authMode (abre CustomerAuthModal quando definido).
   Comportamento: botão "Favoritos" no cabeçalho/navbar (obrigatório em
     /catalogo, /consultar e /cliente/cupons — e demais páginas de cliente
     que usam este header): logado → navega pra /cliente/favoritos;
     deslogado → abre menu/modal Entrar/Criar conta (NÃO navega pra
-    favoritos; favoritos exige login). Contador de itens do carrinho
-    reativo ao Zustand `cart`. Ícone de sacola/#cart-icon do header abre
-    o CartDrawer (não navega pra /carrinho).
+    favoritos; favoritos exige login).
 
 8.7 — BrandHeader (cabeçalho especial só da Landing)
   Finalidade: mesma moldura visual do SiteHeader, mas com menu completo
     (Favoritos/Cupons/Histórico/Sair quando logado, ou Entrar/Criar conta
     quando não) em vez de botão único de voltar. Brand à esquerda
-    (logo empilhado + nome, items-center). SEM ícone de sacola no header.
+    (logo empilhado + nome, items-center). SEM ícone de sacola no header
+    (carrinho = CartFab canto inferior esquerdo, fora da Landing).
   Estados: menuOpen, authMode.
 
-8.8 — CartFab (montagem do drawer da sacola)
-  Finalidade: montar o CartDrawer nas páginas que não usam SiteHeader
-    (ou que precisam do drawer além do header), para que openDrawer
-    ("Ver sacola" / adicionar) continue funcionando. NÃO renderiza FAB
-    flutuante — o acesso rápido à sacola é o ícone do header (exceto
-    Landing) e a aba "Finalizar" → /checkout.
-  Estados: nenhum próprio (delega ao CartDrawer / useCartDrawer).
-  Eventos: nenhum no wrapper; o drawer reage a openDrawer.
+8.8 — CartFab (FAB flutuante + drawer da sacola)
+  Finalidade: botão flutuante do carrinho no canto inferior ESQUERDO em
+    todas as páginas de cliente EXCETO a Landing (`/`). Abre o CartDrawer.
+    Estilo: tenant-config `cart_fab_style` ('sacola' | 'cart_icon') e
+    `cart_fab_animate` (bounce só em cart_icon). Decorações smoke/fire
+    do admin layout-cliente (page_key cart_icon) só no modo cart_icon.
+    Sempre monta o CartDrawer pra openDrawer ("Ver sacola" / adicionar).
+    A aba "Finalizar" → /checkout (separado do FAB).
+  Estados: lê useCart (badge), useCartDrawer, useTenantConfig, page decorations.
+  Eventos: clique no FAB → openDrawer.
 
 8.8b — CartDrawer (painel lateral da sacola)
   Finalidade: revisão rápida do carrinho sem sair da página atual.
@@ -2303,7 +2307,7 @@ seu comportamento devem ser preservados 1:1.
     normal da tela, anima da direita para a esquerda; lista itens com
     +/- / remover; mostra total; botão "Finalizar compra" → /checkout
     (com tenant query). Empty-state quando sem itens. Aberto via
-    useCartDrawer (Zustand) por qualquer ícone sacola do header / "Ver sacola".
+    useCartDrawer (Zustand) pelo FAB / "Ver sacola".
   Estado: store/cartDrawer.ts (open / openDrawer / closeDrawer).
 
 8.9 — WhatsAppFab (botão flutuante ou inline de contato)
@@ -2417,7 +2421,7 @@ ETAPA 9 — CONTRATO TÉCNICO CONSOLIDADO (invariantes de rota, RPC e regra de n
   - Textos do hero: landing_headline / landing_sub / landing_badge via
     tenant-config, editáveis no CMS preview 1:1 de /meu-plano/layout.
   - CartFab: estilo sacola|#cart_icon (+ animate) via tenant-config;
-    obrigatório nas páginas de cliente, canto inferior direito.
+    obrigatório nas páginas de cliente (exceto Landing), canto inferior esquerdo.
   - Hub lojista: rotas /meu-plano, /meu-plano/layout, /meu-plano/financeiro,
     /meu-plano/redes.
 

@@ -174,7 +174,7 @@ export default function StorefrontCmsPreview({
                 </div>
               </div>
 
-              <div className="absolute bottom-5 right-4 z-10">
+              <div className="absolute bottom-5 left-4 z-10">
                 {values.cartFabStyle === 'sacola' ? (
                   <span
                     className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
