@@ -27,7 +27,7 @@ import { FALLBACK as STORE_LOCATION } from './geo/mapa'
 import { isScheduledOpenNow } from './storeHours'
 import { useVendedorAuth } from '../store/vendedorAuth'
 import { useMotoboyAuth } from '../store/motoboyAuth'
-import { getDemoStaffSession } from './demoMode'
+import { getDemoStaffSession, getDemoPlano, planoAtLeast } from './demoMode'
 import type {
   BadgesLayout,
   BadgesSettings,
@@ -123,9 +123,27 @@ function adminApplyTransition(order: Order, target: string, paymentConfirmed?: b
     }
     return false
   }
+  if (current === 'pedido_pronto' && target === 'entregas') {
+    if (order.delivery_type !== 'entrega') {
+      throw new ApiError(400, 'only entrega orders can move to entregas')
+    }
+    if (planoAtLeast(getDemoPlano() ?? 'essential', 'management')) {
+      throw new ApiError(403, 'entregas pelo admin só estão disponíveis em planos sem motoboy')
+    }
+    return false
+  }
   if (current === 'retiradas' && target === 'concluido') {
     if (order.delivery_type !== 'retirada') {
       throw new ApiError(400, 'only retirada orders can be concluded from retiradas')
+    }
+    return confirmPaymentIfNeeded(order.payment_method, order.payment_status, paymentConfirmed)
+  }
+  if (current === 'entregas' && target === 'concluido') {
+    if (order.delivery_type !== 'entrega') {
+      throw new ApiError(400, 'only entrega orders can be concluded from entregas')
+    }
+    if (planoAtLeast(getDemoPlano() ?? 'essential', 'management')) {
+      throw new ApiError(403, 'entregas pelo admin só estão disponíveis em planos sem motoboy')
     }
     return confirmPaymentIfNeeded(order.payment_method, order.payment_status, paymentConfirmed)
   }
@@ -2177,6 +2195,12 @@ async function adminUpdateStatus(id: string, status: string, paymentConfirmed?: 
     notifyLocal(
       order.customer_whatsapp,
       'Seu pedido está pronto! Pode vir buscar 😊 Combine o endereço pelo WhatsApp da loja.'
+    )
+  }
+  if (status === 'entregas') {
+    notifyLocal(
+      order.customer_whatsapp,
+      'Seu pedido saiu para entrega! Em breve você recebe. Qualquer dúvida, fale com a loja pelo WhatsApp.'
     )
   }
   saveDb(db)

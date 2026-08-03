@@ -303,9 +303,19 @@ BEGIN
       RAISE EXCEPTION 'only retirada orders can move to retiradas';
     END IF;
     RETURN false;
+  ELSIF p_current_status = 'pedido_pronto' AND p_target_status = 'entregas' THEN
+    IF p_delivery_type <> 'entrega' THEN
+      RAISE EXCEPTION 'only entrega orders can move to entregas';
+    END IF;
+    RETURN false;
   ELSIF p_current_status = 'retiradas' AND p_target_status = 'concluido' THEN
     IF p_delivery_type <> 'retirada' THEN
       RAISE EXCEPTION 'only retirada orders can be concluded from retiradas';
+    END IF;
+    RETURN sunset._confirm_payment_if_needed(p_payment_method, p_payment_status, p_payment_confirmed);
+  ELSIF p_current_status = 'entregas' AND p_target_status = 'concluido' THEN
+    IF p_delivery_type <> 'entrega' THEN
+      RAISE EXCEPTION 'only entrega orders can be concluded from entregas';
     END IF;
     RETURN sunset._confirm_payment_if_needed(p_payment_method, p_payment_status, p_payment_confirmed);
   ELSE

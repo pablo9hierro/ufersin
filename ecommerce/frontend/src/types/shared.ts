@@ -12,6 +12,7 @@ export const OrderStatusSchema = z.enum([
   'em_rota_de_entrega',
   'entregue',
   'retiradas',
+  'entregas',
   'concluido',
 ])
 export type OrderStatus = z.infer<typeof OrderStatusSchema>

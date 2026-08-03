@@ -3,6 +3,7 @@ import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-d
 import {
   ClipboardList,
   LogOut,
+  MapPinned,
   Megaphone,
   Package,
   Settings,
@@ -33,10 +34,20 @@ import {
   type WaVerdict,
 } from '../../lib/whatsappGate'
 
-const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requiredPlan: PlanoCode }[] = [
+type NavItem = {
+  href: string
+  label: string
+  icon: typeof ClipboardList
+  requiredPlan: PlanoCode
+  /** Hide when tenant is at least this plan (Essential-only Frete vs Management Funcionários). */
+  hideAtOrAbove?: PlanoCode
+}
+
+const NAV_ITEMS: NavItem[] = [
   { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, requiredPlan: 'essential' },
   { href: '/admin/pdv', label: 'PDV', icon: ShoppingCart, requiredPlan: 'essential' },
   { href: '/admin/produtos', label: 'Produtos', icon: Package, requiredPlan: 'essential' },
+  { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'essential', hideAtOrAbove: 'management' },
   { href: '/admin/motoboys', label: 'Funcionários', icon: Truck, requiredPlan: 'management' },
   { href: '/admin/crm', label: 'CRM', icon: Users, requiredPlan: 'premium' },
   { href: '/admin/promocoes', label: 'Promoções', icon: Megaphone, requiredPlan: 'management' },
@@ -47,6 +58,14 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof ClipboardList; requ
 function planAllows(required: PlanoCode, demo: boolean, tenantPlano: PlanoCode | undefined): boolean {
   if (demo) return planoIncludes(required)
   return planoAtLeast(tenantPlano ?? 'essential', required)
+}
+
+/** requiredPlan unlocks; hideAtOrAbove hides Essential-only items once Motoboy plans kick in. */
+function navVisible(item: NavItem, demo: boolean, tenantPlano: PlanoCode | undefined): boolean {
+  if (!planAllows(item.requiredPlan, demo, tenantPlano)) return false
+  if (!item.hideAtOrAbove) return true
+  if (demo) return !planoIncludes(item.hideAtOrAbove)
+  return !planoAtLeast(tenantPlano ?? 'essential', item.hideAtOrAbove)
 }
 
 export default function AdminLayout() {
@@ -234,10 +253,13 @@ export default function AdminLayout() {
   const currentItem =
     NAV_ITEMS.find((i) => i.href === location.pathname) ??
     NAV_ITEMS.find((i) => i.href !== '/admin' && location.pathname.startsWith(`${i.href}/`))
-  if (currentItem && !planAllows(currentItem.requiredPlan, demo, tenantPlano)) {
+  if (currentItem && !navVisible(currentItem, demo, tenantPlano)) {
     return <Navigate to="/admin/pdv" replace />
   }
-  if (location.pathname === '/admin/pedidos' && !pedidosLiberado) {
+  if (
+    (location.pathname === '/admin/pedidos' || location.pathname === '/admin/frete') &&
+    !pedidosLiberado
+  ) {
     return <Navigate to="/admin/pdv" replace />
   }
 
@@ -253,9 +275,12 @@ export default function AdminLayout() {
     navigate('/admin/login')
   }
 
-  const visibleItems = NAV_ITEMS.filter(
-    (i) => planAllows(i.requiredPlan, demo, tenantPlano) && (i.href !== '/admin/pedidos' || pedidosLiberado)
-  )
+  const visibleItems = NAV_ITEMS.filter((i) => {
+    if (!navVisible(i, demo, tenantPlano)) return false
+    // Pedidos + Frete (Essential) share venda externa — same flag as storefront.
+    if ((i.href === '/admin/pedidos' || i.href === '/admin/frete') && !pedidosLiberado) return false
+    return true
+  })
 
   const lojaLabel = tenantConfig?.loja_nome?.trim() || tenantConfig?.slug || null
 

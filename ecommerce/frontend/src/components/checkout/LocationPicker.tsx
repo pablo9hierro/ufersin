@@ -509,9 +509,9 @@ export default function LocationPicker({ initial, onClose, onConfirm }: Location
               </p>
             )}
 
-            <button onClick={confirmar} disabled={confirming || moving} className="btn-primary w-full py-3.5">
+            <button onClick={confirmar} disabled={confirming || moving || foraDoAlcance} className="btn-primary w-full py-3.5">
               {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              Confirmar localização
+              {foraDoAlcance ? 'Fora do raio de entrega' : 'Confirmar localização'}
             </button>
           </div>
         </>

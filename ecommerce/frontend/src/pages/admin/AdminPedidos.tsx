@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
 import { GripVertical, Loader2, Package } from 'lucide-react'
 import { StatusBadge } from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
 import WhatsAppLink from '../../components/ui/WhatsAppLink'
 import { ApiError } from '../../lib/apiError'
+import { planoAtLeast } from '../../lib/demoMode'
 import { adminService } from '../../services/adminService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import type { Order } from '../../types'
@@ -13,36 +14,48 @@ function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
 }
 
-const FILTERS = [
+const BASE_FILTERS = [
   { value: 'pendente', label: 'Pendentes' },
   { value: 'montando_pedido', label: 'Montando' },
   { value: 'pedido_pronto', label: 'Prontos' },
   { value: 'retiradas', label: 'Retiradas' },
-  { value: 'concluido', label: 'Concluídos' },
 ] as const
 
-// pedido_pronto's next step depends on delivery_type: retirada orders move to
-// 'retiradas' (admin handles the pickup handoff); entrega orders have no admin
-// action here — the motoboy takes over via the fila.
-function nextStatusFor(order: Order): string | null {
+const ENTREGAS_FILTER = { value: 'entregas', label: 'Entregas' } as const
+const CONCLUIDO_FILTER = { value: 'concluido', label: 'Concluídos' } as const
+
+type FilterValue =
+  | (typeof BASE_FILTERS)[number]['value']
+  | typeof ENTREGAS_FILTER.value
+  | typeof CONCLUIDO_FILTER.value
+
+/** Essential (no Motoboy): delivery prontos go to admin Entregas.
+ *  Management/Premium: delivery stays for the motoboy queue. */
+function nextStatusFor(order: Order, adminDelivery: boolean): string | null {
   switch (order.status) {
     case 'pendente':
       return 'montando_pedido'
     case 'montando_pedido':
       return 'pedido_pronto'
     case 'pedido_pronto':
-      return order.delivery_type === 'retirada' ? 'retiradas' : null
+      if (order.delivery_type === 'retirada') return 'retiradas'
+      if (order.delivery_type === 'entrega' && adminDelivery) return 'entregas'
+      return null
     case 'retiradas':
+      return 'concluido'
+    case 'entregas':
       return 'concluido'
     default:
       return null
   }
 }
+
 const NEXT_LABEL: Record<string, string> = {
   pendente: 'Montar pedido',
   montando_pedido: 'Marcar pronto',
   pedido_pronto: 'Pronto pra retirada',
   retiradas: 'Concluir retirada',
+  entregas: 'Marcar entregue',
 }
 
 function OrderCard({
@@ -50,23 +63,30 @@ function OrderCard({
   busyId,
   advance,
   manualPaymentMode,
+  adminDelivery,
 }: {
   order: Order
   busyId: string | null
   advance: (order: Order, requirePayment: boolean) => void
   manualPaymentMode: boolean
+  adminDelivery: boolean
 }) {
   const dragControls = useDragControls()
-  const next = nextStatusFor(order)
+  const next = nextStatusFor(order, adminDelivery)
   const canAdvance = !!next
-  // Retirada com pagamento não-Pix sempre exige confirmação manual (é
-  // uma entrega física em mãos, independe da config da loja). Onboarding
-  // marcado como "cobrança manual" (sem plataforma de Pix cadastrada)
-  // estende essa mesma confirmação pra QUALQUER pedido ainda não pago,
-  // não só retirada -- é o lojista que cobra/recebe por conta própria em
-  // todos os casos, então toda venda precisa da baixa manual dele.
+  // Retirada/entrega com pagamento não-Pix sempre exige confirmação manual
+  // (entrega física em mãos / cobrada offline). Onboarding "cobrança manual"
+  // (sem Pix de plataforma) estende a mesma confirmação pra QUALQUER pedido
+  // ainda não pago.
   const requiresPaymentConfirm =
-    order.payment_status !== 'pago' && (manualPaymentMode || (order.status === 'retiradas' && order.payment_method !== 'pix'))
+    order.payment_status !== 'pago' &&
+    (manualPaymentMode ||
+      ((order.status === 'retiradas' || order.status === 'entregas') && order.payment_method !== 'pix'))
+
+  const actionLabel =
+    order.status === 'pedido_pronto' && order.delivery_type === 'entrega' && adminDelivery
+      ? 'Pronto pra entrega'
+      : NEXT_LABEL[order.status]
 
   return (
     <Reorder.Item value={order} dragListener={false} dragControls={dragControls}>
@@ -109,10 +129,10 @@ function OrderCard({
             className="btn-secondary w-full text-sm py-2"
           >
             {busyId === order.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-            {NEXT_LABEL[order.status]}
+            {actionLabel}
           </button>
         )}
-        {order.status === 'pedido_pronto' && order.delivery_type === 'entrega' && (
+        {order.status === 'pedido_pronto' && order.delivery_type === 'entrega' && !adminDelivery && (
           <p className="text-xs text-son-silver-dim text-center">Aguardando motoboy</p>
         )}
       </Card>
@@ -123,8 +143,18 @@ function OrderCard({
 export default function AdminPedidos() {
   const tenantConfig = useTenantConfig()
   const manualPaymentMode = tenantConfig?.forma_pagamento === 'manual'
+  // Motoboy is Management+; Essential merchants arrange delivery themselves.
+  const adminDelivery = !planoAtLeast(tenantConfig?.plano ?? 'essential', 'management')
+  const filters = useMemo(
+    () =>
+      adminDelivery
+        ? [...BASE_FILTERS, ENTREGAS_FILTER, CONCLUIDO_FILTER]
+        : [...BASE_FILTERS, CONCLUIDO_FILTER],
+    [adminDelivery]
+  )
+
   const [orders, setOrders] = useState<Order[]>([])
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]['value']>('pendente')
+  const [filter, setFilter] = useState<FilterValue>('pendente')
   const [loading, setLoading] = useState(true)
   const [confirmingOrder, setConfirmingOrder] = useState<Order | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -141,17 +171,21 @@ export default function AdminPedidos() {
   useEffect(load, [])
 
   useEffect(() => {
+    if (!adminDelivery && filter === 'entregas') setFilter('pendente')
+  }, [adminDelivery, filter])
+
+  useEffect(() => {
     setVisible(orders.filter((o) => o.status === filter))
   }, [orders, filter])
 
-  const counts = Object.fromEntries(FILTERS.map((f) => [f.value, orders.filter((o) => o.status === f.value).length]))
+  const counts = Object.fromEntries(filters.map((f) => [f.value, orders.filter((o) => o.status === f.value).length]))
 
   const advance = async (order: Order, requirePayment: boolean) => {
     if (requirePayment) {
       setConfirmingOrder(order)
       return
     }
-    const next = nextStatusFor(order)
+    const next = nextStatusFor(order, adminDelivery)
     if (!next) return
     setError(null)
     setBusyId(order.id)
@@ -170,7 +204,7 @@ export default function AdminPedidos() {
 
   const confirmPayment = async () => {
     if (!confirmingOrder) return
-    const next = nextStatusFor(confirmingOrder)
+    const next = nextStatusFor(confirmingOrder, adminDelivery)
     if (!next) return
     setError(null)
     setBusyId(confirmingOrder.id)
@@ -185,6 +219,8 @@ export default function AdminPedidos() {
     }
   }
 
+  const confirmingIsEntrega = confirmingOrder?.status === 'entregas'
+
   return (
     <div>
       <h1 className="text-2xl font-black mb-6">Pedidos</h1>
@@ -192,7 +228,7 @@ export default function AdminPedidos() {
       {error && <p className="error-msg mb-4">{error}</p>}
 
       <div className="flex gap-2 overflow-x-auto pb-1 mb-6 scrollbar-hide">
-        {FILTERS.map((f) => (
+        {filters.map((f) => (
           <button
             key={f.value}
             onClick={() => setFilter(f.value)}
@@ -217,7 +253,14 @@ export default function AdminPedidos() {
       ) : (
         <Reorder.Group axis="y" values={visible} onReorder={setVisible} className="space-y-4">
           {visible.map((order) => (
-            <OrderCard key={order.id} order={order} busyId={busyId} advance={advance} manualPaymentMode={manualPaymentMode} />
+            <OrderCard
+              key={order.id}
+              order={order}
+              busyId={busyId}
+              advance={advance}
+              manualPaymentMode={manualPaymentMode}
+              adminDelivery={adminDelivery}
+            />
           ))}
         </Reorder.Group>
       )}
@@ -225,11 +268,24 @@ export default function AdminPedidos() {
       {confirmingOrder && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setConfirmingOrder(null)}>
           <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-white mb-2">Confirmar pagamento</h3>
+            <h3 className="font-bold text-white mb-2">
+              {confirmingIsEntrega ? 'Confirmar pagamento e entrega' : 'Confirmar pagamento'}
+            </h3>
             <p className="text-sm text-son-silver-dim mb-5">
-              Confirmar pagamento de{' '}
-              <span className="sunset-text font-bold">{currency(confirmingOrder.total)}</span> em{' '}
-              {confirmingOrder.payment_method === 'cartao' ? 'cartão' : confirmingOrder.payment_method}?
+              {confirmingIsEntrega ? (
+                <>
+                  Confirmar que o pedido foi entregue e o pagamento de{' '}
+                  <span className="sunset-text font-bold">{currency(confirmingOrder.total)}</span> em{' '}
+                  {confirmingOrder.payment_method === 'cartao' ? 'cartão' : confirmingOrder.payment_method} foi
+                  recebido?
+                </>
+              ) : (
+                <>
+                  Confirmar pagamento de{' '}
+                  <span className="sunset-text font-bold">{currency(confirmingOrder.total)}</span> em{' '}
+                  {confirmingOrder.payment_method === 'cartao' ? 'cartão' : confirmingOrder.payment_method}?
+                </>
+              )}
             </p>
             <div className="flex gap-2">
               <button onClick={() => setConfirmingOrder(null)} className="btn-secondary flex-1">

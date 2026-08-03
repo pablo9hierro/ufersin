@@ -5,7 +5,7 @@ const DELIVERY_STEPS: { key: OrderStatus[]; label: string }[] = [
   { key: ['pendente'], label: 'Pedido feito' },
   { key: ['montando_pedido'], label: 'Preparando' },
   { key: ['pedido_pronto', 'aguardando_localizacao'], label: 'Pronto' },
-  { key: ['em_rota_de_entrega'], label: 'Saiu para entrega' },
+  { key: ['em_rota_de_entrega', 'entregas'], label: 'Saiu para entrega' },
   { key: ['entregue', 'concluido'], label: 'Entregue' },
 ]
 const PICKUP_STEPS: { key: OrderStatus[]; label: string }[] = [

@@ -59,6 +59,7 @@ import AdminPedidos from './pages/admin/AdminPedidos'
 import AdminProdutos from './pages/admin/AdminProdutos'
 import AdminProdutosXml from './pages/admin/AdminProdutosXml'
 import AdminMotoboys from './pages/admin/AdminMotoboys'
+import AdminFrete from './pages/admin/AdminFrete'
 import AdminFinanceiro from './pages/admin/AdminFinanceiro'
 import AdminSenha from './pages/admin/AdminSenha'
 import AdminPromocoes from './pages/admin/AdminPromocoes'
@@ -264,6 +265,7 @@ export default function App() {
           />
           <Route path="produtos" element={<AdminProdutos />} />
           <Route path="produtos/xml" element={<AdminProdutosXml />} />
+          <Route path="frete" element={<AdminFrete />} />
           <Route path="motoboys" element={<AdminMotoboys />} />
           <Route path="crm" element={<AdminCrm />} />
           <Route path="promocoes" element={<AdminPromocoes />} />

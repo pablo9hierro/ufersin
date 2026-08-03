@@ -103,3 +103,9 @@ pub async fn require_feature(pool: &PgPool, tenant_id: &str, feature: Feature) -
         )))
     }
 }
+
+/// Whether the tenant currently has `feature` (plan defaults + overrides).
+pub async fn has_feature(pool: &PgPool, tenant_id: &str, feature: Feature) -> Result<bool, AppError> {
+    let set = effective_features(pool, tenant_id).await?;
+    Ok(set.contains(feature.code()))
+}

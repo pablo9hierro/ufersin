@@ -81,7 +81,7 @@ CREATE TABLE orders (
   payment_status TEXT NOT NULL DEFAULT 'pendente' CHECK (payment_status IN ('pendente','pago')),
   status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN (
     'pendente','montando_pedido','pedido_pronto','aguardando_localizacao',
-    'em_rota_de_entrega','entregue','retiradas','concluido'
+    'em_rota_de_entrega','entregue','retiradas','entregas','concluido'
   )),
   shipping_price DOUBLE PRECISION NOT NULL DEFAULT 0,
   total DOUBLE PRECISION NOT NULL,
@@ -843,9 +843,19 @@ BEGIN
       RAISE EXCEPTION 'only retirada orders can move to retiradas';
     END IF;
     RETURN false;
+  ELSIF p_current_status = 'pedido_pronto' AND p_target_status = 'entregas' THEN
+    IF p_delivery_type <> 'entrega' THEN
+      RAISE EXCEPTION 'only entrega orders can move to entregas';
+    END IF;
+    RETURN false;
   ELSIF p_current_status = 'retiradas' AND p_target_status = 'concluido' THEN
     IF p_delivery_type <> 'retirada' THEN
       RAISE EXCEPTION 'only retirada orders can be concluded from retiradas';
+    END IF;
+    RETURN ufersin._confirm_payment_if_needed(p_payment_method, p_payment_status, p_payment_confirmed);
+  ELSIF p_current_status = 'entregas' AND p_target_status = 'concluido' THEN
+    IF p_delivery_type <> 'entrega' THEN
+      RAISE EXCEPTION 'only entrega orders can be concluded from entregas';
     END IF;
     RETURN ufersin._confirm_payment_if_needed(p_payment_method, p_payment_status, p_payment_confirmed);
   ELSE

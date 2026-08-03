@@ -24,5 +24,6 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
   em_rota_de_entrega: 'Em rota de entrega',
   entregue: 'Entregue',
   retiradas: 'Aguardando retirada',
+  entregas: 'Aguardando entrega',
   concluido: 'Concluído',
 }

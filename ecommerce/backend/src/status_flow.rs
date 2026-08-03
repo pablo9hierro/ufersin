@@ -2,6 +2,10 @@ use crate::error::AppError;
 
 /// Applies the admin-role portion of the order status flow.
 /// Returns `true` if the transition should also set `payment_status = 'pago'`.
+///
+/// `entregas` (Essential admin delivery tray) mirrors `retiradas`. Callers
+/// must refuse those transitions when the tenant has the Motoboy feature
+/// (Management/Premium) — delivery then belongs to the motoboy queue.
 pub fn admin_apply_transition(
     current_status: &str,
     target_status: &str,
@@ -21,6 +25,14 @@ pub fn admin_apply_transition(
             }
             Ok(false)
         }
+        ("pedido_pronto", "entregas") => {
+            if delivery_type != "entrega" {
+                return Err(AppError::BadRequest(
+                    "only entrega orders can move to entregas".to_string(),
+                ));
+            }
+            Ok(false)
+        }
         ("retiradas", "concluido") => {
             if delivery_type != "retirada" {
                 return Err(AppError::BadRequest(
@@ -29,10 +41,27 @@ pub fn admin_apply_transition(
             }
             confirm_payment_if_needed(payment_method, payment_status, payment_confirmed)
         }
+        ("entregas", "concluido") => {
+            if delivery_type != "entrega" {
+                return Err(AppError::BadRequest(
+                    "only entrega orders can be concluded from entregas".to_string(),
+                ));
+            }
+            confirm_payment_if_needed(payment_method, payment_status, payment_confirmed)
+        }
         _ => Err(AppError::BadRequest(format!(
             "invalid status transition: {current_status} -> {target_status}"
         ))),
     }
+}
+
+/// True when the transition is the Essential admin-delivery path
+/// (`pedido_pronto` → `entregas` → `concluido`).
+pub fn is_admin_delivery_transition(current_status: &str, target_status: &str) -> bool {
+    matches!(
+        (current_status, target_status),
+        ("pedido_pronto", "entregas") | ("entregas", "concluido")
+    )
 }
 
 /// Applies the motoboy-role portion of the order status flow. Note:

@@ -6,12 +6,18 @@ export const ADMIN_NAV_PLAN: Record<string, PlanoCode> = {
   '/admin/pdv': 'essential',
   '/admin/produtos': 'essential',
   '/admin/produtos/xml': 'essential',
+  '/admin/frete': 'essential',
   '/admin/motoboys': 'management',
   '/admin/crm': 'premium',
   '/admin/promocoes': 'management',
   '/admin/layout-cliente': 'essential',
   '/admin/relatorios': 'essential',
   '/admin/conta': 'essential',
+}
+
+/** Routes shown only below this plan (e.g. Frete on Essential; Funcionários owns frete from Management). */
+export const ADMIN_NAV_HIDE_AT: Record<string, PlanoCode> = {
+  '/admin/frete': 'management',
 }
 
 export function canAccessAdminRoute(
@@ -22,7 +28,11 @@ export function canAccessAdminRoute(
   const required = ADMIN_NAV_PLAN[href]
   if (!required) return true
   if (!planoAtLeast(plano ?? 'essential', required)) return false
-  if (href === '/admin/pedidos' && opts?.pedidosLiberado === false) return false
+  const hideAt = ADMIN_NAV_HIDE_AT[href]
+  if (hideAt && planoAtLeast(plano ?? 'essential', hideAt)) return false
+  if (href === '/admin/pedidos' || href === '/admin/frete') {
+    if (opts?.pedidosLiberado === false) return false
+  }
   return true
 }
 

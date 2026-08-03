@@ -480,6 +480,16 @@ pub async fn update_order_status(
         return Err(AppError::NotFound("order not found".to_string()));
     };
 
+    // Essential admin delivery tray — Management/Premium keep delivery on the
+    // motoboy queue; refuse admin `entregas` transitions when Motoboy is on.
+    if status_flow::is_admin_delivery_transition(&order.status, &input.status) {
+        if features::has_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await? {
+            return Err(AppError::Forbidden(
+                "entregas pelo admin só estão disponíveis em planos sem motoboy".to_string(),
+            ));
+        }
+    }
+
     let set_paid = status_flow::admin_apply_transition(
         &order.status,
         &input.status,
@@ -517,6 +527,15 @@ pub async fn update_order_status(
             "Seu pedido está pronto! Pode vir buscar 😊 Local de retirada: {}",
             store.pickup_address
         );
+        whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
+    }
+
+    if input.status == "entregas" {
+        let store = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
+        let digits = whatsapp::digits_only(&order.customer_whatsapp);
+        let msg =
+            "Seu pedido saiu para entrega! Em breve você recebe. Qualquer dúvida, fale com a loja pelo WhatsApp."
+                .to_string();
         whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
     }
 
@@ -757,9 +776,14 @@ pub async fn notify_order_ready(
             "Olá, {}! Seu pedido está pronto para retirada 🎉 Te esperamos na loja!",
             order.customer_name
         )
-    } else {
+    } else if features::has_feature(&state.pool, &admin.tenant_id, Feature::Motoboy).await? {
         format!(
             "Olá, {}! Seu pedido está pronto 🎉 Em breve o motoboy vai te chamar aqui pedindo sua localização.",
+            order.customer_name
+        )
+    } else {
+        format!(
+            "Olá, {}! Seu pedido está pronto 🎉 Estamos organizando a entrega — a loja te avisa quando sair.",
             order.customer_name
         )
     };

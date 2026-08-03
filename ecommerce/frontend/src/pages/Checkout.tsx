@@ -334,6 +334,16 @@ export default function Checkout() {
       setError('Escolha sua localização no mapa ou marque retirada no local.')
       return
     }
+    if (!pickupAtStore && shippingEstimate && shippingEstimate.within_range === false) {
+      setError(
+        `Endereço fora do raio de entrega (${shippingEstimate.km.toFixed(1).replace('.', ',')} km` +
+          (shippingEstimate.max_km != null
+            ? `, máximo ${shippingEstimate.max_km.toFixed(1).replace('.', ',')} km`
+            : '') +
+          '). Escolha um endereço mais próximo ou retirada no local.'
+      )
+      return
+    }
     if (!aceiteCompraNormal) {
       setError('Aceite os termos de consentimento de compra para continuar.')
       return

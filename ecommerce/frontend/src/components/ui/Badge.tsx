@@ -10,6 +10,7 @@ const STATUS_COLORS: Record<OrderStatus, string> = {
   em_rota_de_entrega: 'bg-son-pink/15 text-son-pink',
   entregue: 'bg-emerald-500/15 text-emerald-400',
   retiradas: 'bg-son-gold/15 text-son-gold',
+  entregas: 'bg-son-pink/15 text-son-pink',
   concluido: 'bg-emerald-500/20 text-emerald-400',
 }
 
