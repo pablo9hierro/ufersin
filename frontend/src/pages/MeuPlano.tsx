@@ -150,6 +150,27 @@ export default function MeuPlano() {
         } else {
           setIntegracao('mercado_pago')
         }
+        // Preferências de venda: reconcile via RPC pública se a API Railway
+        // ainda não expõe `apenas_retirada` no /api/me.
+        if (m.slug) {
+          try {
+            const { data: pub } = await supabase.schema('resolutoo').rpc('get_public_tenant_config', {
+              p_slug: m.slug,
+            })
+            if (pub && typeof pub === 'object') {
+              const row = pub as {
+                apenas_retirada?: boolean
+                vende_mais_18?: boolean
+                vender_externamente?: boolean
+              }
+              if (typeof row.apenas_retirada === 'boolean') setApenasRetirada(row.apenas_retirada)
+              if (typeof row.vende_mais_18 === 'boolean') setVendeMais18(row.vende_mais_18)
+              if (typeof row.vender_externamente === 'boolean') setVenderExternamente(row.vender_externamente)
+            }
+          } catch {
+            /* ignore — keep /api/me values */
+          }
+        }
       } catch (e) {
         if (cancelled) return
         if (e instanceof ApiError && e.status === 404) {
@@ -217,6 +238,18 @@ export default function MeuPlano() {
           p_style: fields.layout_style,
         })
         if (layoutErr) console.warn('set_my_layout_style:', layoutErr.message)
+      }
+      if (
+        fields.apenas_retirada != null ||
+        fields.vende_mais_18 != null ||
+        fields.vender_externamente != null
+      ) {
+        const { error: prefsErr } = await supabase.schema('resolutoo').rpc('set_my_sale_prefs', {
+          p_apenas_retirada: fields.apenas_retirada ?? null,
+          p_vende_mais_18: fields.vende_mais_18 ?? null,
+          p_vender_externamente: fields.vender_externamente ?? null,
+        })
+        if (prefsErr) console.warn('set_my_sale_prefs:', prefsErr.message)
       }
       setMe((prev) => (prev ? { ...prev, ...mapFieldsToMe(prev, fields) } : prev))
       setSaved(true)

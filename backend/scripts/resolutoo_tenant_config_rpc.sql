@@ -79,6 +79,48 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION resolutoo.set_my_sale_prefs(
+  p_apenas_retirada boolean DEFAULT NULL,
+  p_vende_mais_18 boolean DEFAULT NULL,
+  p_vender_externamente boolean DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = resolutoo, public
+AS $$
+DECLARE
+  v_slug text;
+  v_apenas boolean;
+  v_mais18 boolean;
+  v_ext boolean;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'não autenticado';
+  END IF;
+  UPDATE resolutoo.subscribers
+  SET
+    apenas_retirada = COALESCE(p_apenas_retirada, apenas_retirada),
+    vende_mais_18 = COALESCE(p_vende_mais_18, vende_mais_18),
+    vender_externamente = COALESCE(p_vender_externamente, vender_externamente),
+    updated_at = now()
+  WHERE id = auth.uid()::text
+  RETURNING slug, apenas_retirada, vende_mais_18, vender_externamente
+    INTO v_slug, v_apenas, v_mais18, v_ext;
+  IF v_slug IS NULL THEN
+    RAISE EXCEPTION 'assinante não encontrado';
+  END IF;
+  RETURN json_build_object(
+    'slug', v_slug,
+    'apenas_retirada', v_apenas,
+    'vende_mais_18', v_mais18,
+    'vender_externamente', v_ext,
+    'updated', true
+  );
+END;
+$$;
+
 GRANT USAGE ON SCHEMA resolutoo TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION resolutoo.get_public_tenant_config(text) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION resolutoo.set_my_layout_style(text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION resolutoo.set_my_sale_prefs(boolean, boolean, boolean) TO authenticated, service_role;
