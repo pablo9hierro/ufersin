@@ -365,6 +365,16 @@ pub struct EditOnboardingInput {
     pub nome_loja: Option<String>,
     #[serde(default)]
     pub layout_style: Option<String>,
+    #[serde(default)]
+    pub landing_headline: Option<String>,
+    #[serde(default)]
+    pub landing_sub: Option<String>,
+    #[serde(default)]
+    pub landing_badge: Option<String>,
+    #[serde(default)]
+    pub cart_fab_style: Option<String>,
+    #[serde(default)]
+    pub cart_fab_animate: Option<bool>,
 }
 
 /// Edição pós-onboarding (/meu-plano) — atualiza os mesmos campos, mas
@@ -427,6 +437,13 @@ pub async fn editar_onboarding(
             ));
         }
     }
+    if let Some(fab) = &body.cart_fab_style {
+        if !matches!(fab.as_str(), "sacola" | "cart_icon") {
+            return Err(AppError::BadRequest(
+                "cart_fab_style deve ser 'sacola' ou 'cart_icon'".to_string(),
+            ));
+        }
+    }
 
     let instagram = body.instagram.as_ref().map(|s| {
         let t = s.trim().trim_start_matches('@');
@@ -447,8 +464,11 @@ pub async fn editar_onboarding(
          plataforma_credenciais = COALESCE($12, plataforma_credenciais), \
          loja_nome = COALESCE($13, loja_nome), layout_style = COALESCE($14, layout_style), \
          instagram = COALESCE($15, instagram), endereco_numero = COALESCE($16, endereco_numero), \
-         vende_mais_18 = COALESCE($17, vende_mais_18), facebook = COALESCE($18, facebook), updated_at = now() \
-         WHERE id = $19",
+         vende_mais_18 = COALESCE($17, vende_mais_18), facebook = COALESCE($18, facebook), \
+         landing_headline = COALESCE($19, landing_headline), landing_sub = COALESCE($20, landing_sub), \
+         landing_badge = COALESCE($21, landing_badge), cart_fab_style = COALESCE($22, cart_fab_style), \
+         cart_fab_animate = COALESCE($23, cart_fab_animate), updated_at = now() \
+         WHERE id = $24",
     )
     .bind(&body.categoria)
     .bind(&body.whatsapp)
@@ -468,6 +488,11 @@ pub async fn editar_onboarding(
     .bind(body.endereco_numero.as_deref().map(str::trim))
     .bind(body.vende_mais_18)
     .bind(&facebook)
+    .bind(body.landing_headline.as_deref().map(str::trim))
+    .bind(body.landing_sub.as_deref().map(str::trim))
+    .bind(body.landing_badge.as_deref().map(str::trim))
+    .bind(&body.cart_fab_style)
+    .bind(body.cart_fab_animate)
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
@@ -529,6 +554,36 @@ pub struct TenantConfigResponse {
     pub endereco_numero: Option<String>,
     pub instagram: Option<String>,
     pub facebook: Option<String>,
+    pub logo_url: Option<String>,
+    pub landing_headline: Option<String>,
+    pub landing_sub: Option<String>,
+    pub landing_badge: Option<String>,
+    pub cart_fab_style: String,
+    pub cart_fab_animate: bool,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct TenantConfigRow {
+    loja_nome: String,
+    plan_code: String,
+    vender_externamente: bool,
+    whatsapp_habilitado: bool,
+    whatsapp: String,
+    forma_pagamento: String,
+    plataforma_pagamento: Option<String>,
+    layout_style: String,
+    cor_principal: Option<String>,
+    vende_mais_18: bool,
+    endereco: Option<String>,
+    endereco_numero: Option<String>,
+    instagram: Option<String>,
+    facebook: Option<String>,
+    logo_url: Option<String>,
+    landing_headline: Option<String>,
+    landing_sub: Option<String>,
+    landing_badge: Option<String>,
+    cart_fab_style: String,
+    cart_fab_animate: bool,
 }
 
 /// Endpoint PÚBLICO (sem auth) que o motor de e-commerce (ecommerce/
@@ -541,73 +596,51 @@ pub async fn tenant_config(
     State(state): State<AppState>,
     axum::extract::Path(slug): axum::extract::Path<String>,
 ) -> Result<Json<TenantConfigResponse>, AppError> {
-    let row: Option<(
-        String,
-        String,
-        bool,
-        bool,
-        String,
-        String,
-        Option<String>,
-        String,
-        Option<String>,
-        bool,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
+    let row: Option<TenantConfigRow> = sqlx::query_as(
         "SELECT loja_nome, plan_code, vender_externamente, whatsapp_habilitado, whatsapp, \
          forma_pagamento, plataforma_pagamento, \
          COALESCE(layout_style, 'ufersin') as layout_style, cor_principal, \
          COALESCE(vende_mais_18, false) as vende_mais_18, \
-         endereco, endereco_numero, instagram, facebook \
+         endereco, endereco_numero, instagram, facebook, logo_url, \
+         landing_headline, landing_sub, landing_badge, \
+         COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
+         COALESCE(cart_fab_animate, false) as cart_fab_animate \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
     )
     .bind(&slug)
     .fetch_optional(&state.pool)
     .await?;
-    let (
-        loja_nome,
-        plano,
-        vender_externamente,
-        whatsapp_habilitado,
-        whatsapp_raw,
-        forma_pagamento,
-        plataforma_pagamento,
-        layout_style,
-        cor_principal,
-        vende_mais_18,
-        endereco,
-        endereco_numero,
-        instagram,
-        facebook,
-    ) = row.ok_or_else(|| AppError::NotFound("loja não encontrada".to_string()))?;
+    let row = row.ok_or_else(|| AppError::NotFound("loja não encontrada".to_string()))?;
 
-    let whatsapp: String = whatsapp_raw
-        .chars()
-        .filter(|c| c.is_ascii_digit())
-        .collect();
+    let whatsapp: String = row.whatsapp.chars().filter(|c| c.is_ascii_digit()).collect();
 
     Ok(Json(TenantConfigResponse {
         slug,
-        loja_nome,
-        plano,
-        vender_externamente,
-        whatsapp_habilitado,
+        loja_nome: row.loja_nome,
+        plano: row.plan_code,
+        vender_externamente: row.vender_externamente,
+        whatsapp_habilitado: row.whatsapp_habilitado,
         whatsapp,
-        forma_pagamento,
-        plataforma_pagamento,
-        // Sempre um dos 3 packs — evita omissão/valor inválido no JSON público.
-        layout_style: match layout_style.as_str() {
-            "burgerbite" | "burgerhouse" | "ufersin" => layout_style,
+        forma_pagamento: row.forma_pagamento,
+        plataforma_pagamento: row.plataforma_pagamento,
+        layout_style: match row.layout_style.as_str() {
+            "burgerbite" | "burgerhouse" | "ufersin" => row.layout_style,
             _ => "ufersin".to_string(),
         },
-        cor_principal,
-        vende_mais_18,
-        endereco,
-        endereco_numero,
-        instagram,
-        facebook,
+        cor_principal: row.cor_principal,
+        vende_mais_18: row.vende_mais_18,
+        endereco: row.endereco,
+        endereco_numero: row.endereco_numero,
+        instagram: row.instagram,
+        facebook: row.facebook,
+        logo_url: row.logo_url,
+        landing_headline: row.landing_headline,
+        landing_sub: row.landing_sub,
+        landing_badge: row.landing_badge,
+        cart_fab_style: match row.cart_fab_style.as_str() {
+            "cart_icon" => "cart_icon".to_string(),
+            _ => "sacola".to_string(),
+        },
+        cart_fab_animate: row.cart_fab_animate,
     }))
 }

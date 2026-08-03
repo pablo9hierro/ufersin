@@ -28,6 +28,12 @@ export interface TenantConfig {
   endereco_numero: string
   instagram: string
   facebook: string
+  logo_url: string | null
+  landing_headline: string | null
+  landing_sub: string | null
+  landing_badge: string | null
+  cart_fab_style: 'sacola' | 'cart_icon'
+  cart_fab_animate: boolean
 }
 
 export type ShareNetwork = 'whatsapp' | 'instagram' | 'facebook'
@@ -56,6 +62,12 @@ const DEFAULT_CONFIG: TenantConfig = {
   endereco_numero: '',
   instagram: '',
   facebook: '',
+  logo_url: null,
+  landing_headline: null,
+  landing_sub: null,
+  landing_badge: null,
+  cart_fab_style: 'sacola',
+  cart_fab_animate: false,
 }
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
@@ -181,6 +193,7 @@ function normalizeLayoutStyle(v: unknown): TenantConfig['layout_style'] {
 
 function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConfig {
   const whatsapp = String(data.whatsapp ?? '').replace(/\D/g, '')
+  const fab = data.cart_fab_style === 'cart_icon' ? 'cart_icon' : 'sacola'
   return {
     ...DEFAULT_CONFIG,
     ...data,
@@ -192,6 +205,12 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     facebook: String(data.facebook ?? '').trim(),
     layout_style: normalizeLayoutStyle(data.layout_style),
     vende_mais_18: Boolean(data.vende_mais_18),
+    logo_url: data.logo_url ? String(data.logo_url) : null,
+    landing_headline: data.landing_headline ? String(data.landing_headline) : null,
+    landing_sub: data.landing_sub ? String(data.landing_sub) : null,
+    landing_badge: data.landing_badge ? String(data.landing_badge) : null,
+    cart_fab_style: fab,
+    cart_fab_animate: Boolean(data.cart_fab_animate),
   }
 }
 

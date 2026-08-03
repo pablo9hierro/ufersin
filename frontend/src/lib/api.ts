@@ -11,16 +11,20 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = authStore.getToken()
+  const token = authStore.getTokenForPath(path)
   let res: Response
   try {
+    const headers: Record<string, string> = {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers as Record<string, string> | undefined),
+    }
+    // Só força JSON quando há body string — upload multipart não usa Content-Type aqui.
+    if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json'
+    }
     res = await fetch(`${API_BASE}${path}`, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
-      },
+      headers,
     })
   } catch {
     throw new ApiError(0, 'Não foi possível conectar ao servidor. Verifique sua internet ou tente novamente em instantes.')
@@ -197,6 +201,11 @@ export interface MeResponse {
   facebook: string | null
   coupon_code: string | null
   proxima_cobranca: string | null
+  landing_headline: string | null
+  landing_sub: string | null
+  landing_badge: string | null
+  cart_fab_style: 'sacola' | 'cart_icon'
+  cart_fab_animate: boolean
 }
 
 export type ContractKind = 'platform_subscription' | 'checkout_compra_normal' | 'checkout_mais18'
@@ -267,6 +276,11 @@ export interface EditOnboardingInput {
   plataforma_pagamento?: PlataformaPagamento
   plataforma_credenciais?: Record<string, string>
   layout_style?: 'ufersin' | 'burgerbite' | 'burgerhouse'
+  landing_headline?: string
+  landing_sub?: string
+  landing_badge?: string
+  cart_fab_style?: 'sacola' | 'cart_icon'
+  cart_fab_animate?: boolean
 }
 
 function normalizePlan(p: PlatformPlan): PlatformPlan {
@@ -347,6 +361,11 @@ export const api = {
   }) => request<{ id: string; code: string }>('/api/superadmin/coupons', { method: 'POST', body: JSON.stringify(body) }),
 
   me: () => request<MeResponse>('/api/me'),
+  uploadLogo: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return request<{ url: string }>('/api/me/upload-logo', { method: 'POST', body: fd })
+  },
   mudarPlano: (novo_plano: PlanoCode) =>
     request<{ plano: PlanoCode }>('/api/me/plano', { method: 'POST', body: JSON.stringify({ novo_plano }) }),
   cancelar: () => request<{ status: string }>('/api/me/cancelar', { method: 'POST' }),

@@ -1,5 +1,7 @@
-use axum::{extract::State, Json};
+use axum::extract::{Multipart, State};
+use axum::Json;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::auth::AuthSubscriber;
 use crate::coupons;
@@ -7,6 +9,7 @@ use crate::error::AppError;
 use crate::gateway::{self, BillingCycle};
 use crate::plans;
 use crate::state::AppState;
+use crate::storage;
 
 #[derive(Debug, sqlx::FromRow)]
 struct SubscriberRow {
@@ -40,6 +43,11 @@ struct SubscriberRow {
     endereco_numero: Option<String>,
     vende_mais_18: bool,
     coupon_code: Option<String>,
+    landing_headline: Option<String>,
+    landing_sub: Option<String>,
+    landing_badge: Option<String>,
+    cart_fab_style: String,
+    cart_fab_animate: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -86,6 +94,11 @@ pub struct MeResponse {
     /// inventado. Ver ecommerce/README-TENANCY.md-style nota: melhor não
     /// mostrar um dado do que fingir um.
     pub proxima_cobranca: Option<String>,
+    pub landing_headline: Option<String>,
+    pub landing_sub: Option<String>,
+    pub landing_badge: Option<String>,
+    pub cart_fab_style: String,
+    pub cart_fab_animate: bool,
 }
 
 pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<MeResponse>, AppError> {
@@ -96,7 +109,10 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 categoria, endereco, logo_url, cor_principal, documento, tipo_documento,
                 vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento,
                 COALESCE(layout_style, 'ufersin') as layout_style, instagram, facebook, endereco_numero,
-                COALESCE(vende_mais_18, false) as vende_mais_18, coupon_code
+                COALESCE(vende_mais_18, false) as vende_mais_18, coupon_code,
+                landing_headline, landing_sub, landing_badge,
+                COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
+                COALESCE(cart_fab_animate, false) as cart_fab_animate
          FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
@@ -141,7 +157,51 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         vende_mais_18: row.vende_mais_18,
         coupon_code: row.coupon_code,
         proxima_cobranca: None,
+        landing_headline: row.landing_headline,
+        landing_sub: row.landing_sub,
+        landing_badge: row.landing_badge,
+        cart_fab_style: row.cart_fab_style,
+        cart_fab_animate: row.cart_fab_animate,
     }))
+}
+
+/// Multipart upload ("file") → Supabase Storage → atualiza `logo_url`.
+pub async fn upload_logo(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, AppError> {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("upload inválido: {e}")))?
+    {
+        if field.name() != Some("file") {
+            continue;
+        }
+        let content_type = field.content_type().unwrap_or("application/octet-stream").to_string();
+        if !content_type.starts_with("image/") {
+            return Err(AppError::BadRequest("envie uma imagem (png, jpg, webp…)".to_string()));
+        }
+        let ext = storage::extension_for(&content_type);
+        let filename = format!("logos/{}/{}.{}", claims.sub, Uuid::new_v4(), ext);
+        let bytes = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("upload inválido: {e}")))?;
+        if bytes.len() > 5 * 1024 * 1024 {
+            return Err(AppError::BadRequest("logo deve ter no máximo 5 MB".to_string()));
+        }
+
+        let url = storage::upload_logo(&state, &filename, &content_type, bytes.to_vec()).await?;
+        sqlx::query("UPDATE subscribers SET logo_url = $1, updated_at = now() WHERE id = $2")
+            .bind(&url)
+            .bind(&claims.sub)
+            .execute(&state.pool)
+            .await?;
+        return Ok(Json(serde_json::json!({ "url": url })));
+    }
+    Err(AppError::BadRequest("campo file ausente no upload".to_string()))
 }
 
 #[derive(Debug, Deserialize)]

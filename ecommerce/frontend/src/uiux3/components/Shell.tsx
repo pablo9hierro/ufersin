@@ -130,8 +130,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <Link to="/" className="u3-wordmark text-lg font-black tracking-tight shrink-0">
-            {name}
+          <Link to="/" className="u3-wordmark text-lg font-black tracking-tight shrink-0 flex items-center gap-2 min-w-0">
+            {tenantConfig?.logo_url ? (
+              <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+            ) : null}
+            <span className="truncate">{name}</span>
           </Link>
 
           <div className="hidden sm:flex items-center gap-2">
@@ -164,11 +167,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Só desktop -- no mobile o dock flutuante (abaixo) já ocupa esse
-          canto, e o FAB fixo ficaria por cima dele. */}
-      <div className="hidden sm:block">
-        <CartFab />
-      </div>
+      <CartFab />
 
       <div className="max-w-5xl mx-auto">{children}</div>
 

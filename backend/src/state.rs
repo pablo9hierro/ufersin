@@ -34,4 +34,8 @@ pub struct AppState {
     pub ecommerce_internal_key: Arc<String>,
     /// PandaDoc (sandbox/prod). Sem API key = stub de contratos.
     pub pandadoc: PandadocConfig,
+    /// Base URL do projeto Supabase (storage + JWKS).
+    pub supabase_url: String,
+    /// Service role — só server-side (upload de logo).
+    pub supabase_service_key: String,
 }

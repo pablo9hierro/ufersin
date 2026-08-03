@@ -18,7 +18,9 @@ import { useCustomerAuth } from '../store/customerAuth'
 import CustomerAuthModal from '../components/CustomerAuthModal'
 import { isDemoModeActive } from '../lib/demoMode'
 import { useTenantConfig } from '../hooks/useTenantConfig'
+import { useStoreStatus } from '../hooks/useStoreStatus'
 import { resolveTenantSlug } from '../lib/tenantConfig'
+import { closedStoreMessage, getStoreOpenState } from '../lib/storeHours'
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
 
@@ -44,6 +46,7 @@ export default function Checkout() {
   const customer = useCustomer()
   const customerAuth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
+  const { data: storeStatus } = useStoreStatus()
   const [aceiteCompraNormal, setAceiteCompraNormal] = useState(false)
   const [aceiteMais18, setAceiteMais18] = useState(false)
 
@@ -292,6 +295,10 @@ export default function Checkout() {
 
   const handleSubmit = async () => {
     setError(null)
+    if (storeStatus && !getStoreOpenState(storeStatus).open) {
+      setError(closedStoreMessage(storeStatus) || 'Loja FECHADA. Não é possível finalizar o checkout agora.')
+      return
+    }
     if (lines.length === 0) {
       setError(promotion ? 'Essa campanha não tem produtos disponíveis no momento.' : 'Sua sacola está vazia.')
       return

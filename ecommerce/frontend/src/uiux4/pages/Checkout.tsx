@@ -14,6 +14,8 @@ import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { useStoreStatus } from '../../hooks/useStoreStatus'
+import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 import LocationPicker from '../../components/checkout/LocationPicker'
 
 function formatPhone(value: string) {
@@ -32,6 +34,7 @@ export default function Uiux4Checkout() {
   const customer = useCustomer()
   const customerAuth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
+  const { data: storeStatus } = useStoreStatus()
 
   const [products, setProducts] = useState<Product[]>([])
   const [pickupAtStore, setPickupAtStore] = useState(false)
@@ -183,6 +186,9 @@ export default function Uiux4Checkout() {
 
   const handleSubmit = async () => {
     setError(null)
+    if (storeStatus && !getStoreOpenState(storeStatus).open) {
+      return setError(closedStoreMessage(storeStatus) || 'Loja FECHADA. Não é possível finalizar o checkout agora.')
+    }
     if (lines.length === 0) return setError('Sua sacola está vazia.')
     if (!customer.name.trim()) return setError('Informe seu nome.')
     const digits = customer.whatsapp.replace(/\D/g, '')

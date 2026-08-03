@@ -32,7 +32,6 @@ export default function StoreHoursToggle({
 }) {
   const [open, setOpen] = useState(false)
   const rows = hours?.length ? sortedStoreHours(hours) : []
-  if (rows.length === 0) return null
 
   return (
     <>
@@ -51,14 +50,20 @@ export default function StoreHoursToggle({
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <ul className="space-y-2 text-sm">
-                {rows.map((day) => (
-                  <li key={day.day_of_week} className="flex justify-between gap-3">
-                    <span className="font-medium">{DAY_LABELS[day.day_of_week]}</span>
-                    <span className={`text-right ${DIM_CLASS[variant]}`}>{formatDayHours(day)}</span>
-                  </li>
-                ))}
-              </ul>
+              {rows.length === 0 ? (
+                <p className={`text-sm ${DIM_CLASS[variant]}`}>
+                  Horários ainda não configurados. O lojista define em Configurações do painel da loja.
+                </p>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {rows.map((day) => (
+                    <li key={day.day_of_week} className="flex justify-between gap-3">
+                      <span className="font-medium">{DAY_LABELS[day.day_of_week]}</span>
+                      <span className={`text-right ${DIM_CLASS[variant]}`}>{formatDayHours(day)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </>

@@ -212,7 +212,7 @@ export default function Dashboard() {
   }
 
   const handleLogout = async () => {
-    await authStore.signOut()
+    await authStore.signOut('superadmin')
     navigate('/')
   }
 

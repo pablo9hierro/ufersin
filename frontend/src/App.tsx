@@ -49,6 +49,7 @@ export default function App() {
       <Route path="/completar-conta" element={<CompletarConta />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/meu-plano" element={<MeuPlano />} />
+      <Route path="/meu-plano/:tab" element={<MeuPlano />} />
       <Route path="/obrigado" element={<Obrigado />} />
     </Routes>
   )

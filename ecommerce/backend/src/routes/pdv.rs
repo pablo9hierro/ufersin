@@ -1,11 +1,12 @@
 use axum::extract::State;
 use axum::Json;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::auth::PdvUser;
 use crate::error::AppError;
 use crate::features::{self, Feature};
-use crate::models::{OrderDto, PdvSaleInput, ProductDto, ProductRow};
+use crate::models::{OrderDto, OrderRow, PdvSaleInput, ProductDto, ProductRow};
 use crate::orders_common::fetch_order_dto;
 use crate::state::AppState;
 use crate::tenant;
@@ -210,4 +211,132 @@ pub async fn create_sale(
         .ok_or_else(|| AppError::Internal("pdv sale vanished after insert".to_string()))?;
     tx.commit().await?;
     Ok(Json(dto))
+}
+
+#[derive(Debug, Serialize)]
+pub struct PdvSaleItemReport {
+    pub product_name: String,
+    pub quantity: i64,
+    pub unit_price: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PdvSaleReport {
+    pub id: String,
+    pub total: f64,
+    pub payment_method: String,
+    pub customer_name: String,
+    pub created_at: String,
+    pub sold_by_role: String,
+    pub sold_by_id: Option<String>,
+    pub sold_by_name: Option<String>,
+    pub items: Vec<PdvSaleItemReport>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VendedorRelatorioDto {
+    pub total_sales: f64,
+    pub total_count: i64,
+    pub sales: Vec<PdvSaleReport>,
+}
+
+/// Relatório de vendas de balcão — mesma fonte do create_sale (DB do
+/// tenant no Railway). Admin vê todas; vendedor só as próprias.
+pub async fn relatorio(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+) -> Result<Json<VendedorRelatorioDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+
+    let orders: Vec<OrderRow> = if claims.role == "admin" {
+        sqlx::query_as(
+            "SELECT * FROM orders WHERE tenant_id = $1 AND delivery_type = 'balcao' \
+             ORDER BY created_at DESC LIMIT 100",
+        )
+        .bind(&claims.tenant_id)
+        .fetch_all(&mut *tx)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT * FROM orders WHERE tenant_id = $1 AND delivery_type = 'balcao' \
+             AND sold_by_role = 'vendedor' AND sold_by_id = $2 \
+             ORDER BY created_at DESC LIMIT 100",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&claims.sub)
+        .fetch_all(&mut *tx)
+        .await?
+    };
+
+    let (total_sales, total_count): (f64, i64) = if claims.role == "admin" {
+        sqlx::query_as(
+            "SELECT COALESCE(SUM(total), 0)::double precision, COUNT(*)::bigint \
+             FROM orders WHERE tenant_id = $1 AND delivery_type = 'balcao'",
+        )
+        .bind(&claims.tenant_id)
+        .fetch_one(&mut *tx)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT COALESCE(SUM(total), 0)::double precision, COUNT(*)::bigint \
+             FROM orders WHERE tenant_id = $1 AND delivery_type = 'balcao' \
+             AND sold_by_role = 'vendedor' AND sold_by_id = $2",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&claims.sub)
+        .fetch_one(&mut *tx)
+        .await?
+    };
+
+    let mut sales = Vec::with_capacity(orders.len());
+    for o in orders {
+        let items: Vec<(String, i64, f64)> = sqlx::query_as(
+            "SELECT product_name, quantity, unit_price FROM order_items \
+             WHERE tenant_id = $1 AND order_id = $2",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&o.id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let sold_by_role = o.sold_by_role.clone().unwrap_or_else(|| "admin".to_string());
+        let sold_by_name = match sold_by_role.as_str() {
+            "admin" => Some("Admin".to_string()),
+            "vendedor" => {
+                // Sem tabela vendedores no motor Railway ainda — usa o id
+                // curto pra o filtro de abas no front não ficar vazio.
+                o.sold_by_id
+                    .as_ref()
+                    .map(|id| format!("Vendedor {}", &id[..id.len().min(8)]))
+            }
+            _ => None,
+        };
+
+        sales.push(PdvSaleReport {
+            id: o.id,
+            total: o.total,
+            payment_method: o.payment_method,
+            customer_name: o.customer_name,
+            created_at: o.created_at,
+            sold_by_role,
+            sold_by_id: o.sold_by_id,
+            sold_by_name,
+            items: items
+                .into_iter()
+                .map(|(product_name, quantity, unit_price)| PdvSaleItemReport {
+                    product_name,
+                    quantity,
+                    unit_price,
+                })
+                .collect(),
+        });
+    }
+
+    tx.commit().await?;
+    Ok(Json(VendedorRelatorioDto {
+        total_sales,
+        total_count,
+        sales,
+    }))
 }

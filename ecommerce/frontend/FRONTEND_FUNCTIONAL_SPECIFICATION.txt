@@ -1,0 +1,2334 @@
+================================================================================
+ESPECIFICAÇÃO FUNCIONAL COMPLETA DO FRONTEND — "SUNSET TABAS"
+================================================================================
+
+CONTEXTO DO DOCUMENTO
+--------------------------------------------------------------------------------
+Análise técnica do frontend do e-commerce "Sunset Tabas" (repositório:
+C:\Users\pablo\Documents\juite\frontend): arquitetura frontend↔backend
+(Etapa 1), contrato de comunicação com o backend — rotas, RPCs, endpoints,
+parâmetros, payloads (Etapa 2), o HTML obrigatório e a dinâmica obrigatória
+de cada uma das 13 páginas de cliente (Etapa 3), os dois mecanismos com
+reprodução exata de código — mapa de rastreio do motoboy em /consultar e
+slot de resgate de cupom em /cliente/cupons (Anexos A e B), interações,
+diálogos e máquinas de estado (Etapas 4-6), persistência de estado no
+cliente (Etapa 7) e inventário de componentes de interface (Etapa 8).
+
+A Etapa 3 descreve cada uma das 13 páginas de cliente em exatamente 2
+listas:
+
+  - "HTML obrigatórios": toda peça que compõe a tela, nomeada de forma
+    simples e genérica (botão, imagem, texto, campo de texto, lista, ícone,
+    card, checkbox, seletor) — NUNCA por classe CSS, cor, sombra, formato
+    ou qualquer decisão visual. A lista é exaustiva: cada peça que existe
+    na tela entra numa linha própria, uma abaixo da outra, sem agrupar
+    várias peças numa frase só.
+  - "Dinâmicas obrigatórias entre os HTML": toda regra de comportamento
+    que liga essas peças entre si — o que aparece/some, o que cada clique
+    dispara, em que ordem as coisas acontecem, que validação bloqueia o
+    quê. Também uma explicação por linha, sem resumir várias dinâmicas
+    numa frase só.
+
+Um elemento só entra na lista de "HTML obrigatórios" se tiver função
+própria (dispara ação, mostra dado, recebe entrada). Um `<div>`/`<span>`
+puramente estrutural (wrapper de layout sem ação própria) não é listado.
+Nenhuma das duas listas menciona cor, estilo, CSS, animação decorativa,
+sombra, glow, gradiente ou formato (circular, flutuante, pílula etc.) — só
+existência da peça e comportamento funcional dela.
+
+Duas dinâmicas têm reprodução EXATA exigida (não é "qualquer gesto de
+arrastar" ou "qualquer mapa") — o mapa de rastreio do motoboy (/consultar)
+e o slot de arrastar-pra-resgatar (/cliente/cupons). O código-fonte real
+desses dois mecanismos está reproduzido nos ANEXOS A e B, logo após a
+Etapa 3 — a AÇÃO e a ANIMAÇÃO desses dois são obrigatórias tal como estão;
+só a pele visual ao redor (cores, textura do "papel", ícones) é livre.
+
+Stack técnica identificada:
+- React 19 + TypeScript, Vite, React Router 7 (SPA client-side routing).
+- Tailwind CSS v4 (classes utilitárias + poucas classes customizadas
+  "sunset-*" que carregam o estilo visual específico do tema atual — essas
+  são o que muda entre skins, nunca a lógica por trás delas).
+- Zustand (+ middleware `persist`) para estado global no cliente.
+- Framer Motion para animações de entrada/saída/transição.
+- Leaflet (+ tiles CARTO) para os mapas de rastreio/seleção de endereço.
+- Supabase (Postgres + RPC + RLS) como backend principal do fluxo público
+  (catálogo, checkout, consulta, conta de cliente) — chamado DIRETO do
+  browser via `@supabase/supabase-js`, sem passar pelo backend Rust.
+- Backend Rust/Axum (Railway) só para: envio de WhatsApp (Evolution API) e
+  notificações administrativas — o cliente final só toca esse backend em
+  1 chamada (pedido de código de recuperação de senha) e em 1 chamada
+  best-effort não bloqueante (aviso de "pedido criado").
+- Vercel Edge Functions para o fluxo de pagamento Pix (criar cobrança,
+  checar status, simular pagamento em ambiente de teste).
+
+Escopo deste documento: as 13 páginas PÚBLICAS DE CLIENTE (rotas fora de
+/admin e /funcionarios) e todo componente compartilhado que elas usam. As
+áreas internas (/admin/*, /funcionarios/*) existem no mesmo repositório mas
+são ferramentas de equipe (admin, vendedor, motoboy) — fora do escopo pedido
+("páginas do cliente"), mencionadas aqui só onde a página de cliente depende
+delas (ex.: dados que o admin configura e o cliente só lê).
+
+
+================================================================================
+ETAPA 1 — ARQUITETURA FRONTEND ↔ BACKEND
+================================================================================
+
+1.1 — INVENTÁRIO DA CAMADA DE COMUNICAÇÃO (estado ATUAL, como está hoje)
+--------------------------------------------------------------------------------
+
+O projeto NÃO usa a nomenclatura clássica "services/providers/hooks/adapters/
+controllers" como pastas separadas. A camada de comunicação está concentrada
+em `src/lib/`, assim:
+
+- src/lib/api.ts (ApiClient único)
+  Exporta um único objeto `export const api = USE_LOCAL_DB ? localApi : remoteApi`.
+  É o ÚNICO ponto que toda página/componente importa para falar com o
+  backend (`import { api } from '../lib/api'`). `USE_LOCAL_DB` é decidido uma
+  vez, no carregamento do módulo, a partir de variável de ambiente
+  (`VITE_USE_LOCAL_DB`) ou de produção sem Supabase configurado — fallback
+  automático para um "backend fake" 100% em localStorage
+  (src/lib/localApi.ts + localData.ts), usado só para demonstração sem
+  infraestrutura.
+  `remoteApi` é o objeto composto que decide, por módulo, se a chamada vai:
+    (a) direto pro Supabase (RPC/tabela) via src/lib/supabasePublicApi.ts —
+        maioria do fluxo público de cliente;
+    (b) pro backend Rust via `fetch(`${API_BASE}${path}`)` (função `request`
+        interna de api.ts) — só 2 chamadas do lado cliente:
+        `customerAuth.requestPasswordReset` e `orders.notifyCreated`;
+    (c) pra uma Vercel Edge Function via `fetch(path)` relativo (função
+        `callVercelPixApi` interna de api.ts) — as 3 chamadas de Pix
+        (`orders.createPixPayment/refreshPayment/simulatePixPaid`).
+  Do ponto de vista de QUEM CHAMA (a página), essa escolha é invisível —
+  `api.orders.create(...)` sempre parece a mesma chamada, não importa o
+  transporte por trás. Esse é o ÚNICO ponto de acoplamento consciente e
+  intencional: as páginas dependem só da FORMA do objeto `api`, nunca de
+  COMO cada chamada é transportada.
+
+- src/lib/supabasePublicApi.ts (o "adapter" de fato do fluxo público)
+  Objeto `supabasePublicApi` com um método por operação pública, cada um
+  chamando `supabase.rpc(nome_da_funcao, {p_argumento: valor, ...})` ou
+  `supabase.from(tabela).select(...)`. É aqui que mora o contrato exato
+  (nome da RPC no Postgres + nome de cada parâmetro `p_*`) — ver 1.3.
+
+- src/lib/apiError.ts
+  Classe `ApiError extends Error { status: number }`. Todo erro de rede/RPC
+  vira uma instância disso antes de chegar na página, que faz
+  `e instanceof ApiError ? e.message : '<mensagem genérica>'`.
+
+- src/lib/localApi.ts + src/lib/localData.ts ("modo demonstração")
+  Reimplementação completa das mesmas operações usando só localStorage —
+  espelha byte a byte o formato de retorno do Supabase, para a página nunca
+  saber a diferença. Só ativa sem Supabase configurado.
+
+- src/store/*.ts (Zustand — a camada de ESTADO GLOBAL / "providers")
+  Cada arquivo é 1 store independente, todos com o padrão
+  `create<State>()(persist((set) => ({...}), {name: 'chave_no_localStorage'}))`.
+  Nenhuma store chama a API — elas só guardam o que a página escreve nelas
+  depois de receber a resposta. Ou seja: STORE = ESTADO, PÁGINA = ORQUESTRAÇÃO,
+  API = TRANSPORTE. Essa separação já existe e deve ser preservada.
+  Stores relevantes ao cliente:
+    * store/cart.ts        → useCart        (carrinho normal do catálogo)
+    * store/bannerCart.ts  → useBannerCart  (carrinho separado, só da promoção /banner)
+    * store/customer.ts    → useCustomer    (rascunho de dados de checkout)
+    * store/customerAuth.ts→ useCustomerAuth(sessão de login do cliente)
+
+- HOOKS: não existem custom hooks de dados (não há `useProducts()`,
+  `useOrders()` etc.) — cada página faz sua própria chamada `useEffect` +
+  `useState` + `api.x.y().then(setState)`. Isso é uma DUPLICAÇÃO DE LÓGICA
+  real (ver 1.2).
+
+- CONTEXTS (React Context API): não são usados em nenhum lugar do fluxo de
+  cliente. Todo estado cross-componente passa por Zustand.
+
+- CACHE: não existe camada de cache de requisição (nada tipo React Query/SWR).
+  Toda tela que precisa de um dado o busca de novo ao montar. Único "cache"
+  são as próprias stores persistidas (que guardam ESTADO DE USUÁRIO, não
+  cache de resposta de servidor).
+
+1.2 — ACOPLAMENTO DESNECESSÁRIO ENCONTRADO (documentado, não corrigido)
+--------------------------------------------------------------------------------
+
+a) Toda página importa `api` diretamente de `lib/api`. Não existe camada
+   intermediária (service/hook) entre o componente visual e o cliente HTTP.
+   Isso significa que TROCAR o layout de uma página hoje exige recriar
+   também toda a lógica de fetch/estado dela — o "esqueleto funcional" e a
+   "pele visual" estão no mesmo arquivo `.tsx`, entrelaçados.
+
+b) Padrão idêntico repetido em 6+ páginas sem abstração:
+   `useEffect(() => { api.X.list().then(setY).finally(() => setLoading(false)) }, [])`
+   — ex.: Catalogo.tsx, Carrinho.tsx, FavoritosCliente.tsx, CuponsCliente.tsx,
+   HistoricoCliente.tsx, Checkout.tsx, Banner.tsx, BannerCheckout.tsx todos
+   reimplementam essa combinação loading/data/error manualmente.
+
+c) O padrão de favoritar (fetch de lista de favoritos + toggle otimista +
+   Set<string> local) está DUPLICADO, quase char-a-char, em 3 lugares
+   diferentes: Catalogo.tsx, Carrinho.tsx e FavoritosCliente.tsx (esta
+   última com pequena variação: aqui remover de fato tira o card da tela).
+
+d) `ProductDetailModal` (o "toggle de detalhes do produto") é importado e
+   orquestrado (estado `detailProduct`, handlers `onAdd/onRemove/onToggleFavorite`)
+   de forma repetida em Catalogo.tsx, Carrinho.tsx e FavoritosCliente.tsx —
+   o MESMO componente, a MESMA API de props, mas a lógica de "quem está
+   favoritado"/"quanto tem no carrinho" é recalculada localmente em cada página.
+
+e) O cálculo de desconto (cupom + promoção + produto-em-promoção-de-catálogo)
+   dentro de Checkout.tsx é uma função de ~100 linhas inline, não extraída —
+   replicada parcialmente (versão simplificada, só cupom) em BannerCheckout.tsx.
+
+f) `lib/types.ts` é o único lugar com as interfaces de dados — isso já está
+   bem centralizado (nenhuma duplicação de "shape" de Product/Order/etc.
+   encontrada), é um ponto FORTE da arquitetura atual a ser preservado.
+
+1.3 — PROPOSTA DE ARQUITETURA MAIS ESCALÁVEL (recomendação, NÃO implementada)
+--------------------------------------------------------------------------------
+(Documentado a pedido explícito da etapa 1 — nenhuma destas mudanças foi
+aplicada neste repositório.)
+
+Camada recomendada, preservando 100% do comportamento atual:
+
+    Página/Componente visual (a única coisa que um "novo tema" reescreve)
+        ↓ conhece só:
+    hooks/useX()  (leitura: encapsula loading/data/error, hoje duplicado)
+    services/xService  (ações: mesma assinatura que `api.x.y` já tem hoje)
+        ↓
+    api/endpoints/*.ts  (1 arquivo por módulo: products, categories, coupons,
+                         orders, promotions, customerAuth, siteSettings,
+                         storeStatus, shipping, pageDecorations)
+        ↓
+    lib/api.ts (o ApiClient ATUAL — Proxy/ternário local-vs-remoto — sem
+                mudar nada da lógica de transporte)
+        ↓
+    Backend (Supabase RPC / Rust-Railway / Vercel Edge — inalterado)
+
+  Tipos: continuam 100% centralizados em `lib/types.ts` (já correto hoje).
+  Estado global: continua 100% em `store/*` (Zustand já cumpre bem o papel
+  de "provider" — não precisa de Context API por cima).
+  Esse é exatamente o padrão que já foi implementado e testado no projeto
+  irmão deste (mesma origem de código, `ufersin/ecommerce/frontend`) — zero
+  mudança de comportamento, só reorganização de "quem importa o quê".
+
+
+================================================================================
+ETAPA 2 — CONTRATO DO FRONTEND (o que o backend exige que exista)
+================================================================================
+
+Isto é o que NUNCA pode ser removido/renomeado sob risco de quebrar o
+backend, independente do layout escolhido:
+
+2.1 — RPCs do Supabase que o frontend de cliente chama (nome exato + parâmetros)
+--------------------------------------------------------------------------------
+  categories (tabela, select direto)      → id, name
+  products (tabela, select direto)        → id, name, description, price,
+                                             quantity, image_url, category_id,
+                                             active, barcode, categories(name)
+  product_sales_counts()                  → sem parâmetros
+  shipping_settings (tabela, select)      → price_per_km, max_km
+  site_settings (tabela, select)          → hero_image_url, bg_mode,
+                                             bg_image_url, bg_scale, bg_x,
+                                             bg_y, bg_fit, smoke_speed,
+                                             smoke_count, smoke_width,
+                                             smoke_height, badges,
+                                             badges_layout, badges_gap,
+                                             badges_offset_y, carousel_style
+  page_decorations (tabela, select)       → page_key, background_image_url,
+                                             elements
+  store_hours (tabela, select)            → day_of_week, is_open, intervals
+  store_status (tabela, select)           → manually_closed, manual_closed_reason
+  estimate_shipping(p_lat, p_lng)         → { km, price, max_km, within_range }
+  create_order(p_customer_name, p_customer_whatsapp, p_delivery_type,
+    p_payment_method, p_neighborhood, p_address, p_items, p_customer_lat,
+    p_customer_lng, p_reference_point, p_customer_birthdate, p_coupon_code,
+    p_promotion_id)                       → Order completo
+  get_order(p_order_id)                   → Order completo
+  track_orders_by_phone(p_whatsapp)       → Order[]
+  track_delivery_position(p_order_id)     → DeliveryPosition | null
+  list_active_promotions()                → Promotion[]
+  get_promotion(p_id)                     → Promotion
+  validate_coupon(p_code, p_promotion_id, p_customer_birthdate,
+    p_customer_whatsapp)                  → CouponPreview
+  list_customer_coupons(p_customer_whatsapp) → CouponPreview[]
+  list_promotional_products()             → PromotionalProduct[]
+  customer_register(p_whatsapp, p_password, p_name, p_email, p_birthdate) → CustomerAuthResult
+  customer_login(p_whatsapp, p_password)  → CustomerAuthResult
+  customer_me(p_token)                    → Customer
+  customer_verify_reset_code(p_whatsapp, p_code) → void
+  customer_reset_password(p_whatsapp, p_code, p_new_password) → void
+  customer_toggle_favorite(p_token, p_product_id) → boolean (novo estado)
+  customer_list_favorites(p_token)        → Product[]
+  customer_list_coupons(p_token)          → CustomerCoupons { active, inactive, history }
+  customer_list_orders(p_token)           → Order[]
+  customer_has_claimable_coupon(p_token)  → boolean
+  customer_peek_claimable_coupon(p_token) → ClaimedCoupon (não gasta a concessão)
+  customer_claim_coupon(p_token)          → ClaimedCoupon (GASTA a concessão — irreversível)
+
+2.2 — Endpoints REST (backend Rust, Railway)
+--------------------------------------------------------------------------------
+  POST /api/customer/request-password-reset  body:{whatsapp}     → void
+  POST /api/orders/notify-created             body:{order_id}    → void (best-effort, erro é ignorado no front)
+
+2.3 — Endpoints (Vercel Edge Functions, mesmo domínio do front)
+--------------------------------------------------------------------------------
+  POST /api/pix-create   body:{order_id}  → Order (com pix_qr_base64/pix_copia_cola preenchidos)
+  POST /api/pix-check    body:{order_id}  → Order (status atualizado)
+  POST /api/pix-simulate body:{order_id}  → Order (marca como pago — só ambiente de teste)
+
+2.4 — Botões/ações OBRIGATÓRIOS (o backend/negócio depende deles existirem)
+--------------------------------------------------------------------------------
+  - Um jeito de finalizar pedido (chama create_order) — obrigatório em
+    /checkout e /banner/checkout.
+  - Um jeito de aplicar cupom digitado (chama validate_coupon) — em /checkout
+    e /banner/checkout (o segundo só se a promoção aceitar cupom).
+  - Um jeito de consultar pedido por WhatsApp (track_orders_by_phone) — em
+    /consultar, é a ÚNICA forma de um cliente NÃO LOGADO ver o status do
+    próprio pedido.
+  - Um jeito de logar/cadastrar (customer_login / customer_register) — pré-
+    requisito de: finalizar checkout, ver favoritos, ver cupons, ver
+    histórico, "Acompanhar entrega" a partir da Landing.
+  - Um jeito de recuperar senha em 3 passos (pedir código → verificar
+    código → trocar senha) — os 3 passos são RPCs/endpoints SEPARADOS,
+    nenhum pode ser pulado.
+  - Um jeito de resgatar o cupom pendente em 2 passos DISTINTOS: peek
+    (não gasta) → claim (gasta) — nunca podem virar 1 passo só, ou o cliente
+    perde a chance de "ver antes de confirmar".
+  - Um jeito de copiar o código Pix (`navigator.clipboard.writeText`) e um
+    jeito de simular pagamento (ambiente de teste) em /pagamento/:orderId.
+  - Polling de pagamento em /pagamento/:orderId (refreshPayment a cada 4s
+    enquanto não pago) — sem isso o cliente nunca vê a confirmação sem
+    recarregar a página manualmente.
+  - Polling de posição do motoboy em /consultar quando status =
+    'em_rota_de_entrega' (a cada 5s) + polling de rota (a cada 25s).
+
+2.5 — Parâmetros obrigatórios do formulário de checkout (ambos: /checkout e /banner/checkout)
+--------------------------------------------------------------------------------
+  customer_name (obrigatório, não vazio)
+  customer_whatsapp (obrigatório, ≥10 dígitos, sempre normalizado com
+    prefixo "55" antes de mandar pro backend)
+  customer_birthdate (obrigatório — o backend/regra de negócio EXIGE maior
+    de 18 anos; o front calcula a idade e bloqueia ANTES de chamar
+    create_order, mas o valor em si sempre é enviado)
+  delivery_type: 'entrega' | 'retirada' (nunca 'balcao' nesse fluxo — esse
+    terceiro valor só existe pro PDV do admin/vendedor)
+  Se 'entrega': neighborhood, address, customer_lat, customer_lng
+    obrigatórios (vêm do LocationPicker)
+  payment_method: 'pix' | 'cartao' | 'dinheiro'
+  items: array de {product_id, quantity} — nunca vazio
+  coupon_code / promotion_id: opcionais
+
+
+================================================================================
+ETAPA 3 — TODAS AS PÁGINAS DE CLIENTE: HTML E DINÂMICAS OBRIGATÓRIAS
+================================================================================
+Cada página abaixo é auto-suficiente: a lista de "HTML obrigatórios" traz
+TODA peça que precisa existir na tela, uma por linha; a lista de
+"Dinâmicas obrigatórias entre os HTML" traz TODO comportamento que liga
+essas peças, uma explicação por linha. Nenhuma cor, estilo, CSS, sombra,
+gradiente, formato ou animação decorativa aparece em nenhuma das duas —
+isso é 100% do Design System escolhido.
+
+
+--------------------------------------------------------------------------------
+/ (Landing)
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- texto do nome da loja
+- botão de menu de conta
+- lista de opções do menu de conta
+- opção "Entrar" (quando deslogado)
+- opção "Criar conta" (quando deslogado)
+- opção "Favoritos" (quando logado)
+- opção "Cupons" (quando logado)
+- opção "Histórico" (quando logado)
+- opção "Sair" (quando logado)
+- texto de aviso de loja fechada (condicional)
+- carrossel de promoção
+- cada card do carrossel: imagem, texto de título, texto de subtítulo
+- pontos de navegação do carrossel (quando em modo trilho de vários cards)
+- texto do badge do hero (editável pelo lojista em /meu-plano/layout)
+- texto do título/headline do hero (editável pelo lojista em /meu-plano/layout)
+- texto do subtítulo do hero (editável pelo lojista em /meu-plano/layout)
+- botão "Ver catálogo"
+- botão "Acompanhar entrega"
+- lista de badges de credibilidade
+- texto de cada badge
+- botão/link de endereço da loja (dado renderizado do backend: endereço + número
+  opcional preenchidos pelo lojista via mapa/geolocalização/busca em
+  /meu-plano/layout — nunca texto estático hardcoded no template)
+- botão de horário de funcionamento (toggle) — OBRIGATÓRIO sempre visível
+- painel de horário de funcionamento (textos do backend — horários
+  configurados em Configurações do painel da loja / store_hours; NÃO
+  editáveis em /meu-plano/layout)
+- botão fechar (X) do painel de horário
+- botão share (obrigatório na página)
+- botão WhatsApp do share (condicional — só se o lojista preencheu WhatsApp;
+  WhatsApp da loja é obrigatório no onboarding)
+- botão Instagram do share (condicional — só se preenchido; opcional no onboarding)
+- botão Facebook do share (condicional — só se preenchido; opcional no onboarding)
+- card de destaque 1 (WhatsApp): ícone, texto de título, texto de descrição
+- card de destaque 2 (rastreio ao vivo): ícone, texto de título, texto de descrição
+- card de destaque 3 (cupons): ícone, texto de título, texto de descrição
+- modal de login/cadastro (ver componentes dele logo abaixo)
+- campo de texto de WhatsApp (dentro do modal, login e cadastro)
+- campo de senha (dentro do modal, login)
+- campo de texto de nome (dentro do modal, cadastro)
+- campo de texto de e-mail (dentro do modal, cadastro)
+- campo de data de nascimento (dentro do modal, cadastro)
+- campo de senha (dentro do modal, cadastro)
+- botão de ação do modal (Entrar/Criar conta)
+- link "Esqueci minha senha" (dentro do modal, login)
+- botão de fechar o modal
+
+Dinâmicas obrigatórias entre os HTML:
+- Ao entrar na página, busca em paralelo: status da loja, configurações do
+  site / tenant-config (inclui logo_url, textos do hero, cart_fab_*) e lista
+  de promoções ativas.
+- Se qualquer uma dessas 3 buscas falhar, a página não mostra nenhum erro
+  visível — sempre segue com um valor padrão.
+- Se a loja estiver fechada (por horário configurado ou fechamento manual),
+  mostra o texto de aviso de loja FECHADA no topo, com indicação de quando
+  abre de novo ("amanhã" / "sábado" / "segunda" / etc.), e aplica estado
+  visual cinza (grayscale) na landing — isso NÃO impede navegação no site
+  (catálogo, favoritos, cupons, etc.); só impede FINALIZAR checkout.
+- Clicar no botão de menu de conta abre/fecha a lista de opções do menu.
+- Se o cliente está logado, a lista do menu mostra Favoritos/Cupons/
+  Histórico/Sair; se não está logado, mostra Entrar/Criar conta.
+- Clicar em "Entrar" ou em "Criar conta" abre o modal de login/cadastro no
+  respectivo modo.
+- Clicar em "Sair" encerra a sessão do cliente.
+- O carrossel de promoção troca de card sozinho, em LOOP CONTÍNUO, sempre
+  que existir mais de 1 item — nunca fica parado num card só. A cada
+  poucos segundos ele avança pro próximo card automaticamente, e ao
+  chegar no último volta pro primeiro (looping infinito, nunca "acaba").
+- Arrastar o carrossel horizontalmente (mais que uma distância mínima)
+  troca de card manualmente pra frente ou pra trás, conforme a direção do
+  arrasto; um toque curto sem arrastar é tratado como clique normal no
+  card (não conta como navegação do carrossel).
+- Clicar no card que está em exibição no carrossel navega para a página
+  de promoção (/banner), levando o identificador daquela promoção — isso
+  só acontece quando o card em exibição tiver de fato uma promoção
+  cadastrada por trás; se for o card estático de fallback (sem nenhuma
+  promoção cadastrada), o clique não faz nada.
+- Se não existir NENHUMA promoção ativa cadastrada, o carrossel mostra só
+  o card estático de fallback (nunca fica vazio, se houver imagem
+  configurada pra isso).
+- Clicar no botão "Ver catálogo" navega pra página de catálogo.
+- Clicar no botão "Acompanhar entrega": se o cliente estiver logado,
+  navega direto pra página de consulta de pedido; se não estiver logado,
+  abre o modal de login/cadastro em vez de navegar.
+- Clicar no botão/link de endereço abre o endereço físico da loja (vindo
+  do backend /meu-plano/layout) no Google Maps, numa aba nova.
+- Clicar no botão de horário de funcionamento abre o painel de horário
+  (toggle); clicar de novo no mesmo botão, ou no botão X do painel, fecha
+  o painel. Os textos de cada dia/faixa vêm do backend (store_hours /
+  Configurações), nunca hardcoded no HTML do template. O botão SEMPRE
+  aparece — se ainda não houver horários, o painel explica isso.
+- Clicar no botão share abre o painel/lista de redes com interação de
+  empilhamento/hover-click (comportamento inspirado no card social
+  Uiverse; a pele visual segue o Design System do template). Só aparecem
+  os botões das redes que o lojista preencheu (dados do backend / tenant
+  config). WhatsApp abre conversa no WhatsApp Web/app com o número da
+  loja; Instagram e Facebook abrem o perfil público respectivo. Se só
+  WhatsApp estiver preenchido, o painel share mostra só esse botão.
+- Dentro do modal de login/cadastro: alternar entre os 2 modos troca os
+  campos exibidos (WhatsApp+senha no login; nome+WhatsApp+e-mail+
+  nascimento+senha no cadastro).
+- Preencher os campos do modo atual e clicar no botão de ação envia os
+  dados; se der certo, o modal fecha e a ação que o abriu é retomada
+  automaticamente (ex.: navega pra consulta de pedido).
+- Clicar em "Esqueci minha senha" (só existe no modo login) fecha o modal
+  e navega pra página de recuperação de senha.
+- Clicar no botão de fechar o modal, ou clicar fora dele, fecha o modal
+  sem enviar nada e sem mudar nenhum estado.
+
+
+--------------------------------------------------------------------------------
+/catalogo
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- campo de texto de busca
+- botão de limpar busca (aparece só com texto digitado)
+- painel de sugestões de busca
+- cada resultado do painel: imagem, texto do nome, link pra página do produto
+- aba de categoria "Todos"
+- uma aba por categoria existente
+- aba "Promoção" (aparece só se houver produto em promoção ativa)
+- seletor de ordenação
+- opção de ordenação "Padrão"
+- opção de ordenação "Menor preço"
+- opção de ordenação "Maior preço"
+- opção de ordenação "Mais vendido"
+- opção de ordenação "Alfabética"
+- grade/lista de cards de produto
+- em cada card: imagem do produto
+- em cada card: texto do nome
+- em cada card: texto da categoria
+- em cada card: texto do preço
+- em cada card: botão de favoritar (condicional a login)
+- em cada card: botão "Adicionar" (quando sem quantidade no carrinho)
+- em cada card: botão de diminuir quantidade (quando já no carrinho)
+- em cada card: texto do número da quantidade (quando já no carrinho)
+- em cada card: botão de aumentar quantidade (quando já no carrinho)
+- em cada card: texto "Esgotado" (quando sem estoque)
+- botão flutuante de carrinho
+- texto do contador de itens no botão de carrinho
+- modal de detalhe do produto (toggle que abre ao clicar no card)
+- dentro do modal: imagem grande do produto
+- dentro do modal: texto do nome
+- dentro do modal: texto da categoria
+- dentro do modal: texto da descrição
+- dentro do modal: texto do preço
+- dentro do modal: botão de favoritar
+- dentro do modal: botão "Adicionar"/controle de quantidade (mesmas peças do card)
+- dentro do modal: botão de fechar
+- diálogo de confirmação de remoção de favorito
+- dentro do diálogo: texto de título
+- dentro do diálogo: texto de mensagem
+- dentro do diálogo: botão "Cancelar"
+- dentro do diálogo: botão "Remover"
+
+Dinâmicas obrigatórias entre os HTML:
+- Ao entrar na página, busca em paralelo: lista de produtos, lista de
+  categorias, produtos em promoção e contagem de vendas; se o cliente
+  estiver logado, busca também a lista de favoritos dele.
+- Digitar no campo de busca filtra a grade/lista a cada tecla digitada,
+  sem esperar o usuário parar de digitar e sem buscar de novo no servidor
+  (o filtro roda em cima dos dados já carregados).
+- Focar o campo de busca abre o painel de sugestões; clicar fora do campo
+  e do painel fecha o painel sem apagar o texto; clicar no botão de
+  limpar apaga o texto e tira o foco do campo.
+- Clicar num resultado do painel de sugestões navega direto pra página de
+  detalhe daquele produto, e fecha/limpa a busca.
+- Clicar na aba "Todos" remove qualquer filtro de categoria.
+- Clicar numa aba de categoria filtra a grade/lista pra mostrar só
+  produtos daquela categoria.
+- A aba "Promoção" só existe/aparece se houver pelo menos 1 produto em
+  promoção ativa no momento; clicar nela filtra só os produtos com
+  desconto ativo, ainda agrupados visualmente pela categoria original de
+  cada um.
+- Uma categoria que tenha algum produto em promoção ganha um sinal
+  próprio na sua própria aba, mesmo quando a aba "Promoção" não está
+  selecionada (sinalização cruzada).
+- Mudar o seletor de ordenação reordena a lista já carregada
+  instantaneamente, sem nenhuma nova busca ao servidor.
+- Produto sem estoque mostra o texto "Esgotado" no lugar do botão
+  "Adicionar"/controle de quantidade — tanto no card quanto no modal de
+  detalhe.
+- O botão de favoritar só existe no card/modal se o cliente estiver
+  logado; sem login, esse botão simplesmente não é exibido.
+- Clicar no botão de favoritar de um produto AINDA NÃO favoritado marca
+  ele como favorito imediatamente (sem pedir confirmação) e dispara a
+  chamada ao servidor em paralelo, sem travar a tela.
+- Clicar no botão de favoritar de um produto JÁ favoritado NÃO desfavorita
+  direto — abre o diálogo de confirmação de remoção por cima de tudo.
+- Dentro do diálogo de confirmação: clicar em "Cancelar" fecha o diálogo
+  sem mudar nada; clicar em "Remover" desfavorita de verdade — o card do
+  produto CONTINUA visível na grade/lista do catálogo (só o botão de
+  favoritar muda de estado).
+- Clicar no botão "Adicionar" de um card troca esse botão pelo controle de
+  quantidade (botão de diminuir, texto do número, botão de aumentar).
+- Clicar no botão de aumentar soma 1 à quantidade daquele produto no
+  carrinho; clicar no botão de diminuir subtrai 1; ao chegar em 0, o
+  controle de quantidade desaparece e o card volta a mostrar o botão
+  "Adicionar".
+- O botão de aumentar fica sem efeito (não soma mais) quando a quantidade
+  no carrinho já é igual ao estoque disponível daquele produto.
+- Clicar na imagem ou no texto do nome do card (fora dos botões de
+  quantidade e de favoritar) abre o modal de detalhe do produto, mostrando
+  a imagem grande, categoria, descrição completa, preço e os mesmos
+  controles de quantidade/favoritar do card.
+- Dentro do modal de detalhe, o botão de favoritar e o controle de
+  quantidade seguem exatamente as mesmas regras já descritas acima pro
+  card.
+- Clicar no botão de fechar do modal, ou clicar fora do card do modal,
+  fecha o modal — nenhuma alteração já feita (favorito, quantidade) é
+  desfeita ao fechar.
+- O texto do contador no botão flutuante de carrinho mostra a soma das
+  quantidades de todos os produtos que estão no carrinho, e atualiza
+  sozinho a cada mudança de quantidade em qualquer card/modal.
+
+
+--------------------------------------------------------------------------------
+/produto/:id
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- botão de voltar
+- imagem do produto
+- texto da categoria
+- texto do nome do produto
+- texto do preço
+- texto da descrição
+- texto de aviso de sem estoque (condicional)
+- botão "Adicionar à sacola" (quando sem quantidade no carrinho)
+- botão de diminuir quantidade (quando já no carrinho)
+- texto do número da quantidade (quando já no carrinho)
+- botão de aumentar quantidade (quando já no carrinho)
+- texto "Esgotado" (quando sem estoque)
+- botão "Ver sacola" (aparece só quando já há quantidade deste produto no carrinho)
+- texto de mensagem de produto não encontrado (estado de erro)
+- botão "Voltar ao catálogo" (estado de erro)
+
+Dinâmicas obrigatórias entre os HTML:
+- Ao entrar na página, busca os dados do produto usando o identificador da
+  rota; refaz a busca sempre que esse identificador muda (trocar de
+  produto sem sair da rota).
+- Enquanto a busca não termina, mostra um indicador de carregamento no
+  lugar de todo o restante do conteúdo.
+- Se o produto não for encontrado, ou a busca falhar por qualquer motivo,
+  a página mostra o texto de mensagem de erro + o botão "Voltar ao
+  catálogo", no lugar de todo o conteúdo do produto (os dois casos usam a
+  mesma tela, sem diferenciar a causa técnica).
+- Produto sem estoque mostra o texto "Esgotado" no lugar do botão
+  "Adicionar à sacola"/controle de quantidade, mesmo que já existam
+  unidades deste produto reservadas no carrinho local.
+- Clicar em "Adicionar à sacola" troca esse botão pelo controle de
+  quantidade (diminuir/número/aumentar), e faz aparecer o botão "Ver
+  sacola".
+- Clicar no botão de aumentar soma 1 à quantidade no carrinho; clicar no
+  de diminuir subtrai 1.
+- O botão de aumentar fica sem efeito quando a quantidade já é igual ao
+  estoque disponível.
+- Clicar em "Ver sacola" navega pra página de carrinho.
+- Clicar no botão de voltar retorna à página/rota anterior.
+
+
+--------------------------------------------------------------------------------
+/carrinho
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- botão de alternar para visualização em grade
+- botão de alternar para visualização em lista
+- lista/grade de itens do carrinho
+- em cada item: imagem do produto
+- em cada item: texto do nome
+- em cada item: texto do preço atual
+- em cada item: botão de diminuir quantidade
+- em cada item: texto do número da quantidade
+- em cada item: botão de aumentar quantidade
+- em cada item: botão de remover
+- em cada item: botão de favoritar
+- texto/card do total do carrinho
+- botão "Continuar para o checkout"
+- texto de aviso de carrinho vazio (estado vazio)
+- botão "Ver catálogo" (estado vazio)
+- modal de detalhe do produto (mesmas peças do catálogo)
+- diálogo de confirmação de remoção de favorito (mesmas peças do catálogo)
+
+Dinâmicas obrigatórias entre os HTML:
+- Ao entrar na página, busca a lista completa de produtos e de produtos em
+  promoção, e cruza com os itens guardados no carrinho local (que só
+  guarda produto+quantidade) pra montar a lista exibida.
+- O preço mostrado em cada item é SEMPRE o preço ATUAL do produto, nunca
+  um valor antigo guardado no carrinho local.
+- Se um produto do carrinho local não existir mais (ou tiver sido
+  removido do catálogo), o item dele simplesmente não aparece na lista —
+  mas continua guardado no carrinho por baixo; se o produto voltar a
+  existir numa visita futura, o item reaparece sozinho, sem o cliente
+  precisar adicionar de novo.
+- Se o carrinho estiver vazio, a página mostra o texto de aviso + o botão
+  "Ver catálogo" no lugar de toda a lista e do total.
+- Clicar no botão de alternar grade/lista troca só a forma de exibição,
+  mantendo os mesmos itens.
+- Clicar no botão de aumentar/diminuir quantidade de um item atualiza a
+  quantidade daquele item e recalcula o texto/card de total
+  instantaneamente.
+- Clicar no botão de remover tira o item do carrinho direto, sem pedir
+  confirmação nenhuma.
+- Clicar no botão de favoritar segue exatamente a mesma dinâmica do
+  catálogo: marcar é direto e sem confirmação; desmarcar abre o diálogo de
+  confirmação por cima; confirmando a remoção, o item do carrinho CONTINUA
+  visível na lista (só o botão de favoritar muda de estado).
+- Clicar na imagem ou no texto do nome do item (fora dos botões de
+  quantidade/remover/favoritar) abre o modal de detalhe do produto, com as
+  mesmas peças e dinâmicas do catálogo.
+- Clicar em "Continuar para o checkout" navega pra página de checkout.
+
+
+--------------------------------------------------------------------------------
+/checkout
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- card da promoção (aparece só se a página foi aberta a partir de uma promoção)
+- campo de texto do nome
+- campo de texto do WhatsApp
+- campo de dia de nascimento
+- campo de mês de nascimento
+- campo de ano de nascimento
+- checkbox "Retirar no local"
+- botão/campo de endereço de entrega (abre o seletor de mapa)
+- campo de texto de ponto de referência
+- botão de forma de pagamento "Pix"
+- botão de forma de pagamento "Cartão"
+- botão de forma de pagamento "Dinheiro"
+- campo de texto de código de cupom
+- botão "Aplicar" cupom
+- lista suspensa de cupons exclusivos do cliente (condicional)
+- cada item da lista suspensa: texto do código, botão de selecionar
+- texto do cupom aplicado (quando há cupom aplicado)
+- botão de remover cupom aplicado
+- lista de itens no resumo
+- texto do subtotal
+- texto de cada fonte de desconto (uma linha por fonte)
+- texto do valor do frete
+- texto do total final
+- botão "Finalizar pedido"
+- modal de login/cadastro (mesmas peças da Landing)
+
+Dinâmicas obrigatórias entre os HTML:
+- Se a página foi aberta com um identificador de promoção na URL, busca e
+  mostra o card dessa promoção no topo do formulário.
+- Ao entrar na página, busca a lista de produtos e de produtos em
+  promoção; se o cliente já tinha um endereço salvo de uma visita
+  anterior, revalida o valor do frete pra esse endereço de novo.
+- Marcar o checkbox "Retirar no local" esconde o botão/campo de endereço e
+  o campo de ponto de referência, e o valor do frete some do resumo.
+- Clicar no botão/campo de endereço abre o seletor de mapa em tela cheia;
+  ao confirmar um ponto lá, o texto do endereço nesta página é preenchido
+  e o frete é recalculado automaticamente.
+- Completar o campo de WhatsApp (atingir a quantidade mínima de dígitos)
+  dispara, depois de uma pequena pausa na digitação, uma busca automática
+  de cupons exclusivos daquele número — se encontrar algum, deixa a lista
+  suspensa de cupons pronta pra seleção, mas NÃO aplica nada sozinho.
+- Digitar um código no campo de cupom habilita o botão "Aplicar"; clicar
+  em "Aplicar" valida esse código junto ao servidor — se válido, mostra o
+  texto do cupom aplicado + o botão de remover; se inválido, mostra uma
+  mensagem de erro.
+- Se o campo de cupom estiver vazio e existirem cupons exclusivos
+  detectados pro WhatsApp digitado, o botão nesse lugar abre a lista
+  suspensa de cupons em vez de tentar validar texto vazio.
+- Clicar num item da lista suspensa de cupons exclusivos aplica aquele
+  cupom.
+- Clicar no botão de remover cupom aplicado tira o desconto do resumo e
+  libera o campo de texto/lista suspensa de novo.
+- Se um produto que tem cupom de promoção de catálogo atrelado estiver no
+  carrinho, e NENHUM outro cupom já estiver aplicado, esse cupom é
+  aplicado automaticamente, sem clique nenhum do cliente; se esse mesmo
+  produto for removido do carrinho depois, o desconto correspondente
+  também é removido automaticamente.
+- Clicar num dos 3 botões de forma de pagamento seleciona aquela forma —
+  só uma pode estar selecionada de cada vez.
+- O resumo (subtotal, descontos, frete, total) recalcula instantaneamente
+  a cada mudança: quantidade de itens, cupom aplicado/removido, marcar/
+  desmarcar retirada.
+- Cada uma das 3 possíveis fontes de desconto (promoção de campanha,
+  cupom, produto em promoção de catálogo) aparece na sua PRÓPRIA linha no
+  resumo — nunca duas fontes somadas numa linha só.
+- Clicar em "Finalizar pedido": se o cliente não estiver logado, abre o
+  modal de login/cadastro primeiro (e, ao concluir o login com sucesso,
+  tenta finalizar o pedido de novo automaticamente, sem exigir um segundo
+  clique); se a idade calculada pela data de nascimento for menor que 18
+  anos, bloqueia o envio com uma mensagem de erro específica; se faltar
+  nome, WhatsApp, ou endereço (quando não é retirada), bloqueia o envio
+  com mensagem específica pro campo faltante; se tudo estiver certo,
+  desabilita o botão, mostra um indicador de carregamento nele, e envia o
+  pedido.
+- Se o envio do pedido tiver sucesso, o carrinho é esvaziado e a página
+  navega pra tela de pagamento (se a forma escolhida foi Pix) ou pra tela
+  de consulta do pedido (se foi cartão ou dinheiro).
+- Se o envio do pedido falhar, mostra uma mensagem de erro e reabilita o
+  botão "Finalizar pedido", sem perder o que já foi preenchido.
+
+
+--------------------------------------------------------------------------------
+/banner (vitrine de uma promoção específica)
+--------------------------------------------------------------------------------
+Como se chega nesta página: clicando no card em exibição no carrossel de
+promoção da Landing (carrossel que fica em loop contínuo trocando de
+imagem sozinho — ver dinâmica da Landing acima) — o clique só funciona
+quando aquele card do carrossel tem uma promoção de verdade associada; ou
+por acesso direto a um link com o identificador da promoção.
+
+HTML obrigatórios:
+- imagem da promoção
+- texto do título da promoção
+- texto da descrição da promoção
+- lista de produtos elegíveis pra esta promoção
+- em cada produto: imagem
+- em cada produto: texto do nome
+- em cada produto: texto do preço original
+- em cada produto: texto do valor do desconto (quando aplicável)
+- em cada produto: texto do preço final
+- em cada produto: botão de abrir informação do produto
+- em cada produto: botão de diminuir quantidade (promoção "monte seu carrinho")
+- em cada produto: texto do número da quantidade (promoção "monte seu carrinho")
+- em cada produto: botão de aumentar quantidade (promoção "monte seu carrinho")
+- em cada produto: botão "+" de adicionar (promoção "monte seu carrinho", ainda não adicionado)
+- em cada produto: texto "Incluso no kit" (promoção tipo "kit")
+- em cada produto: texto "Esgotado" (produto sem estoque)
+- modal simples de informação do produto
+- dentro do modal: texto do nome
+- dentro do modal: imagem
+- dentro do modal: texto da descrição
+- dentro do modal: texto do preço
+- dentro do modal: botão de fechar
+- texto de resumo (barra fixa no rodapé)
+- botão "Finalizar Pedido" (barra fixa no rodapé)
+- texto de mensagem de erro (quando não há promoção informada, ou ela não existe mais)
+
+Dinâmicas obrigatórias entre os HTML:
+- Se a página for aberta sem um identificador de promoção na URL, mostra
+  o texto de mensagem de erro direto, sem buscar nada no servidor.
+- Ao entrar na página com um identificador válido, busca a promoção e a
+  lista completa de produtos.
+- Se a promoção não existir mais (ou a busca falhar), mostra o texto de
+  mensagem de erro no lugar de todo o conteúdo.
+- Se a promoção for do tipo "kit": a lista de produtos já entra com TODOS
+  os itens elegíveis, quantidade fixa em 1 cada, mostrando o texto
+  "Incluso no kit" no lugar dos controles de quantidade — nada pode ser
+  editado, é tudo-ou-nada.
+- Se a promoção for do tipo "monte seu carrinho": a lista começa vazia (só
+  o botão "+" em cada produto); clicar no "+" adiciona 1 unidade daquele
+  produto e troca o botão pelo controle de quantidade (diminuir/número/
+  aumentar).
+- Produto sem estoque mostra o texto "Esgotado" na lista, mesmo dentro da
+  promoção, e não pode ser adicionado.
+- Clicar no botão de informação (ou na imagem/nome) de um produto abre o
+  modal simples de informação por cima da tela; clicar no botão de fechar,
+  ou fora do card do modal, fecha o modal.
+- A barra com o texto de resumo e o botão "Finalizar Pedido" permanece
+  sempre visível no rodapé da tela, independente de rolar a página.
+- O botão "Finalizar Pedido" fica sem efeito (desabilitado) enquanto o
+  carrinho desta promoção estiver vazio.
+- Clicar em "Finalizar Pedido" navega pra página de checkout desta
+  promoção (/banner/checkout).
+- O carrinho usado nesta página é sempre SEPARADO do carrinho normal do
+  site — nada aqui interfere no que está guardado em /catalogo e
+  /carrinho, e vice-versa.
+
+
+--------------------------------------------------------------------------------
+/banner/checkout
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- card da promoção (sempre visível nesta página)
+- campo de texto do nome
+- campo de texto do WhatsApp
+- campo de dia de nascimento
+- campo de mês de nascimento
+- campo de ano de nascimento
+- checkbox "Retirar no local"
+- botão/campo de endereço de entrega
+- campo de texto de ponto de referência
+- botão de forma de pagamento "Pix"
+- botão de forma de pagamento "Cartão"
+- botão de forma de pagamento "Dinheiro"
+- campo de texto de código de cupom
+- botão "Aplicar" cupom
+- texto do cupom aplicado (quando há)
+- botão de remover cupom aplicado
+- lista de itens no resumo
+- texto do subtotal
+- texto do desconto (quando aplicável)
+- texto do frete
+- texto do total final
+- botão "Finalizar pedido"
+- texto de mensagem de erro (carrinho de promoção vazio)
+
+Dinâmicas obrigatórias entre os HTML:
+- Se o carrinho desta promoção estiver vazio ao entrar na página (ou
+  ficar vazio a qualquer momento depois), a página trava mostrando o
+  texto de mensagem de erro pedindo pra voltar em /banner e montar o
+  pedido primeiro — não deixa prosseguir enquanto isso.
+- O card da promoção fica sempre visível nesta página (diferente do
+  /checkout normal, onde só aparece condicionalmente).
+- Marcar "Retirar no local" esconde o botão/campo de endereço e o campo de
+  ponto de referência, e o frete some do resumo — mesma dinâmica do
+  /checkout normal.
+- Digitar um código no campo de cupom e clicar em "Aplicar" valida e
+  aplica o desconto — aqui NÃO existe detecção automática de cupom pelo
+  número de WhatsApp digitado (diferente do /checkout normal), só cupom
+  digitado manualmente.
+- Aqui também NÃO existe auto-aplicação de cupom de produto em promoção
+  de catálogo (já que todos os itens desta página já pertencem a 1
+  promoção só).
+- Mesma validação de idade mínima (18 anos) e mesmos campos obrigatórios
+  do /checkout normal.
+- O identificador da promoção é sempre enviado junto com o pedido —
+  aqui ele nunca é opcional (diferente do /checkout normal).
+- Clicar em "Finalizar pedido" segue a mesma dinâmica do /checkout normal:
+  desabilita o botão e mostra carregamento; sucesso navega pra pagamento
+  (Pix) ou consulta (cartão/dinheiro); falha mostra erro e reabilita o
+  botão.
+
+
+--------------------------------------------------------------------------------
+/pagamento/:orderId
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- imagem/código QR do Pix
+- texto "QR indisponível" (quando o QR não pôde ser gerado)
+- texto do valor total
+- botão "Copiar código Pix" (aparece só quando o código existe)
+- texto/indicador de "aguardando confirmação do pagamento"
+- botão de simular pagamento (ambiente de teste)
+- ícone de comemoração (estado pago)
+- texto "Pagamento confirmado"
+- botão "Acompanhar pedido" (estado pago)
+
+Dinâmicas obrigatórias entre os HTML:
+- Ao entrar na página, busca os dados do pedido pelo identificador da
+  rota.
+- Se o pedido for da forma de pagamento Pix, ainda não estiver pago, e
+  ainda não tiver um código Pix gerado, a cobrança Pix é criada NESTE
+  MOMENTO — essa criação só acontece 1 vez, na primeira visita; visitas
+  seguintes (inclusive recarregar a página) só consultam o status já
+  existente, nunca criam uma nova cobrança.
+- Enquanto o pagamento não está confirmado, a página consulta o status
+  automaticamente a cada poucos segundos, sem nenhuma ação do cliente.
+- Assim que o status virar "pago" (seja pela consulta automática, seja
+  pelo botão de simular), a consulta automática para de rodar, e toda a
+  tela troca pro estado de sucesso — o QR/código, o botão de copiar e o
+  indicador de "aguardando" desaparecem, dando lugar ao ícone de
+  comemoração, ao texto "Pagamento confirmado" e ao botão "Acompanhar
+  pedido".
+- Se não for possível gerar o QR/código Pix, a página mostra o texto "QR
+  indisponível" no lugar da imagem do QR, mas o resto da tela continua
+  funcionando (a consulta automática de status continua tentando).
+- Clicar em "Copiar código Pix" copia o código pra área de transferência e
+  troca temporariamente o texto/ícone do botão pra indicar "Copiado",
+  voltando ao estado normal depois de alguns segundos.
+- Clicar no botão de simular pagamento (só existe em ambiente de teste)
+  marca o pedido como pago manualmente, disparando a mesma troca de tela
+  descrita acima.
+- Clicar em "Acompanhar pedido" navega pra página de consulta deste
+  pedido.
+
+
+--------------------------------------------------------------------------------
+/consultar
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- campo de texto de telefone
+- botão de buscar
+- lista de pedidos encontrados
+- em cada pedido: texto do número do pedido
+- em cada pedido: texto do status
+- em cada pedido: lista dos itens
+- em cada item da lista: texto da quantidade + nome
+- em cada pedido: texto do endereço ou "retirada no local"
+- em cada pedido: texto do valor total
+- bloco de mapa de rastreio (condicional a pedido em rota de entrega — ver ANEXO A)
+- botão de recentralizar o mapa (dentro do bloco de mapa)
+- texto de aviso "motoboy terminando outra entrega" (condicional)
+- texto de aviso "aguardando sinal de GPS" (condicional)
+- texto de aviso "mapa não carregou" (condicional)
+- link "Falar com motoboy" (condicional)
+- texto de mensagem "nenhum pedido encontrado" (condicional)
+
+Dinâmicas obrigatórias entre os HTML:
+- Se a página for aberta com um identificador de pedido na URL, busca
+  direto esse pedido específico, sem precisar digitar telefone.
+- Senão, se já existir um número de WhatsApp salvo de uma visita anterior
+  ao checkout, a busca é feita automaticamente com esse número assim que a
+  página carrega.
+- Digitar um telefone e clicar no botão de buscar mostra a lista de todos
+  os pedidos feitos com aquele número; se nenhum for encontrado, mostra o
+  texto de mensagem "nenhum pedido encontrado".
+- Cada pedido cujo status seja "em rota de entrega" ganha seu próprio
+  bloco de mapa de rastreio — ver ANEXO A para a reprodução exata da
+  renderização e da animação deste mapa (ícone de moto, seta de rumo,
+  anel pulsante no destino, gesto de arrastar/pinçar/girar, consulta de
+  posição a cada poucos segundos, consulta de rota a cada alguns
+  segundos).
+- A posição do motoboy só é exibida dentro do bloco de mapa quando ele
+  estiver de fato indo pra ESTE pedido especificamente — se ele ainda
+  estiver terminando a entrega anterior de um mesmo lote, aparece o texto
+  de aviso "motoboy terminando outra entrega" no lugar do mapa ativo.
+- Se o motoboy já estiver a caminho deste pedido mas ainda sem sinal de
+  GPS, aparece o texto de aviso "aguardando sinal de GPS".
+- O primeiro enquadramento automático do mapa (posicionar e dar zoom pra
+  mostrar motoboy + destino) acontece UMA ÚNICA VEZ, assim que a posição
+  aparece pela primeira vez — depois disso o mapa nunca mais se
+  reenquadra sozinho, só quando o cliente clica no botão de recentralizar.
+- Clicar no botão de recentralizar reenquadra o mapa mostrando motoboy e
+  destino de uma vez, a qualquer momento (ação manual, disponível sempre
+  que há uma posição ativa).
+- Se os tiles do mapa falharem repetidamente ao carregar, aparece o texto
+  de aviso "mapa não carregou".
+- Clicar no link "Falar com motoboy" abre uma conversa de WhatsApp com o
+  número de telefone dele.
+- Esta página NÃO exige login — qualquer visitante que souber o número de
+  telefone usado no pedido consegue consultar.
+
+
+--------------------------------------------------------------------------------
+/recuperar-senha
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- campo de texto de WhatsApp (passo 1)
+- botão de enviar código (passo 1)
+- campo de texto de código (passo 2)
+- botão de confirmar código (passo 2)
+- botão "Reenviar código" (passo 2)
+- campo de nova senha (passo 3)
+- campo de confirmar nova senha (passo 3)
+- botão de redefinir senha (passo 3)
+- texto de confirmação final (passo 4)
+- botão "Voltar ao início" (passo 4)
+- texto de mensagem de erro (qualquer passo)
+
+Dinâmicas obrigatórias entre os HTML:
+- A página segue exatamente 3 passos numerados, sempre nesta ordem:
+  primeiro o WhatsApp, depois o código, depois a nova senha — nenhum
+  passo pode ser pulado ou fundido com outro.
+- No passo do WhatsApp: digitar o número e clicar em "enviar código"
+  valida se tem a quantidade mínima de dígitos ANTES de qualquer chamada
+  ao servidor; se válido, envia o código por WhatsApp e avança pro passo
+  do código; se a chamada ao servidor falhar, mostra mensagem de erro e
+  continua no mesmo passo.
+- No passo do código: digitar o código e clicar em "confirmar código"
+  valida se tem exatamente a quantidade de dígitos esperada ANTES de
+  qualquer chamada; se válido e confirmado pelo servidor, avança pro
+  passo da nova senha; se inválido/expirado, mostra mensagem de erro e
+  continua no mesmo passo.
+- Clicar em "Reenviar código" (só existe no passo do código) repete o
+  mesmo envio do passo 1 pro mesmo número, sem voltar visualmente pro
+  passo 1.
+- No passo da nova senha: digitar a nova senha e confirmar; se as duas não
+  forem iguais, mostra mensagem de erro sem chamar o servidor; se forem
+  iguais e tiverem a quantidade certa de dígitos, clicar em "redefinir
+  senha" chama o servidor — sucesso avança pro passo de confirmação final;
+  falha mostra mensagem de erro e continua no mesmo passo.
+- No passo de confirmação final: clicar em "Voltar ao início" navega pra
+  Landing.
+
+
+--------------------------------------------------------------------------------
+/cliente/favoritos
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- grade de cards de produto favoritado
+- em cada card: imagem
+- em cada card: texto do nome
+- em cada card: texto do preço
+- em cada card: botão de favoritar/desfavoritar
+- em cada card: botão "Adicionar"/controle de quantidade (mesmas peças do catálogo)
+- em cada card: texto "Esgotado" (quando sem estoque)
+- texto de aviso "nenhum favorito ainda" (estado vazio)
+- botão "Ver catálogo" (estado vazio)
+- modal de detalhe do produto (mesmas peças do catálogo)
+- diálogo de confirmação de remoção (mesmas peças do catálogo)
+
+Dinâmicas obrigatórias entre os HTML:
+- Ao entrar na página sem estar logado, a página redireciona imediatamente
+  pra Landing, sem chegar a mostrar nenhum conteúdo próprio desta página
+  (nunca aparece nem por um instante antes do redirecionamento).
+- Estando logado, busca em paralelo a lista de produtos favoritados e a
+  lista de produtos em promoção.
+- Se não houver nenhum produto favoritado, mostra o texto de aviso
+  "nenhum favorito ainda" + o botão "Ver catálogo".
+- Clicar no botão de favoritar de um card (aqui, sempre já favoritado)
+  abre o diálogo de confirmação de remoção.
+- Dentro do diálogo: clicar em "Cancelar" fecha sem mudar nada; clicar em
+  "Remover" desfavorita de verdade e, DIFERENTE do catálogo e do carrinho,
+  tira o card da tela IMEDIATAMENTE (aqui, remover sempre esconde o card,
+  já que a página inteira é a lista de favoritos).
+- Clicar na imagem ou no nome de um card abre o modal de detalhe do
+  produto, com as mesmas peças e dinâmicas de quantidade/favoritar do
+  catálogo (favoritar/desfavoritar dentro do modal também tira o card da
+  grade imediatamente ao confirmar, e fecha o modal junto).
+- Produto sem estoque mostra "Esgotado" no lugar do controle de compra,
+  igual ao catálogo.
+
+
+--------------------------------------------------------------------------------
+/cliente/cupons
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- slot arrastável de resgate de cupom (aparece só quando existe cupom pendente)
+- aba "Ativos"
+- aba "Inativos"
+- aba "Histórico"
+- trilho/carrossel de tickets de cupom
+- em cada ticket: texto do código
+- em cada ticket: texto do valor/tipo de desconto
+- em cada ticket: texto da data (quando aplicável, aba Histórico)
+- texto de mensagem "nenhum cupom" (por aba, quando vazia)
+- overlay de revelação em tela cheia (durante o resgate)
+- dentro do overlay: indicador de carregamento
+- dentro do overlay: o ticket revelado
+- dentro do overlay: botão "Resgatar cupom"
+- dentro do overlay: texto de mensagem de erro (quando peek ou claim falham)
+
+Dinâmicas obrigatórias entre os HTML:
+- Ao entrar na página sem estar logado, redireciona imediatamente pra
+  Landing, sem mostrar conteúdo desta página.
+- Estando logado, busca os 3 grupos de cupons (ativos, inativos,
+  histórico) e verifica se existe algum cupom pendente pra resgatar.
+- O slot arrastável só existe/aparece quando há de fato um cupom pendente
+  — nunca é um elemento sem função nenhuma na tela.
+- Ver ANEXO B para a reprodução EXATA do gesto de arrastar e do ritmo da
+  animação do slot. Resumo funcional: parado, o slot "espia" sozinho em
+  loop contínuo; ao tocar e arrastar o slot, ele segue o dedo/mouse em
+  tempo real; soltando o arrasto quase no fim do curso, o slot trava
+  totalmente aberto e dispara a abertura do overlay de revelação; soltando
+  antes disso, o slot volta deslizando ao estado inicial e o loop
+  decorativo retoma, sem nenhuma chamada ao servidor ter acontecido.
+- Ao abrir o overlay de revelação: primeiro busca e mostra o cupom sem
+  gastar nada (só visualização); depois de um tempo fixo de espera,
+  aparece o botão "Resgatar cupom" dentro do overlay; clicar nesse botão é
+  que de fato gasta o resgate — são sempre 2 chamadas separadas ao
+  servidor, nunca uma só.
+- Se a busca inicial do cupom (a visualização) falhar, o overlay fecha e
+  mostra o texto de mensagem de erro.
+- Se o clique em "Resgatar cupom" falhar, o overlay continua aberto
+  mostrando o mesmo ticket + o texto de mensagem de erro, permitindo
+  clicar em "Resgatar cupom" de novo sem precisar refazer o gesto de
+  arrastar.
+- Ao concluir o resgate com sucesso: o overlay fecha, o cupom passa a
+  aparecer na aba "Ativos", a aba selecionada muda pra "Ativos"
+  automaticamente, e a existência de outro cupom pendente é verificada de
+  novo (o slot arrastável pode reaparecer se sobrar mais algum).
+- Clicar em cada uma das 3 abas troca qual grupo de cupons é mostrado no
+  trilho/carrossel de tickets.
+- Se a aba selecionada não tiver nenhum cupom, mostra o texto de mensagem
+  "nenhum cupom" correspondente àquela aba.
+- No trilho/carrossel: arrastar ou rolar horizontalmente muda qual ticket
+  fica em destaque (o mais próximo do centro visual da tela).
+
+
+--------------------------------------------------------------------------------
+/cliente/historico
+--------------------------------------------------------------------------------
+HTML obrigatórios:
+- lista de pedidos
+- em cada pedido: texto do número do pedido
+- em cada pedido: texto do status
+- em cada pedido: lista dos itens
+- em cada item da lista: texto da quantidade + nome
+- em cada pedido: texto do endereço ou "retirada no local"
+- em cada pedido: texto do valor total
+- em cada pedido: botão "Comprar novamente"
+- em cada pedido: texto de aviso de indisponibilidade (condicional)
+- texto de aviso "nenhum pedido ainda" (estado vazio)
+- botão "Ver catálogo" (estado vazio)
+
+Dinâmicas obrigatórias entre os HTML:
+- Ao entrar na página sem estar logado, redireciona imediatamente pra
+  Landing.
+- Estando logado, busca a lista completa de pedidos do cliente.
+- Se não houver nenhum pedido, mostra o texto de aviso "nenhum pedido
+  ainda" + o botão "Ver catálogo".
+- Clicar no botão "Comprar novamente" de um pedido: busca a lista de
+  produtos ATUAL naquele exato momento do clique (nunca reaproveita
+  qualquer dado já carregado antes); compara cada item do pedido antigo
+  com o produto correspondente de hoje.
+- Produto que não existe mais, está inativo, ou está sem estoque é
+  descartado da reconstrução, e citado pelo nome no texto de aviso de
+  indisponibilidade daquele pedido específico.
+- Se sobrar pelo menos 1 item disponível: o carrinho normal do site é
+  apagado por completo e reconstruído só com os itens disponíveis, nas
+  quantidades do pedido antigo, usando sempre o PREÇO ATUAL de cada
+  produto (nunca o preço antigo congelado no pedido histórico).
+- Se NENHUM item do pedido antigo ainda estiver disponível, o carrinho
+  normal do site não é alterado (preserva o que já estava lá).
+- Se todos os itens do pedido antigo estavam disponíveis, a página navega
+  automaticamente pra página de carrinho; se algum item ficou de fora, a
+  página NÃO navega sozinha — só mostra o texto de aviso, deixando o
+  cliente decidir se quer ir pro carrinho manualmente.
+- Enquanto processa o clique de "Comprar novamente" de um pedido
+  específico, só o botão daquele pedido mostra um indicador de
+  carregamento — os botões dos outros pedidos continuam clicáveis
+  normalmente ao mesmo tempo.
+
+
+================================================================================
+ANEXO A — MAPA DE RASTREIO DO MOTOBOY (/consultar): REPRODUÇÃO EXATA
+================================================================================
+Esta é a única página com um mecanismo visual+gestual complexo o bastante
+pra exigir código literal em vez de descrição funcional. TUDO abaixo é
+lógica pura (nenhuma cor de marca, exceto onde marcado) — deve ser
+reproduzido tal como está, só trocando as cores marcadas pela paleta do
+Design System escolhido.
+
+Bibliotecas: leaflet (+ leaflet/dist/leaflet.css). Tiles: CARTO "Dark
+Matter" (fundo escuro por padrão de fábrica, não é escolha de marca —
+tiles claros geram conflito real com o dark-mode automático do Chrome no
+Android, ver comentário no código). Backend de rota (linha real pelas
+ruas): uma API própria (Worker/serviço equivalente) que recebe
+{de:{lat,lng}, ate:{lat,lng}} e devolve {coords, km, min} — a URL/host é
+infraestrutura do projeto original, não parte da especificação; qualquer
+implementação nova aponta pro seu próprio backend de rota com o mesmo
+contrato de entrada/saída.
+
+--- src/lib/geo/tipos.ts (shape de dados) ---
+```ts
+export interface Ponto {
+  lat: number
+  lng: number
+}
+export interface EnderecoResultado extends Ponto {
+  titulo: string
+  subtitulo: string
+  bairro?: string
+}
+export interface Rota {
+  coords: [number, number][]
+  km: number
+  min: number
+}
+// DeliveryPosition (de lib/types.ts):
+// { is_next_stop: boolean; lat?: number; lng?: number; heading?: number }
+```
+
+--- src/lib/geo/mapa.ts (tiles + ajuste de enquadramento) ---
+```ts
+export const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png'
+export const TILE_ATTR =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+
+// Centro usado quando o cliente nega o GPS (coordenada física da loja).
+export const FALLBACK = { lat: -7.1746, lng: -34.8576 }
+
+// Avisa quando os tiles estão de fato falhando em carregar (rede/CDN),
+// separado de "carregou mas está difícil de ver".
+export function monitorarTiles(layer: L.TileLayer, onMudarStatus: (falhando: boolean) => void): () => void {
+  let falhasSeguidas = 0
+  const onErro = () => { falhasSeguidas++; if (falhasSeguidas >= 3) onMudarStatus(true) }
+  const onCarregou = () => { falhasSeguidas = 0; onMudarStatus(false) }
+  layer.on('tileerror', onErro)
+  layer.on('tileload', onCarregou)
+  return () => { layer.off('tileerror', onErro); layer.off('tileload', onCarregou) }
+}
+
+// Encaixa bounds (2 pontos) no espaço VISÍVEL de verdade — não usa o
+// fitBounds nativo do Leaflet porque, com o mapa rotacionável (div
+// oversized ~2.6x, ver ANEXO abaixo), ele calcula zoom errado. Mede o
+// tamanho VISÍVEL real e calcula o zoom certo via projeção geográfica.
+export function ajustarParaCaber(map: L.Map, bounds: L.LatLngBounds, visivel: { width: number; height: number }, paddingPx = 40) {
+  const p1 = map.project(bounds.getNorthWest(), 0)
+  const p2 = map.project(bounds.getSouthEast(), 0)
+  const boundsW = Math.max(Math.abs(p2.x - p1.x), 1e-9)
+  const boundsH = Math.max(Math.abs(p2.y - p1.y), 1e-9)
+  const availW = Math.max(1, visivel.width - paddingPx * 2)
+  const availH = Math.max(1, visivel.height - paddingPx * 2)
+  const escala = Math.min(availW / boundsW, availH / boundsH)
+  const zoom = Math.min(map.getMaxZoom(), Math.max(map.getMinZoom(), Math.log2(escala)))
+  map.setView(bounds.getCenter(), zoom, { animate: false })
+}
+```
+
+--- src/lib/geo/rotacaoMapa.ts (gesto unificado: arrastar+pinçar+girar) ---
+Motivo de existir: o mapa gira via `transform: rotate()` numa div POR FORA
+do controle do Leaflet; o dragging/touchZoom NATIVOS do Leaflet não sabem
+disso e ficam "errados" assim que o mapa gira uma vez. A solução é
+desligar os gestos nativos e reimplementar arrastar+pinçar+girar como 1
+gesto só, sempre convertendo "quanto o dedo moveu na tela" pra "quanto o
+mapa deve se mover de verdade", levando a rotação atual em conta.
+```ts
+export interface GestoMapaOpcoes {
+  map: L.Map
+  getRotation: () => number
+  onRotate: (anguloGraus: number) => void
+  enabled?: () => boolean
+  onInteract?: () => void
+}
+interface PontoTela { x: number; y: number }
+function centroide(a: PontoTela, b: PontoTela) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } }
+function distancia(a: PontoTela, b: PontoTela) { return Math.hypot(a.x - b.x, a.y - b.y) }
+function anguloEntre(a: PontoTela, b: PontoTela) { return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI }
+function deTouch(t: Touch): PontoTela { return { x: t.clientX, y: t.clientY } }
+
+// Roda um vetor de deslocamento de tela pelo inverso da rotação atual.
+function rotacionarVetor(dx: number, dy: number, anguloGraus: number): [number, number] {
+  const rad = (-anguloGraus * Math.PI) / 180
+  const cos = Math.cos(rad), sin = Math.sin(rad)
+  return [dx * cos - dy * sin, dx * sin + dy * cos]
+}
+
+export function anexarGestoMapa(el: HTMLElement, opcoes: GestoMapaOpcoes): () => void {
+  const { map, getRotation, onRotate } = opcoes
+  const enabled = opcoes.enabled ?? (() => true)
+  const onInteract = opcoes.onInteract ?? (() => {})
+
+  // touchmove dispara mais rápido do que o navegador pinta frames — só
+  // ATUALIZA estado no evento (barato); um requestAnimationFrame por
+  // frame real aplica o delta acumulado (evita o mapa "piscar" durante o
+  // pinça, causado por chamar map.setZoom() várias vezes por frame).
+  let ultimoMeioAplicado: PontoTela | null = null
+  let ultimaDistanciaAplicada: number | null = null
+  let ultimoAnguloAplicado: number | null = null
+  let touchAtual: { pontos: PontoTela[] } | null = null
+  let rafPendente = false
+
+  function pan(dxTela: number, dyTela: number) {
+    const [dx, dy] = rotacionarVetor(dxTela, dyTela, getRotation())
+    map.panBy([-dx, -dy], { animate: false })
+  }
+  function agendarFlush() {
+    if (rafPendente) return
+    rafPendente = true
+    requestAnimationFrame(() => { rafPendente = false; flush() })
+  }
+  function flush() {
+    if (!touchAtual) return
+    const { pontos } = touchAtual
+    if (pontos.length === 1) {
+      const p = pontos[0]
+      if (ultimoMeioAplicado) pan(p.x - ultimoMeioAplicado.x, p.y - ultimoMeioAplicado.y)
+      ultimoMeioAplicado = p; ultimaDistanciaAplicada = null; ultimoAnguloAplicado = null
+      return
+    }
+    if (pontos.length === 2) {
+      const [p0, p1] = pontos
+      const meio = centroide(p0, p1), dist = distancia(p0, p1), ang = anguloEntre(p0, p1)
+      if (ultimoMeioAplicado) pan(meio.x - ultimoMeioAplicado.x, meio.y - ultimoMeioAplicado.y)
+      if (ultimaDistanciaAplicada != null && ultimaDistanciaAplicada > 0) {
+        const fator = dist / ultimaDistanciaAplicada
+        if (Number.isFinite(fator) && fator > 0) map.setZoom(map.getZoom() + Math.log2(fator), { animate: false })
+      }
+      if (ultimoAnguloAplicado != null) {
+        let delta = ang - ultimoAnguloAplicado
+        if (delta > 180) delta -= 360
+        if (delta < -180) delta += 360
+        onRotate(normalizarAngulo(getRotation() + delta))
+      }
+      ultimoMeioAplicado = meio; ultimaDistanciaAplicada = dist; ultimoAnguloAplicado = ang
+    }
+  }
+  function onTouchStart(e: TouchEvent) {
+    if (!enabled()) return
+    if (e.touches.length === 1) {
+      ultimoMeioAplicado = deTouch(e.touches[0]); ultimaDistanciaAplicada = null; ultimoAnguloAplicado = null
+    } else if (e.touches.length === 2) {
+      const p0 = deTouch(e.touches[0]), p1 = deTouch(e.touches[1])
+      ultimoMeioAplicado = centroide(p0, p1); ultimaDistanciaAplicada = distancia(p0, p1); ultimoAnguloAplicado = anguloEntre(p0, p1)
+    } else {
+      ultimoMeioAplicado = null; ultimaDistanciaAplicada = null; ultimoAnguloAplicado = null
+    }
+    touchAtual = null
+  }
+  function onTouchMove(e: TouchEvent) {
+    if (!enabled()) return
+    if (e.touches.length !== 1 && e.touches.length !== 2) return
+    e.preventDefault(); onInteract()
+    touchAtual = { pontos: Array.from(e.touches).slice(0, 2).map(deTouch) }
+    agendarFlush()
+  }
+  function onTouchEnd(e: TouchEvent) {
+    touchAtual = null
+    if (e.touches.length === 0) { ultimoMeioAplicado = null; ultimaDistanciaAplicada = null; ultimoAnguloAplicado = null }
+    else if (e.touches.length === 1) { ultimoMeioAplicado = deTouch(e.touches[0]); ultimaDistanciaAplicada = null; ultimoAnguloAplicado = null }
+  }
+  // Mouse (desktop): arrastar com botão pressionado + roda pra zoom (sem girar — não existe "2 dedos" no mouse).
+  let arrastandoComMouse = false
+  let ultimoMouse: PontoTela | null = null
+  function onMouseDown(e: MouseEvent) { if (!enabled() || e.button !== 0) return; arrastandoComMouse = true; ultimoMouse = { x: e.clientX, y: e.clientY } }
+  function onMouseMove(e: MouseEvent) {
+    if (!enabled() || !arrastandoComMouse || !ultimoMouse) return
+    const p = { x: e.clientX, y: e.clientY }
+    pan(p.x - ultimoMouse.x, p.y - ultimoMouse.y); ultimoMouse = p; onInteract()
+  }
+  function onMouseUp() { arrastandoComMouse = false; ultimoMouse = null }
+  let deltaWheelPendente = 0
+  function onWheel(e: WheelEvent) {
+    if (!enabled()) return
+    e.preventDefault(); onInteract()
+    deltaWheelPendente += -Math.sign(e.deltaY) * 0.5
+    if (rafPendente) return
+    rafPendente = true
+    requestAnimationFrame(() => {
+      rafPendente = false
+      if (deltaWheelPendente !== 0) { map.setZoom(map.getZoom() + deltaWheelPendente, { animate: false }); deltaWheelPendente = 0 }
+      flush()
+    })
+  }
+  el.addEventListener('touchstart', onTouchStart, { passive: true })
+  el.addEventListener('touchmove', onTouchMove, { passive: false })
+  el.addEventListener('touchend', onTouchEnd, { passive: true })
+  el.addEventListener('touchcancel', onTouchEnd, { passive: true })
+  el.addEventListener('mousedown', onMouseDown)
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
+  el.addEventListener('wheel', onWheel, { passive: false })
+  return () => {
+    el.removeEventListener('touchstart', onTouchStart)
+    el.removeEventListener('touchmove', onTouchMove)
+    el.removeEventListener('touchend', onTouchEnd)
+    el.removeEventListener('touchcancel', onTouchEnd)
+    el.removeEventListener('mousedown', onMouseDown)
+    window.removeEventListener('mousemove', onMouseMove)
+    window.removeEventListener('mouseup', onMouseUp)
+    el.removeEventListener('wheel', onWheel)
+  }
+}
+export function normalizarAngulo(deg: number): number {
+  let d = deg % 360
+  if (d > 180) d -= 360
+  if (d < -180) d += 360
+  return d
+}
+```
+
+--- src/lib/geo/icones.ts (ícones do mapa — FORMATO/ANIMAÇÃO exatos; CORES
+    livres pro Design System, os valores abaixo são só o original) ---
+```ts
+import L from 'leaflet'
+const BIKE_SVG =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/>' +
+  '<path d="M5.5 17.5h5l2-6h4.5M14.5 8.5h3l1 3"/>' +
+  '<circle cx="15" cy="6" r="1.2" fill="#fff" stroke="none"/></svg>'
+
+// Badge redondo com moto sempre em pé + setinha por cima que gira com o
+// heading (girar o ícone inteiro deixaria a moto de cabeça pra baixo em
+// certas direções). counterRotation cancela a rotação do mapa só na
+// bolinha — a setinha continua livre, mostrando a direção real.
+export function motoDivIcon(heading: number | null, size = 36, counterRotation = 0) {
+  const html = `
+    <div style="position:relative;width:${size}px;height:${size}px">
+      <div style="position:absolute;inset:0;transform:rotate(${heading ?? 0}deg);transition:transform .25s">
+        <div style="position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:10px solid var(--acento-mapa, #d5aa45)"></div>
+      </div>
+      <div style="width:${size}px;height:${size}px;border-radius:9999px;background:var(--acento-mapa-fundo, linear-gradient(135deg,#e08a3a,#d5aa45 55%,#b57c27));display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.45);border:2px solid #fff;transform:rotate(${counterRotation}deg);transition:transform .1s">
+        ${BIKE_SVG}
+      </div>
+    </div>`
+  return L.divIcon({ className: 'icone-limpo', html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] })
+}
+
+// Anel que pulsa saindo do centro do marcador de destino — animação
+// obrigatória (CSS @keyframes de scale+opacity em loop), cor livre.
+export function destDivIcon(size = 30, counterRotation = 0) {
+  const ping = Math.round(size * 0.78)
+  return L.divIcon({
+    className: 'icone-limpo',
+    html: `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;transform:rotate(${counterRotation}deg);transition:transform .1s"><div class="anel-pulsante-destino" style="--s:${ping}px"></div></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  })
+}
+```
+
+--- Componente DeliveryTrackingMap (montagem/uso de tudo acima) ---
+```tsx
+const TRACK_POLL_MS = 5000
+const ROUTE_REFRESH_MS = 25000
+
+function DeliveryTrackingMap({ order }: { order: Order }) {
+  const [position, setPosition] = useState<DeliveryPosition | null>(null)
+  const [route, setRoute] = useState<Rota | null>(null)
+  const [mapRotation, setMapRotation] = useState(0)
+  const mapDivRef = useRef<HTMLDivElement>(null)
+  const visibleWrapperRef = useRef<HTMLDivElement>(null) // tamanho VISÍVEL real, pro fitBounds
+  const mapRef = useRef<L.Map | null>(null)
+  const motoMarkerRef = useRef<L.Marker | null>(null)
+  const destMarkerRef = useRef<L.Marker | null>(null)
+  const routeLineRef = useRef<L.Polyline | null>(null)
+  const fitInicialRef = useRef(false) // enquadra 1x só, nunca mais sozinho
+  const rotationRef = useRef(0)
+  const [tilesFailing, setTilesFailing] = useState(false)
+  useEffect(() => { rotationRef.current = mapRotation }, [mapRotation])
+
+  const tracking = position?.is_next_stop === true && position.lat != null && position.lng != null
+
+  // Container sempre montado (mesmo antes de "tracking" ficar true).
+  useEffect(() => {
+    if (!mapDivRef.current || mapRef.current) return
+    const map = L.map(mapDivRef.current, { zoomControl: false, zoomSnap: 0, zoomDelta: 0.5 }).setView([FALLBACK.lat, FALLBACK.lng], 14)
+    const tileLayer = L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 20, keepBuffer: 4, updateWhenZooming: false }).addTo(map)
+    const pararMonitor = monitorarTiles(tileLayer, setTilesFailing)
+    if (order.customer_lat != null && order.customer_lng != null) {
+      destMarkerRef.current = L.marker([order.customer_lat, order.customer_lng], { icon: destDivIcon(26) }).addTo(map)
+    }
+    map.dragging.disable(); map.touchZoom.disable(); map.scrollWheelZoom.disable(); map.doubleClickZoom.disable()
+    mapRef.current = map
+    setTimeout(() => map.invalidateSize(), 0)
+    return () => { pararMonitor(); map.remove(); mapRef.current = null }
+  }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapDivRef.current) return
+    return anexarGestoMapa(mapDivRef.current, { map, getRotation: () => rotationRef.current, onRotate: setMapRotation })
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => { api.trackDeliveryPosition(order.id).then((p) => { if (!cancelled) setPosition(p) }).catch(() => {}) }
+    poll()
+    const interval = setInterval(poll, TRACK_POLL_MS)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [order.id])
+
+  useEffect(() => {
+    if (!tracking || position.lat == null || position.lng == null) return
+    if (order.customer_lat == null || order.customer_lng == null) return
+    let cancelled = false
+    const fetchRoute = () => {
+      calcularRota({ lat: position.lat!, lng: position.lng! }, { lat: order.customer_lat!, lng: order.customer_lng! })
+        .then((r) => { if (!cancelled) setRoute(r) }).catch(() => {})
+    }
+    fetchRoute()
+    const interval = setInterval(fetchRoute, ROUTE_REFRESH_MS)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [tracking, order.id])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (!tracking || position.lat == null || position.lng == null) {
+      motoMarkerRef.current?.remove(); motoMarkerRef.current = null
+      routeLineRef.current?.remove(); routeLineRef.current = null
+      return
+    }
+    if (!motoMarkerRef.current) {
+      motoMarkerRef.current = L.marker([position.lat, position.lng], { icon: motoDivIcon(position.heading ?? null, 32, -mapRotation) }).addTo(map)
+    } else {
+      motoMarkerRef.current.setLatLng([position.lat, position.lng])
+      motoMarkerRef.current.setIcon(motoDivIcon(position.heading ?? null, 32, -mapRotation))
+    }
+    destMarkerRef.current?.setIcon(destDivIcon(26, -mapRotation))
+    if (route) {
+      routeLineRef.current?.remove()
+      routeLineRef.current = L.polyline(route.coords, { color: 'var(--acento-mapa, #d5aa45)', weight: 5, opacity: 0.85 }).addTo(map)
+    }
+    if (!fitInicialRef.current) {
+      fitInicialRef.current = true
+      if (destMarkerRef.current && visibleWrapperRef.current) {
+        const rect = visibleWrapperRef.current.getBoundingClientRect()
+        ajustarParaCaber(map, L.latLngBounds([[position.lat, position.lng], destMarkerRef.current.getLatLng()]), rect, 40)
+      } else {
+        map.setView([position.lat, position.lng], 15)
+      }
+    }
+  }, [position, route, tracking, mapRotation])
+
+  const recentralizar = () => {
+    const map = mapRef.current
+    if (!map || !tracking || position.lat == null || position.lng == null) return
+    setMapRotation(0)
+    if (destMarkerRef.current && visibleWrapperRef.current) {
+      const rect = visibleWrapperRef.current.getBoundingClientRect()
+      ajustarParaCaber(map, L.latLngBounds([[position.lat, position.lng], destMarkerRef.current.getLatLng()]), rect, 40)
+    } else {
+      map.setView([position.lat, position.lng], 15)
+    }
+  }
+
+  return (
+    // wrapper "isolate": cria stacking context próprio pro mapa, senão os
+    // panes internos do Leaflet (z-index alto) vazam por cima de outros
+    // elementos fixed da página (FABs de WhatsApp/carrinho).
+    <div ref={visibleWrapperRef} className="relative isolate w-full h-48 overflow-hidden">
+      {/* A div interna é OVERSIZED (inset:-80%, ~2.6x maior que a área
+          visível) e recebe o transform:rotate — assim girar nunca deixa
+          canto vazio na borda visível. */}
+      <div className="absolute" style={{ inset: '-80%', transform: `rotate(${mapRotation}deg)`, transition: 'transform .15s linear', willChange: 'transform' }}>
+        <div ref={mapDivRef} className="absolute inset-0" />
+      </div>
+      {tilesFailing && <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[500]">Mapa não carregou — verifique sua internet</div>}
+      {tracking && (
+        <button onClick={recentralizar} className="absolute bottom-2 right-2 z-[500]" aria-label="Centralizar mapa no trajeto">
+          {/* ícone de "centralizar" (ex.: lucide-react LocateFixed) */}
+        </button>
+      )}
+    </div>
+  )
+}
+```
+
+
+================================================================================
+ANEXO B — SLOT DE RESGATE DE CUPOM (/cliente/cupons): REPRODUÇÃO EXATA
+================================================================================
+A metáfora visual ("papel saindo de um corte na parede") é livre — pode
+virar qualquer outra ("puxar uma alavanca", "deslizar um cartão", etc.).
+O que é OBRIGATÓRIO e não pode mudar: a máquina de estados do arrasto
+(dragY/progresso/threshold de 85%/snap-back) e o RITMO do loop decorativo
+quando parado (times e curva de easing abaixo).
+
+--- Componente (src/components/coupon/CouponSlot.tsx) ---
+```tsx
+const SIZE = {
+  sm: { width: 110, paperHeight: 190, rest: 50 },  // card decorativo (Landing), sem onReveal — só o loop
+  lg: { width: 190, paperHeight: 220, rest: 70 },  // botão "Resgatar cupom" de verdade, arrastável
+}
+
+export default function CouponSlot({ header, bodyLines, footerLabel, footerValue, onReveal, disabled, size = 'lg', ariaLabel }: {
+  header: ReactNode; bodyLines: ReactNode[]; footerLabel: string; footerValue: string
+  onReveal?: () => void; disabled?: boolean; size?: 'sm' | 'lg'; ariaLabel?: string
+}) {
+  const preset = SIZE[size]
+  const restY = -(preset.paperHeight - preset.rest)
+  const interactive = !!onReveal
+
+  const [dragY, setDragY] = useState<number | null>(null)
+  const [snapping, setSnapping] = useState(false)
+  const dragStartClientY = useRef<number | null>(null)
+  const triggered = useRef(false)
+
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!interactive || disabled) return
+    dragStartClientY.current = e.clientY
+    triggered.current = false
+    setSnapping(false)
+    setDragY(restY)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (dragStartClientY.current == null) return
+    const delta = e.clientY - dragStartClientY.current
+    setDragY(Math.min(0, Math.max(restY, restY + delta)))
+  }
+  const onPointerUp = () => {
+    if (dragStartClientY.current == null) return
+    dragStartClientY.current = null
+    const finalY = dragY ?? restY
+    const progress = (finalY - restY) / (0 - restY)
+    // ≥85% do curso puxado conta como "resgatado" — não precisa soltar
+    // exatamente no zero.
+    if (progress >= 0.85 && !triggered.current) {
+      triggered.current = true
+      setDragY(0)
+      onReveal?.()
+    } else {
+      setSnapping(true)
+      setDragY(restY)
+    }
+  }
+
+  // Enquanto arrastando: segue o dedo 1:1, SEM transição (tempo real).
+  // Soltando sem completar: 1 transição CSS de snap-back (0.3s ease).
+  // Sem interação nenhuma: dragY fica null e a animação de loop (CSS,
+  // ver abaixo) assume o controle.
+  const secStyle = dragY != null
+    ? { transform: `translateY(${dragY}px)`, transition: snapping ? 'transform 0.3s ease' : 'none', animation: 'none' }
+    : undefined
+
+  return (
+    <div className="cs-wrapper">
+      <div className="cs-cutout" />{/* "corte na parede" -- livre pra reskin */}
+      <div
+        className={`cs-sec ${size === 'sm' ? 'cs-sec-sm' : ''}`}
+        style={secStyle}
+        onTransitionEnd={() => { if (snapping) { setSnapping(false); setDragY(null) } }}
+      >
+        <button
+          type="button" className="cs-paper" disabled={disabled} aria-label={ariaLabel}
+          tabIndex={interactive ? 0 : -1} aria-hidden={!interactive}
+          onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+          style={{ pointerEvents: interactive ? 'all' : 'none', cursor: interactive ? 'grab' : 'default', touchAction: interactive ? 'none' : undefined }}
+        >
+          <TicketCardVisual header={header} bodyLines={bodyLines} footerLabel={footerLabel} footerValue={footerValue} />
+        </button>
+      </div>
+    </div>
+  )
+}
+```
+
+--- Loop decorativo quando parado (CSS — timing e curva OBRIGATÓRIOS,
+    valores de translateY dependem do tamanho escolhido pro slot) ---
+```css
+.cs-sec {
+  height: 100%;
+  transform: translateY(calc(-1 * var(--cs-paper-height) + 70px));
+  /* Ida-e-volta suave, "espiando" parcialmente pra fora — NUNCA sai por
+     completo sozinho (sair 100% só acontece arrastando até o fim, ver
+     onPointerUp acima). Botão de resgate de verdade: ciclo de 3.5s. */
+  animation: cs-cycle 3.5s ease-in-out infinite;
+}
+@keyframes cs-cycle {
+  0%, 20%  { transform: translateY(calc(-1 * var(--cs-paper-height) + 70px)); }
+  45%, 60% { transform: translateY(calc(-1 * var(--cs-paper-height) + 130px)); }
+  85%, 100%{ transform: translateY(calc(-1 * var(--cs-paper-height) + 70px)); }
+}
+/* Variante decorativa (size='sm', card da Landing, sem onReveal) — mesma
+   ideia, avanço mais curto (cabe num card pequeno) e ciclo mais lento (7s,
+   não é a ação principal da tela onde aparece). */
+.cs-sec-sm { animation-name: cs-cycle-sm; animation-duration: 7s; }
+@keyframes cs-cycle-sm {
+  0%, 20%  { transform: translateY(calc(-1 * var(--cs-paper-height) + 50px)); }
+  45%, 60% { transform: translateY(calc(-1 * var(--cs-paper-height) + 78px)); }
+  85%, 100%{ transform: translateY(calc(-1 * var(--cs-paper-height) + 50px)); }
+}
+```
+
+Resumo da máquina de estados (ver também Etapa 6.3-6.4):
+  [Idle, loop decorativo] --pointerdown--> [Arrastando, segue o dedo 1:1]
+  [Arrastando] --pointerup, progresso<85%--> [Snap-back 0.3s] --fim--> [Idle, loop retoma]
+  [Arrastando] --pointerup, progresso>=85%--> [Travado em 100%] --dispara onReveal--> peek → (2s) → "Resgatar cupom" → claim
+
+
+================================================================================
+ETAPA 4 — TODAS AS INTERAÇÕES (UX FLOWS) MAPEADAS
+================================================================================
+
+4.1 — Card de Produto (Catálogo / Carrinho / Favoritos / Banner)
+--------------------------------------------------------------------------------
+  Card de Produto
+    ↓ clique na área de imagem/nome (NUNCA na área de +/-/remover)
+  Abre ProductDetailModal (overlay + card central, fade+scale)
+    ↓ dentro do modal:
+    ├─ clique no coração → SE não estava favoritado: favorita direto,
+    │    atualiza UI local, persiste no backend, ícone muda na hora.
+    │    SE já estava favoritado: fecha o modal NÃO, mas abre
+    │    ConfirmRemoveDialog POR CIMA do modal → "Cancelar" volta ao
+    │    modal sem mudar nada → "Remover" desfavorita, persiste, ícone
+    │    muda, modal permanece aberto (exceto em Favoritos, onde o card
+    │    todo some da lista e o modal fecha junto).
+    ├─ clique em "+"/adicionar → soma 1 ao carrinho local (Zustand),
+    │    respeita limite de estoque (desabilita "+" no limite).
+    ├─ clique em "-" → subtrai 1 do carrinho local (some do carrinho ao
+    │    chegar em 0, sem confirmação — diferente de favoritar).
+    └─ clique no X ou fora do card → fecha o modal (fade-out), nenhuma
+       alteração feita é desfeita.
+    ↓
+  Retorna à página de origem com o estado já refletido (favoritos e
+  quantidade no carrinho persistem visualmente mesmo com o modal fechado).
+
+4.2 — Favoritar direto no card (sem abrir modal, no Catálogo/Carrinho)
+--------------------------------------------------------------------------------
+  Ícone de coração no canto do card
+    ↓ clique
+  SE não favoritado → favorita na hora (sem confirmação) → ícone muda →
+    chamada ao backend em paralelo (não bloqueia a UI).
+  SE já favoritado → NÃO desfavorita direto → abre ConfirmRemoveDialog →
+    "Remover" desfavorita de verdade (ícone muda, card PERMANECE na tela
+    no Catálogo/Carrinho — só em Favoritos o card some) → "Cancelar" fecha
+    sem alterar nada.
+
+4.3 — Adicionar/ajustar quantidade direto no card (sem abrir modal)
+--------------------------------------------------------------------------------
+  Card sem item no carrinho → botão "Adicionar" → vira controle +/- na
+    hora (sem reload/nova busca — é tudo estado local do Zustand `cart`).
+  Card com item no carrinho → "-" decrementa (remove o controle e volta a
+    "Adicionar" ao chegar em 0) → "+" incrementa até o limite de estoque
+    (fica desabilitado no limite, nunca esconde o botão).
+
+4.4 — Busca do Catálogo
+--------------------------------------------------------------------------------
+  Campo de busca
+    ↓ foco
+  Painel de sugestão aparece (vazio se o campo estiver vazio)
+    ↓ digitação (sem debounce — filtra a cada tecla sobre a lista já
+      carregada em memória, nunca busca no servidor de novo)
+  Lista filtrada (até 8 resultados) aparece no painel, ou mensagem de
+    "nenhum encontrado"/"digite pelo menos 3 letras" conforme o tamanho do
+    texto.
+    ↓ clique em um resultado
+  Navega pra /produto/:id, campo e painel são limpos/fechados.
+    ↓ clique fora do campo/painel (listener global de mousedown)
+  Painel fecha sem limpar o texto digitado.
+    ↓ clique no X dentro do campo
+  Limpa o texto e tira o foco do campo.
+
+4.5 — Filtro por categoria/aba de promoção
+--------------------------------------------------------------------------------
+  Aba "Todos" (padrão) → mostra tudo.
+  Aba de categoria → filtra só aquela categoria.
+  Aba "Promoção" (só existe se houver ≥1 produto em promoção) → filtra só
+    produtos com desconto ativo, reagrupados visualmente por categoria
+    original dentro da mesma tela.
+  Categoria com produto em promoção ganha um sinal na própria aba, mesmo
+    fora da aba "Promoção" (sinalização cruzada).
+
+4.6 — Ordenação e alternância de visualização
+--------------------------------------------------------------------------------
+  Select de ordenação → recalcula a lista exibida instantaneamente (client-
+    side, sobre os dados já carregados) — não dispara nova chamada de rede.
+  Botões grade/lista → troca só o layout de exibição, mesmos dados,
+    persistência é local ao componente (perde a escolha ao sair da página).
+
+4.7 — Carrossel da Landing (banner/promoção) e abertura de /banner
+--------------------------------------------------------------------------------
+  Carrossel (1 card OU trilho, conforme configuração do admin)
+    ↓ automático: avança sozinho a cada 3s (modo cards) ou 4.5s (modo atual)
+      — LOOP CONTÍNUO, nunca fica parado num item só quando há 2+ itens,
+      voltando pro primeiro item depois do último (looping infinito).
+    ↓ manual: arrastar (pointer down→move→up) horizontal ≥40px conta como
+      swipe (avança/recua conforme direção), cancela o clique que viria
+      em seguida
+    ↓ toque curto sem arrastar (< 40px) conta como clique normal
+  Clique no card ativo → navega pra /banner?promocao=:id (só se aquele
+    item tiver uma promoção de verdade atrás — o "hero" estático sem
+    promoção nenhuma cadastrada não é clicável). A página /banner então
+    busca essa promoção pelo identificador recebido na URL e monta a
+    vitrine dela (ver Etapa 3, seção /banner, e Etapa 3, seção /banner
+    para as dinâmicas completas de tipo "kit" vs. "monte seu carrinho").
+
+4.8 — Slot de resgate de cupom (o mais elaborado do sistema — ver ANEXO B
+para a reprodução exata da máquina de estados e das animações)
+--------------------------------------------------------------------------------
+  Slot "CUPOM" (só visível quando há algo pra resgatar)
+    ↓ loop decorativo contínuo (papel "espiando" pra fora, parado, sem
+      interação do usuário ainda)
+    ↓ pointerdown no papel
+  Papel passa a seguir o dedo/mouse 1:1 (sem easing, tempo real)
+    ↓ pointerup
+  SE arrastou ≥85% do curso total → trava em 100% (fora do buraco) →
+    dispara `onReveal` → abre overlay de tela cheia → chama peek (não
+    gasta) → mostra o ticket → espera 2s → mostra botão "Resgatar cupom".
+    ↓ clique em "Resgatar cupom"
+  Chama claim (GASTA a concessão, de verdade, sem volta) → cupom entra na
+    lista "Ativos" → overlay fecha → aba muda pra "Ativos" automaticamente
+    → reverifica se sobrou mais algum cupom pendente (slot pode reaparecer).
+  SE arrastou <85% do curso → papel volta deslizando suavemente (CSS
+    transition) pro estado inicial → loop decorativo retoma → NADA é
+    gasto, NADA foi chamado no backend (peek só dispara ao completar).
+
+4.9 — Carrossel de tickets (abas Ativos/Inativos/Histórico)
+--------------------------------------------------------------------------------
+  Trilho horizontal com scroll-snap
+    ↓ scroll (arrastar ou tocar em qualquer parte do trilho)
+  A cada frame de scroll (throttled via requestAnimationFrame), recalcula
+    qual card está mais perto do centro visual → esse card ganha escala
+    maior + opacidade cheia + animação própria; os demais encolhem/apagam
+    parcialmente e ficam parados (não animam, por performance).
+  Trocar de aba reresolve o card ativo de novo (efeito reagindo a
+    `[tab, data]`).
+
+4.10 — Seletor de localização (LocationPicker)
+--------------------------------------------------------------------------------
+  Botão "Escolher localização no mapa" (Checkout/BannerCheckout)
+    ↓ clique
+  Abre tela cheia (portal direto pro <body>), passo "busca":
+    ↓ digitar ≥3 caracteres (debounce 500ms) → lista de resultados de
+      geocodificação
+    ↓ OU clique em "Usar minha localização atual" → pede GPS do navegador
+    ↓ clique num resultado (ou sucesso do GPS)
+  Avança pro passo "ajuste": mapa em tela cheia com pino FIXO no centro da
+    tela — é o MAPA que se move por baixo dele ao arrastar (padrão
+    Uber/99).
+    ↓ arrastar o mapa (`moveend`)
+  Após soltar + debounce de 400ms: busca endereço reverso do novo centro +
+    recalcula estimativa de frete em paralelo.
+    ↓ SE fora do raio de entrega (`within_range === false`)
+  Mostra aviso, mas ainda permite editar/tentar outro ponto — só bloqueia
+    a CONFIRMAÇÃO final, não o ajuste do pino.
+    ↓ clique em "Confirmar localização"
+  SE fora do raio → mostra erro, não fecha. SE dentro do raio → devolve
+    {lat, lng, label, bairro, estimate} pro componente pai (Checkout),
+    fecha o seletor.
+  Alternativa: digitar diretamente no campo de endereço da própria tela de
+    ajuste também busca e move o pino pro resultado escolhido, sem
+    precisar voltar pro passo de busca.
+
+4.11 — Formulário de checkout: detecção automática de cupom
+--------------------------------------------------------------------------------
+  Campo de WhatsApp (Checkout)
+    ↓ digitar até completar ≥10 dígitos
+  Após 500ms de pausa (debounce): busca cupons exclusivos daquele número
+    → SE encontrar, preenche automaticamente o PRIMEIRO como sugestão
+      (`autoCoupon`) — mas isso é só o CAMPO ficando pronto pra seleção,
+      não aplica nada sozinho.
+    ↓ cliente digita/seleciona algo ativamente
+  Só aí o cupom é de fato validado e aplicado (chamada de validate_coupon).
+
+4.12 — Produto em promoção entrando/saindo do carrinho (Checkout)
+--------------------------------------------------------------------------------
+  Adicionar ao carrinho um produto que tem `coupon_code` de promoção
+  atrelado (fora da tela de Checkout, em qualquer catálogo/card)
+    ↓ ao chegar no Checkout, efeito detecta a correspondência
+  SE não há outro cupom já aplicado → valida e aplica esse cupom
+    AUTOMATICAMENTE (única auto-aplicação real do sistema, mas restrita a
+    esse caso específico de produto-com-cupom-de-catálogo).
+  Remover esse produto do carrinho → efeito detecta que o item que trouxe
+    o desconto não está mais na lista → remove o cupom automático junto.
+
+================================================================================
+ETAPA 5 — TODAS AS CAIXAS DE DIÁLOGO (Dialogs/Modals)
+================================================================================
+
+5.1 — ProductDetailModal ("toggle de detalhes do produto")
+--------------------------------------------------------------------------------
+  Quando abre: clique em qualquer card de produto (Catálogo, Carrinho,
+    Favoritos, sem promoção; NÃO usado no Banner, que tem seu próprio
+    modal informativo mais simples).
+  Quem abre: a própria página (estado `detailProduct`).
+  Quem fecha: clique no X, clique fora do card (`onClick` no overlay),
+    OU indiretamente ao confirmar remoção de favorito (só em Favoritos).
+  Estados que possui: com/sem promoção aplicada, com/sem favorito
+    (condicional a login), esgotado/disponível, com/sem item já no carrinho.
+  Dados que manipula: 1 Product + 1 PromotionalProduct opcional + contagem
+    no carrinho + flag de favorito.
+  Ações que executa: favoritar/desfavoritar (delegado ao pai via
+    `onToggleFavorite`), adicionar/remover do carrinho (delegado via
+    `onAdd`/`onRemove`), fechar (`onClose`).
+  Chamadas ao backend: NENHUMA diretamente — todas as chamadas reais
+    (toggle de favorito) acontecem na página que o renderiza, o modal só
+    dispara callbacks.
+  Componentes que contém: imagem, botão de favoritar (com rótulo),
+    nome, categoria, descrição, preço (com ou sem desconto riscado),
+    controle de +/- ou botão adicionar, badge de desconto (se promoção).
+  Confirmações que exige: NENHUMA diretamente — a confirmação de
+    desfavoritar é responsabilidade da página (abre um SEGUNDO dialog,
+    ConfirmRemoveDialog, por cima).
+  Estrutura obrigatória (conforme pedido no prompt-base): imagem, título,
+    descrição, preço, quantidade/controle, botão comprar, botão favorito,
+    botão fechar. (Não existe botão de compartilhar nesta versão.)
+
+5.2 — ConfirmRemoveDialog (confirmação genérica de ação destrutiva)
+--------------------------------------------------------------------------------
+  Quando abre: SEMPRE que o cliente tenta desfavoritar algo já favoritado
+    (Catálogo, Carrinho, Favoritos) — hoje é o único uso real no fluxo de
+    cliente, mas o componente é genérico o bastante pra qualquer ação
+    destrutiva futura.
+  Quem abre: a página, ao detectar clique de desfavoritar em item já
+    favoritado (nunca ao favoritar pela primeira vez).
+  Quem fecha: botão "Cancelar" (não faz nada) ou botão de ação (label
+    customizável, default "Remover" — dispara `onConfirm`).
+  Estados que possui: nenhum estado interno — é 100% controlado pelo pai
+    (título/mensagem/labels vêm todos por prop).
+  Dados que manipula: nenhum diretamente — só repassa a decisão do
+    usuário pra cima via callback.
+  Ações que executa: `onConfirm` (delegado) ou `onCancel` (delegado).
+  Chamadas ao backend: nenhuma direta.
+  Componentes que contém: ícone de alerta circular, título, mensagem,
+    botão de ação (estilo "perigo"), botão cancelar.
+  Confirmações que exige: é EM SI a camada de confirmação — não abre
+    nada por cima dela.
+
+5.3 — CustomerAuthModal (login / criar conta)
+--------------------------------------------------------------------------------
+  Quando abre: clique em "Acompanhar entrega" sem login (Landing),
+    "Finalizar pedido" sem login (Checkout/BannerCheckout indireto via
+    handleFinalizeClick), clique em "Entrar"/"Criar conta" no menu de
+    convidado (BrandHeader, SiteHeader).
+  Quem abre: qualquer página/componente que precise de sessão pra
+    prosseguir uma ação.
+  Quem fecha: X no canto, clique fora do card, OU sucesso de
+    login/cadastro (`onSuccess`, que tipicamente também dispara a ação
+    original que exigia login — ex.: Checkout tenta finalizar de novo
+    sozinho após o modal fechar com sucesso).
+  Estados que possui: modo (login|register), loading, error, e todos os
+    campos de cada formulário (whatsapp/senha no login; nome/whatsapp/
+    email/nascimento/senha no cadastro).
+  Dados que manipula: sessão do cliente (token + Customer) — grava direto
+    na store `useCustomerAuth` em caso de sucesso.
+  Ações que executa: `api.customerAuth.login` ou `api.customerAuth.register`.
+  Chamadas ao backend: as 2 acima.
+  Componentes que contém: logo, alternância de abas login/cadastro,
+    campos do formulário ativo, link "Esqueci minha senha" (só no modo
+    login, navega pra /recuperar-senha E fecha o modal), botão de ação
+    principal.
+  Confirmações que exige: nenhuma — sucesso já é a confirmação implícita.
+  Detalhe de UX obrigatório: campo "Criar conta" já vem PRÉ-PREENCHIDO
+    com nome/whatsapp/nascimento se já existirem no rascunho de checkout
+    (`store/customer`) — poupa redigitar o que já foi escrito ali (email
+    nunca vem de lá, checkout não pede email).
+
+5.4 — Modal de informação do produto (Banner, `infoProduct`)
+--------------------------------------------------------------------------------
+  Quando abre: clique na foto/botão de info de um produto dentro de /banner.
+  Quem abre: a própria página Banner.
+  Quem fecha: clique no X, ou clique fora do card (overlay).
+  Estados que possui: nenhum próprio — controlado 100% pelo estado
+    `infoProduct` do pai.
+  Dados que manipula: nenhum — é só leitura/exibição.
+  Ações que executa: nenhuma além de fechar.
+  Chamadas ao backend: nenhuma.
+  Componentes que contém: título, botão fechar, imagem (se existir),
+    descrição (se existir), linha de preço.
+  Confirmações que exige: nenhuma. É deliberadamente mais simples que o
+    ProductDetailModal — não tem favoritar nem adicionar ao carrinho (a
+    seleção de produtos do banner já acontece direto nos controles da
+    lista, fora do modal).
+
+5.5 — Overlay de revelação de cupom (tela cheia, dentro de CuponsCliente)
+--------------------------------------------------------------------------------
+  Quando abre: ao completar o gesto de arrastar o CouponSlot (≥85% do curso).
+  Quem abre: a própria página CuponsCliente (`revealStage !== 'idle'`).
+  Quem fecha: automaticamente ao concluir o resgate com sucesso
+    (`revealStage` volta a 'idle') — NÃO tem botão de fechar/cancelar
+    manual enquanto está revelando ou confirmando (é um fluxo guiado,
+    proposital).
+  Estados que possui: 'pulling' (buscando peek) → 'revealed' (mostrando +
+    botão de confirmar, após 2s) → 'claiming' (confirmando).
+  Dados que manipula: 1 ClaimedCoupon (preview, depois vira ativo de
+    verdade).
+  Ações que executa: peek (ao entrar em 'pulling'), claim (ao clicar
+    confirmar em 'revealed').
+  Chamadas ao backend: as 2 acima.
+  Componentes que contém: spinner (enquanto sem preview), o ticket em si
+    (CouponTicket, com animação de entrada tipo mola/spring), botão de
+    confirmar (só no estado 'revealed'), texto "Resgatando…" (estado
+    'claiming'), mensagem de erro (se peek ou claim falharem).
+  Confirmações que exige: o botão "Resgatar cupom" acumulado ao gesto de
+    arrastar JÁ É a confirmação em duas camadas (gesto físico + clique
+    consciente) — não há um terceiro diálogo por cima.
+
+
+================================================================================
+ETAPA 6 — MÁQUINA DE ESTADOS DOS COMPONENTES INTERATIVOS
+================================================================================
+
+6.1 — Botão "Adicionar ao carrinho" / controle de quantidade (em qualquer card)
+--------------------------------------------------------------------------------
+  [Sem item no carrinho] --clique "Adicionar"--> [Com 1 item, mostra +/-]
+  [Com N item(ns)] --clique "-"--> [Com N-1] (N-1=0 volta pro estado
+    "Sem item no carrinho")
+  [Com N item(ns)] --clique "+", N<estoque--> [Com N+1]
+  [Com N item(ns), N=estoque] --"+"desabilitado--> (sem transição, botão
+    inerte)
+  [Qualquer estado] --produto sem estoque (quantity<=0)--> [Esgotado]
+    (estado permanente pra aquele produto até voltar a ter estoque —
+    substitui TODOS os controles acima por um rótulo fixo, sem interação)
+
+6.2 — Coração de favorito (FavoriteHeartButton)
+--------------------------------------------------------------------------------
+  [Não favoritado] --clique--> [Favoritado] (direto, sem confirmação;
+    chamada ao backend disparada em paralelo, não bloqueia a transição
+    visual)
+  [Favoritado] --clique--> [Aguardando confirmação] (abre
+    ConfirmRemoveDialog, ícone NÃO muda ainda)
+  [Aguardando confirmação] --"Cancelar"--> [Favoritado] (sem mudança)
+  [Aguardando confirmação] --"Remover"--> [Não favoritado] (Catálogo/
+    Carrinho) OU [Card removido da lista] (só em /cliente/favoritos)
+  (Estado inicial "Não visível" quando sem sessão — o coração só existe
+   no DOM quando `customerAuth.token` existe; sem token, este componente
+   inteiro não é renderizado nos cards de Catálogo/Carrinho.)
+
+6.3 — CouponSlot (arrasto de resgate — ver ANEXO B para o código exato)
+--------------------------------------------------------------------------------
+  [Idle, loop decorativo] --pointerdown--> [Arrastando, segue o dedo]
+  [Arrastando] --pointerup, progresso<85%--> [Retornando (snap)] --fim da
+    transição CSS--> [Idle, loop decorativo]
+  [Arrastando] --pointerup, progresso>=85%--> [Travado em 100%] -->
+    dispara onReveal --> (controle passa pro pai: revealStage)
+  [Idle] --disabled=true (revealStage já não é 'idle')--> [Bloqueado pra
+    novo toque] (evita disparar 2 resgates simultâneos)
+
+6.4 — revealStage (CuponsCliente, estado do resgate como um todo)
+--------------------------------------------------------------------------------
+  'idle' --gesto completo do slot--> 'pulling'
+  'pulling' --peek sucesso (+ 2s de espera fixa)--> 'revealed'
+  'pulling' --peek falha--> 'idle' (com revealError preenchido)
+  'revealed' --clique "Resgatar cupom"--> 'claiming'
+  'claiming' --claim sucesso--> 'idle' (cupom já está na lista "Ativos",
+    aba muda automaticamente, hasClaimable reverificado)
+  'claiming' --claim falha--> 'revealed' (com revealError preenchido,
+    permite tentar de novo sem refazer o gesto de arrastar)
+
+6.5 — Botão "Finalizar pedido" (Checkout / BannerCheckout)
+--------------------------------------------------------------------------------
+  [Idle] --clique, sem sessão--> [Idle] (modal de login abre por cima,
+    botão não muda de estado)
+  [Idle] --clique, com sessão, loja FECHADA--> [Idle] (mensagem de loja
+    fechada; NÃO chama orderService.create / create_order — cliente pode
+    usar o resto do site, só não finaliza checkout)
+  [Idle] --clique, com sessão, validação client-side falha--> [Idle] (com
+    mensagem de erro específica, nenhuma chamada de rede disparada)
+  [Idle] --clique, validação passa e loja aberta--> [Enviando] (botão
+    desabilitado + spinner)
+  [Enviando] --sucesso--> navega pra outra rota (pagamento ou consulta) —
+    o componente é desmontado, não há "estado de sucesso" visual nesta
+    própria tela.
+  [Enviando] --falha--> [Idle] (com mensagem de erro, botão reabilitado)
+
+6.6 — Botão "Copiar código Pix" (Pagamento)
+--------------------------------------------------------------------------------
+  [Idle, mostra ícone de copiar + "Copiar código Pix"] --clique--> [Copiado,
+    mostra ícone de check + "Copiado!"] --após 2000ms (timeout)--> [Idle]
+
+6.7 — Página Pagamento como um todo
+--------------------------------------------------------------------------------
+  [Carregando] --pedido encontrado, Pix sem cobrança ainda--> [Gerando
+    cobrança] --sucesso ou falha (ambos avançam)--> [Aguardando pagamento]
+  [Carregando] --pedido encontrado, já com cobrança ou já pago-->
+    [Aguardando pagamento] ou [Pago] direto
+  [Aguardando pagamento] --poll a cada 4s, ainda não pago--> [Aguardando
+    pagamento] (mesmo estado, só atualiza `order` por baixo)
+  [Aguardando pagamento] --poll detecta `payment_status==='pago'` OU
+    clique em "simular pagamento"--> [Pago] (estado final, polling para
+    de rodar — o `useEffect` do intervalo tem `order.payment_status` na
+    dependência e retorna cedo quando já está pago)
+
+6.8 — Carrossel da Landing / do carrossel de tickets de cupons (activeIndex)
+--------------------------------------------------------------------------------
+  [Item ativo = i] --temporizador OU swipe pra frente--> [Item ativo =
+    (i+1) % total] (loop, nunca "acaba")
+  [Item ativo = i] --swipe pra trás--> [Item ativo = (i-1+total) % total]
+  (No carrossel de cupons, a métrica de "ativo" não é por índice fixo mas
+   por distância até o centro do scroll — recalculada continuamente, não
+   é uma máquina de estados discreta como o carrossel da Landing.)
+
+
+================================================================================
+ETAPA 7 — PERSISTÊNCIA DOS ESTADOS (mapa completo, OBRIGATÓRIO)
+================================================================================
+
+7.1 — O que É persistente hoje (sobrevive a F5 e a fechar/reabrir a aba)
+--------------------------------------------------------------------------------
+  Mecanismo: Zustand + middleware `persist`, que grava em `localStorage`
+  (chave = nome dado em cada store) a cada mudança de estado, e restaura
+  automaticamente na inicialização da store.
+
+  | Store              | Chave localStorage      | Conteúdo                          | Onde é usado |
+  |---------------------|--------------------------|-----------------------------------|---------------|
+  | useCart              | sonset_cart              | items: [{productId, quantity}]    | Catálogo, Carrinho, Checkout, Consultar(indireto via Histórico "comprar novamente"), ProdutoDetalhe |
+  | useBannerCart         | sonset_banner_cart       | promotionId, items                | Banner, BannerCheckout |
+  | useCustomer            | sonset_customer          | name, whatsapp, birthdate, neighborhood, address, referencePoint, lat, lng | Checkout, BannerCheckout, Consultar (autopreenche busca), CustomerAuthModal (autopreenche cadastro) |
+  | useCustomerAuth (sessão)| sonset_customer_auth   | token, customer                   | TODAS as páginas de cliente (gate de login) |
+
+7.2 — Comportamentos de persistência EXIGIDOS explicitamente (regras do produto)
+--------------------------------------------------------------------------------
+  ✔ Favoritar um produto DENTRO do ProductDetailModal e fechar o modal —
+    o favorito NÃO se perde (já garantido hoje: o estado real vive na
+    página que renderiza o modal + é persistido no backend a cada toggle;
+    reabrir o modal do mesmo produto reflete o estado atual porque a
+    própria lista de `favoriteIds` já foi atualizada).
+  ✔ Fechar um modal (qualquer um) NUNCA desfaz uma ação já confirmada —
+    confirmado hoje: nenhum dos modais tem "cancelar tudo ao fechar" —
+    toda ação (favoritar, adicionar ao carrinho) já foi persistida no
+    momento do clique, o fechamento do modal é puramente visual.
+  ✔ Reabrir um modal reflete o estado ATUAL — garantido porque os modais
+    são 100% controlados por props vindas do estado da página (nunca têm
+    estado interno "esquecido" de uma abertura anterior).
+  ✔ Trocar de página nunca apaga estado válido — garantido: `cart`,
+    `bannerCart`, `customer` e `customerAuth` são todos Zustand persistido,
+    sobrevivem a navegação entre rotas (são globais à SPA) e a fechar/
+    reabrir a aba.
+  ✔ Atualizar a página (F5) não apaga o que deveria permanecer —
+    confirmado para os 4 stores acima. NÃO se aplica (nem deveria) a
+    estado de UI local de cada página (filtros, aba selecionada, texto de
+    busca, modal aberto) — isso é esperado resetar ao recarregar, e
+    HOJE JÁ RESETA (comportamento correto, não é bug).
+  ✔ Carrinho permanece → sim, `useCart` (`sonset_cart`).
+  ✔ Favoritos permanecem → SIM, mas de forma DIFERENTE dos outros: favoritos
+    NÃO são persistidos no cliente (não tem store Zustand própria) — a
+    fonte de verdade é 100% o BACKEND (`customer_list_favorites`), buscada
+    de novo a cada visita de Catálogo/Carrinho/Favoritos. Isso é
+    CORRETO E INTENCIONAL (favorito é dado de conta de cliente, não
+    rascunho de sessão de aba) — não confundir com um "bug de
+    persistência": é persistência via backend, não via localStorage.
+  ✔ Cupons aplicados permanecem "enquanto fizer sentido" → o cupom
+    aplicado no Checkout é estado LOCAL da página (`appliedCoupon`), NÃO
+    persistido — se o cliente sair do Checkout e voltar, precisa
+    reaplicar. Isso é o comportamento ATUAL; se o requisito de produto for
+    "deve sobreviver a navegação", seria necessário mover esse estado pra
+    uma store persistida — DOCUMENTADO AQUI COMO LACUNA, não corrigido
+    nesta análise.
+  ✔ Preferências do usuário permanecem → o rascunho de checkout
+    (`useCustomer`) cumpre esse papel pros dados de identificação/entrega.
+
+7.3 — O que é TEMPORÁRIO (propositalmente, nunca deveria persistir)
+--------------------------------------------------------------------------------
+  - Todo filtro/busca/ordenação/aba selecionada em qualquer página (search,
+    categoryFilter, sortBy, view, tab) — estado local via `useState`,
+    reseta ao trocar de página ou recarregar. CORRETO.
+  - Estado de abertura de QUALQUER modal/dialog/dropdown — sempre
+    `useState` local, nunca deveria sobreviver a navegação.
+  - `appliedCoupon`/`couponInput`/`autoCoupon` do Checkout — ver 7.2,
+    marcado como lacuna, não bug.
+  - `shippingEstimate` — recalculado a cada entrada na tela (Checkout já
+    revalida na montagem se já havia lat/lng salvo, porque o preço por km
+    pode ter mudado desde a última visita).
+  - Estado de swipe/drag em qualquer carrossel/slot (posição durante o
+    gesto) — sempre local, nunca persistido, reseta a cada novo gesto.
+
+================================================================================
+ETAPA 8 — DESIGN SYSTEM (componentes reutilizáveis identificados)
+================================================================================
+
+Nota: os nomes de classe "sunset-*" citados abaixo são o "pele visual" do
+tema ATUAL — um novo tema reescreve o CSS por trás delas (ou troca por
+outro framework de componente), mas a LISTA de componentes, suas props e
+seu comportamento devem ser preservados 1:1.
+
+8.1 — Button (src/components/ui/Button.tsx)
+  Finalidade: botão de ação genérico com 4 variantes.
+  Props: variant ('primary'|'secondary'|'outline'|'ghost'), + todos os
+    atributos nativos de `<button>`.
+  Estados: normal, hover, disabled (via prop nativa `disabled`).
+  Comportamento: puramente de apresentação — toda lógica de clique vem de
+    fora via `onClick`.
+  Observação: hoje SUBUTILIZADO — a maioria das páginas usa
+    `<button className="btn-primary">` direto em vez de importar este
+    componente. Um novo Design System deveria consolidar em cima deste.
+
+8.2 — Card / GlassCard (src/components/ui/Card.tsx)
+  Finalidade: contêiner com fundo/borda padrão (Card) ou efeito vidro
+    translúcido (GlassCard).
+  Props: todos os atributos nativos de `<div>`.
+  Estados: nenhum (puramente visual).
+
+8.3 — Badge / StatusBadge (src/components/ui/Badge.tsx)
+  Finalidade: rótulo pequeno arredondado; StatusBadge é uma variante
+    especializada que mapeia `OrderStatus` pra uma cor + texto padrão
+    (com possibilidade de sobrescrever o texto via prop `label`).
+  Props (Badge): children, className. (StatusBadge): status, className, label?.
+  Estados: 1 por valor de OrderStatus (8 no total — ver STATUS_COLORS).
+  Eventos: nenhum (não-interativo).
+
+8.4 — Logo (src/components/ui/Logo.tsx) / marca no header
+  Finalidade: exibir a marca; no Shell da área do cliente é o botão de
+    página inicial (Link → /).
+  OBRIGATÓRIO: logo vem de upload de imagem em /meu-plano/layout
+    (`logo_url` no tenant-config). Renderiza JUNTO com o nome da loja no
+    link home do header (`a > span` / equivalente Shell uiux2/3/4). Sem
+    logo, só o nome.
+  Props: size, className (Logo.tsx legado); Shells usam tenantConfig.logo_url.
+
+8.5 — WhatsAppLink (src/components/ui/WhatsAppLink.tsx)
+  Finalidade: link clicável genérico pra abrir conversa de WhatsApp com um
+    número específico (usado sobretudo em telas administrativas, citado
+    aqui por completude do Design System).
+  Props: phone, className opcional.
+  Comportamento: `stopPropagation` no clique (evita disparar cliques de
+    elementos pai quando usado dentro de linhas clicáveis).
+
+8.6 — SiteHeader (cabeçalho padrão de página de cliente)
+  Finalidade: navegação superior de toda página que NÃO é a Landing.
+  Props: showBack, showCart, showProfile, showWhatsApp (todos boolean,
+    com defaults sensatos).
+  Estados: guestMenuOpen, authMode (abre CustomerAuthModal quando definido).
+  Comportamento: botão de perfil vira "ir pra favoritos" (logado) ou "abrir
+    menu de Entrar/Criar conta" (deslogado); contador de itens do carrinho
+    reativo ao Zustand `cart`.
+
+8.7 — BrandHeader (cabeçalho especial só da Landing)
+  Finalidade: mesma moldura visual do SiteHeader, mas com menu completo
+    (Favoritos/Cupons/Histórico/Sair quando logado, ou Entrar/Criar conta
+    quando não) em vez de botão único de voltar.
+  Estados: menuOpen, authMode.
+
+8.8 — CartFab (botão flutuante de carrinho, global)
+  Finalidade: acesso rápido ao carrinho em QUALQUER página de cliente
+    (/catalogo, /consultar, /cliente/favoritos, /cliente/cupons, etc.),
+    fixo no canto inferior direito, com contador de itens.
+  Estilo OBRIGATÓRIO escolhido pelo lojista em /meu-plano/layout (CMS
+    preview 1:1): `sacola` (ícone de sacola) OU `#cart-icon`
+    (SunsetCartIcon / elemento #cart-icon).
+  Se `cart_icon`: o lojista também escolhe se o ícone fica se mexendo
+    (`cart_fab_animate=true`) ou parado.
+  Decoração opcional (fumaça/fogo) só no modo cart_icon, via admin layout.
+  Estados: elements (decoração), cart_fab_style / cart_fab_animate do
+    tenant-config.
+  Eventos: link pra /carrinho.
+
+8.9 — WhatsAppFab (botão flutuante ou inline de contato)
+  Finalidade: acesso a WhatsApp/Instagram da loja.
+  Props: inline (muda tamanho/posicionamento/direção do tooltip).
+  Estados: open (tooltip de redes sociais visível/oculto).
+  Eventos: clique alterna `open`; clique fora fecha; clique num ícone de
+    rede fecha e abre link externo.
+
+8.10 — PageTransition
+  Finalidade: wrapper de entrada de página (fade + slide-up) — todo
+    conteúdo principal de página de cliente é envolvido por este
+    componente.
+  Props: children, className.
+  Comportamento: só anima na MONTAGEM do componente, sem reagir a mudança
+    de conteúdo interno.
+
+8.11 — ProductDetailModal / FavoriteHeartButton / ConfirmRemoveDialog /
+       CustomerAuthModal
+  (Documentados em detalhe na Etapa 5 — Dialogs.)
+
+8.12 — CouponTicket / CouponHistoryTicket / TicketCardVisual / CouponSlot
+  Finalidade: sistema de "ticket" reutilizável (header + linhas de corpo +
+    rodapé com código + efeito holográfico), com 2 apresentações
+    (estático via CouponTicket/CouponHistoryTicket, ou "puxável" via
+    CouponSlot — código exato no ANEXO B).
+  Props do TicketCardVisual (a base visual comum): header (ReactNode),
+    bodyLines (ReactNode[]), footerLabel, footerValue.
+  Props do CouponSlot: as mesmas + onReveal?, disabled?, size
+    ('sm'|'lg'), ariaLabel?.
+  Estados (CouponSlot): dragY, snapping, refs de drag.
+  Eventos (CouponSlot): pointerdown/move/up (arrasto).
+
+8.13 — LocationPicker
+  Finalidade: seletor de endereço em 2 passos (busca → ajuste no mapa),
+    documentado em detalhe na Etapa 4.10.
+  Props: initial?, onClose, onConfirm.
+  Retorno via onConfirm: {lat, lng, label, bairro?, estimate?}.
+
+8.14 — BirthdateInput
+  Finalidade: 3 dropdowns (dia/mês/ano) que juntos formam uma data
+    yyyy-mm-dd, substituindo o `<input type="date">` nativo (cujo formato
+    seguiria o locale do navegador, não pt-BR).
+  Props: value (string yyyy-mm-dd ou ''), onChange.
+  Comportamento: só emite onChange quando os 3 campos estão preenchidos.
+
+8.15 — SunsetBackdrop / BackgroundScene
+  Finalidade: fundo fixo de tela cheia atrás de todo o conteúdo de
+    cliente, com 4 modos configuráveis pelo admin (svg padrão, synthwave,
+    estrelas, imagem própria).
+  Dados consumidos: BgSettings (via `api.siteSettings.get()`).
+
+8.16 — CustomerPageDecorations / SmokeDecor / FireDecor
+  Finalidade: elementos decorativos (fumaça/fogo) posicionáveis livremente
+    (x/y em %) por página, configurados no admin. Puramente estético/
+    ambientação, zero interação.
+
+8.17 — Ausentes no Design System atual (não existem hoje, mas são
+       mencionados no pedido genérico de "componentes de referência")
+  Drawer, Dropdown genérico (existe só o Dropdown específico de
+  BirthdateInput, não reutilizável), Tabs genérico (existe só o padrão
+  visual "sunset-tabs" replicado manualmente em 2 lugares: Catálogo e
+  CuponsCliente — não é um componente `<Tabs>` de fato), Accordion,
+  Tooltip genérico (existe um tooltip bem específico dentro do
+  WhatsAppFab, não reutilizável), Pagination (não existe — catálogo carrega
+  a lista inteira de uma vez), Toast (não existe — todo feedback de
+  erro/sucesso é inline na própria tela, nunca uma notificação flutuante
+  temporizada). Sinalizado aqui porque um Design System novo PODE introduzir
+  esses padrões desde que a AÇÃO por trás continue a mesma (ex.: um Toast
+  no lugar de uma mensagem de erro inline é uma troca de PELE válida).
+
+
+================================================================================
+ETAPA 9 — CONTRATO TÉCNICO CONSOLIDADO (invariantes de rota, RPC e regra de negócio)
+================================================================================
+
+  - Nomes de RPC/endpoint (ver Etapa 2): create_order, validate_coupon,
+    customer_claim_coupon, customer_peek_claimable_coupon, etc., e seus
+    parâmetros `p_*`.
+  - Shape dos payloads enviados/recebidos: campos de `lib/types.ts`.
+  - Nomes das rotas: `/`, `/catalogo`, `/produto/:id`, `/carrinho`,
+    `/checkout`, `/banner`, `/banner/checkout`, `/pagamento/:orderId`,
+    `/consultar`, `/recuperar-senha`, `/cliente/favoritos`,
+    `/cliente/cupons`, `/cliente/historico`.
+  - Fluxo de telas: 3 passos de recuperação de senha (WhatsApp → código →
+    nova senha), 2 passos peek→claim de resgate de cupom, 2 passos
+    busca→ajuste do seletor de endereço, login exigido antes de finalizar
+    pedido/ver favoritos/cupons/histórico.
+  - Sequência de ações dentro de cada fluxo: cupom de fidelidade nunca se
+    auto-aplica sozinho (só o cupom de produto em promoção de catálogo se
+    auto-aplica); carrinho de banner é sempre separado do carrinho normal;
+    produto esgotado bloqueia compra em toda superfície onde aparece.
+  - Comportamento de cada componente: estados possíveis, quando abre/fecha
+    um modal, quando confirma vs. quando age direto (ver Etapas 5 e 6).
+  - Os 4 stores de estado persistente: chaves de localStorage e shape dos
+    dados (ver Etapa 7).
+  - Regras de negócio: maioridade 18 anos no checkout, normalização de
+    WhatsApp com prefixo 55, cálculo de desconto com 3 fontes possíveis
+    (promoção de campanha, cupom, produto em promoção de catálogo)
+    exibidas em linhas separadas no resumo, raio de entrega bloqueando a
+    confirmação de endereço fora do alcance.
+  - Reprodução exata (gesto + animação) do mapa de rastreio (ANEXO A) e do
+    slot de resgate de cupom (ANEXO B).
+  - Loja fechada: landing cinza + banner FECHADA/abre {próximo dia};
+    checkout NÃO finaliza (create_order bloqueado no cliente).
+  - Logo: upload em /meu-plano/layout → tenant-config.logo_url → header home.
+  - Textos do hero: landing_headline / landing_sub / landing_badge via
+    tenant-config, editáveis no CMS preview 1:1 de /meu-plano/layout.
+  - CartFab: estilo sacola|#cart_icon (+ animate) via tenant-config;
+    obrigatório nas páginas de cliente, canto inferior direito.
+  - Hub lojista: rotas /meu-plano, /meu-plano/layout, /meu-plano/financeiro,
+    /meu-plano/redes.
+
+
+================================================================================
+ETAPA 10 — CMS DO LOJISTA (/meu-plano/layout) → VITRINE
+================================================================================
+
+Fonte de verdade dos campos de vitrine editáveis pelo lojista (Resolutoo
+plataforma), refletidos na landing/cliente via tenant-config:
+
+  - nome_loja, endereco, endereco_numero, cor_principal, layout_style
+  - logo_url (upload de imagem, não URL livre)
+  - landing_headline, landing_sub, landing_badge
+  - cart_fab_style ('sacola'|'cart_icon'), cart_fab_animate (bool)
+
+Horários de funcionamento NÃO são editados em /meu-plano — vêm de
+Configurações do painel da loja (store_hours). O preview CMS só lê/mostra.
+
+O preview em /meu-plano/layout usa proporção phone 1:1 (≈390×760) e
+espelha o template uiux escolhido (ufersin / burgerbite / burgerhouse);
+textos clicáveis no preview atualizam o que a landing do cliente exibe
+após salvar.
+
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================

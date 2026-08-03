@@ -7,7 +7,12 @@ ALTER TABLE IF EXISTS resolutoo.subscribers
   ADD COLUMN IF NOT EXISTS instagram text,
   ADD COLUMN IF NOT EXISTS endereco_numero text,
   ADD COLUMN IF NOT EXISTS facebook text,
-  ADD COLUMN IF NOT EXISTS vende_mais_18 boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS vende_mais_18 boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS landing_headline text,
+  ADD COLUMN IF NOT EXISTS landing_sub text,
+  ADD COLUMN IF NOT EXISTS landing_badge text,
+  ADD COLUMN IF NOT EXISTS cart_fab_style text NOT NULL DEFAULT 'sacola',
+  ADD COLUMN IF NOT EXISTS cart_fab_animate boolean NOT NULL DEFAULT false;
 
 CREATE OR REPLACE FUNCTION resolutoo.get_public_tenant_config(p_slug text)
 RETURNS json
@@ -31,7 +36,13 @@ AS $$
     'facebook', facebook,
     'endereco', endereco,
     'endereco_numero', endereco_numero,
-    'vende_mais_18', coalesce(vende_mais_18, false)
+    'vende_mais_18', coalesce(vende_mais_18, false),
+    'logo_url', logo_url,
+    'landing_headline', landing_headline,
+    'landing_sub', landing_sub,
+    'landing_badge', landing_badge,
+    'cart_fab_style', coalesce(nullif(cart_fab_style, ''), 'sacola'),
+    'cart_fab_animate', coalesce(cart_fab_animate, false)
   )
   FROM resolutoo.subscribers
   WHERE lower(slug) = lower(p_slug)

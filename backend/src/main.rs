@@ -9,6 +9,7 @@ mod pandadoc;
 mod plans;
 mod routes;
 mod state;
+mod storage;
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -95,6 +96,11 @@ async fn main() -> anyhow::Result<()> {
     let pandadoc = pandadoc::PandadocConfig::from_env();
     tracing::info!("{}", pandadoc::status(&pandadoc).message);
 
+    let supabase_service_key = env_trimmed("SUPABASE_SERVICE_ROLE_KEY");
+    if supabase_service_key.is_empty() {
+        tracing::warn!("SUPABASE_SERVICE_ROLE_KEY not set — upload de logo em /api/me/upload-logo vai falhar");
+    }
+
     let state = AppState {
         pool,
         http,
@@ -106,6 +112,8 @@ async fn main() -> anyhow::Result<()> {
         ecommerce_internal_url: Arc::new(ecommerce_internal_url),
         ecommerce_internal_key: Arc::new(ecommerce_internal_key),
         pandadoc,
+        supabase_url: supabase_url.clone(),
+        supabase_service_key,
     };
 
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
@@ -133,6 +141,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/me", get(routes::me::me))
         .route("/api/me/plano", post(routes::me::mudar_plano))
         .route("/api/me/cancelar", post(routes::me::cancelar))
+        .route("/api/me/upload-logo", post(routes::me::upload_logo))
         .route(
             "/api/onboarding",
             post(routes::onboarding::onboarding).put(routes::onboarding::editar_onboarding),

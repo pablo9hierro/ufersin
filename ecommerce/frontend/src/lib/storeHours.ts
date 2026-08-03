@@ -51,3 +51,27 @@ export function getStoreOpenState(status: StoreStatus, now: Date = new Date()) {
     reason: status.manually_closed ? status.manual_closed_reason : null,
   }
 }
+
+/** "amanhã" | "sábado" | "segunda" | … — próximo dia com intervalo aberto. */
+export function nextOpenLabel(status: StoreStatus, now: Date = new Date()): string {
+  const short = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
+  for (let offset = 1; offset <= 7; offset++) {
+    const d = new Date(now)
+    d.setDate(d.getDate() + offset)
+    const dow = d.getDay()
+    const row = status.hours.find((h) => h.day_of_week === dow)
+    if (!row?.is_open || row.intervals.length === 0) continue
+    if (offset === 1) return 'amanhã'
+    return short[dow]
+  }
+  return 'em breve'
+}
+
+export function closedStoreMessage(status: StoreStatus, now: Date = new Date()): string {
+  const openState = getStoreOpenState(status, now)
+  if (openState.open) return ''
+  if (openState.manuallyClosed && openState.reason) {
+    return `Loja FECHADA. ${openState.reason}`
+  }
+  return `Loja FECHADA. Abre ${nextOpenLabel(status, now)}.`
+}

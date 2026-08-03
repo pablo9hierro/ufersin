@@ -25,8 +25,20 @@ if (!supabaseConfigured) {
 // supabase-ufersin/0000_bootstrap_ufersin_schema.sql pra como o schema
 // `ufersin` foi criado. Só mude via VITE_SUPABASE_SCHEMA se precisar
 // apontar deliberadamente pra outro schema.
+//
+// Auth GoTrue desligada de propósito: staff da loja usa JWT Railway +
+// Zustand (`sonset_admin_auth` etc.). Persistência Auth aqui cruzava a
+// sessão da plataforma Resolutoo (mesmo projeto / mesma origin /loja).
 export const supabase: SupabaseClient = createClient(
   url || 'https://placeholder.supabase.co',
   anonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder',
-  { db: { schema: import.meta.env.VITE_SUPABASE_SCHEMA || 'ufersin' } },
+  {
+    db: { schema: import.meta.env.VITE_SUPABASE_SCHEMA || 'ufersin' },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: 'ufersin-loja-noauth',
+    },
+  },
 )

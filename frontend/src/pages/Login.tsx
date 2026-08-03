@@ -2,14 +2,15 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { LogIn, Loader2 } from 'lucide-react'
-import { supabase, supabaseConfigured } from '../lib/supabaseClient'
+import { supabaseConfigured, supabaseLojista, supabaseSuperadmin } from '../lib/supabaseClient'
 import { authStore, useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import { translateAuthError } from '../lib/authErrors'
 import { clearAuthFailures, getAuthLockMessage, recordAuthFailure } from '../lib/authRateLimit'
 import PasswordField from '../components/PasswordField'
 import { PLAN_MAP } from '../lib/plans'
 import { resolveSessionHome } from '../lib/sessionHome'
-import type { BillingCycle, PlanoCode } from '../lib/api'
+import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
+import { api, ApiError, type BillingCycle, type PlanoCode } from '../lib/api'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -63,15 +64,50 @@ export default function Login() {
     }
     setLoading(true)
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
+      const trimmed = email.trim()
+      // Known admin: autentica direto no slot superadmin — não toca lojista.
+      if (isKnownPlatformAdminEmail(trimmed)) {
+        const { data, error: signInError } = await supabaseSuperadmin.auth.signInWithPassword({
+          email: trimmed,
+          password: senha,
+        })
+        if (signInError) throw signInError
+        if (!data.session) throw new Error('Sessão não retornada pelo login.')
+        clearAuthFailures()
+        for (let i = 0; i < 40 && !authStore.getTokenForRole('superadmin'); i++) {
+          await new Promise((r) => setTimeout(r, 25))
+        }
+        navigate(await resolveSessionHome({ plano, ciclo, email: data.session.user.email }), { replace: true })
+        return
+      }
+
+      // Lojista (default): autentica no slot lojista — não toca superadmin.
+      const { data, error: signInError } = await supabaseLojista.auth.signInWithPassword({
+        email: trimmed,
+        password: senha,
+      })
       if (signInError) throw signInError
+      if (!data.session) throw new Error('Sessão não retornada pelo login.')
       clearAuthFailures()
-      // Garante que o authStore já espelhou o token antes do whoami/me.
-      for (let i = 0; i < 40 && !authStore.getToken(); i++) {
+      for (let i = 0; i < 40 && !authStore.getTokenForRole('lojista'); i++) {
         await new Promise((r) => setTimeout(r, 25))
       }
-      const to = await resolveSessionHome({ plano, ciclo })
-      navigate(to, { replace: true })
+
+      // Se na verdade for platform admin (não listado no fallback de e-mail),
+      // move pro slot superadmin e limpa só o JWT duplicado no lojista.
+      try {
+        await api.superadminWhoami()
+        await authStore.placeSession('superadmin', data.session)
+        for (let i = 0; i < 40 && !authStore.getTokenForRole('superadmin'); i++) {
+          await new Promise((r) => setTimeout(r, 25))
+        }
+      } catch (e) {
+        if (!(e instanceof ApiError && (e.status === 403 || e.status === 401))) {
+          /* rede/5xx: segue como lojista */
+        }
+      }
+
+      navigate(await resolveSessionHome({ plano, ciclo, email: data.session.user.email }), { replace: true })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Não foi possível entrar. Tente novamente.'
       recordAuthFailure()

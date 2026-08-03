@@ -1212,7 +1212,10 @@ const remoteApi = {
         method: 'POST',
         body: JSON.stringify({ order_id: orderId }),
       }),
-    relatorio: () => rpc<VendedorRelatorio>('vendedor_relatorio', { p_token: adminToken() }),
+    relatorio: () =>
+      isRailwayAdminJwt()
+        ? railwayAdmin<VendedorRelatorio>('/api/pdv/relatorio')
+        : rpc<VendedorRelatorio>('vendedor_relatorio', { p_token: adminToken() }),
   },
   motoboy: {
     orders: {

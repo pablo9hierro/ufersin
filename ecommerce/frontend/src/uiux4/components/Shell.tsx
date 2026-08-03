@@ -131,8 +131,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <Link to="/" className="text-sm font-black uppercase tracking-[0.15em] shrink-0">
-            {name}
+          <Link to="/" className="text-sm font-black uppercase tracking-[0.15em] shrink-0 flex items-center gap-2 min-w-0">
+            {tenantConfig?.logo_url ? (
+              <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+            ) : null}
+            <span className="truncate">{name}</span>
           </Link>
 
           <div className="hidden sm:flex items-center gap-1">
@@ -160,11 +163,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Só desktop -- no mobile a faixa de abas (abaixo) já ocupa esse
-          canto, e o FAB fixo ficaria por cima dela. */}
-      <div className="hidden sm:block">
-        <CartFab />
-      </div>
+      <CartFab />
 
       <div className="max-w-5xl mx-auto">{children}</div>
 

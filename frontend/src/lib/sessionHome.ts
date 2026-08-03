@@ -17,26 +17,34 @@ export async function resolveSessionHome(opts?: {
   ciclo?: BillingCycle
   email?: string | null
 }): Promise<string> {
-  const email = opts?.email ?? authStore.getSession()?.user?.email ?? null
+  const email =
+    opts?.email ??
+    authStore.getSuperadminSession()?.user?.email ??
+    authStore.getLojistaSession()?.user?.email ??
+    null
+
   if (isKnownPlatformAdminEmail(email)) {
     return '/dashboard'
+  }
+
+  // Slot superadmin já preenchido → painel da plataforma.
+  if (authStore.getTokenForRole('superadmin')) {
+    try {
+      await api.superadminWhoami()
+      return '/dashboard'
+    } catch {
+      /* token stale — tenta fluxo lojista abaixo */
+    }
   }
 
   try {
     await api.superadminWhoami()
     return '/dashboard'
   } catch (e) {
-    // Só 403 = autenticado mas não é platform admin. Qualquer outro erro
-    // (401/rede/5xx/404 de API antiga) não deve empurrar superadmin pro
-    // onboarding de lojista — mas 403 é o sinal limpo de "é lojista".
     if (e instanceof ApiError && e.status === 403) {
-      // segue fluxo lojista
+      // autenticado mas não é platform admin — segue lojista
     } else if (e instanceof ApiError && e.status === 401) {
-      // token ausente/inválido — tenta lojista (me também falhará)
-    } else {
-      // rede/5xx/404: ainda tenta lojista; CompletarConta/MeuPlano
-      // revalidam whoami e bounceiam admin se a API voltar.
-      // Known-admin já foi tratado acima.
+      // token ausente/inválido
     }
   }
 

@@ -41,7 +41,7 @@ export default function CompletarConta() {
   const handleLogout = async () => {
     setLoggingOut(true)
     try {
-      await authStore.signOut()
+      await authStore.signOut('lojista')
       navigate('/login', { replace: true })
     } finally {
       setLoggingOut(false)

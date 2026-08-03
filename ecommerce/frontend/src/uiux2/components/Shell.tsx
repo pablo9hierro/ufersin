@@ -123,9 +123,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
-            <Link to="/" className="flex items-center gap-2 font-black text-lg">
-              {showMark && <UfersinMark className="w-8 h-8 u2-accent" />}
-              <span className="u2-gradient-text">{name}</span>
+            <Link to="/" className="flex items-center gap-2 font-black text-lg min-w-0">
+              {tenantConfig?.logo_url ? (
+                <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+              ) : (
+                showMark && <UfersinMark className="w-8 h-8 u2-accent" />
+              )}
+              <span className="u2-gradient-text truncate">{name}</span>
             </Link>
           </div>
           <div className="hidden sm:flex items-center gap-1">
@@ -160,11 +164,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Só desktop -- no mobile a barra de navegação inferior (abaixo)
-          já ocupa esse canto, e o FAB fixo ficaria por cima dela. */}
-      <div className="hidden sm:block">
-        <CartFab />
-      </div>
+      <CartFab />
 
       <div className="max-w-5xl mx-auto">{children}</div>
 

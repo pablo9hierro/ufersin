@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
@@ -12,6 +12,7 @@ import {
   Save,
   Share2,
   Sparkles,
+  Upload,
 } from 'lucide-react'
 import {
   api,
@@ -25,8 +26,8 @@ import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlans, getPlanMap, planDisplayName, priceForCycle } from '../lib/plans'
 import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
-import StorefrontStylePicker from '../components/StorefrontStylePicker'
 import AddressField from '../components/AddressField'
+import StorefrontCmsPreview, { type CartFabStyle } from '../components/StorefrontCmsPreview'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
 import { supabase } from '../lib/supabaseClient'
 
@@ -38,6 +39,18 @@ const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
 
 type Tab = 'plano' | 'layout' | 'financeiro' | 'redes'
 type IntegracaoPagamento = 'mercado_pago' | 'abacate_pay' | 'nao_integrar'
+
+const TAB_PATH: Record<Tab, string> = {
+  plano: '/meu-plano',
+  layout: '/meu-plano/layout',
+  financeiro: '/meu-plano/financeiro',
+  redes: '/meu-plano/redes',
+}
+
+function tabFromParam(param: string | undefined): Tab {
+  if (param === 'layout' || param === 'financeiro' || param === 'redes') return param
+  return 'plano'
+}
 
 function plataformasParaDocumento(tipo: TipoDocumento) {
   if (tipo === 'cpf') return PLATAFORMAS.filter((p) => p.value === 'mercado_pago')
@@ -53,13 +66,16 @@ export default function MeuPlano() {
   const isAuthenticated = useIsAuthenticated()
   const session = useSession()
   const navigate = useNavigate()
+  const { tab: tabParam } = useParams()
+  const tab = tabFromParam(tabParam)
+
   const [me, setMe] = useState<MeResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   const [busyPlano, setBusyPlano] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  const [tab, setTab] = useState<Tab>('plano')
   const [content, setContent] = useState<Record<string, string>>({})
   const [plansLoaded, setPlansLoaded] = useState(false)
 
@@ -69,6 +85,11 @@ export default function MeuPlano() {
   const [logoUrl, setLogoUrl] = useState('')
   const [corPrincipal, setCorPrincipal] = useState(CORES[0])
   const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
+  const [landingHeadline, setLandingHeadline] = useState('')
+  const [landingSub, setLandingSub] = useState('')
+  const [landingBadge, setLandingBadge] = useState('')
+  const [cartFabStyle, setCartFabStyle] = useState<CartFabStyle>('sacola')
+  const [cartFabAnimate, setCartFabAnimate] = useState(false)
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('cnpj')
 
   const [whatsapp, setWhatsapp] = useState('')
@@ -81,7 +102,6 @@ export default function MeuPlano() {
     if (!isAuthenticated) return
     let cancelled = false
     ;(async () => {
-      // Superadmin primeiro — nunca mostrar hub lojista nem mandar a completar-conta.
       if (isKnownPlatformAdminEmail(session?.user?.email)) {
         if (!cancelled) navigate('/dashboard', { replace: true })
         return
@@ -106,6 +126,11 @@ export default function MeuPlano() {
         setLogoUrl(m.logo_url ?? '')
         setCorPrincipal(m.cor_principal || CORES[0])
         setLayoutStyle(isStorefrontStyle(m.layout_style) ? m.layout_style : 'ufersin')
+        setLandingHeadline(m.landing_headline ?? '')
+        setLandingSub(m.landing_sub ?? '')
+        setLandingBadge(m.landing_badge ?? '')
+        setCartFabStyle(m.cart_fab_style === 'cart_icon' ? 'cart_icon' : 'sacola')
+        setCartFabAnimate(!!m.cart_fab_animate)
         setTipoDocumento(m.tipo_documento ?? 'cnpj')
         setWhatsapp(m.whatsapp ?? '')
         setInstagram((m.instagram ?? '').replace(/^@/, ''))
@@ -155,7 +180,7 @@ export default function MeuPlano() {
   const publicUrl = me.onboarding_status === 'provisionado' && me.slug ? storePublicUrl(me.slug) : null
 
   const handleLogout = async () => {
-    await authStore.signOut()
+    await authStore.signOut('lojista')
     navigate('/')
   }
 
@@ -195,6 +220,23 @@ export default function MeuPlano() {
     }
   }
 
+  const handleLogoUpload = async (file: File | null) => {
+    if (!file) return
+    setError(null)
+    setUploadingLogo(true)
+    try {
+      const { url } = await api.uploadLogo(file)
+      setLogoUrl(url)
+      setMe((prev) => (prev ? { ...prev, logo_url: url } : prev))
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 3000)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível enviar a logo.')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
   const handleSaveLayout = (e: React.FormEvent) => {
     e.preventDefault()
     if (!nomeLoja.trim()) {
@@ -208,6 +250,11 @@ export default function MeuPlano() {
       logo_url: logoUrl.trim() || undefined,
       cor_principal: corPrincipal,
       layout_style: layoutStyle,
+      landing_headline: landingHeadline.trim() || undefined,
+      landing_sub: landingSub.trim() || undefined,
+      landing_badge: landingBadge.trim() || undefined,
+      cart_fab_style: cartFabStyle,
+      cart_fab_animate: cartFabAnimate,
     })
   }
 
@@ -240,11 +287,11 @@ export default function MeuPlano() {
     })
   }
 
-  const TABS: { id: Tab; label: string }[] = [
-    { id: 'plano', label: 'Meu plano atual' },
-    { id: 'layout', label: 'Layout' },
-    { id: 'financeiro', label: 'Financeiro' },
-    { id: 'redes', label: 'Redes sociais' },
+  const TABS: { id: Tab; label: string; path: string }[] = [
+    { id: 'plano', label: 'Meu plano atual', path: TAB_PATH.plano },
+    { id: 'layout', label: 'Layout', path: TAB_PATH.layout },
+    { id: 'financeiro', label: 'Financeiro', path: TAB_PATH.financeiro },
+    { id: 'redes', label: 'Redes sociais', path: TAB_PATH.redes },
   ]
 
   if (!me.plano) {
@@ -329,16 +376,18 @@ export default function MeuPlano() {
 
           <div className="flex gap-1 mb-6 overflow-x-auto pb-1">
             {TABS.map((t) => (
-              <button
+              <NavLink
                 key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={`px-3 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap transition-colors ${
-                  tab === t.id ? 'bg-white/10 text-white font-semibold' : 'text-uf-silver-dim hover:text-uf-silver'
-                }`}
+                to={t.path}
+                end={t.id === 'plano'}
+                className={({ isActive }) =>
+                  `px-3 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap transition-colors ${
+                    isActive ? 'bg-white/10 text-white font-semibold' : 'text-uf-silver-dim hover:text-uf-silver'
+                  }`
+                }
               >
                 {t.label}
-              </button>
+              </NavLink>
             ))}
           </div>
 
@@ -359,9 +408,7 @@ export default function MeuPlano() {
                   Ciclo semestral · R$ {formatBRL(priceForCycle(me.valor_mensal ?? 0, 'semestral'))} por período
                 </p>
               )}
-              {me.coupon_code && (
-                <p className="text-xs text-emerald-400 mb-4">Cupom ativo: {me.coupon_code}</p>
-              )}
+              {me.coupon_code && <p className="text-xs text-emerald-400 mb-4">Cupom ativo: {me.coupon_code}</p>}
               {me.status !== 'cancelado' && (
                 <button onClick={handleCancelar} disabled={busyPlano} className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20">
                   <AlertTriangle className="w-3.5 h-3.5" />
@@ -376,15 +423,36 @@ export default function MeuPlano() {
           )}
           {tab === 'layout' && hasActiveSub && (
             <form onSubmit={handleSaveLayout} className="uf-glass rounded-2xl p-6 space-y-4">
-              <p className="text-xs text-uf-silver-dim">{content['meu_plano.layout_hint'] ?? 'Nome, logo, cor e endereço da vitrine.'}</p>
+              <p className="text-xs text-uf-silver-dim">
+                {content['meu_plano.layout_hint'] ?? 'Nome, logo, textos da landing, cor e endereço da vitrine.'}
+              </p>
               <div>
                 <label className="label">Nome da empresa</label>
                 <input className="input-field" value={nomeLoja} onChange={(e) => setNomeLoja(e.target.value)} />
               </div>
               <AddressField endereco={endereco} numero={enderecoNumero} onEnderecoChange={setEndereco} onNumeroChange={setEnderecoNumero} />
               <div>
-                <label className="label">Logo (URL)</label>
-                <input className="input-field" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
+                <label className="label">Logo</label>
+                <div className="flex items-center gap-3">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Logo" className="w-14 h-14 rounded-xl object-cover border border-white/10" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-xl border border-dashed border-white/20 flex items-center justify-center text-[10px] text-uf-silver-dim">
+                      sem logo
+                    </div>
+                  )}
+                  <label className="btn-secondary text-xs px-3 py-2 cursor-pointer inline-flex items-center gap-1.5">
+                    {uploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                    {logoUrl ? 'Trocar imagem' : 'Enviar imagem'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={uploadingLogo}
+                      onChange={(e) => handleLogoUpload(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                </div>
               </div>
               <div>
                 <label className="label flex items-center gap-1.5">
@@ -402,7 +470,28 @@ export default function MeuPlano() {
                   ))}
                 </div>
               </div>
-              <StorefrontStylePicker value={layoutStyle} onChange={setLayoutStyle} lojaNome={nomeLoja} corPrincipal={corPrincipal} />
+              <StorefrontCmsPreview
+                values={{
+                  lojaNome: nomeLoja,
+                  endereco: [endereco, enderecoNumero].filter(Boolean).join(', '),
+                  logoUrl,
+                  corPrincipal,
+                  layoutStyle,
+                  landingHeadline,
+                  landingSub,
+                  landingBadge,
+                  cartFabStyle,
+                  cartFabAnimate,
+                }}
+                onChange={(patch) => {
+                  if (patch.layoutStyle != null) setLayoutStyle(patch.layoutStyle)
+                  if (patch.landingHeadline != null) setLandingHeadline(patch.landingHeadline)
+                  if (patch.landingSub != null) setLandingSub(patch.landingSub)
+                  if (patch.landingBadge != null) setLandingBadge(patch.landingBadge)
+                  if (patch.cartFabStyle != null) setCartFabStyle(patch.cartFabStyle)
+                  if (patch.cartFabAnimate != null) setCartFabAnimate(patch.cartFabAnimate)
+                }}
+              />
               <button type="submit" disabled={saving} className="btn-primary w-full py-3">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Salvar layout
@@ -493,6 +582,7 @@ export default function MeuPlano() {
               </button>
             </form>
           )}
+          <Outlet />
         </motion.div>
       </div>
     </main>
@@ -512,5 +602,10 @@ function mapFieldsToMe(prev: MeResponse, fields: Parameters<typeof api.editarOnb
   if (fields.whatsapp !== undefined) patch.whatsapp = fields.whatsapp ?? ''
   if (fields.instagram !== undefined) patch.instagram = fields.instagram ?? null
   if (fields.facebook !== undefined) patch.facebook = fields.facebook ?? null
+  if (fields.landing_headline !== undefined) patch.landing_headline = fields.landing_headline ?? null
+  if (fields.landing_sub !== undefined) patch.landing_sub = fields.landing_sub ?? null
+  if (fields.landing_badge !== undefined) patch.landing_badge = fields.landing_badge ?? null
+  if (fields.cart_fab_style != null) patch.cart_fab_style = fields.cart_fab_style
+  if (fields.cart_fab_animate != null) patch.cart_fab_animate = fields.cart_fab_animate
   return { ...prev, ...patch }
 }
