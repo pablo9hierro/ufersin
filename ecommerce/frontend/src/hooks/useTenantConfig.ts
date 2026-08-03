@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   getTenantConfig,
+  peekCachedTenantConfig,
   persistTenantSlug,
-  resetTenantConfigCache,
   type TenantConfig,
 } from '../lib/tenantConfig'
 
@@ -13,7 +13,7 @@ import {
 export function useTenantConfig() {
   const [params] = useSearchParams()
   const tenantParam = params.get('tenant')?.trim().toLowerCase() ?? ''
-  const [config, setConfig] = useState<TenantConfig | null>(null)
+  const [config, setConfig] = useState<TenantConfig | null>(() => peekCachedTenantConfig())
 
   useEffect(() => {
     if (tenantParam) persistTenantSlug(tenantParam)
@@ -26,14 +26,13 @@ export function useTenantConfig() {
       if (!cancelled) setConfig(c)
     }
 
-    // TTL cobre reuso entre hooks; visibility cobre save no Meu plano
-    // em outra aba. Troca de ?tenant= muda a dep e refaz a busca.
+    // TTL cobre reuso entre hooks; focus só revalida se o cache expirou
+    // (não força reset — isso re-disparava o gate do AdminLayout).
     getTenantConfig().then(apply)
 
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
-      resetTenantConfigCache()
-      getTenantConfig({ force: true }).then(apply)
+      getTenantConfig().then(apply)
     }
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onVisible)

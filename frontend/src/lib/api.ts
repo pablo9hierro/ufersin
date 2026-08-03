@@ -193,6 +193,8 @@ export interface MeResponse {
   tipo_documento: TipoDocumento | null
   vender_externamente: boolean
   vende_mais_18: boolean
+  /** Vitrine: só aceita retirada no local (sem entrega). */
+  apenas_retirada: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento: PlataformaPagamento | null
@@ -247,6 +249,7 @@ export interface OnboardingInput {
   instagram?: string
   vender_externamente: boolean
   vende_mais_18?: boolean
+  apenas_retirada?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -273,6 +276,7 @@ export interface EditOnboardingInput {
   facebook?: string
   vender_externamente?: boolean
   vende_mais_18?: boolean
+  apenas_retirada?: boolean
   whatsapp_habilitado?: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento

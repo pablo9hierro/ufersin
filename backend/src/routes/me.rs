@@ -44,6 +44,7 @@ struct SubscriberRow {
     facebook: Option<String>,
     endereco_numero: Option<String>,
     vende_mais_18: bool,
+    apenas_retirada: bool,
     coupon_code: Option<String>,
     landing_headline: Option<String>,
     landing_sub: Option<String>,
@@ -90,6 +91,7 @@ pub struct MeResponse {
     pub facebook: Option<String>,
     pub endereco_numero: Option<String>,
     pub vende_mais_18: bool,
+    pub apenas_retirada: bool,
     pub coupon_code: Option<String>,
     /// Próxima cobrança / histórico de faturas dependem de consultar o
     /// gateway (Mercado Pago não expõe isso na mesma chamada de status) ou
@@ -117,7 +119,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                   NULL
                 ) IS NOT NULL as has_plataforma_credenciais,
                 COALESCE(layout_style, 'ufersin') as layout_style, instagram, facebook, endereco_numero,
-                COALESCE(vende_mais_18, false) as vende_mais_18, coupon_code,
+                COALESCE(vende_mais_18, false) as vende_mais_18,
+                COALESCE(apenas_retirada, false) as apenas_retirada, coupon_code,
                 landing_headline, landing_sub, landing_badge,
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
                 COALESCE(cart_fab_animate, false) as cart_fab_animate
@@ -164,6 +167,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         facebook: row.facebook,
         endereco_numero: row.endereco_numero,
         vende_mais_18: row.vende_mais_18,
+        apenas_retirada: row.apenas_retirada,
         coupon_code: row.coupon_code,
         proxima_cobranca: None,
         landing_headline: row.landing_headline,

@@ -121,6 +121,7 @@ export default function Onboarding() {
         instagram: instagram.trim().replace(/^@/, ''),
         vender_externamente: venderExternamente,
         vende_mais_18: vendeMais18,
+        apenas_retirada: apenasRetirada,
         whatsapp_habilitado: whatsappHabilitado,
         forma_pagamento: formaPagamento,
         plataforma_pagamento: plataformaPagamento,
@@ -291,6 +292,19 @@ export default function Onboarding() {
             <span className="text-xs text-uf-silver-dim">
               <span className="block text-uf-silver font-semibold mb-0.5">Minha loja vende produtos para maiores de 18 anos</span>
               Se marcado, o checkout do cliente exige consentimento de compra normal + 18+.
+            </span>
+          </label>
+
+          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={apenasRetirada}
+              onChange={(e) => setApenasRetirada(e.target.checked)}
+              className="w-4 h-4 mt-0.5"
+            />
+            <span className="text-xs text-uf-silver-dim">
+              <span className="block text-uf-silver font-semibold mb-0.5">Aceitar apenas compras com retirada na loja</span>
+              Clientes da vitrine só podem comprar com retirada — sem entrega, frete ou motoboy.
             </span>
           </label>
 

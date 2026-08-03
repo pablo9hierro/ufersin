@@ -10,6 +10,8 @@
 //
 // Sem slug, ou se a busca falhar, cai em essential restritivo (não
 // premium liberado) pra não mostrar CRM/Promoções pra loja real.
+import { fetchWithTimeout } from './fetchTimeout'
+
 export interface TenantConfig {
   slug: string
   loja_nome: string
@@ -24,6 +26,8 @@ export interface TenantConfig {
   cor_principal: string | null
   /** Checkout exige consentimento 18+ além da compra normal. */
   vende_mais_18: boolean
+  /** Vitrine: só aceita retirada no local (sem entrega/frete/motoboy). */
+  apenas_retirada: boolean
   endereco: string
   endereco_numero: string
   instagram: string
@@ -63,6 +67,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   layout_style: 'ufersin',
   cor_principal: null,
   vende_mais_18: false,
+  apenas_retirada: false,
   endereco: '',
   endereco_numero: '',
   instagram: '',
@@ -90,8 +95,8 @@ const SUPABASE_ANON_KEY =
 
 const SLUG_STORAGE_KEY = 'resolutoo_tenant_slug'
 
-/** Cache curto: Meu plano pode ter alterado layout_style em outra aba. */
-const CACHE_TTL_MS = 15_000
+/** Session cache: Meu plano muda raramente; focus só revalida após TTL. */
+const CACHE_TTL_MS = 5 * 60_000
 
 let cached: TenantConfig | null = null
 let inFlight: Promise<TenantConfig> | null = null
@@ -210,6 +215,7 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     facebook: String(data.facebook ?? '').trim(),
     layout_style: normalizeLayoutStyle(data.layout_style),
     vende_mais_18: Boolean(data.vende_mais_18),
+    apenas_retirada: Boolean(data.apenas_retirada),
     logo_url: data.logo_url ? String(data.logo_url) : null,
     landing_headline: data.landing_headline ? String(data.landing_headline) : null,
     landing_sub: data.landing_sub ? String(data.landing_sub) : null,
@@ -219,21 +225,27 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
   }
 }
 
+const TENANT_FETCH_TIMEOUT_MS = 10_000
+
 /** Lê config no schema resolutoo via PostgREST (fonte de verdade do layout_style). */
 async function fetchTenantConfigFromSupabase(slug: string): Promise<TenantConfig | null> {
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_public_tenant_config`, {
-      method: 'POST',
-      cache: 'no-store',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        'Accept-Profile': 'resolutoo',
-        'Content-Profile': 'resolutoo',
+    const res = await fetchWithTimeout(
+      `${SUPABASE_URL}/rest/v1/rpc/get_public_tenant_config`,
+      {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          'Accept-Profile': 'resolutoo',
+          'Content-Profile': 'resolutoo',
+        },
+        body: JSON.stringify({ p_slug: slug }),
       },
-      body: JSON.stringify({ p_slug: slug }),
-    })
+      TENANT_FETCH_TIMEOUT_MS,
+    )
     if (!res.ok) return null
     const data = (await res.json()) as Partial<TenantConfig> | null
     if (!data || typeof data !== 'object' || !('layout_style' in data || data.slug || data.loja_nome)) {
@@ -245,25 +257,33 @@ async function fetchTenantConfigFromSupabase(slug: string): Promise<TenantConfig
   }
 }
 
-async function fetchTenantConfig(slug: string): Promise<TenantConfig> {
-  if (!slug) return DEFAULT_CONFIG
-
-  // Preferir Supabase (resolutoo.subscribers): o Railway ufersin-api em produção
-  // ficou semanas sem redeploy e omitia layout_style do JSON público.
-  const fromSb = await fetchTenantConfigFromSupabase(slug)
-  if (fromSb) return fromSb
-
+async function fetchTenantConfigFromApi(slug: string): Promise<TenantConfig | null> {
   try {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${RODOLETAS_API_URL}/api/public/tenant-config/${encodeURIComponent(slug)}`,
       { cache: 'no-store' },
+      TENANT_FETCH_TIMEOUT_MS,
     )
-    if (!res.ok) return { ...DEFAULT_CONFIG, slug }
+    if (!res.ok) return null
     const data = (await res.json()) as Partial<TenantConfig>
     return mapTenantPayload(slug, data)
   } catch {
-    return { ...DEFAULT_CONFIG, slug }
+    return null
   }
+}
+
+async function fetchTenantConfig(slug: string): Promise<TenantConfig> {
+  if (!slug) return DEFAULT_CONFIG
+
+  // Parallel: Supabase preferred when both succeed (layout_style source of truth).
+  // Sequential waterfall was adding cold-start latency on every admin boot.
+  const [fromSb, fromApi] = await Promise.all([
+    fetchTenantConfigFromSupabase(slug),
+    fetchTenantConfigFromApi(slug),
+  ])
+  if (fromSb) return fromSb
+  if (fromApi) return fromApi
+  return { ...DEFAULT_CONFIG, slug }
 }
 
 /** `https://wa.me/{digits}` se WhatsApp estiver habilitado e o número existir;
@@ -358,4 +378,9 @@ export function resetTenantConfigCache() {
 /** Versão síncrona pra quem já garantiu que getTenantConfig() rodou. */
 export function getCachedTenantConfig(): TenantConfig {
   return cached ?? DEFAULT_CONFIG
+}
+
+/** Cache real (null se ainda não buscou) — evita flash de DEFAULT no admin. */
+export function peekCachedTenantConfig(): TenantConfig | null {
+  return cached
 }

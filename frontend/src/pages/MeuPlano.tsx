@@ -96,6 +96,7 @@ export default function MeuPlano() {
   const [instagram, setInstagram] = useState('')
   const [facebook, setFacebook] = useState('')
   const [vendeMais18, setVendeMais18] = useState(false)
+  const [apenasRetirada, setApenasRetirada] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [integracao, setIntegracao] = useState<IntegracaoPagamento>('mercado_pago')
   const [credencial, setCredencial] = useState('')
@@ -139,6 +140,7 @@ export default function MeuPlano() {
         setInstagram((m.instagram ?? '').replace(/^@/, ''))
         setFacebook(m.facebook ?? '')
         setVendeMais18(!!m.vende_mais_18)
+        setApenasRetirada(!!m.apenas_retirada)
         setVenderExternamente(m.vender_externamente !== false)
         // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
         setHasCredenciais(!!m.has_plataforma_credenciais || m.forma_pagamento === 'plataforma')
@@ -306,6 +308,7 @@ export default function MeuPlano() {
     saveOnboarding({
       vende_mais_18: vendeMais18,
       vender_externamente: venderExternamente,
+      apenas_retirada: apenasRetirada,
     })
   }
 
@@ -444,7 +447,7 @@ export default function MeuPlano() {
                 <form onSubmit={handleSavePreferenciasVenda} className="uf-glass rounded-2xl p-6 space-y-4">
                   <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Preferências de venda</h2>
                   <p className="text-xs text-uf-silver-dim">
-                    Defina se a loja vende pro público externo e se exige verificação 18+ no checkout.
+                    Defina se a loja vende pro público externo, se exige verificação 18+ no checkout e se aceita só retirada.
                   </p>
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                     <input
@@ -473,6 +476,20 @@ export default function MeuPlano() {
                         Minha loja vende produtos para maiores de 18 anos
                       </span>
                       Se marcado, o checkout do cliente exige data de nascimento e consentimento 18+.
+                    </span>
+                  </label>
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={apenasRetirada}
+                      onChange={(e) => setApenasRetirada(e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">
+                        Aceitar apenas compras com retirada na loja
+                      </span>
+                      Clientes da vitrine só podem comprar com retirada — sem entrega, frete ou motoboy.
                     </span>
                   </label>
                   <button type="submit" disabled={saving} className="btn-primary w-full py-3">
@@ -677,5 +694,6 @@ function mapFieldsToMe(prev: MeResponse, fields: Parameters<typeof api.editarOnb
   if (fields.cart_fab_animate != null) patch.cart_fab_animate = fields.cart_fab_animate
   if (fields.vende_mais_18 != null) patch.vende_mais_18 = fields.vende_mais_18
   if (fields.vender_externamente != null) patch.vender_externamente = fields.vender_externamente
+  if (fields.apenas_retirada != null) patch.apenas_retirada = fields.apenas_retirada
   return { ...prev, ...patch }
 }

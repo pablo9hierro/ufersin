@@ -205,6 +205,12 @@ async function createOrder(payload: {
   if (!['entrega', 'retirada'].includes(payload.delivery_type)) {
     throw new ApiError(400, 'invalid delivery_type')
   }
+  if (payload.delivery_type === 'entrega') {
+    const { getCachedTenantConfig } = await import('./tenantConfig')
+    if (getCachedTenantConfig().apenas_retirada) {
+      throw new ApiError(400, 'Esta loja aceita apenas retirada no local')
+    }
+  }
   if (!['pix', 'cartao', 'dinheiro'].includes(payload.payment_method)) {
     throw new ApiError(400, 'invalid payment_method')
   }

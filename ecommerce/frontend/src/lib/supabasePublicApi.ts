@@ -1,5 +1,6 @@
 import { ApiError } from './apiError'
 import { supabase } from './supabaseClient'
+import { getTenantConfig } from './tenantConfig'
 import type { BadgesLayout, BgFit, BgMode, CarouselStyle, Category, ClaimedCoupon, Coupon, Customer, CustomerAuthResult, CustomerCoupons, DeliveryPosition, LandingBadge, Order, PageDecoration, Product, Promotion, ShippingEstimate, ShippingSettings, StoreHourDay, StoreStatus } from '../types'
 
 function unwrap<T>(result: { data: T | null; error: { message: string } | null }): T {
@@ -129,6 +130,12 @@ export const supabasePublicApi = {
       coupon_code?: string
       promotion_id?: string
     }) => {
+      if (payload.delivery_type === 'entrega') {
+        const cfg = await getTenantConfig()
+        if (cfg.apenas_retirada) {
+          throw new ApiError(400, 'Esta loja aceita apenas retirada no local')
+        }
+      }
       const { data, error } = await supabase.rpc('create_order', {
         p_customer_name: payload.customer_name,
         p_customer_whatsapp: payload.customer_whatsapp,

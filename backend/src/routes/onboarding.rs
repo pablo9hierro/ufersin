@@ -35,6 +35,9 @@ pub struct OnboardingInput {
     /// Loja vende produtos para maiores de 18 — ativa consentimento checkout_mais18.
     #[serde(default)]
     pub vende_mais_18: bool,
+    /// Vitrine: só aceita retirada no local (sem entrega/frete/motoboy).
+    #[serde(default)]
+    pub apenas_retirada: bool,
 
     // WhatsApp: só a flag aqui; QR connect fica na etapa 2 do painel da loja.
     #[serde(default = "default_true")]
@@ -211,7 +214,7 @@ pub async fn onboarding(
          documento = $11, tipo_documento = $12, vender_externamente = $13, whatsapp_habilitado = $14, \
          forma_pagamento = $15, plataforma_pagamento = $16, plataforma_credenciais = $17, \
          layout_style = $18, instagram = $19, endereco_numero = $20, vende_mais_18 = $21, \
-         facebook = $22, updated_at = now() \
+         facebook = $22, apenas_retirada = $23, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -236,6 +239,7 @@ pub async fn onboarding(
     .bind(body.endereco_numero.as_deref().map(str::trim).filter(|s| !s.is_empty()))
     .bind(body.vende_mais_18)
     .bind(&facebook)
+    .bind(body.apenas_retirada)
     .execute(&state.pool)
     .await?;
 
@@ -369,6 +373,8 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub vende_mais_18: Option<bool>,
     #[serde(default)]
+    pub apenas_retirada: Option<bool>,
+    #[serde(default)]
     pub whatsapp_habilitado: Option<bool>,
     #[serde(default)]
     pub forma_pagamento: Option<String>,
@@ -496,8 +502,9 @@ pub async fn editar_onboarding(
          vende_mais_18 = COALESCE($17, vende_mais_18), facebook = COALESCE($18, facebook), \
          landing_headline = COALESCE($19, landing_headline), landing_sub = COALESCE($20, landing_sub), \
          landing_badge = COALESCE($21, landing_badge), cart_fab_style = COALESCE($22, cart_fab_style), \
-         cart_fab_animate = COALESCE($23, cart_fab_animate), updated_at = now() \
-         WHERE id = $24",
+         cart_fab_animate = COALESCE($23, cart_fab_animate), \
+         apenas_retirada = COALESCE($24, apenas_retirada), updated_at = now() \
+         WHERE id = $25",
     )
     .bind(&body.categoria)
     .bind(&body.whatsapp)
@@ -522,6 +529,7 @@ pub async fn editar_onboarding(
     .bind(body.landing_badge.as_deref().map(str::trim))
     .bind(&body.cart_fab_style)
     .bind(body.cart_fab_animate)
+    .bind(body.apenas_retirada)
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
@@ -579,6 +587,8 @@ pub struct TenantConfigResponse {
     pub cor_principal: Option<String>,
     /// Checkout deve exigir consentimento mais18 além da compra normal.
     pub vende_mais_18: bool,
+    /// Vitrine: só retirada no local (sem entrega).
+    pub apenas_retirada: bool,
     pub endereco: Option<String>,
     pub endereco_numero: Option<String>,
     pub instagram: Option<String>,
@@ -603,6 +613,7 @@ struct TenantConfigRow {
     layout_style: String,
     cor_principal: Option<String>,
     vende_mais_18: bool,
+    apenas_retirada: bool,
     endereco: Option<String>,
     endereco_numero: Option<String>,
     instagram: Option<String>,
@@ -630,6 +641,7 @@ pub async fn tenant_config(
          forma_pagamento, plataforma_pagamento, \
          COALESCE(layout_style, 'ufersin') as layout_style, cor_principal, \
          COALESCE(vende_mais_18, false) as vende_mais_18, \
+         COALESCE(apenas_retirada, false) as apenas_retirada, \
          endereco, endereco_numero, instagram, facebook, logo_url, \
          landing_headline, landing_sub, landing_badge, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
@@ -658,6 +670,7 @@ pub async fn tenant_config(
         },
         cor_principal: row.cor_principal,
         vende_mais_18: row.vende_mais_18,
+        apenas_retirada: row.apenas_retirada,
         endereco: row.endereco,
         endereco_numero: row.endereco_numero,
         instagram: row.instagram,
