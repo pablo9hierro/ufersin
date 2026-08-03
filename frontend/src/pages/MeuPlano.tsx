@@ -95,6 +95,7 @@ export default function MeuPlano() {
   const [whatsapp, setWhatsapp] = useState('')
   const [instagram, setInstagram] = useState('')
   const [facebook, setFacebook] = useState('')
+  const [vendeMais18, setVendeMais18] = useState(false)
   const [integracao, setIntegracao] = useState<IntegracaoPagamento>('nao_integrar')
   const [credencial, setCredencial] = useState('')
 
@@ -135,6 +136,7 @@ export default function MeuPlano() {
         setWhatsapp(m.whatsapp ?? '')
         setInstagram((m.instagram ?? '').replace(/^@/, ''))
         setFacebook(m.facebook ?? '')
+        setVendeMais18(!!m.vende_mais_18)
         if (m.forma_pagamento === 'plataforma' && m.plataforma_pagamento) {
           const plat = m.tipo_documento === 'cpf' ? 'mercado_pago' : m.plataforma_pagamento
           setIntegracao(plat)
@@ -255,6 +257,7 @@ export default function MeuPlano() {
       landing_badge: landingBadge.trim() || undefined,
       cart_fab_style: cartFabStyle,
       cart_fab_animate: cartFabAnimate,
+      vende_mais_18: vendeMais18,
     })
   }
 
@@ -492,6 +495,20 @@ export default function MeuPlano() {
                   if (patch.cartFabAnimate != null) setCartFabAnimate(patch.cartFabAnimate)
                 }}
               />
+              <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={vendeMais18}
+                  onChange={(e) => setVendeMais18(e.target.checked)}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span className="text-xs text-uf-silver-dim">
+                  <span className="block text-uf-silver font-semibold mb-0.5">
+                    Minha loja vende produtos para maiores de 18 anos
+                  </span>
+                  Se marcado, o checkout do cliente exige data de nascimento e consentimento 18+.
+                </span>
+              </label>
               <button type="submit" disabled={saving} className="btn-primary w-full py-3">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Salvar layout
@@ -607,5 +624,6 @@ function mapFieldsToMe(prev: MeResponse, fields: Parameters<typeof api.editarOnb
   if (fields.landing_badge !== undefined) patch.landing_badge = fields.landing_badge ?? null
   if (fields.cart_fab_style != null) patch.cart_fab_style = fields.cart_fab_style
   if (fields.cart_fab_animate != null) patch.cart_fab_animate = fields.cart_fab_animate
+  if (fields.vende_mais_18 != null) patch.vende_mais_18 = fields.vende_mais_18
   return { ...prev, ...patch }
 }

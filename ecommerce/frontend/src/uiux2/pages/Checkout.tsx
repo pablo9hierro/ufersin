@@ -16,7 +16,10 @@ import { currency } from '../components/ProductCard'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
+import { resolveTenantSlug } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
+
+const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -41,6 +44,8 @@ export default function Uiux2Checkout() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [aceiteCompraNormal, setAceiteCompraNormal] = useState(false)
+  const [aceiteMais18, setAceiteMais18] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [shippingEstimate, setShippingEstimate] = useState<ShippingEstimate | null>(null)
@@ -215,11 +220,35 @@ export default function Uiux2Checkout() {
       if (!customer.birthdate) return setError('Informe sua data de nascimento.')
       const age = (Date.now() - new Date(customer.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
       if (age < 18) return setError('Você precisa ser maior de 18 anos para comprar nesta loja.')
+      if (!aceiteMais18) return setError('Aceite o consentimento para compra de produtos 18+ para continuar.')
     }
     if (!pickupAtStore && (customer.lat == null || customer.lng == null)) return setError('Escolha sua localização no mapa ou marque retirada no local.')
+    if (!aceiteCompraNormal) return setError('Aceite os termos de consentimento de compra para continuar.')
 
     setSubmitting(true)
     try {
+      const slug = resolveTenantSlug() || tenantConfig?.slug
+      const acceptKinds = tenantConfig?.vende_mais_18
+        ? (['checkout_compra_normal', 'checkout_mais18'] as const)
+        : (['checkout_compra_normal'] as const)
+      if (slug) {
+        await Promise.allSettled(
+          acceptKinds.map((kind) =>
+            fetch(`${RODOLETAS_API_URL}/api/public/contratos/accept-checkout`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                kind,
+                tenant_slug: slug,
+                acceptor_email: customerAuth.customer?.email ?? undefined,
+                acceptor_name: customer.name.trim(),
+                channel: 'checkbox',
+              }),
+            }),
+          ),
+        )
+      }
+
       const order = await orderService.create({
         customer_name: customer.name.trim(),
         customer_whatsapp: `55${digits}`,
@@ -458,9 +487,46 @@ export default function Uiux2Checkout() {
             </div>
           </div>
 
+          <div className="space-y-2 pt-1">
+            <label className="flex items-start gap-2.5 cursor-pointer text-xs u2-dim">
+              <input
+                type="checkbox"
+                checked={aceiteCompraNormal}
+                onChange={(e) => setAceiteCompraNormal(e.target.checked)}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span>
+                <span className="block font-semibold mb-0.5" style={{ color: 'inherit' }}>
+                  Aceito os termos de compra
+                </span>
+                Consentimento de compra normal registrado localmente (checkbox).
+              </span>
+            </label>
+            {tenantConfig?.vende_mais_18 && (
+              <label className="flex items-start gap-2.5 cursor-pointer text-xs u2-dim">
+                <input
+                  type="checkbox"
+                  checked={aceiteMais18}
+                  onChange={(e) => setAceiteMais18(e.target.checked)}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span>
+                  <span className="block font-semibold mb-0.5" style={{ color: 'inherit' }}>
+                    Aceito os termos para maiores de 18
+                  </span>
+                  Esta loja pode vender produtos 18+ — os dois consentimentos se aplicam ao checkout.
+                </span>
+              </label>
+            )}
+          </div>
+
           {error && <p className="text-xs text-red-500">{error}</p>}
 
-          <button onClick={handleFinalizeClick} disabled={submitting} className="u2-btn-primary w-full text-base py-3.5 flex items-center justify-center gap-2">
+          <button
+            onClick={handleFinalizeClick}
+            disabled={submitting || !aceiteCompraNormal || (tenantConfig?.vende_mais_18 && !aceiteMais18)}
+            className="u2-btn-primary w-full text-base py-3.5 flex items-center justify-center gap-2"
+          >
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
             Finalizar pedido
           </button>
