@@ -536,13 +536,10 @@ export default function Checkout() {
             </div>
             )}
 
-          
-            </>
-          )}
             </>
           )}
 
-{pickerOpen && !apenasRetirada && (
+          {pickerOpen && !apenasRetirada && (
             <LocationPicker
               initial={
                 customer.lat != null && customer.lng != null

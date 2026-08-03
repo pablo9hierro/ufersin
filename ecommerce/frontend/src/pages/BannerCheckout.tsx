@@ -306,6 +306,9 @@ export default function BannerCheckout() {
             </div>
           )}
 
+            </>
+          )}
+
           {pickerOpen && !apenasRetirada && (
             <LocationPicker
               initial={

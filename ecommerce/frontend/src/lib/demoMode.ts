@@ -24,7 +24,7 @@ const STAFF_KEY = 'rodoletas_demo_staff'
 export function activateDemoMode(plano: PlanoCode) {
   sessionStorage.setItem(ACTIVE_KEY, 'true')
   sessionStorage.setItem(PLANO_KEY, plano)
-  // NÃO limpa resolutoo_tenant_slug em localStorage: a demo iframe (/loja)
+  // NÃO limpa resolutoo_loja_tenant_slug em localStorage: a demo iframe (/loja)
   // compartilha origem com o admin real — wipe global derrubava lojistas
   // e deixava /admin/login com Entrar disabled (!tenantSlug).
   // resolveTenantSlug() já ignora slug persistido enquanto a flag de demo

@@ -65,6 +65,7 @@ export default function Onboarding() {
   const [credencial, setCredencial] = useState('')
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [vendeMais18, setVendeMais18] = useState(false)
+  const [apenasRetirada, setApenasRetirada] = useState(false)
   const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
   const [whatsappHabilitado, setWhatsappHabilitado] = useState(true)
 

@@ -1,6 +1,6 @@
 ﻿/** Bloqueio educado no cliente após muitas tentativas falhas de login/cadastro.
  * Complementa o rate limit do Supabase (que é por IP / janela de 5 min). */
-const STORAGE_KEY = 'Resolutoo_auth_attempts'
+const STORAGE_KEY = 'resolutoo_platform_auth_attempts'
 const MAX_ATTEMPTS = 10
 const WINDOW_MS = 60 * 60 * 1000 // 1 hora
 

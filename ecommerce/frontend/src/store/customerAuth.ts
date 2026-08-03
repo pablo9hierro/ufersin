@@ -1,13 +1,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Customer } from '../types'
+import { migrateLocalStorageKey } from '../lib/migrateStorageKey'
 
 // Sessão de LOGIN do cliente (whatsapp+senha) — desacoplada do rascunho
-// de checkout em store/customer.ts. localStorage (não sessionStorage) de
-// propósito: ao contrário do admin/motoboy/vendedor (perfis internos,
-// nunca deveriam vazar entre abas de papéis diferentes), aqui é um único
-// visitante numa única conta — persistir entre abas é o comportamento
-// esperado de "continuar logado".
+// de checkout em store/customer.ts.
+export const LOJA_CUSTOMER_AUTH_KEY = 'resolutoo_loja_customer_auth'
+const LEGACY_CUSTOMER_AUTH_KEY = 'sonset_customer_auth'
+
+migrateLocalStorageKey(LEGACY_CUSTOMER_AUTH_KEY, LOJA_CUSTOMER_AUTH_KEY)
+
 interface CustomerAuthState {
   token: string | null
   customer: Customer | null
@@ -21,8 +23,16 @@ export const useCustomerAuth = create<CustomerAuthState>()(
       token: null,
       customer: null,
       login: (token, customer) => set({ token, customer }),
-      logout: () => set({ token: null, customer: null }),
+      logout: () => {
+        set({ token: null, customer: null })
+        try {
+          localStorage.removeItem(LOJA_CUSTOMER_AUTH_KEY)
+          localStorage.removeItem(LEGACY_CUSTOMER_AUTH_KEY)
+        } catch {
+          /* ignore */
+        }
+      },
     }),
-    { name: 'sonset_customer_auth' }
+    { name: LOJA_CUSTOMER_AUTH_KEY }
   )
 )

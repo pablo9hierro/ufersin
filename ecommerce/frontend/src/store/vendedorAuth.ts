@@ -1,14 +1,14 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { migrateLocalStorageKey } from '../lib/migrateStorageKey'
 
 // Sessão do vendedor 100% separada da sessão admin (useAdminAuth) — chave
-// própria no localStorage, mesmo padrão já usado pro motoboy (ver
-// store/motoboyAuth.ts). Antes vendedor e admin dividiam a mesma chave
-// (sonset_admin_auth, com um campo "role" pra diferenciar): logar como
-// vendedor sobrescrevia a sessão do admin (e vice-versa) — deslogar
-// qualquer um dos dois deslogava os dois juntos, já que era o MESMO
-// registro no localStorage. Com chave distinta, admin e vendedor nunca
-// mais pisam um no estado do outro.
+// própria no localStorage, mesmo padrão já usado pro motoboy.
+export const LOJA_VENDEDOR_AUTH_KEY = 'resolutoo_loja_vendedor_auth'
+const LEGACY_VENDEDOR_AUTH_KEY = 'sonset_vendedor_auth'
+
+migrateLocalStorageKey(LEGACY_VENDEDOR_AUTH_KEY, LOJA_VENDEDOR_AUTH_KEY)
+
 interface VendedorAuthState {
   token: string | null
   name: string | null
@@ -22,10 +22,18 @@ export const useVendedorAuth = create<VendedorAuthState>()(
       token: null,
       name: null,
       login: (token, name) => set({ token, name }),
-      logout: () => set({ token: null, name: null }),
+      logout: () => {
+        set({ token: null, name: null })
+        try {
+          localStorage.removeItem(LOJA_VENDEDOR_AUTH_KEY)
+          localStorage.removeItem(LEGACY_VENDEDOR_AUTH_KEY)
+        } catch {
+          /* ignore */
+        }
+      },
     }),
     {
-      name: 'sonset_vendedor_auth',
+      name: LOJA_VENDEDOR_AUTH_KEY,
       storage: createJSONStorage(() => localStorage),
     }
   )

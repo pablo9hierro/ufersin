@@ -82,14 +82,6 @@ const Uiux4Pagamento = lazy(() => import('./uiux4/pages/Pagamento'))
 
 type LazyPage = LazyExoticComponent<ComponentType>
 
-function RouteFallback() {
-  return (
-    <div className="flex justify-center py-16 min-h-[40vh] items-center">
-      <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
-    </div>
-  )
-}
-
 /** Persiste ?tenant= e reescreve a URL se o slug só estiver no localStorage
  *  (ex.: após Link antigo ter stripado a query — reload ainda recupera). */
 function TenantBootstrap() {

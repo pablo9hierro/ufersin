@@ -6,8 +6,8 @@ import {
   setDemoStaffSession,
 } from '../../../lib/demoMode'
 
-const SLUG_KEY = 'resolutoo_tenant_slug'
-const ADMIN_AUTH_KEY = 'sonset_admin_auth'
+const SLUG_KEY = 'resolutoo_loja_tenant_slug'
+const ADMIN_AUTH_KEY = 'resolutoo_loja_admin_auth'
 
 describe('demoMode vs leftover tenant slug', () => {
   beforeEach(() => {

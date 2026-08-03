@@ -93,7 +93,24 @@ const SUPABASE_ANON_KEY =
   (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pZ2trcnd6eWtwenRyYWtiZmlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NjI2OTQsImV4cCI6MjA5MTUzODY5NH0.0bEy_WikqnfPU9eV7wusSb757dhiTiK5D2KeDSWyJTo'
 
-const SLUG_STORAGE_KEY = 'resolutoo_tenant_slug'
+/** Namespace da loja — isolado de `resolutoo_platform_*`. */
+const SLUG_STORAGE_KEY = 'resolutoo_loja_tenant_slug'
+const LEGACY_SLUG_STORAGE_KEY = 'resolutoo_tenant_slug'
+
+function migrateTenantSlugKey() {
+  if (typeof window === 'undefined') return
+  try {
+    const legacy = localStorage.getItem(LEGACY_SLUG_STORAGE_KEY)
+    if (!legacy) return
+    if (!localStorage.getItem(SLUG_STORAGE_KEY)) {
+      localStorage.setItem(SLUG_STORAGE_KEY, legacy)
+    }
+    localStorage.removeItem(LEGACY_SLUG_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+migrateTenantSlugKey()
 
 /** Session cache: Meu plano muda raramente; focus só revalida após TTL. */
 const CACHE_TTL_MS = 5 * 60_000
@@ -113,11 +130,13 @@ export function persistTenantSlug(slug: string) {
   }
 }
 
-/** Remove slug persistido (entrada na demo pública / logout limpo). */
+/** Remove slug persistido (entrada na demo pública / logout limpo).
+ * Só a key da loja — nunca plataforma (`resolutoo_platform_*`). */
 export function clearTenantSlug() {
   if (typeof window === 'undefined') return
   try {
     localStorage.removeItem(SLUG_STORAGE_KEY)
+    localStorage.removeItem(LEGACY_SLUG_STORAGE_KEY)
   } catch {
     /* ignore */
   }

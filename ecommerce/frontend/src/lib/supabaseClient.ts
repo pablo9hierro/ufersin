@@ -26,9 +26,19 @@ if (!supabaseConfigured) {
 // `ufersin` foi criado. Só mude via VITE_SUPABASE_SCHEMA se precisar
 // apontar deliberadamente pra outro schema.
 //
-// Auth GoTrue desligada de propósito: staff da loja usa JWT Railway +
-// Zustand (`sonset_admin_auth` etc.). Persistência Auth aqui cruzava a
-// sessão da plataforma Resolutoo (mesmo projeto / mesma origin /loja).
+// Auth GoTrue DESLIGADA de propósito: staff da loja usa JWT Railway +
+// Zustand (`resolutoo_loja_admin_auth` etc.). Persistência Auth aqui
+// cruzava a sessão da plataforma Resolutoo (mesmo projeto Supabase /
+// mesma origin /loja) via `sb-*-auth-token` compartilhado.
+/** Storage inerte — zero leitura/escrita em localStorage/sessionStorage. */
+const noopAuthStorage = {
+  getItem: (_key: string) => null as string | null,
+  setItem: (_key: string, _value: string) => {},
+  removeItem: (_key: string) => {},
+}
+
+export const LOJA_SUPABASE_STORAGE_KEY = 'resolutoo_loja_supabase_noauth'
+
 export const supabase: SupabaseClient = createClient(
   url || 'https://placeholder.supabase.co',
   anonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder',
@@ -38,7 +48,8 @@ export const supabase: SupabaseClient = createClient(
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
-      storageKey: 'ufersin-loja-noauth',
+      storage: noopAuthStorage,
+      storageKey: LOJA_SUPABASE_STORAGE_KEY,
     },
   },
 )
