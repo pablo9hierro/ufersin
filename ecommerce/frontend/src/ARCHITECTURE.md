@@ -74,7 +74,7 @@ Resumo das regras adicionadas/atualizadas nessa spec:
 1. **Horário** — botão sempre visível + painel com X; fonte `store_hours`.
 2. **Logo** — upload em `/meu-plano/layout` → header home com nome.
 3. **Textos do hero** — CMS preview 1:1 em `/meu-plano/layout`.
-4. **CartFab** — sacola ou `#cart-icon` (+ animate); inferior direita.
+4. **CartFab** — sacola ou `#cart-icon` (+ animate); inferior direito.
 5. **Loja fechada** — landing cinza + banner; checkout bloqueado.
 6. **Rotas do hub** — `/meu-plano`, `/meu-plano/layout`, `/financeiro`, `/redes`.
 7. **Auth plataforma** — storage keys separadas lojista/superadmin.

@@ -11,7 +11,7 @@ import SmokeDecor from './decor/SmokeDecor'
 import FireDecor from './decor/FireDecor'
 import CartDrawer from './CartDrawer'
 
-// FAB flutuante do carrinho — canto inferior ESQUERDO, em todas as páginas
+// FAB flutuante do carrinho — canto inferior DIREITO, em todas as páginas
 // de cliente exceto a Landing (`/`). Estilo (sacola vs #cart-icon) e
 // animação vêm de tenant_config.cart_fab_* (/meu-plano/layout). Clique
 // abre o CartDrawer (não navega pra /carrinho; a aba Finalizar vai pro
@@ -37,7 +37,7 @@ export default function CartFab() {
   return (
     <>
       {!isLanding && (
-        <div className="fixed bottom-20 sm:bottom-6 left-6 z-40 w-16 h-16">
+        <div className="fixed bottom-20 sm:bottom-6 right-6 z-40 w-16 h-16">
           {style === 'cart_icon' && (
             <div className="sunset-carticon-decor-wrap" aria-hidden="true">
               {elements.map((el) =>
