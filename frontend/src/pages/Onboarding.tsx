@@ -16,7 +16,7 @@ const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
   { value: 'abacate_pay', label: 'Abacate Pay' },
 ]
 
-type IntegracaoPagamento = 'mercado_pago' | 'abacate_pay' | 'nao_integrar'
+type IntegracaoPagamento = PlataformaPagamento
 
 function plataformasParaDocumento(tipo: TipoDocumento): typeof PLATAFORMAS {
   if (tipo === 'cpf') return PLATAFORMAS.filter((p) => p.value === 'mercado_pago')
@@ -61,7 +61,7 @@ export default function Onboarding() {
   const [endereco, setEndereco] = useState('')
   const [enderecoNumero, setEnderecoNumero] = useState('')
   const [instagram, setInstagram] = useState('')
-  const [integracao, setIntegracao] = useState<IntegracaoPagamento>('nao_integrar')
+  const [integracao, setIntegracao] = useState<IntegracaoPagamento>('mercado_pago')
   const [credencial, setCredencial] = useState('')
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [vendeMais18, setVendeMais18] = useState(false)
@@ -95,13 +95,14 @@ export default function Onboarding() {
     if (!instagram.trim().replace(/^@/, '')) return setError('Informe o Instagram da loja.')
 
     let formaPagamento: FormaPagamento = 'manual'
-    let plataformaPagamento: PlataformaPagamento | undefined
-    if (integracao === 'mercado_pago' || integracao === 'abacate_pay') {
-      if (tipoDocumento === 'cpf' && integracao === 'abacate_pay') {
-        return setError('Com CPF só Mercado Pago está disponível.')
-      }
+    let plataformaPagamento: PlataformaPagamento =
+      tipoDocumento === 'cpf' ? 'mercado_pago' : integracao
+    if (tipoDocumento === 'cpf' && integracao === 'abacate_pay') {
+      return setError('Com CPF só Mercado Pago está disponível.')
+    }
+    // Cobrança online só com token; sem credencial fica manual (baixa no painel).
+    if (credencial.trim()) {
       formaPagamento = 'plataforma'
-      plataformaPagamento = tipoDocumento === 'cpf' ? 'mercado_pago' : integracao
     }
 
     const slug = slugify(nomeLoja) || `loja-${Date.now().toString(36)}`
@@ -123,8 +124,7 @@ export default function Onboarding() {
         whatsapp_habilitado: whatsappHabilitado,
         forma_pagamento: formaPagamento,
         plataforma_pagamento: plataformaPagamento,
-        plataforma_credenciais:
-          formaPagamento === 'plataforma' && credencial.trim() ? { token: credencial.trim() } : undefined,
+        plataforma_credenciais: credencial.trim() ? { token: credencial.trim() } : undefined,
         layout_style: venderExternamente ? layoutStyle : 'ufersin',
       })
       setDone(true)
@@ -250,34 +250,22 @@ export default function Onboarding() {
                   <span className="block text-sm font-semibold text-uf-silver">{p.label}</span>
                 </button>
               ))}
-              <button
-                type="button"
-                onClick={() => setIntegracao('nao_integrar')}
-                className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${
-                  integracao === 'nao_integrar' ? 'border-uf-blue' : 'border-transparent'
-                }`}
-              >
-                <span className="block text-sm font-semibold text-uf-silver">Não integrar plataforma de pagamentos</span>
-                <span className="block text-[11px] text-uf-silver-dim mt-0.5">
-                  Cobrança manual (Pix, maquininha, dinheiro) confirmada no painel.
-                </span>
-              </button>
             </div>
             {tipoDocumento === 'cpf' && (
               <p className="text-[11px] text-uf-silver-dim mt-2">Com CPF só Mercado Pago está disponível. Abacate Pay exige CNPJ.</p>
             )}
-            {(integracao === 'mercado_pago' || integracao === 'abacate_pay') && (
-              <div className="mt-3">
-                <label className="label">Credencial (opcional agora)</label>
-                <input
-                  className="input-field"
-                  value={credencial}
-                  onChange={(e) => setCredencial(e.target.value)}
-                  placeholder={integracao === 'mercado_pago' ? 'Access Token' : 'Chave de API'}
-                />
-                <p className="text-[11px] text-uf-silver-dim mt-1">Pode completar depois em Meu plano.</p>
-              </div>
-            )}
+            <div className="mt-3">
+              <label className="label">Credencial (opcional agora)</label>
+              <input
+                className="input-field"
+                value={credencial}
+                onChange={(e) => setCredencial(e.target.value)}
+                placeholder={integracao === 'mercado_pago' ? 'Access Token' : 'Chave de API'}
+              />
+              <p className="text-[11px] text-uf-silver-dim mt-1">
+                Sem credencial, vendas ficam em cobrança manual. Pode completar depois em Meu plano → Financeiro.
+              </p>
+            </div>
           </div>
 
           <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">

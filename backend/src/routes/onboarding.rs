@@ -304,7 +304,7 @@ fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
     }
     if !matches!(body.forma_pagamento.as_str(), "manual" | "plataforma") {
         return Err(AppError::BadRequest(
-            "forma_pagamento deve ser 'manual' (não integrar) ou 'plataforma'".to_string(),
+            "forma_pagamento deve ser 'manual' ou 'plataforma'".to_string(),
         ));
     }
     if body.forma_pagamento == "plataforma" {
@@ -312,7 +312,7 @@ fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
             Some("mercado_pago") | Some("abacate_pay") => {}
             _ => {
                 return Err(AppError::BadRequest(
-                    "escolha Mercado Pago, Abacate Pay, ou não integrar plataforma de pagamentos".to_string(),
+                    "escolha Mercado Pago ou Abacate Pay".to_string(),
                 ))
             }
         }
@@ -322,7 +322,22 @@ fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
                 "com CPF só é permitido Mercado Pago; AbacatePay exige CNPJ".to_string(),
             ));
         }
-        // Credenciais podem ser preenchidas depois em Meu plano — não bloqueia o provision.
+        // Sem token: trata como cobrança manual (PIX online só com credencial).
+        let token_ok = body
+            .plataforma_credenciais
+            .as_ref()
+            .and_then(|v| v.get("token"))
+            .and_then(|t| t.as_str())
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false);
+        if !token_ok {
+            // Caller may still send plataforma_pagamento as preference; forma
+            // must be manual until credentials exist. Mutate via returning
+            // early is awkward — FE sends manual; BE also rejects inconsistent.
+            return Err(AppError::BadRequest(
+                "informe a credencial da plataforma para ativar cobrança online, ou salve sem ativar (manual)".to_string(),
+            ));
+        }
     }
     Ok(())
 }
@@ -384,16 +399,17 @@ pub struct EditOnboardingInput {
 pub async fn editar_onboarding(
     State(state): State<AppState>,
     AuthSubscriber(claims): AuthSubscriber,
-    Json(body): Json<EditOnboardingInput>,
+    Json(mut body): Json<EditOnboardingInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let row: Option<(Option<String>, String, String, bool, String)> = sqlx::query_as(
-        "SELECT tenant_id, status, slug, whatsapp_habilitado, COALESCE(tipo_documento, 'cnpj') \
+    let row: Option<(Option<String>, String, String, bool, String, bool)> = sqlx::query_as(
+        "SELECT tenant_id, status, slug, whatsapp_habilitado, COALESCE(tipo_documento, 'cnpj'), \
+         COALESCE(NULLIF(trim(plataforma_credenciais->>'token'), ''), NULL) IS NOT NULL \
          FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
     .fetch_optional(&state.pool)
     .await?;
-    let (tenant_id, status, slug, was_whatsapp_on, current_tipo_documento) =
+    let (tenant_id, status, slug, was_whatsapp_on, current_tipo_documento, has_existing_creds) =
         row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
     if tenant_id.is_none() {
         return Err(AppError::BadRequest("finalize o onboarding inicial antes de editar".to_string()));
@@ -418,6 +434,19 @@ pub async fn editar_onboarding(
             ));
         }
     }
+
+    // Online PIX only when credentials exist (new token or already saved).
+    let new_token_ok = body
+        .plataforma_credenciais
+        .as_ref()
+        .and_then(|v| v.get("token"))
+        .and_then(|t| t.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if body.forma_pagamento.as_deref() == Some("plataforma") && !new_token_ok && !has_existing_creds {
+        body.forma_pagamento = Some("manual".to_string());
+    }
+
     // Efetivo após o UPDATE (COALESCE): CPF + AbacatePay é inválido.
     let effective_tipo = body
         .tipo_documento

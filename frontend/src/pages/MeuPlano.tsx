@@ -38,7 +38,7 @@ const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
 ]
 
 type Tab = 'plano' | 'layout' | 'financeiro' | 'redes'
-type IntegracaoPagamento = 'mercado_pago' | 'abacate_pay' | 'nao_integrar'
+type IntegracaoPagamento = PlataformaPagamento
 
 const TAB_PATH: Record<Tab, string> = {
   plano: '/meu-plano',
@@ -96,8 +96,9 @@ export default function MeuPlano() {
   const [instagram, setInstagram] = useState('')
   const [facebook, setFacebook] = useState('')
   const [vendeMais18, setVendeMais18] = useState(false)
-  const [integracao, setIntegracao] = useState<IntegracaoPagamento>('nao_integrar')
+  const [integracao, setIntegracao] = useState<IntegracaoPagamento>('mercado_pago')
   const [credencial, setCredencial] = useState('')
+  const [hasCredenciais, setHasCredenciais] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -137,11 +138,12 @@ export default function MeuPlano() {
         setInstagram((m.instagram ?? '').replace(/^@/, ''))
         setFacebook(m.facebook ?? '')
         setVendeMais18(!!m.vende_mais_18)
-        if (m.forma_pagamento === 'plataforma' && m.plataforma_pagamento) {
+        setHasCredenciais(!!m.has_plataforma_credenciais)
+        if (m.plataforma_pagamento) {
           const plat = m.tipo_documento === 'cpf' ? 'mercado_pago' : m.plataforma_pagamento
           setIntegracao(plat)
         } else {
-          setIntegracao('nao_integrar')
+          setIntegracao('mercado_pago')
         }
       } catch (e) {
         if (cancelled) return
@@ -214,6 +216,13 @@ export default function MeuPlano() {
       setMe((prev) => (prev ? { ...prev, ...mapFieldsToMe(prev, fields) } : prev))
       setSaved(true)
       setCredencial('')
+      if (
+        fields.plataforma_credenciais &&
+        typeof fields.plataforma_credenciais.token === 'string' &&
+        fields.plataforma_credenciais.token.trim()
+      ) {
+        setHasCredenciais(true)
+      }
       window.setTimeout(() => setSaved(false), 3000)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível salvar.')
@@ -263,16 +272,15 @@ export default function MeuPlano() {
 
   const handleSaveFinanceiro = (e: React.FormEvent) => {
     e.preventDefault()
-    let formaPagamento: FormaPagamento = 'manual'
-    let plataformaPagamento: PlataformaPagamento | undefined
-    if (integracao === 'mercado_pago' || integracao === 'abacate_pay') {
-      formaPagamento = 'plataforma'
-      plataformaPagamento = tipoDocumento === 'cpf' ? 'mercado_pago' : integracao
-    }
+    const plataformaPagamento: PlataformaPagamento = tipoDocumento === 'cpf' ? 'mercado_pago' : integracao
+    const token = credencial.trim()
+    // Online PIX only with a registered token (new or already saved).
+    const ativarPlataforma = !!token || hasCredenciais
+    const formaPagamento: FormaPagamento = ativarPlataforma ? 'plataforma' : 'manual'
     saveOnboarding({
       forma_pagamento: formaPagamento,
       plataforma_pagamento: plataformaPagamento,
-      plataforma_credenciais: formaPagamento === 'plataforma' && credencial.trim() ? { token: credencial.trim() } : undefined,
+      plataforma_credenciais: token ? { token } : undefined,
     })
   }
 
@@ -521,7 +529,10 @@ export default function MeuPlano() {
           )}
           {tab === 'financeiro' && hasActiveSub && (
             <form onSubmit={handleSaveFinanceiro} className="uf-glass rounded-2xl p-6 space-y-4">
-              <p className="text-xs text-uf-silver-dim">{content['meu_plano.financeiro_hint'] ?? 'Forma de pagamento e credenciais da loja.'}</p>
+              <p className="text-xs text-uf-silver-dim">
+                {content['meu_plano.financeiro_hint'] ??
+                  'Cadastre a credencial da plataforma pra cobrança Pix online. Sem credencial, vendas ficam em cobrança manual.'}
+              </p>
               <div>
                 <label className="label flex items-center gap-1.5">
                   <CreditCard className="w-4 h-4" /> Plataforma
@@ -537,26 +548,25 @@ export default function MeuPlano() {
                       {p.label}
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    onClick={() => setIntegracao('nao_integrar')}
-                    className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${integracao === 'nao_integrar' ? 'border-uf-blue' : 'border-transparent'}`}
-                  >
-                    Não integrar plataforma
-                  </button>
                 </div>
+                {tipoDocumento === 'cpf' && (
+                  <p className="text-[11px] text-uf-silver-dim mt-2">Com CPF só Mercado Pago está disponível. Abacate Pay exige CNPJ.</p>
+                )}
               </div>
-              {(integracao === 'mercado_pago' || integracao === 'abacate_pay') && (
-                <div>
-                  <label className="label">Credencial (token)</label>
-                  <input
-                    className="input-field"
-                    value={credencial}
-                    onChange={(e) => setCredencial(e.target.value)}
-                    placeholder="Deixe em branco pra manter a atual"
-                  />
-                </div>
-              )}
+              <div>
+                <label className="label">Credencial (token)</label>
+                <input
+                  className="input-field"
+                  value={credencial}
+                  onChange={(e) => setCredencial(e.target.value)}
+                  placeholder={hasCredenciais ? 'Deixe em branco pra manter a atual' : 'Access Token / chave de API'}
+                />
+                <p className="text-[11px] text-uf-silver-dim mt-1">
+                  {hasCredenciais
+                    ? 'Credencial cadastrada — Pix online e confirmação automática ativos.'
+                    : 'Sem credencial, o site não gera cobrança Pix; o lojista confirma pagamentos manualmente.'}
+                </p>
+              </div>
               <button type="submit" disabled={saving} className="btn-primary w-full py-3">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Salvar financeiro

@@ -265,7 +265,7 @@ export default function Uiux2Checkout() {
       })
       clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix') {
+      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma') {
         navigate(`/pagamento/${order.id}`)
       } else {
         navigate(`/consultar?order=${order.id}`)

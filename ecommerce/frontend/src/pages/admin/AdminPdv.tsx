@@ -27,6 +27,11 @@ function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
 }
 
+function paymentMethodLabel(method: PaymentMethod): string {
+  if (method === 'cartao') return 'cartão'
+  return method
+}
+
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
   if (digits.length <= 2) return `(${digits}`
@@ -280,13 +285,6 @@ export default function AdminPdv() {
     if (cartLines.length === 0) return
     setFinalizeError(null)
 
-    // Pix + "não gerar qrcode" (ou loja em cobrança manual) → diálogo de
-    // confirmação de recebimento, igual baixa de dinheiro.
-    if (paymentMethod === 'pix' && (skipQrcode || !plataformaPix)) {
-      setConfirmCashOpen(true)
-      return
-    }
-
     // Pix + gerar QR (plataforma): cria venda, gera cobrança, mostra QR e
     // manda copia-cola no WhatsApp do comprador se informado.
     if (paymentMethod === 'pix' && plataformaPix && !skipQrcode) {
@@ -323,14 +321,8 @@ export default function AdminPdv() {
       return
     }
 
-    setFinalizing(true)
-    try {
-      await commitSalePaid()
-    } catch (e) {
-      setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
-    } finally {
-      setFinalizing(false)
-    }
+    // Dinheiro / cartão / Pix sem QR: diálogo de confirmação de recebimento.
+    setConfirmCashOpen(true)
   }
 
   const confirmCashReceived = async () => {
@@ -651,8 +643,9 @@ export default function AdminPdv() {
           <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-white mb-2">Confirmar pagamento</h3>
             <p className="text-sm text-son-silver-dim mb-5">
-              Confirme que recebeu o pagamento em Pix de{' '}
-              <span className="sunset-text font-bold">{currency(cartTotal)}</span> para dar baixa na venda.
+              Confirmar pagamento de{' '}
+              <span className="sunset-text font-bold">{currency(cartTotal)}</span> em{' '}
+              {paymentMethodLabel(paymentMethod)}?
             </p>
             <div className="flex gap-2">
               <button type="button" onClick={() => setConfirmCashOpen(false)} disabled={finalizing} className="btn-secondary flex-1">

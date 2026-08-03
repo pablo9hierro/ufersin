@@ -196,6 +196,8 @@ export interface MeResponse {
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento: PlataformaPagamento | null
+  /** True when payment platform token is registered (never the secret). */
+  has_plataforma_credenciais: boolean
   layout_style: 'ufersin' | 'burgerbite' | 'burgerhouse'
   instagram: string | null
   facebook: string | null

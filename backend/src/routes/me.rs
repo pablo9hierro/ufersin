@@ -37,6 +37,8 @@ struct SubscriberRow {
     whatsapp_habilitado: bool,
     forma_pagamento: String,
     plataforma_pagamento: Option<String>,
+    /// True when `plataforma_credenciais` has a non-empty token — never the secret itself.
+    has_plataforma_credenciais: bool,
     layout_style: String,
     instagram: Option<String>,
     facebook: Option<String>,
@@ -81,6 +83,8 @@ pub struct MeResponse {
     pub whatsapp_habilitado: bool,
     pub forma_pagamento: String,
     pub plataforma_pagamento: Option<String>,
+    /// True when payment platform credentials are registered (never the secret).
+    pub has_plataforma_credenciais: bool,
     pub layout_style: String,
     pub instagram: Option<String>,
     pub facebook: Option<String>,
@@ -108,6 +112,10 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 status, gateway, slug, onboarding_status, tenant_id, created_at,
                 categoria, endereco, logo_url, cor_principal, documento, tipo_documento,
                 vender_externamente, whatsapp_habilitado, forma_pagamento, plataforma_pagamento,
+                COALESCE(
+                  NULLIF(trim(plataforma_credenciais->>'token'), ''),
+                  NULL
+                ) IS NOT NULL as has_plataforma_credenciais,
                 COALESCE(layout_style, 'ufersin') as layout_style, instagram, facebook, endereco_numero,
                 COALESCE(vende_mais_18, false) as vende_mais_18, coupon_code,
                 landing_headline, landing_sub, landing_badge,
@@ -150,6 +158,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         whatsapp_habilitado: row.whatsapp_habilitado,
         forma_pagamento: row.forma_pagamento,
         plataforma_pagamento: row.plataforma_pagamento,
+        has_plataforma_credenciais: row.has_plataforma_credenciais,
         layout_style: row.layout_style,
         instagram: row.instagram,
         facebook: row.facebook,

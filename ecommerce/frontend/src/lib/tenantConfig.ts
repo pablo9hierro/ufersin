@@ -44,6 +44,11 @@ export interface ShareLink {
   label: string
 }
 
+/** True when the store has payment-platform credentials (online Pix). */
+export function tenantHasOnlinePix(config: TenantConfig | null | undefined): boolean {
+  return config?.forma_pagamento === 'plataforma'
+}
+
 /** Fail-closed: essential + sem pedidos externos até a config real chegar
  *  (evita flash de menu completo → sumir, que parece "bug de tela verde"). */
 const DEFAULT_CONFIG: TenantConfig = {

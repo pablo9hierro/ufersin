@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from '../../lib/tenantRouter'
+import { Link, useNavigate, useParams } from '../../lib/tenantRouter'
 import { Check, Copy, Loader2, PartyPopper } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { orderService } from '../../services/orderService'
 import type { Order } from '../../types'
 import Shell from '../components/Shell'
@@ -13,6 +14,9 @@ import { currency } from '../components/ProductCard'
 // (services/orderService.ts), só reapresentada.
 export default function Uiux4Pagamento() {
   const { orderId } = useParams<{ orderId: string }>()
+  const navigate = useNavigate()
+  const tenantConfig = useTenantConfig()
+  const onlinePix = tenantConfig?.forma_pagamento === 'plataforma'
   const [order, setOrder] = useState<Order | null>(null)
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -29,8 +33,12 @@ export default function Uiux4Pagamento() {
 
   useEffect(() => {
     if (!orderId) return
+    if (tenantConfig && !onlinePix) {
+      navigate(`/consultar?order=${orderId}`, { replace: true })
+      return
+    }
     orderService.get(orderId).then(async (o) => {
-      if (o.payment_method === 'pix' && o.payment_status !== 'pago' && !o.pix_copia_cola) {
+      if (onlinePix && o.payment_method === 'pix' && o.payment_status !== 'pago' && !o.pix_copia_cola) {
         try {
           o = await orderService.createPixPayment(orderId)
         } catch {
@@ -40,7 +48,7 @@ export default function Uiux4Pagamento() {
       setOrder(o)
       setLoading(false)
     })
-  }, [orderId])
+  }, [orderId, onlinePix, tenantConfig, navigate])
 
   useEffect(() => {
     if (!order || order.payment_status === 'pago') return

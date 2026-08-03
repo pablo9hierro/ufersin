@@ -13,6 +13,7 @@ import { orderService } from '../services/orderService'
 import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, ShippingEstimate } from '../types'
 import { useBannerCart } from '../store/bannerCart'
 import { useCustomer } from '../store/customer'
+import { useTenantConfig } from '../hooks/useTenantConfig'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -30,6 +31,7 @@ export default function BannerCheckout() {
   const navigate = useNavigate()
   const bannerCart = useBannerCart()
   const customer = useCustomer()
+  const tenantConfig = useTenantConfig()
 
   const [promotion, setPromotion] = useState<Promotion | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -154,7 +156,7 @@ export default function BannerCheckout() {
       })
       bannerCart.clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix') {
+      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma') {
         navigate(`/pagamento/${order.id}`)
       } else {
         navigate(`/consultar?order=${order.id}`)

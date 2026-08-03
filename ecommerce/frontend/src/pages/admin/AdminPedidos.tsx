@@ -227,8 +227,9 @@ export default function AdminPedidos() {
           <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-white mb-2">Confirmar pagamento</h3>
             <p className="text-sm text-son-silver-dim mb-5">
-              Confirme que recebeu o pagamento em {confirmingOrder.payment_method} de{' '}
-              <span className="sunset-text font-bold">{currency(confirmingOrder.total)}</span> para concluir o pedido.
+              Confirmar pagamento de{' '}
+              <span className="sunset-text font-bold">{currency(confirmingOrder.total)}</span> em{' '}
+              {confirmingOrder.payment_method === 'cartao' ? 'cartão' : confirmingOrder.payment_method}?
             </p>
             <div className="flex gap-2">
               <button onClick={() => setConfirmingOrder(null)} className="btn-secondary flex-1">

@@ -11,6 +11,7 @@ import LocationPicker from '../../components/checkout/LocationPicker'
 import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, ShippingEstimate } from '../../types'
 import { useBannerCart } from '../../store/bannerCart'
 import { useCustomer } from '../../store/customer'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 
@@ -32,6 +33,7 @@ export default function Uiux3BannerCheckout() {
   const navigate = useNavigate()
   const bannerCart = useBannerCart()
   const customer = useCustomer()
+  const tenantConfig = useTenantConfig()
 
   const [promotion, setPromotion] = useState<Promotion | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -146,7 +148,7 @@ export default function Uiux3BannerCheckout() {
       })
       bannerCart.clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix') navigate(`/pagamento/${order.id}`)
+      if (paymentMethod === 'pix' && tenantConfig?.forma_pagamento === 'plataforma') navigate(`/pagamento/${order.id}`)
       else navigate(`/consultar?order=${order.id}`)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível enviar seu pedido. Tente novamente.')
