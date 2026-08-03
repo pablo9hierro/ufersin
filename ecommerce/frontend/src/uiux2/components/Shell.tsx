@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from '../../lib/tenantRouter'
 import { ArrowLeft, Heart, History, LogIn, LogOut, Menu, Package, ShoppingBag, Store, Tag, UserPlus, X } from 'lucide-react'
 import { useCart } from '../../store/cart'
+import { useCartDrawer } from '../../store/cartDrawer'
 import { useCustomerAuth } from '../../store/customerAuth'
 import UfersinMark from '../../components/ui/UfersinMark'
 import CartFab from '../../components/CartFab'
@@ -103,6 +104,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const auth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
   const cartCount = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
+  const openDrawer = useCartDrawer((s) => s.openDrawer)
   const [menuOpen, setMenuOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const isLanding = location.pathname === '/'
@@ -127,15 +129,15 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             {isLanding && (
               <Link
                 to="/"
-                className="flex flex-col items-start justify-center gap-0.5 font-black text-sm sm:text-base max-w-[70%] min-w-0"
+                className="flex flex-col items-center justify-center gap-0.5 self-start w-max max-w-[9.5rem] sm:max-w-[11rem] font-black text-sm sm:text-base text-center"
                 aria-label="Página inicial"
               >
                 {tenantConfig?.logo_url ? (
-                  <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                  <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0 mx-auto" />
                 ) : (
-                  showMark && <UfersinMark className="w-8 h-8 u2-accent" />
+                  showMark && <UfersinMark className="w-8 h-8 u2-accent mx-auto" />
                 )}
-                <span className="u2-gradient-text truncate max-w-full text-left leading-tight">{name}</span>
+                <span className="u2-gradient-text block w-full text-center leading-tight line-clamp-2 break-words">{name}</span>
               </Link>
             )}
           </div>
@@ -143,7 +145,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           {!isLanding && (
             <Link
               to="/"
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 font-black text-sm sm:text-base max-w-[46%] min-w-0"
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 font-black text-sm sm:text-base max-w-[46%] min-w-0 text-center"
               aria-label="Página inicial"
             >
               {tenantConfig?.logo_url ? (
@@ -175,6 +177,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             ) : (
               <button type="button" onClick={() => setAuthOpen(true)} className="w-10 h-10 flex items-center justify-center u2-card !rounded-full" aria-label="Favoritos">
                 <Heart className="w-4 h-4" />
+              </button>
+            )}
+            {!isLanding && (
+              <button type="button" onClick={openDrawer} className="w-10 h-10 flex items-center justify-center u2-card !rounded-full relative" aria-label="Ver sacola">
+                <ShoppingBag className="w-4 h-4" />
+                {cartCount > 0 && <span className="u2-badge absolute -top-1 -right-1 w-4 h-4 text-[9px] flex items-center justify-center">{cartCount}</span>}
               </button>
             )}
             <div className="relative">
