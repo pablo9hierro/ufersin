@@ -23,6 +23,26 @@ pub async fn load_tenant(pool: &PgPool, tenant_id: &str) -> Result<Tenant, AppEr
     .ok_or_else(|| AppError::Internal("tenant not found".to_string()))
 }
 
+/// Public storefront catalog — resolve tenant by URL slug (no JWT).
+/// Suspended/canceled stores are hidden (404) so a dead tenant never
+/// leaks products. `vender_externamente` is enforced on the Rodoletas
+/// tenant-config + frontend shell, not here (that flag lives outside
+/// this schema).
+pub async fn tenant_for_slug(pool: &PgPool, slug: &str) -> Result<Tenant, AppError> {
+    let normalized = slug.trim().to_lowercase();
+    if normalized.is_empty() {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    }
+    sqlx::query_as(
+        "SELECT id, name, whatsapp_instance, pickup_address FROM tenants \
+         WHERE slug = $1 AND status NOT IN ('suspenso', 'cancelado')",
+    )
+    .bind(&normalized)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| AppError::NotFound("tenant not found".to_string()))
+}
+
 /// Resolves the tenant that owns a given order — used by the public.rs
 /// endpoints (Pix, WhatsApp notifications, route computation) which take
 /// only an order id and run before any login, so there's no JWT/session to

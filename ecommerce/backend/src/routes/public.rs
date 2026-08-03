@@ -6,15 +6,15 @@ use serde::Deserialize;
 use crate::abacatepay;
 use crate::error::AppError;
 use crate::google_routes::{self, Ponto, RotaResult};
-use crate::models::OrderDto;
+use crate::models::{Category, OrderDto, ProductDto, ProductRow};
 use crate::orders_common::{fetch_items, fetch_order_dto, fetch_order_row, row_to_dto, short_id};
 use crate::state::AppState;
 use crate::tenant;
 use crate::whatsapp;
 
-// Catálogo, criação/consulta de pedido etc. foram todos migrados pra RPCs do
-// Supabase (ver supabase/*.sql) — só sobra aqui o que precisa de segredo
-// (Pix, WhatsApp), que só existe no backend Rust.
+// Catálogo público multi-tenant (products/categories por slug) mora neste
+// arquivo — mesma tabela `sunset.products` do CRUD admin. Pix/WhatsApp
+// continuam resolvendo tenant pelo order_id (sem login).
 //
 // Nenhuma dessas rotas tem login (o cliente ainda não tem sessão nesse
 // ponto do fluxo) — o tenant de cada uma é resolvido a partir do PRÓPRIO
@@ -22,6 +22,113 @@ use crate::whatsapp;
 // antes desse refactor (conhecer o id do pedido). Isso também garante que
 // a mensagem de WhatsApp/loja usada é sempre a do tenant DONO do pedido,
 // nunca a de outro.
+
+const PRODUCT_SELECT: &str = "SELECT p.*, c.name as category_name FROM products p \
+    LEFT JOIN categories c ON c.id = p.category_id";
+
+#[derive(Debug, Deserialize, Default)]
+pub struct PublicCatalogQuery {
+    #[serde(default)]
+    pub category_id: Option<String>,
+}
+
+/// Vitrine pública: produtos ativos do tenant do `?tenant=` / slug.
+/// Sem auth — isolamento é o slug → tenant_id (mesmo DB do admin).
+pub async fn list_public_products(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Query(q): Query<PublicCatalogQuery>,
+) -> Result<Json<Vec<ProductDto>>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let category_id = q
+        .category_id
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let rows: Vec<ProductRow> = if let Some(cat) = category_id {
+        sqlx::query_as(&format!(
+            "{PRODUCT_SELECT} WHERE p.tenant_id = $1 AND p.active <> 0 AND p.category_id = $2 \
+             ORDER BY p.name"
+        ))
+        .bind(&store.id)
+        .bind(&cat)
+        .fetch_all(&mut *tx)
+        .await?
+    } else {
+        sqlx::query_as(&format!(
+            "{PRODUCT_SELECT} WHERE p.tenant_id = $1 AND p.active <> 0 ORDER BY p.name"
+        ))
+        .bind(&store.id)
+        .fetch_all(&mut *tx)
+        .await?
+    };
+    tx.commit().await?;
+    Ok(Json(rows.into_iter().map(ProductDto::from).collect()))
+}
+
+pub async fn get_public_product(
+    State(state): State<AppState>,
+    Path((slug, id)): Path<(String, String)>,
+) -> Result<Json<ProductDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let row: Option<ProductRow> = sqlx::query_as(&format!(
+        "{PRODUCT_SELECT} WHERE p.tenant_id = $1 AND p.id = $2 AND p.active <> 0"
+    ))
+    .bind(&store.id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    match row {
+        Some(r) => Ok(Json(r.into())),
+        None => Err(AppError::NotFound("product not found".to_string())),
+    }
+}
+
+pub async fn list_public_categories(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Vec<Category>>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let rows: Vec<Category> =
+        sqlx::query_as("SELECT id, name FROM categories WHERE tenant_id = $1 ORDER BY name")
+            .bind(&store.id)
+            .fetch_all(&mut *tx)
+            .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+/// Contagem de vendas por produto (ordenação "mais vendidos" no catálogo).
+pub async fn public_product_sales_counts(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Vec<ProductSalesCount>>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let rows: Vec<ProductSalesCount> = sqlx::query_as(
+        "SELECT oi.product_id, COALESCE(SUM(oi.quantity), 0)::bigint AS sold_count \
+         FROM order_items oi \
+         JOIN orders o ON o.id = oi.order_id \
+         WHERE o.tenant_id = $1 AND oi.tenant_id = $1 \
+         GROUP BY oi.product_id",
+    )
+    .bind(&store.id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, sqlx::FromRow, serde::Serialize)]
+pub struct ProductSalesCount {
+    pub product_id: String,
+    pub sold_count: i64,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct NotifyOrderCreatedInput {

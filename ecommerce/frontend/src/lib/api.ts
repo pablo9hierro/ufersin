@@ -6,6 +6,7 @@ import { isDemoModeActive } from './demoMode'
 import { localApi } from './localApi'
 import { supabasePublicApi } from './supabasePublicApi'
 import { supabase } from './supabaseClient'
+import { resolveTenantSlug } from './tenantConfig'
 import type {
   BadgesSettings,
   BgSettings,
@@ -103,6 +104,48 @@ async function request<T>(
   return res.json() as Promise<T>
 }
 
+/**
+ * Catálogo público Resolutoo: admin grava em Railway (`sunset.products` +
+ * tenant_id). Sem slug, fallback legacy Supabase (single-tenant / demo DB).
+ * Com slug, SEMPRE Railway — nunca misturar com `ufersin.products` (era a
+ * causa do catálogo vazio com produtos no admin).
+ */
+function railwayPublicCatalogBase(): string | null {
+  const slug = resolveTenantSlug().trim()
+  if (!slug) return null
+  return `/api/public/catalog/${encodeURIComponent(slug)}`
+}
+
+const tenantAwarePublicCatalog = {
+  categories: {
+    list: async () => {
+      const base = railwayPublicCatalogBase()
+      if (!base) return supabasePublicApi.categories.list()
+      return request<Category[]>(`${base}/categories`)
+    },
+  },
+  products: {
+    list: async (categoryId?: string) => {
+      const base = railwayPublicCatalogBase()
+      if (!base) return supabasePublicApi.products.list(categoryId)
+      const qs = categoryId ? `?category_id=${encodeURIComponent(categoryId)}` : ''
+      return request<Product[]>(`${base}/products${qs}`)
+    },
+    get: async (id: string) => {
+      const base = railwayPublicCatalogBase()
+      if (!base) return supabasePublicApi.products.get(id)
+      return request<Product>(`${base}/products/${encodeURIComponent(id)}`)
+    },
+    salesCounts: async () => {
+      const base = railwayPublicCatalogBase()
+      if (!base) return supabasePublicApi.products.salesCounts()
+      return request<{ product_id: string; sold_count: number }[]>(
+        `${base}/product-sales-counts`
+      )
+    },
+  },
+}
+
 /** Pix no motor Railway (`/api/orders/{id}/…`). Path relativo `/api/pix-*`
  * na Vercel quebrava em `/loja` embutido (POST no host pai → 405). */
 async function callRailwayPixApi(orderId: string, action: 'create-pix-payment' | 'refresh-payment' | 'simulate-pix-paid', force = false): Promise<Order> {
@@ -182,11 +225,10 @@ export function computeLucroFromOrders(
 }
 
 const remoteApi = {
-  // Catálogo, checkout e consulta de pedido falam direto com o Supabase
-  // (RLS + RPCs) — ver frontend/src/lib/supabasePublicApi.ts e
-  // supabase/sunset_public_rls_and_rpc.sql. Não dependem do Railway.
-  categories: supabasePublicApi.categories,
-  products: supabasePublicApi.products,
+  // Catálogo Resolutoo: Railway por slug (mesma fonte do admin). Legacy
+  // single-tenant / sem slug → Supabase RLS (supabasePublicApi).
+  categories: tenantAwarePublicCatalog.categories,
+  products: tenantAwarePublicCatalog.products,
   shippingSettings: supabasePublicApi.shippingSettings,
   siteSettings: supabasePublicApi.siteSettings,
   storeStatus: supabasePublicApi.storeStatus,

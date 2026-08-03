@@ -211,9 +211,24 @@ async fn main() -> anyhow::Result<()> {
         // tenant fixo "loja-demo" seedado por seed::seed_demo_tenant,
         // nunca uma loja real. Ver routes/demo.rs.
         .route("/demo/tokens", get(routes::demo::demo_tokens))
-        // public / customer-facing — catálogo e pedido em si são RPCs do
-        // Supabase agora (ver supabase/*.sql); só sobra o que precisa de
-        // segredo (Pix, WhatsApp).
+        // public / customer-facing — catálogo multi-tenant por slug (mesma
+        // tabela sunset.* do admin). Pix/WhatsApp continuam aqui (segredo).
+        .route(
+            "/api/public/catalog/{slug}/products",
+            get(routes::public::list_public_products),
+        )
+        .route(
+            "/api/public/catalog/{slug}/products/{id}",
+            get(routes::public::get_public_product),
+        )
+        .route(
+            "/api/public/catalog/{slug}/categories",
+            get(routes::public::list_public_categories),
+        )
+        .route(
+            "/api/public/catalog/{slug}/product-sales-counts",
+            get(routes::public::public_product_sales_counts),
+        )
         .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
