@@ -2382,6 +2382,12 @@ async function financeiro(): Promise<FinanceiroSummary> {
     .slice(0, 10)
 
   const recent_orders = [...db.orders].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 20)
+  const pdv_sales = [...db.orders]
+    .filter((o) => o.delivery_type === 'balcao')
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, 100)
+  const pdv_total_sales = pdv_sales.reduce((sum, o) => sum + o.total, 0)
+  const pdv_total_count = pdv_sales.length
 
   const allDelivered = db.orders.filter((o) => o.status === 'concluido' && o.delivery_type === 'entrega')
 
@@ -2409,6 +2415,9 @@ async function financeiro(): Promise<FinanceiroSummary> {
     orders_by_status,
     top_products,
     recent_orders,
+    pdv_sales,
+    pdv_total_sales,
+    pdv_total_count,
     motoboys,
     avg_delivery_minutes: avgDeliveryMinutes(allDelivered),
   }
