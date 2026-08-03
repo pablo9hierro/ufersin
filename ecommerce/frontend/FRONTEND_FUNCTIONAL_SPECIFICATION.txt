@@ -128,6 +128,7 @@ em `src/lib/`, assim:
   API = TRANSPORTE. Essa separação já existe e deve ser preservada.
   Stores relevantes ao cliente:
     * store/cart.ts        → useCart        (carrinho normal do catálogo)
+    * store/cartDrawer.ts  → useCartDrawer  (abre/fecha o painel lateral da sacola)
     * store/bannerCart.ts  → useBannerCart  (carrinho separado, só da promoção /banner)
     * store/customer.ts    → useCustomer    (rascunho de dados de checkout)
     * store/customerAuth.ts→ useCustomerAuth(sessão de login do cliente)
@@ -469,8 +470,11 @@ HTML obrigatórios:
 - em cada card: texto do número da quantidade (quando já no carrinho)
 - em cada card: botão de aumentar quantidade (quando já no carrinho)
 - em cada card: texto "Esgotado" (quando sem estoque)
-- botão flutuante de carrinho
+- botão flutuante de carrinho / ícone #cart-icon (abre o drawer da sacola)
 - texto do contador de itens no botão de carrinho
+- painel lateral (drawer) da sacola (abre ao clicar no ícone/FAB)
+- dentro do drawer: lista de itens, controles +/- / remover, texto do total,
+  botão "Finalizar compra"
 - modal de detalhe do produto (toggle que abre ao clicar no card)
 - dentro do modal: imagem grande do produto
 - dentro do modal: texto do nome
@@ -551,6 +555,14 @@ Dinâmicas obrigatórias entre os HTML:
 - O texto do contador no botão flutuante de carrinho mostra a soma das
   quantidades de todos os produtos que estão no carrinho, e atualiza
   sozinho a cada mudança de quantidade em qualquer card/modal.
+- Clicar no ícone de sacola do header, no FAB (sacola ou #cart-icon) ou em
+  "Ver sacola" abre o painel lateral da sacola (drawer ~80% da largura da
+  viewport, animado da direita para a esquerda). A aba/botão "Sacola" da
+  navegação inferior (e abas desktop equivalentes) navega pra /checkout
+  com os itens atuais do carrinho (ou empty-state se vazio).
+- Dentro do drawer: +/- e remover atualizam o carrinho local na hora e
+  recalculam o total; clicar em "Finalizar compra" fecha o drawer e
+  navega pra /checkout.
 
 
 --------------------------------------------------------------------------------
@@ -593,13 +605,19 @@ Dinâmicas obrigatórias entre os HTML:
   de diminuir subtrai 1.
 - O botão de aumentar fica sem efeito quando a quantidade já é igual ao
   estoque disponível.
-- Clicar em "Ver sacola" navega pra página de carrinho.
+- Clicar em "Ver sacola" abre o painel lateral (drawer) da sacola.
 - Clicar no botão de voltar retorna à página/rota anterior.
 
 
 --------------------------------------------------------------------------------
 /carrinho
 --------------------------------------------------------------------------------
+Nota: a interação primária de revisão da sacola é o drawer lateral (ícone
+do header / FAB / "Ver sacola"). A rota /carrinho continua funcional
+(lista + total + "Continuar para o checkout") como fallback/legado.
+A aba "Sacola" da navegação inferior NÃO aponta mais pra /carrinho —
+aponta pra /checkout.
+
 HTML obrigatórios:
 - botão de alternar para visualização em grade
 - botão de alternar para visualização em lista
@@ -655,6 +673,8 @@ Dinâmicas obrigatórias entre os HTML:
 /checkout
 --------------------------------------------------------------------------------
 HTML obrigatórios:
+- texto de aviso de sacola vazia (estado vazio — quando não há itens)
+- botão "Ver catálogo" (estado vazio)
 - card da promoção (aparece só se a página foi aberta a partir de uma promoção)
 - campo de texto do nome
 - campo de texto do WhatsApp
@@ -682,6 +702,9 @@ HTML obrigatórios:
 - modal de login/cadastro (mesmas peças da Landing)
 
 Dinâmicas obrigatórias entre os HTML:
+- Se o carrinho estiver vazio ao entrar em /checkout (ex.: aba Sacola da
+  navegação inferior sem itens), a página mostra o empty-state (aviso +
+  "Ver catálogo") no lugar do formulário.
 - Se a página foi aberta com um identificador de promoção na URL, busca e
   mostra o card dessa promoção no topo do formulário.
 - Ao entrar na página, busca a lista de produtos e de produtos em
@@ -2182,9 +2205,9 @@ seu comportamento devem ser preservados 1:1.
   Finalidade: exibir a marca; no Shell da área do cliente é o botão de
     página inicial (Link → /).
   OBRIGATÓRIO: logo vem de upload de imagem em /meu-plano/layout
-    (`logo_url` no tenant-config). Renderiza JUNTO com o nome da loja no
-    link home do header (`a > span` / equivalente Shell uiux2/3/4). Sem
-    logo, só o nome.
+    (`logo_url` no tenant-config). No header dos Shells (uiux2/3/4) e
+    SiteHeader, a marca é EMPILHADA e CENTRALIZADA: logo ACIMA, nome da
+    loja ABAIXO (não lado a lado). Sem logo, só o nome (centralizado).
   Props: size, className (Logo.tsx legado); Shells usam tenantConfig.logo_url.
 
 8.5 — WhatsAppLink (src/components/ui/WhatsAppLink.tsx)
@@ -2205,7 +2228,8 @@ seu comportamento devem ser preservados 1:1.
     que usam este header): logado → navega pra /cliente/favoritos;
     deslogado → abre menu/modal Entrar/Criar conta (NÃO navega pra
     favoritos; favoritos exige login). Contador de itens do carrinho
-    reativo ao Zustand `cart`.
+    reativo ao Zustand `cart`. Ícone de sacola/#cart-icon do header abre
+    o CartDrawer (não navega pra /carrinho).
 
 8.7 — BrandHeader (cabeçalho especial só da Landing)
   Finalidade: mesma moldura visual do SiteHeader, mas com menu completo
@@ -2214,7 +2238,7 @@ seu comportamento devem ser preservados 1:1.
   Estados: menuOpen, authMode.
 
 8.8 — CartFab (botão flutuante de carrinho, global)
-  Finalidade: acesso rápido ao carrinho em QUALQUER página de cliente
+  Finalidade: acesso rápido à sacola em QUALQUER página de cliente
     (/catalogo, /consultar, /cliente/favoritos, /cliente/cupons, etc.),
     fixo no canto inferior direito, com contador de itens.
   Estilo OBRIGATÓRIO escolhido pelo lojista em /meu-plano/layout (CMS
@@ -2225,7 +2249,16 @@ seu comportamento devem ser preservados 1:1.
   Decoração opcional (fumaça/fogo) só no modo cart_icon, via admin layout.
   Estados: elements (decoração), cart_fab_style / cart_fab_animate do
     tenant-config.
-  Eventos: link pra /carrinho.
+  Eventos: clicar abre o CartDrawer (mesmo painel do ícone do header).
+
+8.8b — CartDrawer (painel lateral da sacola)
+  Finalidade: revisão rápida do carrinho sem sair da página atual.
+  Comportamento: painel ~80% da largura da viewport, altura em proporção
+    normal da tela, anima da direita para a esquerda; lista itens com
+    +/- / remover; mostra total; botão "Finalizar compra" → /checkout
+    (com tenant query). Empty-state quando sem itens. Aberto via
+    useCartDrawer (Zustand) por qualquer ícone sacola / #cart-icon / FAB.
+  Estado: store/cartDrawer.ts (open / openDrawer / closeDrawer).
 
 8.9 — WhatsAppFab (botão flutuante ou inline de contato)
   Finalidade: acesso a WhatsApp/Instagram da loja.

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from '../../lib/tenantRouter'
 import { ArrowLeft, Heart, History, LogIn, LogOut, Menu, Package, ShoppingBag, Store, Tag, UserPlus, X } from 'lucide-react'
 import { useCart } from '../../store/cart'
+import { useCartDrawer } from '../../store/cartDrawer'
 import { useCustomerAuth } from '../../store/customerAuth'
 import UfersinMark from '../../components/ui/UfersinMark'
 import CartFab from '../../components/CartFab'
@@ -93,7 +94,7 @@ function AccountMenu({ onClose }: { onClose: () => void }) {
 
 const TABS = [
   { key: 'catalogo', href: '/catalogo', label: 'Catálogo', icon: Store },
-  { key: 'carrinho', href: '/carrinho', label: 'Sacola', icon: ShoppingBag },
+  { key: 'checkout', href: '/checkout', label: 'Sacola', icon: ShoppingBag },
   { key: 'consultar', href: '/consultar', label: 'Pedidos', icon: Package },
 ]
 
@@ -103,6 +104,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const auth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
   const cartCount = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
+  const openDrawer = useCartDrawer((s) => s.openDrawer)
   const [menuOpen, setMenuOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const isLanding = location.pathname === '/'
@@ -117,35 +119,41 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="u2-page pb-20 sm:pb-0">
       <header className="u2-surface sticky top-0 z-30 !rounded-none !border-x-0 !border-t-0">
-        <div className="max-w-5xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 shrink-0">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8 py-3 relative flex items-center justify-between gap-3 min-h-[3.75rem]">
+          <div className="flex items-center gap-2 shrink-0 z-10">
             {!isLanding && (
               <button onClick={() => navigate(-1)} aria-label="Voltar" className="w-9 h-9 flex items-center justify-center u2-card !rounded-full shrink-0">
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
-            <Link to="/" className="flex items-center gap-2 font-black text-lg min-w-0">
-              {tenantConfig?.logo_url ? (
-                <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
-              ) : (
-                showMark && <UfersinMark className="w-8 h-8 u2-accent" />
-              )}
-              <span className="u2-gradient-text truncate">{name}</span>
-            </Link>
           </div>
-          <div className="hidden sm:flex items-center gap-1">
-            {TABS.map((t) => {
-              const active = location.pathname === t.href
-              return (
-                <Link key={t.key} to={t.href} className={`u2-navitem px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 ${active ? 'is-active' : ''}`}>
-                  <t.icon className="w-4 h-4" />
-                  {t.label}
-                  {t.key === 'carrinho' && cartCount > 0 && <span className="u2-badge w-5 h-5 flex items-center justify-center text-[10px]">{cartCount}</span>}
-                </Link>
-              )
-            })}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
+
+          <Link
+            to="/"
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 font-black text-sm sm:text-base max-w-[46%] min-w-0"
+            aria-label="Página inicial"
+          >
+            {tenantConfig?.logo_url ? (
+              <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+            ) : (
+              showMark && <UfersinMark className="w-8 h-8 u2-accent" />
+            )}
+            <span className="u2-gradient-text truncate max-w-full text-center leading-tight">{name}</span>
+          </Link>
+
+          <div className="flex items-center gap-2 shrink-0 z-10">
+            <div className="hidden sm:flex items-center gap-1 mr-1">
+              {TABS.map((t) => {
+                const active = location.pathname === t.href
+                return (
+                  <Link key={t.key} to={t.href} className={`u2-navitem px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 ${active ? 'is-active' : ''}`}>
+                    <t.icon className="w-4 h-4" />
+                    {t.label}
+                    {t.key === 'checkout' && cartCount > 0 && <span className="u2-badge w-5 h-5 flex items-center justify-center text-[10px]">{cartCount}</span>}
+                  </Link>
+                )
+              })}
+            </div>
             {auth.token ? (
               <Link to="/cliente/favoritos" className="w-10 h-10 flex items-center justify-center u2-card !rounded-full" aria-label="Favoritos">
                 <Heart className="w-4 h-4" />
@@ -155,10 +163,15 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <Heart className="w-4 h-4" />
               </button>
             )}
-            <Link to="/carrinho" className="sm:hidden relative w-10 h-10 flex items-center justify-center u2-card !rounded-full" aria-label="Ver sacola">
+            <button
+              type="button"
+              onClick={openDrawer}
+              className="relative w-10 h-10 flex items-center justify-center u2-card !rounded-full"
+              aria-label="Ver sacola"
+            >
               <ShoppingBag className="w-4 h-4" />
               {cartCount > 0 && <span className="u2-badge absolute -top-1 -right-1 w-4 h-4 text-[10px] flex items-center justify-center">{cartCount}</span>}
-            </Link>
+            </button>
             <div className="relative">
               <button onClick={() => setMenuOpen((o) => !o)} className="w-10 h-10 flex items-center justify-center u2-card !rounded-full" aria-label="Menu da conta" aria-expanded={menuOpen}>
                 {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
@@ -180,7 +193,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             <Link key={t.key} to={t.href} className={`u2-navitem flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold ${active ? 'is-active' : ''}`}>
               <span className="relative">
                 <t.icon className="w-5 h-5" />
-                {t.key === 'carrinho' && cartCount > 0 && <span className="u2-badge absolute -top-1.5 -right-2 w-4 h-4 text-[9px] flex items-center justify-center">{cartCount}</span>}
+                {t.key === 'checkout' && cartCount > 0 && <span className="u2-badge absolute -top-1.5 -right-2 w-4 h-4 text-[9px] flex items-center justify-center">{cartCount}</span>}
               </span>
               {t.label}
             </Link>

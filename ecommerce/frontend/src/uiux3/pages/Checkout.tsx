@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '../../lib/tenantRouter'
-import { ChevronDown, CreditCard, Gift, Home, Loader2, MapPin, QrCode, Wallet } from 'lucide-react'
+import { ChevronDown, CreditCard, Gift, Home, Loader2, MapPin, Package, QrCode, Wallet } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { productService } from '../../services/productService'
 import { couponService } from '../../services/couponService'
@@ -14,6 +14,7 @@ import { useCustomer } from '../../store/customer'
 import { useCustomerAuth } from '../../store/customerAuth'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
+import EmptyState from '../components/EmptyState'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
@@ -286,6 +287,16 @@ export default function Uiux3Checkout() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (lines.length === 0) {
+    return (
+      <Shell>
+        <div className="px-4 sm:px-8 pt-6">
+          <EmptyState icon={Package} message="Sua sacola está vazia." actionLabel="Ver catálogo" actionHref="/catalogo" />
+        </div>
+      </Shell>
+    )
   }
 
   return (

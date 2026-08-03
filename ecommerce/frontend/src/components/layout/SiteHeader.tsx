@@ -4,7 +4,9 @@ import { Heart, LogIn, UserPlus } from 'lucide-react'
 import SunsetCartIcon from '../SunsetCartIcon'
 import WhatsAppFab from '../WhatsAppFab'
 import CustomerAuthModal from '../CustomerAuthModal'
+import CartDrawer from '../CartDrawer'
 import { useCart } from '../../store/cart'
+import { useCartDrawer } from '../../store/cartDrawer'
 import { useCustomerAuth } from '../../store/customerAuth'
 import { brandName } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
@@ -25,6 +27,7 @@ export default function SiteHeader({
 }) {
   const navigate = useNavigate()
   const count = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
+  const openDrawer = useCartDrawer((s) => s.openDrawer)
   const customerAuth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
   const [guestMenuOpen, setGuestMenuOpen] = useState(false)
@@ -70,7 +73,10 @@ export default function SiteHeader({
           )}
         </div>
         <div className="sunset-nav-slot sunset-nav-slot-center">
-          <Link to="/" className="sunset-brand-btn" aria-label="Página inicial">
+          <Link to="/" className="sunset-brand-btn flex flex-col items-center gap-0.5" aria-label="Página inicial">
+            {tenantConfig?.logo_url ? (
+              <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover" />
+            ) : null}
             <span>{name}</span>
           </Link>
         </div>
@@ -127,10 +133,11 @@ export default function SiteHeader({
               ele "vaza" pra fora da área pequena do header (ficava enorme e
               desalinhado, como reportado). */}
           {showCart && (
-            <Link
-              to="/carrinho"
+            <button
+              type="button"
+              onClick={openDrawer}
               className="relative w-11 h-11 flex items-center justify-center overflow-hidden flex-shrink-0"
-              aria-label="Ver carrinho"
+              aria-label="Abrir sacola"
             >
               <SunsetCartIcon scale={0.32} />
               {count > 0 && (
@@ -138,10 +145,11 @@ export default function SiteHeader({
                   {count}
                 </span>
               )}
-            </Link>
+            </button>
           )}
         </div>
       </div>
+      {showCart && <CartDrawer />}
       {authMode && <CustomerAuthModal initialMode={authMode} onClose={() => setAuthMode(null)} onSuccess={() => setAuthMode(null)} />}
     </header>
   )

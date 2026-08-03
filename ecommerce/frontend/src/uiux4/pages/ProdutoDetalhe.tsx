@@ -2,6 +2,7 @@ import { useNavigate, useParams } from '../../lib/tenantRouter'
 import { ArrowLeft, Loader2, Minus, Package, Plus, ShoppingBag } from 'lucide-react'
 import { useProduct } from '../../hooks/useProducts'
 import { useCart } from '../../store/cart'
+import { useCartDrawer } from '../../store/cartDrawer'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
@@ -14,6 +15,7 @@ export default function Uiux4ProdutoDetalhe() {
   const navigate = useNavigate()
   const { data: product, loading } = useProduct(id)
   const { items, addItem, changeQty } = useCart()
+  const openDrawer = useCartDrawer((s) => s.openDrawer)
 
   const qty = items.find((i) => i.productId === id)?.quantity ?? 0
 
@@ -77,7 +79,7 @@ export default function Uiux4ProdutoDetalhe() {
               </button>
             )}
             {qty > 0 && (
-              <button onClick={() => navigate('/carrinho')} className="u4-btn-secondary flex-1 flex items-center justify-center gap-2 py-3.5 text-sm">
+              <button onClick={openDrawer} className="u4-btn-secondary flex-1 flex items-center justify-center gap-2 py-3.5 text-sm">
                 <ShoppingBag className="w-4 h-4" /> Ver sacola
               </button>
             )}

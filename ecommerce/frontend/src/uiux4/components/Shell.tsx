@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from '../../lib/tenantRouter'
 import { ArrowLeft, Heart, History, LogIn, LogOut, Menu, Package, ShoppingBag, Store, Tag, UserPlus, X } from 'lucide-react'
 import { useCart } from '../../store/cart'
+import { useCartDrawer } from '../../store/cartDrawer'
 import { useCustomerAuth } from '../../store/customerAuth'
 import CartFab from '../../components/CartFab'
 import AuthModal from './AuthModal'
@@ -94,7 +95,7 @@ function AccountMenu({ onClose }: { onClose: () => void }) {
 
 const TABS = [
   { key: 'catalogo', href: '/catalogo', label: 'Cardápio', icon: Store },
-  { key: 'carrinho', href: '/carrinho', label: 'Sacola', icon: ShoppingBag },
+  { key: 'checkout', href: '/checkout', label: 'Sacola', icon: ShoppingBag },
   { key: 'consultar', href: '/consultar', label: 'Pedidos', icon: Package },
 ]
 
@@ -104,6 +105,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const auth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
   const cartCount = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
+  const openDrawer = useCartDrawer((s) => s.openDrawer)
   const [menuOpen, setMenuOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const isLanding = location.pathname === '/'
@@ -117,8 +119,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="u4-page pb-16 sm:pb-0">
       <header className="u4-topbar sticky top-0 z-30">
-        <div className="max-w-5xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3 min-h-[3.75rem] relative">
+          <div className="flex items-center gap-2 shrink-0 z-10">
             {!isLanding && (
               <button onClick={() => navigate(-1)} className="u4-icon-btn" aria-label="Voltar">
                 <ArrowLeft className="w-4 h-4" />
@@ -132,25 +134,28 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <Link to="/" className="text-sm font-black uppercase tracking-[0.15em] shrink-0 flex items-center gap-2 min-w-0">
+          <Link
+            to="/"
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-sm font-black uppercase tracking-[0.15em] flex flex-col items-center gap-0.5 max-w-[46%] min-w-0"
+            aria-label="Página inicial"
+          >
             {tenantConfig?.logo_url ? (
               <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
             ) : null}
-            <span className="truncate">{name}</span>
+            <span className="truncate max-w-full text-center leading-tight text-[11px] sm:text-sm">{name}</span>
           </Link>
 
-          <div className="hidden sm:flex items-center gap-1">
-            {TABS.map((t) => {
-              const active = location.pathname === t.href
-              return (
-                <Link key={t.key} to={t.href} className={`u4-tab px-3.5 py-1.5 text-xs flex items-center gap-1.5 ${active ? 'is-active' : ''}`}>
-                  {t.label}
-                </Link>
-              )
-            })}
-          </div>
-
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0 z-10">
+            <div className="hidden sm:flex items-center gap-1 mr-1">
+              {TABS.map((t) => {
+                const active = location.pathname === t.href
+                return (
+                  <Link key={t.key} to={t.href} className={`u4-tab px-3.5 py-1.5 text-xs flex items-center gap-1.5 ${active ? 'is-active' : ''}`}>
+                    {t.label}
+                  </Link>
+                )
+              })}
+            </div>
             {auth.token ? (
               <Link to="/cliente/favoritos" className="u4-icon-btn" aria-label="Favoritos">
                 <Heart className="w-4 h-4" />
@@ -160,10 +165,10 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <Heart className="w-4 h-4" />
               </button>
             )}
-            <Link to="/carrinho" className="u4-icon-btn relative" aria-label="Ver sacola">
+            <button type="button" onClick={openDrawer} className="u4-icon-btn relative" aria-label="Ver sacola">
               <ShoppingBag className="w-4 h-4" />
               {cartCount > 0 && <span className="absolute -top-1 -right-1 u4-tag w-4 h-4 !rounded-full text-[9px] flex items-center justify-center">{cartCount}</span>}
-            </Link>
+            </button>
           </div>
         </div>
       </header>
@@ -179,7 +184,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             <Link key={t.key} to={t.href} className={`u4-navstrip-item flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold ${active ? 'is-active' : ''}`}>
               <span className="relative">
                 <t.icon className="w-5 h-5" />
-                {t.key === 'carrinho' && cartCount > 0 && <span className="absolute -top-1.5 -right-2 u4-tag w-4 h-4 !rounded-full text-[8px] flex items-center justify-center">{cartCount}</span>}
+                {t.key === 'checkout' && cartCount > 0 && <span className="absolute -top-1.5 -right-2 u4-tag w-4 h-4 !rounded-full text-[8px] flex items-center justify-center">{cartCount}</span>}
               </span>
               {t.label}
             </Link>
