@@ -6,6 +6,7 @@ import { isDemoModeActive } from './demoMode'
 import { localApi } from './localApi'
 import { supabasePublicApi } from './supabasePublicApi'
 import { supabase } from './supabaseClient'
+import { fetchWithTimeout } from './fetchTimeout'
 import { resolveTenantSlug } from './tenantConfig'
 import type {
   BadgesSettings,
@@ -59,6 +60,8 @@ export const USE_LOCAL_DB =
   import.meta.env.VITE_USE_LOCAL_DB === 'true' ||
   (import.meta.env.PROD && !import.meta.env.VITE_SUPABASE_URL)
 
+const REQUEST_TIMEOUT_MS = 15_000
+
 async function request<T>(
   path: string,
   options: RequestInit & { token?: string } = {}
@@ -66,22 +69,34 @@ async function request<T>(
   const { token, headers, ...rest } = options
   let res: Response
   try {
-    res = await fetch(`${API_BASE}${path}`, {
-      ...rest,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...headers,
+    res = await fetchWithTimeout(
+      `${API_BASE}${path}`,
+      {
+        ...rest,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...headers,
+        },
       },
-    })
-  } catch {
+      REQUEST_TIMEOUT_MS,
+    )
+  } catch (err) {
     // fetch() falhou antes de chegar a ter uma resposta HTTP (servidor
-    // fora do ar, CORS, sem internet) — sem isso virar um ApiError de
+    // fora do ar, CORS, sem internet, timeout) — sem isso virar um ApiError de
     // verdade, esse erro passa batido em todo `catch (e) { e instanceof
     // ApiError ? e.message : '<mensagem genérica>' }` espalhado pelo app,
     // sempre caindo na mensagem genérica em vez de dizer que o servidor
     // tá inacessível.
-    throw new ApiError(0, 'Não foi possível conectar ao servidor. Verifique sua internet ou tente novamente em instantes.')
+    const timedOut =
+      (err instanceof DOMException && err.name === 'AbortError') ||
+      (err instanceof Error && /abort|timeout/i.test(err.message))
+    throw new ApiError(
+      0,
+      timedOut
+        ? 'O servidor demorou para responder. Tente novamente em instantes.'
+        : 'Não foi possível conectar ao servidor. Verifique sua internet ou tente novamente em instantes.',
+    )
   }
   if (!res.ok) {
     let message = `Erro ${res.status}`
@@ -828,13 +843,21 @@ const remoteApi = {
         }),
     },
     shippingSettings: {
-      get: () => supabasePublicApi.shippingSettings.get(),
+      get: () =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<ShippingSettings>('/api/admin/shipping-settings')
+          : supabasePublicApi.shippingSettings.get(),
       update: (pricePerKm: number, maxKm: number | null) =>
-        rpc<ShippingSettings>('admin_update_shipping_settings', {
-          p_token: adminToken(),
-          p_price_per_km: pricePerKm,
-          p_max_km: maxKm,
-        }),
+        isRailwayAdminJwt()
+          ? railwayAdmin<ShippingSettings>('/api/admin/shipping-settings', {
+              method: 'PUT',
+              body: JSON.stringify({ price_per_km: pricePerKm, max_km: maxKm }),
+            })
+          : rpc<ShippingSettings>('admin_update_shipping_settings', {
+              p_token: adminToken(),
+              p_price_per_km: pricePerKm,
+              p_max_km: maxKm,
+            }),
     },
     financeiro: {
       get: () =>

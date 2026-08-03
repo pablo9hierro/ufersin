@@ -3,7 +3,6 @@ import { Check, Loader2, MapPinned, Save } from 'lucide-react'
 import Card from '../ui/Card'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
-import { shippingService } from '../../services/shippingService'
 
 /** R$/km + distância máxima — shared by Essential `/admin/frete` and Management Funcionários. */
 export default function FreteSettingsCard({ className = 'p-4 mb-6' }: { className?: string }) {
@@ -15,11 +14,24 @@ export default function FreteSettingsCard({ className = 'p-4 mb-6' }: { classNam
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    shippingService.getSettings().then((settings) => {
-      setPricePerKm(String(settings.price_per_km))
-      setMaxKm(settings.max_km != null ? String(settings.max_km) : '')
-      setLoading(false)
-    })
+    let cancelled = false
+    ;(async () => {
+      setError(null)
+      try {
+        const settings = await adminService.shippingSettings.get()
+        if (cancelled) return
+        setPricePerKm(String(settings.price_per_km))
+        setMaxKm(settings.max_km != null ? String(settings.max_km) : '')
+      } catch (e) {
+        if (cancelled) return
+        setError(e instanceof ApiError ? e.message : 'Não foi possível carregar o frete.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const save = async () => {
@@ -52,6 +64,8 @@ export default function FreteSettingsCard({ className = 'p-4 mb-6' }: { classNam
       </p>
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin text-son-pink" />
+      ) : error && pricePerKm === '' ? (
+        <p className="error-msg">{error}</p>
       ) : (
         <div className="flex flex-wrap items-end gap-3">
           <div>

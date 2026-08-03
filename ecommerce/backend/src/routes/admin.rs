@@ -1220,3 +1220,86 @@ pub async fn set_store_manual_status(
     tx.commit().await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
+
+// ---------- Frete (R$/km + raio máximo) ----------
+
+#[derive(Debug, serde::Serialize)]
+pub struct ShippingSettingsDto {
+    pub price_per_km: f64,
+    pub max_km: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateShippingSettingsInput {
+    pub price_per_km: f64,
+    pub max_km: Option<f64>,
+}
+
+async fn ensure_shipping_settings(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO shipping_settings (tenant_id, price_per_km, store_lat, store_lng) \
+         VALUES ($1, 1.5, 0, 0) ON CONFLICT (tenant_id) DO NOTHING",
+    )
+    .bind(tenant_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_shipping_settings(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<ShippingSettingsDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Pedidos).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    ensure_shipping_settings(&mut tx, &claims.tenant_id).await?;
+    let row: (f64, Option<f64>) = sqlx::query_as(
+        "SELECT price_per_km, max_km FROM shipping_settings WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(ShippingSettingsDto {
+        price_per_km: row.0,
+        max_km: row.1,
+    }))
+}
+
+pub async fn update_shipping_settings(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(body): Json<UpdateShippingSettingsInput>,
+) -> Result<Json<ShippingSettingsDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Pedidos).await?;
+    if !body.price_per_km.is_finite() || body.price_per_km < 0.0 {
+        return Err(AppError::BadRequest(
+            "price_per_km must be a non-negative number".to_string(),
+        ));
+    }
+    if let Some(max_km) = body.max_km {
+        if !max_km.is_finite() || max_km <= 0.0 {
+            return Err(AppError::BadRequest(
+                "max_km must be a positive number".to_string(),
+            ));
+        }
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    ensure_shipping_settings(&mut tx, &claims.tenant_id).await?;
+    sqlx::query(
+        "UPDATE shipping_settings SET price_per_km = $2, max_km = $3 WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .bind(body.price_per_km)
+    .bind(body.max_km)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(ShippingSettingsDto {
+        price_per_km: body.price_per_km,
+        max_km: body.max_km,
+    }))
+}

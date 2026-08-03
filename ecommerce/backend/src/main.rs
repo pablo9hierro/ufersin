@@ -317,6 +317,11 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/store-manual-status",
             axum::routing::put(routes::admin::set_store_manual_status),
         )
+        .route(
+            "/api/admin/shipping-settings",
+            get(routes::admin::get_shipping_settings)
+                .put(routes::admin::update_shipping_settings),
+        )
         .route("/api/admin/onboarding-gate", get(routes::admin::get_onboarding_gate))
         // motoboy
         // Otimiza a ordem de entrega do lote via Google Routes (distância
