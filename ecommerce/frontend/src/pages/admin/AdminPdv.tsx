@@ -22,6 +22,8 @@ import { filterPdvProducts, findProductByBarcode, pdvCartTotals } from '../../li
 import { orderService } from '../../services/orderService'
 import { pdvService } from '../../services/pdvService'
 import type { Order, PaymentMethod, Product } from '../../types'
+import CashAmountInput from '../../components/CashAmountInput'
+import { cashCoversTotal, formatCashMask, formatTrocoLabel, computeTroco } from '../../lib/cashMask'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -75,6 +77,7 @@ export default function AdminPdv() {
   const [success, setSuccess] = useState<number | null>(null)
 
   const [confirmCashOpen, setConfirmCashOpen] = useState(false)
+  const [cashCents, setCashCents] = useState(0)
   const [pixOrder, setPixOrder] = useState<Order | null>(null)
   const [pixPaidFlash, setPixPaidFlash] = useState(false)
   const [regeneratingPix, setRegeneratingPix] = useState(false)
@@ -322,10 +325,15 @@ export default function AdminPdv() {
     }
 
     // Dinheiro / cartão / Pix sem QR: diálogo de confirmação de recebimento.
+    if (paymentMethod === 'dinheiro') setCashCents(0)
     setConfirmCashOpen(true)
   }
 
   const confirmCashReceived = async () => {
+    if (paymentMethod === 'dinheiro' && !cashCoversTotal(cashCents, cartTotal)) {
+      setFinalizeError('Informe o valor recebido em dinheiro (maior ou igual ao total).')
+      return
+    }
     setFinalizing(true)
     setFinalizeError(null)
     try {
@@ -642,16 +650,36 @@ export default function AdminPdv() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => !finalizing && setConfirmCashOpen(false)}>
           <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-white mb-2">Confirmar pagamento</h3>
-            <p className="text-sm text-son-silver-dim mb-5">
+            <p className="text-sm text-son-silver-dim mb-4">
               Confirmar pagamento de{' '}
               <span className="sunset-text font-bold">{currency(cartTotal)}</span> em{' '}
               {paymentMethodLabel(paymentMethod)}?
             </p>
+            {paymentMethod === 'dinheiro' && (
+              <CashAmountInput
+                className="mb-4"
+                label="Valor recebido em dinheiro"
+                orderTotal={cartTotal}
+                valueCents={cashCents}
+                onChange={setCashCents}
+              />
+            )}
+            {paymentMethod === 'dinheiro' && cashCents > 0 && (
+              <p className="text-xs text-son-silver-dim mb-4">
+                Recebido R$ {formatCashMask(cashCents)} · {formatTrocoLabel(computeTroco(cashCents, cartTotal))}
+              </p>
+            )}
+            {finalizeError && <p className="error-msg mb-3">{finalizeError}</p>}
             <div className="flex gap-2">
               <button type="button" onClick={() => setConfirmCashOpen(false)} disabled={finalizing} className="btn-secondary flex-1">
                 Cancelar
               </button>
-              <button type="button" onClick={confirmCashReceived} disabled={finalizing} className="btn-primary flex-1">
+              <button
+                type="button"
+                onClick={confirmCashReceived}
+                disabled={finalizing || (paymentMethod === 'dinheiro' && !cashCoversTotal(cashCents, cartTotal))}
+                className="btn-primary flex-1"
+              >
                 {finalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Confirmar
               </button>

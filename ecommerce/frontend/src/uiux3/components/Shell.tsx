@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from '../../lib/tenantRouter'
 import { ArrowLeft, Heart, History, LogIn, LogOut, Menu, Package, ShoppingBag, Store, Tag, UserPlus, X } from 'lucide-react'
 import { useCart } from '../../store/cart'
-import { useCartDrawer } from '../../store/cartDrawer'
 import { useCustomerAuth } from '../../store/customerAuth'
 import CartFab from '../../components/CartFab'
 import AuthModal from './AuthModal'
@@ -104,7 +103,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const auth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
   const cartCount = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
-  const openDrawer = useCartDrawer((s) => s.openDrawer)
   const [menuOpen, setMenuOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const isLanding = location.pathname === '/'
@@ -119,11 +117,23 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     <div className="u3-page pb-24 sm:pb-0">
       <header className="u3-topbar sticky top-0 z-30">
         <div className="max-w-5xl mx-auto px-4 sm:px-8 py-3 relative flex items-center justify-between gap-3 min-h-[3.75rem]">
-          <div className="flex items-center gap-2 shrink-0 z-10">
+          <div className="flex items-center gap-2 shrink-0 z-10 min-w-0">
             {!isLanding && (
               <button onClick={() => navigate(-1)} className="u3-icon-btn" aria-label="Voltar">
                 <ArrowLeft className="w-4 h-4" />
               </button>
+            )}
+            {isLanding && (
+              <Link
+                to="/"
+                className="u3-wordmark flex flex-col items-start gap-0.5 text-lg font-black tracking-tight max-w-[70%] min-w-0"
+                aria-label="Página inicial"
+              >
+                {tenantConfig?.logo_url ? (
+                  <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                ) : null}
+                <span className="truncate max-w-full text-left leading-tight text-sm sm:text-base">{name}</span>
+              </Link>
             )}
             <div className="relative">
               <button onClick={() => setMenuOpen((o) => !o)} className="u3-icon-btn" aria-label="Menu da conta" aria-expanded={menuOpen}>
@@ -133,16 +143,18 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <Link
-            to="/"
-            className="u3-wordmark absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-lg font-black tracking-tight flex flex-col items-center gap-0.5 max-w-[46%] min-w-0"
-            aria-label="Página inicial"
-          >
-            {tenantConfig?.logo_url ? (
-              <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
-            ) : null}
-            <span className="truncate max-w-full text-center leading-tight text-sm sm:text-base">{name}</span>
-          </Link>
+          {!isLanding && (
+            <Link
+              to="/"
+              className="u3-wordmark absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-lg font-black tracking-tight flex flex-col items-center gap-0.5 max-w-[46%] min-w-0"
+              aria-label="Página inicial"
+            >
+              {tenantConfig?.logo_url ? (
+                <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+              ) : null}
+              <span className="truncate max-w-full text-center leading-tight text-sm sm:text-base">{name}</span>
+            </Link>
+          )}
 
           <div className="flex items-center gap-2 shrink-0 z-10">
             <div className="hidden sm:flex items-center gap-2 mr-1">
@@ -165,14 +177,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <Heart className="w-4 h-4" />
               </button>
             )}
-            <button type="button" onClick={openDrawer} className="u3-icon-btn relative" aria-label="Ver sacola">
-              <ShoppingBag className="w-4 h-4" />
-              {cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center" style={{ background: 'var(--u3-red)' }}>
-                  {cartCount}
-                </span>
-              )}
-            </button>
           </div>
         </div>
       </header>

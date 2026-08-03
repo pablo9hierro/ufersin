@@ -12,6 +12,8 @@ import { orderService } from '../../services/orderService'
 import { pdvService } from '../../services/pdvService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { adminCanCancelOrder, type Order, type PaymentMethod } from '../../types'
+import CashAmountInput from '../../components/CashAmountInput'
+import { cashCoversTotal, formatCashMask, formatTrocoLabel, computeTroco } from '../../lib/cashMask'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -211,6 +213,8 @@ export default function AdminPedidos() {
   const [settleWhatsapp, setSettleWhatsapp] = useState('')
   const [skipQrcode, setSkipQrcode] = useState(false)
   const [confirmReceived, setConfirmReceived] = useState(false)
+  const [settleCashCents, setSettleCashCents] = useState(0)
+  const [confirmCashCents, setConfirmCashCents] = useState(0)
   const [pixOrder, setPixOrder] = useState<Order | null>(null)
   const [copiedPix, setCopiedPix] = useState(false)
   const [regeneratingPix, setRegeneratingPix] = useState(false)
@@ -268,6 +272,7 @@ export default function AdminPedidos() {
     setSettleWhatsapp(local ? formatPhone(local) : '')
     setSkipQrcode(!onlinePix)
     setConfirmReceived(false)
+    setSettleCashCents(0)
     setError(null)
   }
 
@@ -282,6 +287,7 @@ export default function AdminPedidos() {
       return
     }
     if (requirePayment) {
+      setConfirmCashCents(0)
       setConfirmingOrder(order)
       return
     }
@@ -304,6 +310,10 @@ export default function AdminPedidos() {
 
   const confirmPayment = async () => {
     if (!confirmingOrder) return
+    if (confirmingOrder.payment_method === 'dinheiro' && !cashCoversTotal(confirmCashCents, confirmingOrder.total)) {
+      setError('Informe o valor recebido em dinheiro (maior ou igual ao total).')
+      return
+    }
     const next = nextStatusFor(confirmingOrder, adminDelivery)
     if (!next) return
     setError(null)
@@ -362,6 +372,10 @@ export default function AdminPedidos() {
 
       if (!confirmReceived) {
         setError('Confirme que o pagamento foi recebido para finalizar.')
+        return
+      }
+      if (settleMethod === 'dinheiro' && !cashCoversTotal(settleCashCents, settlingOrder.total)) {
+        setError('Informe o valor recebido em dinheiro (maior ou igual ao total).')
         return
       }
       await adminService.orders.updateStatus(settlingOrder.id, 'concluido', true, extras)
@@ -511,7 +525,10 @@ export default function AdminPedidos() {
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setSettleMethod(value)}
+                  onClick={() => {
+                    setSettleMethod(value)
+                    if (value !== 'dinheiro') setSettleCashCents(0)
+                  }}
                   className={`py-2.5 rounded-2xl border text-sm font-medium capitalize ${
                     settleMethod === value
                       ? 'sunset-bg text-white border-transparent'
@@ -522,6 +539,16 @@ export default function AdminPedidos() {
                 </button>
               ))}
             </div>
+
+            {settleMethod === 'dinheiro' && (
+              <CashAmountInput
+                className="mb-4"
+                label="Valor recebido em dinheiro"
+                orderTotal={settlingOrder.total}
+                valueCents={settleCashCents}
+                onChange={setSettleCashCents}
+              />
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
@@ -566,21 +593,31 @@ export default function AdminPedidos() {
             )}
 
             {(settleMethod !== 'pix' || skipQrcode || !onlinePix) && (
-              <label className="mb-4 flex items-center gap-2 text-sm text-son-silver cursor-pointer">
+              <label className="mb-4 flex items-start gap-2 text-sm text-son-silver cursor-pointer">
                 <input
                   type="checkbox"
                   checked={confirmReceived}
                   onChange={(e) => setConfirmReceived(e.target.checked)}
-                  className="rounded border-white/20"
+                  className="rounded border-white/20 mt-0.5"
                 />
-                Confirmar pagamento recebido
+                <span>
+                  Confirmar pagamento recebido
+                  {settleMethod === 'dinheiro' && settleCashCents > 0 && (
+                    <span className="block text-xs text-son-silver-dim mt-1">
+                      R$ {formatCashMask(settleCashCents)} · {formatTrocoLabel(computeTroco(settleCashCents, settlingOrder.total))}
+                    </span>
+                  )}
+                </span>
               </label>
             )}
 
             <button
               type="button"
               onClick={finalizeSettlement}
-              disabled={busyId === settlingOrder.id}
+              disabled={
+                busyId === settlingOrder.id ||
+                (settleMethod === 'dinheiro' && confirmReceived && !cashCoversTotal(settleCashCents, settlingOrder.total))
+              }
               className="btn-primary w-full py-3"
             >
               {busyId === settlingOrder.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
@@ -642,7 +679,7 @@ export default function AdminPedidos() {
             <h3 className="font-bold text-white mb-2">
               {confirmingIsEntrega ? 'Confirmar pagamento e entrega' : 'Confirmar pagamento'}
             </h3>
-            <p className="text-sm text-son-silver-dim mb-5">
+            <p className="text-sm text-son-silver-dim mb-4">
               {confirmingIsEntrega ? (
                 <>
                   Confirmar que o pedido foi entregue e o pagamento de{' '}
@@ -658,11 +695,28 @@ export default function AdminPedidos() {
                 </>
               )}
             </p>
+            {confirmingOrder.payment_method === 'dinheiro' && (
+              <CashAmountInput
+                className="mb-4"
+                label="Valor recebido em dinheiro"
+                orderTotal={confirmingOrder.total}
+                valueCents={confirmCashCents}
+                onChange={setConfirmCashCents}
+              />
+            )}
+            {error && <p className="error-msg mb-3">{error}</p>}
             <div className="flex gap-2">
               <button onClick={() => setConfirmingOrder(null)} className="btn-secondary flex-1">
                 Voltar
               </button>
-              <button onClick={confirmPayment} disabled={busyId === confirmingOrder.id} className="btn-primary flex-1">
+              <button
+                onClick={confirmPayment}
+                disabled={
+                  busyId === confirmingOrder.id ||
+                  (confirmingOrder.payment_method === 'dinheiro' && !cashCoversTotal(confirmCashCents, confirmingOrder.total))
+                }
+                className="btn-primary flex-1"
+              >
                 {busyId === confirmingOrder.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Confirmar
               </button>

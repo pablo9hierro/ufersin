@@ -312,6 +312,9 @@ backend, independente do layout escolhido:
   Se 'entrega': neighborhood, address, customer_lat, customer_lng
     obrigatórios (vêm do LocationPicker)
   payment_method: 'pix' | 'cartao' | 'dinheiro'
+  (Dinheiro no checkout/PDV/baixa: UX de valor recebido + Troco com máscara
+  terminal BR em CashAmountInput — valor é validação de UI; não há coluna
+  separada de cash_received no backend neste contrato.)
   items: array de {product_id, quantity} — nunca vazio
   coupon_code / promotion_id: opcionais
 
@@ -330,6 +333,13 @@ isso é 100% do Design System escolhido.
 --------------------------------------------------------------------------------
 / (Landing)
 --------------------------------------------------------------------------------
+Navbar (vitrine uiux2/3/4):
+- logo + nome da loja alinhados à ESQUERDA no header (só na Landing);
+  nas demais páginas de cliente o brand fica centralizado.
+- SEM botão de sacola/carrinho no header e SEM FAB flutuante de carrinho;
+  a aba "Sacola" da navegação inferior (e abas desktop) vai pra /checkout;
+  o drawer da sacola ainda abre via "Ver sacola" / adicionar produto.
+
 HTML obrigatórios:
 - texto do nome da loja
 - botão de menu de conta
@@ -470,9 +480,9 @@ HTML obrigatórios:
 - em cada card: texto do número da quantidade (quando já no carrinho)
 - em cada card: botão de aumentar quantidade (quando já no carrinho)
 - em cada card: texto "Esgotado" (quando sem estoque)
-- botão flutuante de carrinho / ícone #cart-icon (abre o drawer da sacola)
-- texto do contador de itens no botão de carrinho
-- painel lateral (drawer) da sacola (abre ao clicar no ícone/FAB)
+- (removido) botão flutuante de carrinho / ícone #cart-icon no header/FAB —
+  sacola só via navegação "Sacola" → /checkout ou drawer ao adicionar/"Ver sacola"
+- painel lateral (drawer) da sacola (abre ao adicionar produto ou "Ver sacola")
 - dentro do drawer: lista de itens, controles +/- / remover, texto do total,
   botão "Finalizar compra"
 - modal de detalhe do produto (toggle que abre ao clicar no card)
@@ -552,14 +562,11 @@ Dinâmicas obrigatórias entre os HTML:
 - Clicar no botão de fechar do modal, ou clicar fora do card do modal,
   fecha o modal — nenhuma alteração já feita (favorito, quantidade) é
   desfeita ao fechar.
-- O texto do contador no botão flutuante de carrinho mostra a soma das
-  quantidades de todos os produtos que estão no carrinho, e atualiza
-  sozinho a cada mudança de quantidade em qualquer card/modal.
-- Clicar no ícone de sacola do header, no FAB (sacola ou #cart-icon) ou em
-  "Ver sacola" abre o painel lateral da sacola (drawer ~80% da largura da
-  viewport, animado da direita para a esquerda). A aba/botão "Sacola" da
-  navegação inferior (e abas desktop equivalentes) navega pra /checkout
-  com os itens atuais do carrinho (ou empty-state se vazio).
+- O drawer da sacola abre ao clicar em "Ver sacola" (ou ao fluxo de
+  adicionar que chama openDrawer). Header cart e FAB flutuante foram
+  removidos. A aba/botão "Sacola" da navegação inferior (e abas desktop
+  equivalentes) navega pra /checkout com os itens atuais do carrinho
+  (ou empty-state se vazio).
 - Dentro do drawer: +/- e remover atualizam o carrinho local na hora e
   recalculam o total; clicar em "Finalizar compra" fecha o drawer e
   navega pra /checkout.
@@ -612,8 +619,8 @@ Dinâmicas obrigatórias entre os HTML:
 --------------------------------------------------------------------------------
 /carrinho
 --------------------------------------------------------------------------------
-Nota: a interação primária de revisão da sacola é o drawer lateral (ícone
-do header / FAB / "Ver sacola"). A rota /carrinho continua funcional
+Nota: a revisão da sacola no drawer continua via "Ver sacola" / openDrawer
+ao adicionar (header cart e FAB removidos). A rota /carrinho continua funcional
 (lista + total + "Continuar para o checkout") como fallback/legado.
 A aba "Sacola" da navegação inferior NÃO aponta mais pra /carrinho —
 aponta pra /checkout.
@@ -687,6 +694,10 @@ HTML obrigatórios:
 - botão de forma de pagamento "Pix"
 - botão de forma de pagamento "Cartão"
 - botão de forma de pagamento "Dinheiro"
+- quando Dinheiro: campo "Quanto você pagará em dinheiro" (máscara estilo
+  terminal BR: dígitos entram pela direita em centavos, display sempre
+  00,00 → 00,05 → 00,50 → 05,00…) + rótulo "Troco: R$ X,XX"
+  (= valor informado − total; pode ser negativo até cobrir o total)
 - campo de texto de código de cupom
 - botão "Aplicar" cupom
 - lista suspensa de cupons exclusivos do cliente (condicional)
@@ -736,7 +747,9 @@ Dinâmicas obrigatórias entre os HTML:
   produto for removido do carrinho depois, o desconto correspondente
   também é removido automaticamente.
 - Clicar num dos 3 botões de forma de pagamento seleciona aquela forma —
-  só uma pode estar selecionada de cada vez.
+  só uma pode estar selecionada de cada vez. Com Dinheiro, o campo de
+  valor em dinheiro + Troco aparece; Finalizar pedido bloqueia se o valor
+  informado for menor que o total.
 - Preferências da loja (tenant_config): `apenas_retirada` força retirada
   (sem endereço); `pagamento_na_retirada` + retirada confirma o pedido
   sem ir a `/pagamento` (cobrança na loja); `entrega_somente_pix` bloqueia
@@ -848,6 +861,8 @@ HTML obrigatórios:
 - botão de forma de pagamento "Pix"
 - botão de forma de pagamento "Cartão"
 - botão de forma de pagamento "Dinheiro"
+- quando Dinheiro: mesmo campo de valor em dinheiro + Troco do /checkout
+  (máscara terminal BR; finalizar bloqueia se valor < total)
 - campo de texto de código de cupom
 - botão "Aplicar" cupom
 - texto do cupom aplicado (quando há)

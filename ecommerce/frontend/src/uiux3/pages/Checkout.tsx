@@ -20,6 +20,8 @@ import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
 import { deliveryPixOnlyError, resolveTenantSlug } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
+import CashAmountInput from '../../components/CashAmountInput'
+import { cashCoversTotal } from '../../lib/cashMask'
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
 
@@ -48,6 +50,7 @@ export default function Uiux3Checkout() {
   const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
   const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
+  const [cashCents, setCashCents] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aceiteCompraNormal, setAceiteCompraNormal] = useState(false)
@@ -251,6 +254,10 @@ export default function Uiux3Checkout() {
       setError(deliveryErr)
       return
     }
+    if (paymentMethod === 'dinheiro' && !cashCoversTotal(cashCents, total)) {
+      setError('Informe um valor em dinheiro maior ou igual ao total do pedido.')
+      return
+    }
     setSubmitting(true)
     try {
       const slug = resolveTenantSlug() || tenantConfig?.slug
@@ -414,12 +421,22 @@ export default function Uiux3Checkout() {
                 { value: 'cartao', label: 'Cartão', icon: CreditCard },
                 { value: 'dinheiro', label: 'Dinheiro', icon: Wallet },
               ] as const).map(({ value, label, icon: Icon }) => (
-                <button key={value} type="button" onClick={() => setPaymentMethod(value)} className={paymentMethod === value ? 'u3-pill-primary flex flex-col items-center gap-1.5 py-3 text-sm' : 'u3-pill-secondary flex flex-col items-center gap-1.5 py-3 text-sm'}>
+                <button key={value} type="button" onClick={() => { setPaymentMethod(value); if (value !== 'dinheiro') setCashCents(0) }} className={paymentMethod === value ? 'u3-pill-primary flex flex-col items-center gap-1.5 py-3 text-sm' : 'u3-pill-secondary flex flex-col items-center gap-1.5 py-3 text-sm'}>
                   <Icon className="w-4 h-4" />
                   {label}
                 </button>
               ))}
             </div>
+            {paymentMethod === 'dinheiro' && (
+              <CashAmountInput
+                className="mt-3"
+                orderTotal={total}
+                valueCents={cashCents}
+                onChange={setCashCents}
+                inputClassName={inputClass + ' pl-10 font-mono tabular-nums tracking-wide'}
+                trocoClassName={`text-sm font-semibold whitespace-nowrap ${cashCents / 100 < total ? 'text-amber-500' : 'u3-accent'}`}
+              />
+            )}
           </div>
 
           <div>

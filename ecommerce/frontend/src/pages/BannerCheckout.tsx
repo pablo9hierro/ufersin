@@ -16,6 +16,8 @@ import { useBannerCart } from '../store/bannerCart'
 import { useCustomer } from '../store/customer'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import { deliveryPixOnlyError } from '../lib/tenantConfig'
+import CashAmountInput from '../components/CashAmountInput'
+import { cashCoversTotal } from '../lib/cashMask'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -44,8 +46,8 @@ export default function BannerCheckout() {
   const apenasRetirada = !!tenantConfig?.apenas_retirada
   const pickup = apenasRetirada || pickupAtStore
   const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
-  const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
+  const [cashCents, setCashCents] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -102,6 +104,8 @@ export default function BannerCheckout() {
     }
   }
 
+  const orderTotal = Math.max(subtotal - promotionProductDiscount, 0)
+
   const applyCoupon = async () => {
     if (!couponInput.trim() || !promotion) return
     setCouponError(null)
@@ -150,6 +154,10 @@ export default function BannerCheckout() {
     const deliveryErr = deliveryPixOnlyError(tenantConfig, pickup, paymentMethod)
     if (deliveryErr) {
       setError(deliveryErr)
+      return
+    }
+    if (paymentMethod === 'dinheiro' && !cashCoversTotal(cashCents, orderTotal)) {
+      setError('Informe um valor em dinheiro maior ou igual ao total do pedido.')
       return
     }
     setSubmitting(true)
@@ -346,7 +354,10 @@ export default function BannerCheckout() {
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setPaymentMethod(value)}
+                  onClick={() => {
+                    setPaymentMethod(value)
+                    if (value !== 'dinheiro') setCashCents(0)
+                  }}
                   className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border text-sm font-medium transition-all ${
                     paymentMethod === value
                       ? 'bg-orange-500 text-white border-transparent'
@@ -358,6 +369,9 @@ export default function BannerCheckout() {
                 </button>
               ))}
             </div>
+            {paymentMethod === 'dinheiro' && (
+              <CashAmountInput className="mt-3" orderTotal={orderTotal} valueCents={cashCents} onChange={setCashCents} />
+            )}
           </div>
 
           <div>

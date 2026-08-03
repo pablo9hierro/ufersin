@@ -15,6 +15,8 @@ import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 import LocationPicker from '../../components/checkout/LocationPicker'
 import PickupOnlyNotice from '../../components/checkout/PickupOnlyNotice'
+import CashAmountInput from '../../components/CashAmountInput'
+import { cashCoversTotal } from '../../lib/cashMask'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -45,8 +47,8 @@ export default function Uiux4BannerCheckout() {
   const apenasRetirada = !!tenantConfig?.apenas_retirada
   const pickup = apenasRetirada || pickupAtStore
   const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
-  const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
+  const [cashCents, setCashCents] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -102,6 +104,8 @@ export default function Uiux4BannerCheckout() {
     }
   }
 
+  const orderTotal = Math.max(subtotal - promotionProductDiscount, 0)
+
   const applyCoupon = async () => {
     if (!couponInput.trim() || !promotion) return
     setCouponError(null)
@@ -132,6 +136,10 @@ export default function Uiux4BannerCheckout() {
     const deliveryErr = deliveryPixOnlyError(tenantConfig, pickup, paymentMethod)
     if (deliveryErr) {
       setError(deliveryErr)
+      return
+    }
+    if (paymentMethod === 'dinheiro' && !cashCoversTotal(cashCents, orderTotal)) {
+      setError('Informe um valor em dinheiro maior ou igual ao total do pedido.')
       return
     }
     setSubmitting(true)
@@ -281,12 +289,22 @@ export default function Uiux4BannerCheckout() {
                   { value: 'dinheiro', label: 'Dinheiro', icon: Wallet },
                 ] as const
               ).map(({ value, label, icon: Icon }) => (
-                <button key={value} type="button" onClick={() => setPaymentMethod(value)} className={paymentMethod === value ? 'u4-btn-primary flex flex-col items-center gap-1.5 py-3 text-sm' : 'u4-btn-secondary flex flex-col items-center gap-1.5 py-3 text-sm'}>
+                <button key={value} type="button" onClick={() => { setPaymentMethod(value); if (value !== 'dinheiro') setCashCents(0) }} className={paymentMethod === value ? 'u4-btn-primary flex flex-col items-center gap-1.5 py-3 text-sm' : 'u4-btn-secondary flex flex-col items-center gap-1.5 py-3 text-sm'}>
                   <Icon className="w-4 h-4" />
                   {label}
                 </button>
               ))}
             </div>
+            {paymentMethod === 'dinheiro' && (
+              <CashAmountInput
+                className="mt-3"
+                orderTotal={orderTotal}
+                valueCents={cashCents}
+                onChange={setCashCents}
+                inputClassName={inputClass + ' pl-10 font-mono tabular-nums tracking-wide'}
+                trocoClassName={`text-sm font-semibold whitespace-nowrap ${cashCents / 100 < orderTotal ? 'text-amber-500' : 'u4-accent'}`}
+              />
+            )}
           </div>
 
           <div>

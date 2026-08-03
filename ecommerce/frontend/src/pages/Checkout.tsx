@@ -22,6 +22,8 @@ import { useTenantConfig } from '../hooks/useTenantConfig'
 import { useStoreStatus } from '../hooks/useStoreStatus'
 import { deliveryPixOnlyError, resolveTenantSlug } from '../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../lib/storeHours'
+import CashAmountInput from '../components/CashAmountInput'
+import { cashCoversTotal } from '../lib/cashMask'
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
 
@@ -58,6 +60,7 @@ export default function Checkout() {
   const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
   const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
+  const [cashCents, setCashCents] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -367,6 +370,10 @@ export default function Checkout() {
       setError(deliveryErr)
       return
     }
+    if (paymentMethod === 'dinheiro' && !cashCoversTotal(cashCents, total)) {
+      setError('Informe um valor em dinheiro maior ou igual ao total do pedido.')
+      return
+    }
     setSubmitting(true)
     try {
       const slug = resolveTenantSlug() || tenantConfig?.slug
@@ -584,7 +591,10 @@ export default function Checkout() {
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setPaymentMethod(value)}
+                  onClick={() => {
+                    setPaymentMethod(value)
+                    if (value !== 'dinheiro') setCashCents(0)
+                  }}
                   className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border text-sm font-medium transition-all ${
                     paymentMethod === value
                       ? 'sunset-bg text-white border-transparent'
@@ -600,6 +610,14 @@ export default function Checkout() {
               <p className="text-xs text-son-silver-dim mt-2">
                 Pagamento em {paymentMethod === 'cartao' ? 'cartão' : 'dinheiro'} na entrega/retirada.
               </p>
+            )}
+            {paymentMethod === 'dinheiro' && (
+              <CashAmountInput
+                className="mt-3"
+                orderTotal={total}
+                valueCents={cashCents}
+                onChange={setCashCents}
+              />
             )}
           </div>
 

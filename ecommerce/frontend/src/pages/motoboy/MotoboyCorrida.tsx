@@ -13,6 +13,8 @@ import { destDivIcon, motoDivIcon } from '../../lib/geo/icones'
 import { anexarGestoMapa } from '../../lib/geo/rotacaoMapa'
 import type { Ponto, Rota } from '../../lib/geo/tipos'
 import type { MotoboyRun } from '../../types'
+import CashAmountInput from '../../components/CashAmountInput'
+import { cashCoversTotal } from '../../lib/cashMask'
 
 const ARRIVAL_RADIUS_KM = 0.08 // ~80m — dá pra considerar "chegou"
 const POSITION_UPDATE_MIN_MS = 4000
@@ -70,6 +72,7 @@ export default function MotoboyCorrida() {
   const [heading, setHeading] = useState<number | null>(null)
   const [route, setRoute] = useState<Rota | null>(null)
   const [confirmingPayment, setConfirmingPayment] = useState(false)
+  const [cashCents, setCashCents] = useState(0)
   const [completing, setCompleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -285,6 +288,10 @@ export default function MotoboyCorrida() {
   const needsPaymentConfirm = !!current && current.payment_method !== 'pix' && current.payment_status !== 'pago'
 
   const finishCurrent = async (paymentConfirmed?: boolean) => {
+    if (paymentConfirmed && current?.payment_method === 'dinheiro' && !cashCoversTotal(cashCents, current.total)) {
+      setError('Informe o valor recebido em dinheiro (maior ou igual ao total).')
+      return
+    }
     setError(null)
     setCompleting(true)
     try {
@@ -309,6 +316,7 @@ export default function MotoboyCorrida() {
 
   const handleSwipe = () => {
     if (needsPaymentConfirm) {
+      setCashCents(0)
       setConfirmingPayment(true)
       return
     }
@@ -429,15 +437,29 @@ export default function MotoboyCorrida() {
           <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
             <PackageCheck className="w-8 h-8 text-son-gold mb-2" />
             <h3 className="font-bold text-son-silver mb-2">Confirmar pagamento</h3>
-            <p className="text-sm text-son-silver-dim mb-5">
+            <p className="text-sm text-son-silver-dim mb-4">
               Confirme que recebeu o pagamento em {current.payment_method} de{' '}
               <span className="sunset-text font-bold">{currency(current.total)}</span> para concluir a entrega.
             </p>
+            {current.payment_method === 'dinheiro' && (
+              <CashAmountInput
+                className="mb-4"
+                label="Valor recebido em dinheiro"
+                orderTotal={current.total}
+                valueCents={cashCents}
+                onChange={setCashCents}
+              />
+            )}
+            {error && <p className="error-msg mb-3">{error}</p>}
             <div className="flex gap-2">
               <button onClick={() => setConfirmingPayment(false)} className="btn-secondary flex-1">
                 Cancelar
               </button>
-              <button onClick={() => finishCurrent(true)} disabled={completing} className="btn-primary flex-1">
+              <button
+                onClick={() => finishCurrent(true)}
+                disabled={completing || (current.payment_method === 'dinheiro' && !cashCoversTotal(cashCents, current.total))}
+                className="btn-primary flex-1"
+              >
                 {completing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Confirmar
               </button>
