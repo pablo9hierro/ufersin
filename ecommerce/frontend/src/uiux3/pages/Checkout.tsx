@@ -8,6 +8,7 @@ import { orderService } from '../../services/orderService'
 import { shippingService } from '../../services/shippingService'
 import LocationPicker from '../../components/checkout/LocationPicker'
 import PickupOnlyNotice from '../../components/checkout/PickupOnlyNotice'
+import BirthdateInput from '../../components/checkout/BirthdateInput'
 import type { CouponPreview, PaymentMethod, Product, PromotionalProduct, ShippingEstimate } from '../../types'
 import { useCart } from '../../store/cart'
 import { useCustomer } from '../../store/customer'
@@ -18,10 +19,11 @@ import EmptyState from '../components/EmptyState'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
-import { deliveryPixOnlyError, resolveTenantSlug, tenantHasOnlinePix} from '../../lib/tenantConfig'
+import { deliveryPixOnlyError, resolveTenantSlug, tenantHasOnlinePix } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal } from '../../lib/cashMask'
+import { useCartDrawer } from '../../store/cartDrawer'
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
 
@@ -44,6 +46,7 @@ export default function Uiux3Checkout() {
   const { data: storeStatus } = useStoreStatus()
 
   const [products, setProducts] = useState<Product[]>([])
+  const [productsReady, setProductsReady] = useState(false)
   const [pickupAtStore, setPickupAtStore] = useState(false)
   const apenasRetirada = !!tenantConfig?.apenas_retirada
   const pickup = apenasRetirada || pickupAtStore
@@ -76,8 +79,27 @@ export default function Uiux3Checkout() {
   const [autoPromoCode, setAutoPromoCode] = useState<string | null>(null)
 
   useEffect(() => {
-    productService.list().then(setProducts)
+    useCartDrawer.getState().closeDrawer()
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    setProductsReady(false)
+    productService
+      .list()
+      .then((list) => {
+        if (!cancelled) setProducts(list)
+      })
+      .catch(() => {
+        if (!cancelled) setProducts([])
+      })
+      .finally(() => {
+        if (!cancelled) setProductsReady(true)
+      })
     couponService.listPromotionalProducts().then(setPromoProducts).catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -307,6 +329,18 @@ export default function Uiux3Checkout() {
     }
   }
 
+  // Carrinho com itens + catálogo ainda carregando: spinner (evita flash
+  // "sacola vazia" enquanto productById ainda está vazio).
+  if (!productsReady && items.length > 0) {
+    return (
+      <Shell>
+        <div className="px-4 sm:px-8 pt-16 flex justify-center">
+          <Loader2 className="w-6 h-6 animate-spin u3-dim" aria-label="Carregando checkout" />
+        </div>
+      </Shell>
+    )
+  }
+
   if (lines.length === 0) {
     return (
       <Shell>
@@ -333,7 +367,7 @@ export default function Uiux3Checkout() {
           {tenantConfig?.vende_mais_18 && (
             <div>
               <label className="text-xs font-semibold u3-dim">Data de nascimento *</label>
-              <input className={inputClass} type="date" value={customer.birthdate} onChange={(e) => customer.set({ birthdate: e.target.value })} />
+              <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
             </div>
           )}
 

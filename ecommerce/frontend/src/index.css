@@ -1056,6 +1056,36 @@ a {
   font-weight: 600;
 }
 
+/* Birthdate picker inside uiux shells — use template surfaces/accents. */
+.u2-page .sunset-dd-selected,
+.u2-page .sunset-dd-options {
+  background-color: color-mix(in srgb, var(--uf-surface, #1a1a1a) 92%, transparent);
+  border-color: color-mix(in srgb, var(--uf-silver-dim, #888) 25%, transparent);
+}
+.u2-page .sunset-dd-option.is-selected {
+  background: linear-gradient(135deg, var(--tenant-accent-1, var(--uf-blue, #4d7cff)), var(--tenant-accent-2, #8b5cf6));
+}
+.u3-page .sunset-dd-selected,
+.u3-page .sunset-dd-options {
+  background-color: var(--u3-surface, #1c1c1c);
+  border-color: color-mix(in srgb, var(--u3-dim, #999) 30%, transparent);
+}
+.u3-page .sunset-dd-option.is-selected {
+  background: var(--u3-orange, #ff6b35);
+  color: #111;
+}
+.u4-page .sunset-dd-selected,
+.u4-page .sunset-dd-options {
+  background-color: var(--u4-panel, #161616);
+  border-color: color-mix(in srgb, var(--u4-dim, #888) 30%, transparent);
+  border-radius: 0.35rem;
+}
+.u4-page .sunset-dd-option.is-selected {
+  background: var(--u4-accent, #e85d04);
+  color: #111;
+  border-radius: 0.25rem;
+}
+
 /* From Uiverse.io by abhinav_7137 — só o carrinho SVG ficou (os 5 itens
    caindo foram removidos). Traço do carrinho recolorido de #334155 pra
    ficar visível no fundo escuro do site. */

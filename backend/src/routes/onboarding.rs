@@ -426,6 +426,8 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub landing_badge: Option<String>,
     #[serde(default)]
+    pub landing_hero_image_url: Option<String>,
+    #[serde(default)]
     pub cart_fab_style: Option<String>,
     #[serde(default)]
     pub cart_fab_animate: Option<bool>,
@@ -539,8 +541,13 @@ pub async fn editar_onboarding(
          apenas_retirada = COALESCE($24, apenas_retirada), \
          pagamento_na_retirada = COALESCE($25, pagamento_na_retirada), \
          entrega_somente_pix = COALESCE($26, entrega_somente_pix), \
-         pagamento_manual = COALESCE($27, pagamento_manual), updated_at = now() \
-         WHERE id = $28",
+         pagamento_manual = COALESCE($27, pagamento_manual), \
+         landing_hero_image_url = CASE \
+           WHEN $28::text IS NULL THEN landing_hero_image_url \
+           WHEN NULLIF($28, '') IS NULL THEN NULL \
+           ELSE $28 END, \
+         updated_at = now() \
+         WHERE id = $29",
     )
     .bind(&body.categoria)
     .bind(&body.whatsapp)
@@ -569,6 +576,7 @@ pub async fn editar_onboarding(
     .bind(body.pagamento_na_retirada)
     .bind(body.entrega_somente_pix)
     .bind(body.pagamento_manual)
+    .bind(body.landing_hero_image_url.as_ref().map(|s| s.trim().to_string()))
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
@@ -702,6 +710,7 @@ pub struct TenantConfigResponse {
     pub landing_headline: Option<String>,
     pub landing_sub: Option<String>,
     pub landing_badge: Option<String>,
+    pub landing_hero_image_url: Option<String>,
     pub cart_fab_style: String,
     pub cart_fab_animate: bool,
 }
@@ -730,6 +739,7 @@ struct TenantConfigRow {
     landing_headline: Option<String>,
     landing_sub: Option<String>,
     landing_badge: Option<String>,
+    landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
 }
@@ -754,7 +764,7 @@ pub async fn tenant_config(
          COALESCE(entrega_somente_pix, false) as entrega_somente_pix, \
          COALESCE(pagamento_manual, false) as pagamento_manual, \
          endereco, endereco_numero, instagram, facebook, logo_url, \
-         landing_headline, landing_sub, landing_badge, \
+         landing_headline, landing_sub, landing_badge, landing_hero_image_url, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
          COALESCE(cart_fab_animate, false) as cart_fab_animate \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
@@ -793,6 +803,7 @@ pub async fn tenant_config(
         landing_headline: row.landing_headline,
         landing_sub: row.landing_sub,
         landing_badge: row.landing_badge,
+        landing_hero_image_url: row.landing_hero_image_url,
         cart_fab_style: match row.cart_fab_style.as_str() {
             "cart_icon" => "cart_icon".to_string(),
             _ => "sacola".to_string(),

@@ -13,6 +13,7 @@ import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { deliveryPixOnlyError, tenantHasOnlinePix} from '../../lib/tenantConfig'
 import LocationPicker from '../../components/checkout/LocationPicker'
 import PickupOnlyNotice from '../../components/checkout/PickupOnlyNotice'
+import BirthdateInput from '../../components/checkout/BirthdateInput'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal } from '../../lib/cashMask'
 import Shell from '../components/Shell'
@@ -215,7 +216,7 @@ export default function Uiux2BannerCheckout() {
           </div>
           <div>
             <label className="text-xs font-semibold u2-dim">Data de nascimento *</label>
-            <input className={inputClass} type="date" value={customer.birthdate} onChange={(e) => customer.set({ birthdate: e.target.value })} />
+            <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
           </div>
 
           {apenasRetirada ? (

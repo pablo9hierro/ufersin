@@ -12,8 +12,9 @@ import { useActivePromotions } from '../hooks/usePromotions'
 import { useStoreStatus } from '../hooks/useStoreStatus'
 import type { BadgesLayout, LandingBadge } from '../types'
 import { getStoreOpenState } from '../lib/storeHours'
-import { isDemoModeActive, planoIncludes, brandName } from '../lib/demoMode'
+import { isDemoModeActive, brandName, hasPromoBanners, isEssentialStorefront } from '../lib/demoMode'
 import { useTenantConfig } from '../hooks/useTenantConfig'
+import EssentialHeroCard from '../components/landing/EssentialHeroCard'
 
 // Limiar de arrasto (px) pra contar como swipe de navegação em vez de tap
 // ou rolagem vertical da página — usado nos dois estilos de carrossel.
@@ -68,18 +69,17 @@ const FEATURE_CARDS_UFERSIN = [
 
 function BannerCarousel() {
   const navigate = useNavigate()
+  const tenantConfig = useTenantConfig()
+  const showPromos = hasPromoBanners(tenantConfig?.plano)
   const { data: siteSettings } = useSiteSettings()
   const heroUrl = siteSettings?.hero_image_url ?? null
   const carouselStyle = siteSettings?.carousel_style ?? 'atual'
-  // Promoções (banners) vivem atrás do plano Management pra cima -- o
-  // plano Essential da demo não tem como gerir promoção nenhuma, então
-  // nem chega a carregar isso (cai sozinho no banner estático de sempre,
-  // igual quando a loja não tem promoção nenhuma cadastrada).
-  const { data: activePromotions } = useActivePromotions({ enabled: !isDemoModeActive() || planoIncludes('management') })
-  const promotions = activePromotions ?? []
+  // Promoções: Management/Premium. Essential → EssentialHeroCard.
+  const { data: activePromotions } = useActivePromotions({ enabled: showPromos })
+  const promotions = showPromos ? (activePromotions ?? []) : []
 
   const firstPromo = promotions[0]
-  const bannerImage = firstPromo?.image_url ?? heroUrl
+  const bannerImage = firstPromo?.image_url ?? (showPromos ? heroUrl : null)
   const restPromos = firstPromo ? promotions.slice(1) : promotions
 
   const items = [
@@ -143,7 +143,7 @@ function BannerCarousel() {
 
   const active = items[activeIndex] ?? items[0]
 
-  if (!active) return null
+  if (!showPromos || !active) return null
 
   if (carouselStyle === 'cards') {
     return (
@@ -285,11 +285,16 @@ export default function Landing() {
 
       <BrandHeader />
 
-      {/* Banner scrolls with the page (not fixed).
-          Sem promoção ativa cadastrada, cai no banner estático de sempre; com
-          promoção(ões), vira um carrossel que troca a cada 2s e leva direto pro
-          checkout com o desconto já aplicado. */}
-      <BannerCarousel />
+      {/* Management/Premium: carrossel de promo. Essential: card de imagem do hero. */}
+      {isEssentialStorefront(tenantConfig?.plano) ? (
+        <EssentialHeroCard
+          imageUrl={tenantConfig?.landing_hero_image_url}
+          variant="u2"
+          alt={tenantConfig?.landing_badge?.trim() || brandName(tenantConfig?.loja_nome)}
+        />
+      ) : (
+        <BannerCarousel />
+      )}
 
       <section className="relative z-10 max-w-4xl mx-auto px-6 sm:px-10 pt-2 pb-20 text-center">
         <motion.div

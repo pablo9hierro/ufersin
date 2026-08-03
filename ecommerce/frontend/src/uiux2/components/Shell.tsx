@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from '../../lib/tenantRouter'
 import { ArrowLeft, Heart, History, LogIn, LogOut, Menu, Package, ShoppingBag, Store, Tag, UserPlus, X } from 'lucide-react'
 import { useCart } from '../../store/cart'
-import { useCartDrawer } from '../../store/cartDrawer'
 import { useCustomerAuth } from '../../store/customerAuth'
 import UfersinMark from '../../components/ui/UfersinMark'
-import CartDrawer from '../../components/CartDrawer'
+import CartFab from '../../components/CartFab'
 import AuthModal from './AuthModal'
 import { brandName, isDemoModeActive } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
@@ -94,7 +93,7 @@ function AccountMenu({ onClose }: { onClose: () => void }) {
 
 const TABS = [
   { key: 'catalogo', href: '/catalogo', label: 'Catálogo', icon: Store },
-  { key: 'checkout', href: '/checkout', label: 'Sacola', icon: ShoppingBag },
+  { key: 'checkout', href: '/checkout', label: 'Finalizar', icon: ShoppingBag },
   { key: 'consultar', href: '/consultar', label: 'Pedidos', icon: Package },
 ]
 
@@ -104,7 +103,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const auth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
   const cartCount = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
-  const openDrawer = useCartDrawer((s) => s.openDrawer)
   const [menuOpen, setMenuOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const isLanding = location.pathname === '/'
@@ -179,12 +177,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <Heart className="w-4 h-4" />
               </button>
             )}
-            {!isLanding && (
-              <button type="button" onClick={openDrawer} className="w-10 h-10 flex items-center justify-center u2-card !rounded-full relative" aria-label="Ver sacola">
-                <ShoppingBag className="w-4 h-4" />
-                {cartCount > 0 && <span className="u2-badge absolute -top-1 -right-1 w-4 h-4 text-[9px] flex items-center justify-center">{cartCount}</span>}
-              </button>
-            )}
             <div className="relative">
               <button onClick={() => setMenuOpen((o) => !o)} className="w-10 h-10 flex items-center justify-center u2-card !rounded-full" aria-label="Menu da conta" aria-expanded={menuOpen}>
                 {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
@@ -195,7 +187,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <CartDrawer />
+      <CartFab />
 
       <div className="max-w-5xl mx-auto">{children}</div>
 

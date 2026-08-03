@@ -9,6 +9,7 @@ import { orderService } from '../../services/orderService'
 import { shippingService } from '../../services/shippingService'
 import LocationPicker from '../../components/checkout/LocationPicker'
 import PickupOnlyNotice from '../../components/checkout/PickupOnlyNotice'
+import BirthdateInput from '../../components/checkout/BirthdateInput'
 import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, ShippingEstimate } from '../../types'
 import { useBannerCart } from '../../store/bannerCart'
 import { useCustomer } from '../../store/customer'
@@ -225,7 +226,7 @@ export default function Uiux3BannerCheckout() {
           </div>
           <div>
             <label className="text-xs font-semibold u3-dim">Data de nascimento *</label>
-            <input className={inputClass} type="date" value={customer.birthdate} onChange={(e) => customer.set({ birthdate: e.target.value })} />
+            <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
           </div>
 
           {apenasRetirada ? (

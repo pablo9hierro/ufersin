@@ -9,8 +9,10 @@ import { useCustomerAuth } from '../../store/customerAuth'
 import Shell from '../components/Shell'
 import AuthModal from '../components/AuthModal'
 import PromoCarousel from '../components/PromoCarousel'
+import EssentialHeroCard from '../../components/landing/EssentialHeroCard'
 import StoreHoursToggle from '../../components/landing/StoreHoursToggle'
 import ShareButton from '../../components/landing/ShareButton'
+import { isEssentialStorefront } from '../../lib/demoMode'
 
 export default function Uiux4Landing() {
   const navigate = useNavigate()
@@ -28,6 +30,7 @@ export default function Uiux4Landing() {
     tenantConfig?.landing_sub?.trim() ||
     'Lanches, bebidas e sobremesas prontos em minutos. Peça pelo site ou chama a gente no WhatsApp.'
   const headlineLines = headline.split(/\n|\\n/)
+  const essential = isEssentialStorefront(tenantConfig?.plano)
 
   return (
     <Shell>
@@ -38,6 +41,9 @@ export default function Uiux4Landing() {
       )}
 
       <div className={closed ? 'grayscale opacity-80' : undefined}>
+        {essential && (
+          <EssentialHeroCard imageUrl={tenantConfig?.landing_hero_image_url} variant="u4" alt={badge} />
+        )}
         <div className="px-4 sm:px-8 pt-8 pb-10">
           <span className="u4-tag inline-block px-2.5 py-1 text-xs mb-4">{badge}</span>
           <h1 className="u4-display text-5xl sm:text-7xl mb-2">
@@ -62,7 +68,7 @@ export default function Uiux4Landing() {
           </div>
         </div>
 
-        <PromoCarousel />
+        {!essential && <PromoCarousel />}
 
         <div className="px-4 sm:px-8 py-10 max-w-xl mx-auto">
           <div className="grid sm:grid-cols-3 gap-3 mb-8">

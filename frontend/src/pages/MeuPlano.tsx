@@ -74,6 +74,7 @@ export default function MeuPlano() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [uploadingHero, setUploadingHero] = useState(false)
   const [busyPlano, setBusyPlano] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -89,6 +90,7 @@ export default function MeuPlano() {
   const [landingHeadline, setLandingHeadline] = useState('')
   const [landingSub, setLandingSub] = useState('')
   const [landingBadge, setLandingBadge] = useState('')
+  const [landingHeroImageUrl, setLandingHeroImageUrl] = useState('')
   const [cartFabStyle, setCartFabStyle] = useState<CartFabStyle>('sacola')
   const [cartFabAnimate, setCartFabAnimate] = useState(false)
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('cnpj')
@@ -145,6 +147,7 @@ export default function MeuPlano() {
         setLandingHeadline(m.landing_headline ?? '')
         setLandingSub(m.landing_sub ?? '')
         setLandingBadge(m.landing_badge ?? '')
+        setLandingHeroImageUrl(m.landing_hero_image_url ?? '')
         setCartFabStyle(m.cart_fab_style === 'cart_icon' ? 'cart_icon' : 'sacola')
         setCartFabAnimate(!!m.cart_fab_animate)
         setTipoDocumento(m.tipo_documento ?? 'cnpj')
@@ -346,6 +349,40 @@ export default function MeuPlano() {
     }
   }
 
+  const handleHeroUpload = async (file: File | null) => {
+    if (!file) return
+    setError(null)
+    setUploadingHero(true)
+    try {
+      const { url } = await api.uploadLogo(file)
+      setLandingHeroImageUrl(url)
+      await api.editarOnboarding({ landing_hero_image_url: url })
+      setMe((prev) => (prev ? { ...prev, landing_hero_image_url: url } : prev))
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 3000)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível enviar a imagem do hero.')
+    } finally {
+      setUploadingHero(false)
+    }
+  }
+
+  const handleClearHero = async () => {
+    setError(null)
+    setUploadingHero(true)
+    try {
+      await api.editarOnboarding({ landing_hero_image_url: '' })
+      setLandingHeroImageUrl('')
+      setMe((prev) => (prev ? { ...prev, landing_hero_image_url: null } : prev))
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 3000)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível remover a imagem.')
+    } finally {
+      setUploadingHero(false)
+    }
+  }
+
   const handleSaveLayout = (e: React.FormEvent) => {
     e.preventDefault()
     if (!nomeLoja.trim()) {
@@ -362,6 +399,7 @@ export default function MeuPlano() {
       landing_headline: landingHeadline.trim() || undefined,
       landing_sub: landingSub.trim() || undefined,
       landing_badge: landingBadge.trim() || undefined,
+      landing_hero_image_url: landingHeroImageUrl.trim() || '',
       cart_fab_style: cartFabStyle,
       cart_fab_animate: cartFabAnimate,
       vende_mais_18: vendeMais18,
@@ -814,6 +852,50 @@ export default function MeuPlano() {
                 </div>
               </div>
               <div>
+                <label className="label">Imagem do hero (Essential)</label>
+                <p className="text-[11px] text-uf-silver-dim mb-2 leading-snug">
+                  No plano Essential, esta imagem retangular aparece acima do título na landing
+                  (uiux2/3/4). Management e Premium usam os banners de promoção do painel — esta
+                  imagem não substitui esses banners.
+                </p>
+                <div className="flex items-start gap-3">
+                  {landingHeroImageUrl ? (
+                    <img
+                      src={landingHeroImageUrl}
+                      alt="Hero"
+                      className="w-28 h-16 rounded-xl object-cover border border-white/10"
+                    />
+                  ) : (
+                    <div className="w-28 h-16 rounded-xl border border-dashed border-white/20 flex items-center justify-center text-[10px] text-uf-silver-dim text-center px-1">
+                      sem imagem
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <label className="btn-secondary text-xs px-3 py-2 cursor-pointer inline-flex items-center gap-1.5">
+                      {uploadingHero ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      {landingHeroImageUrl ? 'Trocar imagem' : 'Enviar imagem'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingHero}
+                        onChange={(e) => handleHeroUpload(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    {landingHeroImageUrl && (
+                      <button
+                        type="button"
+                        onClick={handleClearHero}
+                        disabled={uploadingHero}
+                        className="btn-ghost text-xs px-3 py-1.5 !text-red-300"
+                      >
+                        Remover
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div>
                 <label className="label flex items-center gap-1.5">
                   <Palette className="w-3.5 h-3.5" /> Cor principal
                 </label>
@@ -966,6 +1048,9 @@ function mapFieldsToMe(prev: MeResponse, fields: Parameters<typeof api.editarOnb
   if (fields.landing_headline !== undefined) patch.landing_headline = fields.landing_headline ?? null
   if (fields.landing_sub !== undefined) patch.landing_sub = fields.landing_sub ?? null
   if (fields.landing_badge !== undefined) patch.landing_badge = fields.landing_badge ?? null
+  if (fields.landing_hero_image_url !== undefined) {
+    patch.landing_hero_image_url = fields.landing_hero_image_url?.trim() ? fields.landing_hero_image_url.trim() : null
+  }
   if (fields.cart_fab_style != null) patch.cart_fab_style = fields.cart_fab_style
   if (fields.cart_fab_animate != null) patch.cart_fab_animate = fields.cart_fab_animate
   if (fields.vende_mais_18 != null) patch.vende_mais_18 = fields.vende_mais_18

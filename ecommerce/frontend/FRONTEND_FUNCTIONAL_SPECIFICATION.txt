@@ -343,7 +343,7 @@ Navbar (vitrine uiux2/3/4 + SiteHeader):
   modal/menu Entrar/Criar conta.
 - Ícone de sacola/carrinho no header em TODAS as páginas de cliente
   EXCETO a Landing (`/`); abre o CartDrawer. SEM FAB flutuante.
-  A aba "Sacola" da navegação inferior (e abas desktop) vai pra /checkout.
+  A aba "Finalizar" da navegação inferior (e abas desktop) vai pra /checkout.
   CTA "Finalizar compra" do CartDrawer também navega pra /checkout.
 - Contrato idêntico em demo e produção (mesmo shell/nav por layout_style).
 
@@ -358,9 +358,16 @@ HTML obrigatórios:
 - opção "Histórico" (quando logado)
 - opção "Sair" (quando logado)
 - texto de aviso de loja fechada (condicional)
-- carrossel de promoção
+- Mídia do topo da landing (por plano):
+  * Essential: card retangular de imagem do hero (`landing_hero_image_url`,
+    upload em /meu-plano/layout) — NÃO há carrossel de promoção nem acesso
+    à página/admin de banners promocionais.
+  * Management / Premium (Professional / Enterprise): carrossel de
+    promoção (banners geridos no painel), como hoje.
+- carrossel de promoção (só Management/Premium)
 - cada card do carrossel: imagem, texto de título, texto de subtítulo
 - pontos de navegação do carrossel (quando em modo trilho de vários cards)
+- card de imagem do hero Essential (condicional — só Essential, se houver URL)
 - texto do badge do hero (editável pelo lojista em /meu-plano/layout)
 - texto do título/headline do hero (editável pelo lojista em /meu-plano/layout)
 - texto do subtítulo do hero (editável pelo lojista em /meu-plano/layout)
@@ -412,10 +419,16 @@ Dinâmicas obrigatórias entre os HTML:
 - Clicar em "Entrar" ou em "Criar conta" abre o modal de login/cadastro no
   respectivo modo.
 - Clicar em "Sair" encerra a sessão do cliente.
-- O carrossel de promoção troca de card sozinho, em LOOP CONTÍNUO, sempre
+- O carrossel de promoção (Management/Premium) troca de card sozinho, em
+  LOOP CONTÍNUO, sempre
   que existir mais de 1 item — nunca fica parado num card só. A cada
   poucos segundos ele avança pro próximo card automaticamente, e ao
   chegar no último volta pro primeiro (looping infinito, nunca "acaba").
+- No plano Essential, em vez do carrossel, a landing mostra o card
+  retangular de `landing_hero_image_url` (uiux2/3/4, estilo do template),
+  posicionado acima do badge/headline. Sem URL, o card some (não há
+  placeholder obrigatório). Essential NÃO busca promoções ativas e NÃO
+  tem acesso à gestão de banners no painel.
 - Arrastar o carrossel horizontalmente (mais que uma distância mínima)
   troca de card manualmente pra frente ou pra trás, conforme a direção do
   arrasto; um toque curto sem arrastar é tratado como clique normal no
@@ -572,7 +585,7 @@ Dinâmicas obrigatórias entre os HTML:
 - O drawer da sacola abre pelo ícone de sacola do header (em qualquer
   página de cliente exceto a Landing), por "Ver sacola", ou ao fluxo de
   adicionar que chama openDrawer. Não há FAB flutuante de carrinho. A
-  aba/botão "Sacola" da navegação inferior (e abas desktop equivalentes)
+  aba/botão "Finalizar" da navegação inferior (e abas desktop equivalentes)
   navega pra /checkout com os itens atuais do carrinho (ou empty-state
   se vazio).
 - Dentro do drawer: +/- e remover atualizam o carrinho local na hora e
@@ -631,7 +644,7 @@ Nota: a revisão da sacola no drawer continua via ícone do header (exceto
 Landing), "Ver sacola" / openDrawer ao adicionar. A rota /carrinho
 continua funcional (lista + total + "Continuar para o checkout") como
 fallback/legado. Não há FAB flutuante.
-A aba "Sacola" da navegação inferior NÃO aponta mais pra /carrinho —
+A aba "Finalizar" da navegação inferior NÃO aponta mais pra /carrinho —
 aponta pra /checkout.
 
 HTML obrigatórios:
@@ -722,9 +735,13 @@ HTML obrigatórios:
 - modal de login/cadastro (mesmas peças da Landing)
 
 Dinâmicas obrigatórias entre os HTML:
-- Se o carrinho estiver vazio ao entrar em /checkout (ex.: aba Sacola da
+- Se o carrinho estiver vazio ao entrar em /checkout (ex.: aba Finalizar da
   navegação inferior sem itens), a página mostra o empty-state (aviso +
   "Ver catálogo") no lugar do formulário.
+- Enquanto o catálogo ainda carrega e há itens no carrinho em memória,
+  /checkout mostra loading — nunca o empty "sacola vazia" (evita flash).
+- Data de nascimento (vende_mais_18): seletor customizado Dia/Mês/Ano
+  (ordem DD/MM/YYYY), sem `<input type="date">` nativo.
 - Se a página foi aberta com um identificador de promoção na URL, busca e
   mostra o card dessa promoção no topo do formulário.
 - Ao entrar na página, busca a lista de produtos e de produtos em
@@ -2276,7 +2293,7 @@ seu comportamento devem ser preservados 1:1.
     (ou que precisam do drawer além do header), para que openDrawer
     ("Ver sacola" / adicionar) continue funcionando. NÃO renderiza FAB
     flutuante — o acesso rápido à sacola é o ícone do header (exceto
-    Landing) e a aba "Sacola" → /checkout.
+    Landing) e a aba "Finalizar" → /checkout.
   Estados: nenhum próprio (delega ao CartDrawer / useCartDrawer).
   Eventos: nenhum no wrapper; o drawer reage a openDrawer.
 

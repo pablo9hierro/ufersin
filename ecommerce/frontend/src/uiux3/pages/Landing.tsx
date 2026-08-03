@@ -6,10 +6,11 @@ import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { tenantFullAddress, tenantMapsHref, tenantShareLinks } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 import { useCustomerAuth } from '../../store/customerAuth'
-import { brandName } from '../../lib/demoMode'
+import { brandName, isEssentialStorefront } from '../../lib/demoMode'
 import Shell from '../components/Shell'
 import AuthModal from '../components/AuthModal'
 import PromoCarousel from '../components/PromoCarousel'
+import EssentialHeroCard from '../../components/landing/EssentialHeroCard'
 import StoreHoursToggle from '../../components/landing/StoreHoursToggle'
 import ShareButton from '../../components/landing/ShareButton'
 
@@ -28,6 +29,7 @@ export default function Uiux3Landing() {
   const sub =
     tenantConfig?.landing_sub?.trim() ||
     'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.'
+  const essential = isEssentialStorefront(tenantConfig?.plano)
 
   return (
     <Shell>
@@ -37,7 +39,15 @@ export default function Uiux3Landing() {
         </div>
       )}
       <div className={closed ? 'grayscale opacity-80' : undefined}>
-        <PromoCarousel />
+        {essential ? (
+          <EssentialHeroCard
+            imageUrl={tenantConfig?.landing_hero_image_url}
+            variant="u3"
+            alt={tenantConfig?.landing_badge?.trim() || name}
+          />
+        ) : (
+          <PromoCarousel />
+        )}
 
         <div className="u3-onboard-photo px-4 sm:px-8 pt-8 pb-10 text-center">
           {tenantConfig?.landing_badge?.trim() && (

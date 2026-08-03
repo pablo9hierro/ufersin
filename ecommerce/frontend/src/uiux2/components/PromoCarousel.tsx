@@ -2,25 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '../../lib/tenantRouter'
 import { useSiteSettings } from '../../hooks/useSiteSettings'
 import { useActivePromotions } from '../../hooks/usePromotions'
-import { isDemoModeActive, planoIncludes, brandName } from '../../lib/demoMode'
+import { brandName, hasPromoBanners } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 const SWIPE_THRESHOLD = 40
 
-// Equivalente nativo do BannerCarousel do Sunset (pages/Landing.tsx) --
-// mesma fonte de dados (hero image + promoções ativas) e mesmo gate de
-// plano (Essential não gerencia promoção, então nem busca), visual
-// próprio: um card só, flat, sem glow/halo.
+// Banners de promoção: só Management/Premium (e demo nesses planos).
+// Essential usa EssentialHeroCard com landing_hero_image_url.
 export default function PromoCarousel() {
   const navigate = useNavigate()
   const tenantConfig = useTenantConfig()
+  const showPromos = hasPromoBanners(tenantConfig?.plano)
   const { data: siteSettings } = useSiteSettings()
   const heroUrl = siteSettings?.hero_image_url ?? null
-  const { data: activePromotions } = useActivePromotions({ enabled: !isDemoModeActive() || planoIncludes('management') })
-  const promotions = activePromotions ?? []
+  const { data: activePromotions } = useActivePromotions({ enabled: showPromos })
+  const promotions = showPromos ? (activePromotions ?? []) : []
 
   const firstPromo = promotions[0]
-  const bannerImage = firstPromo?.image_url ?? heroUrl
+  const bannerImage = firstPromo?.image_url ?? (showPromos ? heroUrl : null)
   const restPromos = firstPromo ? promotions.slice(1) : promotions
 
   const items = [
@@ -71,7 +70,7 @@ export default function PromoCarousel() {
     }
   }
 
-  if (items.length === 0) return null
+  if (!showPromos || items.length === 0) return null
 
   const active = items[activeIndex]
 

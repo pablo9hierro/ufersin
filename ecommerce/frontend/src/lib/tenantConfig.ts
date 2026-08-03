@@ -42,6 +42,8 @@ export interface TenantConfig {
   landing_headline: string | null
   landing_sub: string | null
   landing_badge: string | null
+  /** Essential landing hero image (Management/Premium use promo banners instead). */
+  landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
   cart_fab_animate: boolean
 }
@@ -114,6 +116,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   landing_headline: null,
   landing_sub: null,
   landing_badge: null,
+  landing_hero_image_url: null,
   cart_fab_style: 'sacola',
   cart_fab_animate: false,
 }
@@ -280,6 +283,7 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     landing_headline: data.landing_headline ? String(data.landing_headline) : null,
     landing_sub: data.landing_sub ? String(data.landing_sub) : null,
     landing_badge: data.landing_badge ? String(data.landing_badge) : null,
+    landing_hero_image_url: data.landing_hero_image_url ? String(data.landing_hero_image_url) : null,
     cart_fab_style: fab,
     cart_fab_animate: Boolean(data.cart_fab_animate),
   }

@@ -110,6 +110,24 @@ export function planoIncludes(recurso: PlanoCode): boolean {
   return planoAtLeast(atual, recurso)
 }
 
+/** Plano efetivo da vitrine: demo session OU tenantConfig.plano. */
+export function storefrontPlano(tenantPlano?: PlanoCode | null): PlanoCode {
+  if (isDemoModeActive()) return getDemoPlano() ?? 'essential'
+  return tenantPlano === 'management' || tenantPlano === 'premium' || tenantPlano === 'essential'
+    ? tenantPlano
+    : 'essential'
+}
+
+/** Management/Premium: carrossel de banners de promoção. Essential: não. */
+export function hasPromoBanners(tenantPlano?: PlanoCode | null): boolean {
+  return planoAtLeast(storefrontPlano(tenantPlano), 'management')
+}
+
+/** Essential: card de imagem do hero (landing_hero_image_url), sem promo admin. */
+export function isEssentialStorefront(tenantPlano?: PlanoCode | null): boolean {
+  return storefrontPlano(tenantPlano) === 'essential'
+}
+
 /**
  * Nome da marca na vitrine/admin.
  * - Demo pública → Ufersin

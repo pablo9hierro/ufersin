@@ -9,8 +9,10 @@ import { useCustomerAuth } from '../../store/customerAuth'
 import Shell from '../components/Shell'
 import AuthModal from '../components/AuthModal'
 import PromoCarousel from '../components/PromoCarousel'
+import EssentialHeroCard from '../../components/landing/EssentialHeroCard'
 import StoreHoursToggle from '../../components/landing/StoreHoursToggle'
 import ShareButton from '../../components/landing/ShareButton'
+import { isEssentialStorefront } from '../../lib/demoMode'
 
 const DESTAQUES = [
   { icon: Truck, title: 'Entrega rápida', desc: 'Pedido pronto em até 20 minutos' },
@@ -33,6 +35,7 @@ export default function Uiux2Landing() {
   const sub =
     tenantConfig?.landing_sub?.trim() ||
     'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.'
+  const essential = isEssentialStorefront(tenantConfig?.plano)
 
   return (
     <Shell>
@@ -42,7 +45,11 @@ export default function Uiux2Landing() {
         </div>
       )}
       <div className={closed ? 'grayscale opacity-80' : undefined}>
-        <PromoCarousel />
+        {essential ? (
+          <EssentialHeroCard imageUrl={tenantConfig?.landing_hero_image_url} variant="u2" alt={badge} />
+        ) : (
+          <PromoCarousel />
+        )}
         <div className="relative overflow-hidden">
           <div className="u2-mesh" aria-hidden="true">
             <span className="u2-mesh-blob u2-mesh-blob-a" />

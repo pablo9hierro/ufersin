@@ -95,7 +95,7 @@ function AccountMenu({ onClose }: { onClose: () => void }) {
 
 const TABS = [
   { key: 'catalogo', href: '/catalogo', label: 'Cardápio', icon: Store },
-  { key: 'checkout', href: '/checkout', label: 'Sacola', icon: ShoppingBag },
+  { key: 'checkout', href: '/checkout', label: 'Finalizar', icon: ShoppingBag },
   { key: 'consultar', href: '/consultar', label: 'Pedidos', icon: Package },
 ]
 
