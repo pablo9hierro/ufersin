@@ -4,6 +4,7 @@ import { CreditCard, Home, Loader2, MapPin, QrCode, Sparkles, Tag, Wallet } from
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import LocationPicker from '../components/checkout/LocationPicker'
+import PickupOnlyNotice from '../components/checkout/PickupOnlyNotice'
 import BirthdateInput from '../components/checkout/BirthdateInput'
 import { ApiError } from '../lib/apiError'
 import { promotionService } from '../services/promotionService'
@@ -39,6 +40,8 @@ export default function BannerCheckout() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [pickupAtStore, setPickupAtStore] = useState(false)
+  const apenasRetirada = !!tenantConfig?.apenas_retirada
+  const pickup = apenasRetirada || pickupAtStore
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,6 +52,10 @@ export default function BannerCheckout() {
   const [appliedCoupon, setAppliedCoupon] = useState<CouponPreview | null>(null)
   const [couponError, setCouponError] = useState<string | null>(null)
   const [couponChecking, setCouponChecking] = useState(false)
+
+  useEffect(() => {
+    if (apenasRetirada) setPickupAtStore(true)
+  }, [apenasRetirada])
 
   useEffect(() => {
     if (!bannerCart.promotionId || bannerCart.items.length === 0) {
@@ -132,7 +139,7 @@ export default function BannerCheckout() {
       setError('Você precisa ser maior de idade para comprar produtos de tabacaria.')
       return
     }
-    if (!pickupAtStore && (customer.lat == null || customer.lng == null)) {
+    if (!pickup && (customer.lat == null || customer.lng == null)) {
       setError('Escolha sua localização no mapa ou marque retirada no local.')
       return
     }
@@ -143,12 +150,12 @@ export default function BannerCheckout() {
         customer_name: customer.name.trim(),
         customer_whatsapp: `55${digits}`,
         customer_birthdate: customer.birthdate,
-        delivery_type: pickupAtStore ? 'retirada' : 'entrega',
-        neighborhood: pickupAtStore ? undefined : customer.neighborhood,
-        address: pickupAtStore ? undefined : customer.address,
-        reference_point: pickupAtStore ? undefined : customer.referencePoint || undefined,
-        customer_lat: pickupAtStore ? undefined : customer.lat ?? undefined,
-        customer_lng: pickupAtStore ? undefined : customer.lng ?? undefined,
+        delivery_type: pickup ? 'retirada' : 'entrega',
+        neighborhood: pickup ? undefined : customer.neighborhood,
+        address: pickup ? undefined : customer.address,
+        reference_point: pickup ? undefined : customer.referencePoint || undefined,
+        customer_lat: pickup ? undefined : customer.lat ?? undefined,
+        customer_lng: pickup ? undefined : customer.lng ?? undefined,
         payment_method: paymentMethod,
         items: lines.map((l) => ({ product_id: l.product.id, quantity: l.item.quantity })),
         coupon_code: appliedCoupon?.code,
@@ -234,19 +241,46 @@ export default function BannerCheckout() {
             <p className="text-xs text-son-silver-dim mt-1">Exigido por lei — venda de produtos de tabacaria só para maiores de 18 anos.</p>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-son-silver">
-            <input type="checkbox" checked={pickupAtStore} onChange={(e) => setPickupAtStore(e.target.checked)} className="w-4 h-4 accent-son-pink" />
-            <Home className="w-3.5 h-3.5" />
-            Quero retirar no local
-          </label>
+          {apenasRetirada ? (
 
-          {!pickupAtStore && (
+
+            <PickupOnlyNotice config={tenantConfig} dimClass="text-zinc-500" />
+
+
+          ) : (
+
+
+            <>
+
+
+              <label className="flex items-center gap-2 text-sm">
+
+
+                <input type="checkbox" checked={pickupAtStore} onChange={(e) => setPickupAtStore(e.target.checked)} className="w-4 h-4" />
+
+
+                <Home className="w-3.5 h-3.5" />
+
+
+                Quero retirar no local
+
+
+              </label>
+
+
+              {!pickupAtStore && (
             <div>
               <label className="label">Endereço de entrega *</label>
               {customer.lat != null && customer.lng != null ? (
                 <button
                   type="button"
                   onClick={() => setPickerOpen(true)}
+
+
+            </>
+
+
+          )}
                   className="w-full flex items-center gap-3 bg-son-surface border border-white/10 rounded-2xl px-4 py-3 text-left hover:border-orange-400/40 transition-colors"
                 >
                   <MapPin className="w-4 h-4 text-orange-400 flex-none" />
@@ -278,7 +312,7 @@ export default function BannerCheckout() {
             </div>
           )}
 
-          {pickerOpen && (
+          {pickerOpen && !apenasRetirada && (
             <LocationPicker
               initial={
                 customer.lat != null && customer.lng != null
@@ -377,7 +411,7 @@ export default function BannerCheckout() {
             )}
             <div className="flex justify-between text-son-silver-dim">
               <span>Frete</span>
-              <span>{pickupAtStore ? 'Retirada no local' : 'Calculado ao escolher o endereço'}</span>
+              <span>{pickup ? 'Retirada no local' : 'Calculado ao escolher o endereço'}</span>
             </div>
             <div className="flex justify-between items-center pt-1">
               <span className="font-bold text-white">Total (produtos)</span>

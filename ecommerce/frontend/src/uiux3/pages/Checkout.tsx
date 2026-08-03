@@ -7,6 +7,7 @@ import { couponService } from '../../services/couponService'
 import { orderService } from '../../services/orderService'
 import { shippingService } from '../../services/shippingService'
 import LocationPicker from '../../components/checkout/LocationPicker'
+import PickupOnlyNotice from '../../components/checkout/PickupOnlyNotice'
 import type { CouponPreview, PaymentMethod, Product, PromotionalProduct, ShippingEstimate } from '../../types'
 import { useCart } from '../../store/cart'
 import { useCustomer } from '../../store/customer'
@@ -41,6 +42,8 @@ export default function Uiux3Checkout() {
 
   const [products, setProducts] = useState<Product[]>([])
   const [pickupAtStore, setPickupAtStore] = useState(false)
+  const apenasRetirada = !!tenantConfig?.apenas_retirada
+  const pickup = apenasRetirada || pickupAtStore
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -70,6 +73,10 @@ export default function Uiux3Checkout() {
     productService.list().then(setProducts)
     couponService.listPromotionalProducts().then(setPromoProducts).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (apenasRetirada) setPickupAtStore(true)
+  }, [apenasRetirada])
 
   // Se o cliente já tinha escolhido um local numa visita anterior, revalida
   // o frete (o preço por km pode ter mudado desde então).
@@ -142,7 +149,7 @@ export default function Uiux3Checkout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, promoByProduct, autoPromoCode])
 
-  const shippingPrice = pickupAtStore ? 0 : shippingEstimate?.price ?? 0
+  const shippingPrice = pickup ? 0 : shippingEstimate?.price ?? 0
 
   const couponItemDiscounts = new Map<string, number>()
   let couponProductDiscount = 0
@@ -229,7 +236,7 @@ export default function Uiux3Checkout() {
       if (age < 18) return setError('Você precisa ser maior de 18 anos para comprar nesta loja.')
       if (!aceiteMais18) return setError('Aceite o consentimento para compra de produtos 18+ para continuar.')
     }
-    if (!pickupAtStore && (customer.lat == null || customer.lng == null)) return setError('Escolha sua localização no mapa ou marque retirada no local.')
+    if (!pickup && (customer.lat == null || customer.lng == null)) return setError('Escolha sua localização no mapa ou marque retirada no local.')
     if (!aceiteCompraNormal) return setError('Aceite os termos de consentimento de compra para continuar.')
 
     setSubmitting(true)
@@ -260,12 +267,12 @@ export default function Uiux3Checkout() {
         customer_name: customer.name.trim(),
         customer_whatsapp: `55${digits}`,
         customer_birthdate: tenantConfig?.vende_mais_18 ? customer.birthdate : customer.birthdate || undefined,
-        delivery_type: pickupAtStore ? 'retirada' : 'entrega',
-        neighborhood: pickupAtStore ? undefined : customer.neighborhood,
-        address: pickupAtStore ? undefined : customer.address,
-        reference_point: pickupAtStore ? undefined : customer.referencePoint || undefined,
-        customer_lat: pickupAtStore ? undefined : customer.lat ?? undefined,
-        customer_lng: pickupAtStore ? undefined : customer.lng ?? undefined,
+        delivery_type: pickup ? 'retirada' : 'entrega',
+        neighborhood: pickup ? undefined : customer.neighborhood,
+        address: pickup ? undefined : customer.address,
+        reference_point: pickup ? undefined : customer.referencePoint || undefined,
+        customer_lat: pickup ? undefined : customer.lat ?? undefined,
+        customer_lng: pickup ? undefined : customer.lng ?? undefined,
         payment_method: paymentMethod,
         items: lines.map((l) => ({ product_id: l.product.id, quantity: l.item.quantity })),
         coupon_code: appliedCoupon?.code,
@@ -301,20 +308,47 @@ export default function Uiux3Checkout() {
             </div>
           )}
 
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={pickupAtStore} onChange={(e) => setPickupAtStore(e.target.checked)} className="w-4 h-4" />
-            <Home className="w-3.5 h-3.5" />
-            Quero retirar no local
-          </label>
+          {apenasRetirada ? (
 
-          {!pickupAtStore && (
+
+            <PickupOnlyNotice config={tenantConfig} dimClass="u3-dim" />
+
+
+          ) : (
+
+
+            <>
+
+
+              <label className="flex items-center gap-2 text-sm">
+
+
+                <input type="checkbox" checked={pickupAtStore} onChange={(e) => setPickupAtStore(e.target.checked)} className="w-4 h-4" />
+
+
+                <Home className="w-3.5 h-3.5" />
+
+
+                Quero retirar no local
+
+
+              </label>
+
+
+              {!pickupAtStore && (
             <>
               <div>
                 <label className="text-xs font-semibold u3-dim flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5" /> Endereço de entrega *
                 </label>
                 {customer.lat != null && customer.lng != null ? (
-                  <button type="button" onClick={() => setPickerOpen(true)} className="u3-panel w-full flex items-center gap-3 px-3.5 py-2.5 text-left">
+                  <button type="button" onClick={() => setPickerOpen(true)}
+
+
+            </>
+
+
+          )} className="u3-panel w-full flex items-center gap-3 px-3.5 py-2.5 text-left">
                     <MapPin className="w-4 h-4 u3-accent shrink-0" />
                     <span className="flex-1 text-sm truncate">{customer.address || 'Endereço selecionado'}</span>
                     <span className="text-xs u3-dim shrink-0">Editar</span>
@@ -332,7 +366,7 @@ export default function Uiux3Checkout() {
             </>
           )}
 
-          {pickerOpen && (
+          {pickerOpen && !apenasRetirada && (
             <LocationPicker
               initial={
                 customer.lat != null && customer.lng != null
@@ -472,7 +506,7 @@ export default function Uiux3Checkout() {
             )}
             <div className="flex justify-between u3-dim">
               <span>Frete</span>
-              <span>{pickupAtStore ? 'Retirada no local' : currency(Math.max(shippingPrice - shippingDiscount, 0))}</span>
+              <span>{pickup ? 'Retirada no local' : currency(Math.max(shippingPrice - shippingDiscount, 0))}</span>
             </div>
             <div className="flex justify-between items-center pt-1.5">
               <span className="font-bold">Total</span>

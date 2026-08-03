@@ -13,6 +13,7 @@ import { useTenantConfig } from '../../hooks/useTenantConfig'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 import LocationPicker from '../../components/checkout/LocationPicker'
+import PickupOnlyNotice from '../../components/checkout/PickupOnlyNotice'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -40,6 +41,8 @@ export default function Uiux4BannerCheckout() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [pickupAtStore, setPickupAtStore] = useState(false)
+  const apenasRetirada = !!tenantConfig?.apenas_retirada
+  const pickup = apenasRetirada || pickupAtStore
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -50,6 +53,10 @@ export default function Uiux4BannerCheckout() {
   const [appliedCoupon, setAppliedCoupon] = useState<CouponPreview | null>(null)
   const [couponError, setCouponError] = useState<string | null>(null)
   const [couponChecking, setCouponChecking] = useState(false)
+
+  useEffect(() => {
+    if (apenasRetirada) setPickupAtStore(true)
+  }, [apenasRetirada])
 
   useEffect(() => {
     if (!bannerCart.promotionId || bannerCart.items.length === 0) {
@@ -117,7 +124,7 @@ export default function Uiux4BannerCheckout() {
     if (!customer.birthdate) return setError('Informe sua data de nascimento.')
     const age = (Date.now() - new Date(customer.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)
     if (age < 18) return setError('Você precisa ser maior de idade para comprar produtos de tabacaria.')
-    if (!pickupAtStore && (customer.lat == null || customer.lng == null)) return setError('Escolha sua localização no mapa ou marque retirada no local.')
+    if (!pickup && (customer.lat == null || customer.lng == null)) return setError('Escolha sua localização no mapa ou marque retirada no local.')
 
     setSubmitting(true)
     try {
@@ -125,12 +132,12 @@ export default function Uiux4BannerCheckout() {
         customer_name: customer.name.trim(),
         customer_whatsapp: `55${digits}`,
         customer_birthdate: customer.birthdate,
-        delivery_type: pickupAtStore ? 'retirada' : 'entrega',
-        neighborhood: pickupAtStore ? undefined : customer.neighborhood,
-        address: pickupAtStore ? undefined : customer.address,
-        reference_point: pickupAtStore ? undefined : customer.referencePoint || undefined,
-        customer_lat: pickupAtStore ? undefined : customer.lat ?? undefined,
-        customer_lng: pickupAtStore ? undefined : customer.lng ?? undefined,
+        delivery_type: pickup ? 'retirada' : 'entrega',
+        neighborhood: pickup ? undefined : customer.neighborhood,
+        address: pickup ? undefined : customer.address,
+        reference_point: pickup ? undefined : customer.referencePoint || undefined,
+        customer_lat: pickup ? undefined : customer.lat ?? undefined,
+        customer_lng: pickup ? undefined : customer.lng ?? undefined,
         payment_method: paymentMethod,
         items: lines.map((l) => ({ product_id: l.product.id, quantity: l.item.quantity })),
         coupon_code: appliedCoupon?.code,
@@ -195,19 +202,46 @@ export default function Uiux4BannerCheckout() {
             <input className={inputClass} type="date" value={customer.birthdate} onChange={(e) => customer.set({ birthdate: e.target.value })} />
           </div>
 
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={pickupAtStore} onChange={(e) => setPickupAtStore(e.target.checked)} className="w-4 h-4" />
-            <Home className="w-3.5 h-3.5" />
-            Quero retirar no local
-          </label>
+          {apenasRetirada ? (
 
-          {!pickupAtStore && (
+
+            <PickupOnlyNotice config={tenantConfig} dimClass="u4-dim" />
+
+
+          ) : (
+
+
+            <>
+
+
+              <label className="flex items-center gap-2 text-sm">
+
+
+                <input type="checkbox" checked={pickupAtStore} onChange={(e) => setPickupAtStore(e.target.checked)} className="w-4 h-4" />
+
+
+                <Home className="w-3.5 h-3.5" />
+
+
+                Quero retirar no local
+
+
+              </label>
+
+
+              {!pickupAtStore && (
             <>
               <div>
                 <label className="text-xs font-semibold u4-dim flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5" /> Endereço de entrega *
                 </label>
-                <button type="button" onClick={() => setPickerOpen(true)} className="u4-input w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left">
+                <button type="button" onClick={() => setPickerOpen(true)}
+
+
+            </>
+
+
+          )} className="u4-input w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left">
                   <MapPin className="w-4 h-4 u4-accent shrink-0" />
                   <span className="flex-1 text-sm truncate">{customer.address || 'Escolher localização no mapa'}</span>
                   {customer.lat != null && <span className="text-xs u4-dim shrink-0">Editar</span>}
@@ -220,7 +254,7 @@ export default function Uiux4BannerCheckout() {
             </>
           )}
 
-          {pickerOpen && (
+          {pickerOpen && !apenasRetirada && (
             <LocationPicker
               initial={customer.lat != null && customer.lng != null ? { lat: customer.lat, lng: customer.lng, label: customer.address, bairro: customer.neighborhood || undefined } : null}
               onClose={() => setPickerOpen(false)}
@@ -301,7 +335,7 @@ export default function Uiux4BannerCheckout() {
             )}
             <div className="flex justify-between u4-dim">
               <span>Frete</span>
-              <span>{pickupAtStore ? 'Retirada no local' : 'Calculado ao escolher o endereço'}</span>
+              <span>{pickup ? 'Retirada no local' : 'Calculado ao escolher o endereço'}</span>
             </div>
             <div className="flex justify-between items-center pt-1.5">
               <span className="font-bold">Total (produtos)</span>

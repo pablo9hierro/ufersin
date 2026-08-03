@@ -53,7 +53,7 @@ CREATE TABLE orders (
   payment_status TEXT NOT NULL DEFAULT 'pendente' CHECK (payment_status IN ('pendente','pago')),
   status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN (
     'pendente','montando_pedido','pedido_pronto','aguardando_localizacao',
-    'em_rota_de_entrega','entregue','retiradas','concluido'
+    'em_rota_de_entrega','entregue','retiradas','entregas','concluido'
   )),
   shipping_price DOUBLE PRECISION NOT NULL DEFAULT 0,
   total DOUBLE PRECISION NOT NULL,

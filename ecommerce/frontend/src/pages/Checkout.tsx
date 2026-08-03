@@ -4,6 +4,7 @@ import { ChevronDown, CreditCard, Gift, Home, Loader2, MapPin, Phone, QrCode, St
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import LocationPicker from '../components/checkout/LocationPicker'
+import PickupOnlyNotice from '../components/checkout/PickupOnlyNotice'
 import BirthdateInput from '../components/checkout/BirthdateInput'
 import { ApiError } from '../lib/apiError'
 import { productService } from '../services/productService'
@@ -52,6 +53,8 @@ export default function Checkout() {
 
   const [products, setProducts] = useState<Product[]>([])
   const [pickupAtStore, setPickupAtStore] = useState(false)
+  const apenasRetirada = !!tenantConfig?.apenas_retirada
+  const pickup = apenasRetirada || pickupAtStore
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -93,6 +96,10 @@ export default function Checkout() {
     productService.list().then(setProducts)
     couponService.listPromotionalProducts().then(setPromoProducts).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (apenasRetirada) setPickupAtStore(true)
+  }, [apenasRetirada])
 
   useEffect(() => {
     if (!promotionId) return
@@ -187,7 +194,7 @@ export default function Checkout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, promoByProduct, autoPromoCode])
 
-  const shippingPrice = pickupAtStore ? 0 : shippingEstimate?.price ?? 0
+  const shippingPrice = pickup ? 0 : shippingEstimate?.price ?? 0
 
   // Promoção (campanha) e cupom são fontes de desconto separadas — cada uma
   // some numa linha própria no resumo ("Desconto de promoção" / "Desconto de
@@ -330,7 +337,7 @@ export default function Checkout() {
         return
       }
     }
-    if (!pickupAtStore && (customer.lat == null || customer.lng == null)) {
+    if (!pickup && (customer.lat == null || customer.lng == null)) {
       setError('Escolha sua localização no mapa ou marque retirada no local.')
       return
     }
@@ -377,12 +384,12 @@ export default function Checkout() {
         customer_name: customer.name.trim(),
         customer_whatsapp: `55${digits}`,
         customer_birthdate: tenantConfig?.vende_mais_18 ? customer.birthdate : customer.birthdate || undefined,
-        delivery_type: pickupAtStore ? 'retirada' : 'entrega',
-        neighborhood: pickupAtStore ? undefined : customer.neighborhood,
-        address: pickupAtStore ? undefined : customer.address,
-        reference_point: pickupAtStore ? undefined : customer.referencePoint || undefined,
-        customer_lat: pickupAtStore ? undefined : customer.lat ?? undefined,
-        customer_lng: pickupAtStore ? undefined : customer.lng ?? undefined,
+        delivery_type: pickup ? 'retirada' : 'entrega',
+        neighborhood: pickup ? undefined : customer.neighborhood,
+        address: pickup ? undefined : customer.address,
+        reference_point: pickup ? undefined : customer.referencePoint || undefined,
+        customer_lat: pickup ? undefined : customer.lat ?? undefined,
+        customer_lng: pickup ? undefined : customer.lng ?? undefined,
         payment_method: paymentMethod,
         items: lines.map((l) => ({ product_id: l.product.id, quantity: l.item.quantity })),
         coupon_code: appliedCoupon?.code,
@@ -471,61 +478,69 @@ export default function Checkout() {
             </div>
           )}
 
-          <label className="flex items-center gap-2 text-sm text-son-silver">
+                    {apenasRetirada ? (
+            <PickupOnlyNotice config={tenantConfig} dimClass="text-son-silver-dim" />
+          ) : (
+            <>
+            <label className="flex items-center gap-2 text-sm text-son-silver">
             <input
-              type="checkbox"
-              checked={pickupAtStore}
-              onChange={(e) => setPickupAtStore(e.target.checked)}
-              className="w-4 h-4 accent-son-pink"
+            type="checkbox"
+            checked={pickupAtStore}
+            onChange={(e) => setPickupAtStore(e.target.checked)}
+            className="w-4 h-4 accent-son-pink"
             />
             <Home className="w-3.5 h-3.5" />
             Quero retirar no local
-          </label>
+            </label>
 
-          {!pickupAtStore && (
+            {!pickupAtStore && (
             <div>
-              <label className="label">Endereço de entrega *</label>
-              {customer.lat != null && customer.lng != null ? (
-                <button
-                  type="button"
-                  onClick={() => setPickerOpen(true)}
-                  className="w-full flex items-center gap-3 bg-son-surface border border-white/10 rounded-2xl px-4 py-3 text-left hover:border-son-pink/40 transition-colors"
-                >
-                  <MapPin className="w-4 h-4 text-son-pink flex-none" />
-                  <span className="flex-1 text-sm text-white truncate">{customer.address || 'Endereço selecionado'}</span>
-                  <span className="text-xs text-son-silver-dim flex-none">Editar</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setPickerOpen(true)}
-                  className="w-full flex items-center justify-center gap-2 border border-dashed border-white/15 rounded-2xl px-4 py-4 text-sm text-son-silver-dim hover:border-son-pink/40 hover:text-son-pink transition-colors"
-                >
-                  <MapPin className="w-4 h-4" />
-                  Escolher localização no mapa
-                </button>
-              )}
+            <label className="label">Endereço de entrega *</label>
+            {customer.lat != null && customer.lng != null ? (
+            <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="w-full flex items-center gap-3 bg-son-surface border border-white/10 rounded-2xl px-4 py-3 text-left hover:border-son-pink/40 transition-colors"
+            >
+            <MapPin className="w-4 h-4 text-son-pink flex-none" />
+            <span className="flex-1 text-sm text-white truncate">{customer.address || 'Endereço selecionado'}</span>
+            <span className="text-xs text-son-silver-dim flex-none">Editar</span>
+            </button>
+            ) : (
+            <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="w-full flex items-center justify-center gap-2 border border-dashed border-white/15 rounded-2xl px-4 py-4 text-sm text-son-silver-dim hover:border-son-pink/40 hover:text-son-pink transition-colors"
+            >
+            <MapPin className="w-4 h-4" />
+            Escolher localização no mapa
+            </button>
+            )}
             </div>
+            )}
+
+            {!pickupAtStore && (
+            <div>
+            <label className="label">Ponto de referência</label>
+            <div className="sunset-input-icon-wrap">
+            <input
+            className="input-field sunset-checkout-input pr-11"
+            value={customer.referencePoint}
+            onChange={(e) => customer.set({ referencePoint: e.target.value })}
+            placeholder="Número da casa/Condomínio, observações de entrega..."
+            />
+            <span className="sunset-input-icon">
+            <StickyNote />
+            </span>
+            </div>
+            </div>
+            )}
+
+          
+            </>
           )}
 
-          {!pickupAtStore && (
-            <div>
-              <label className="label">Ponto de referência</label>
-              <div className="sunset-input-icon-wrap">
-                <input
-                  className="input-field sunset-checkout-input pr-11"
-                  value={customer.referencePoint}
-                  onChange={(e) => customer.set({ referencePoint: e.target.value })}
-                  placeholder="Número da casa/Condomínio, observações de entrega..."
-                />
-                <span className="sunset-input-icon">
-                  <StickyNote />
-                </span>
-              </div>
-            </div>
-          )}
-
-          {pickerOpen && (
+{pickerOpen && !apenasRetirada && (
             <LocationPicker
               initial={
                 customer.lat != null && customer.lng != null
