@@ -11,6 +11,7 @@ import { currency } from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
 import FavoriteButton from '../components/FavoriteButton'
+import AuthModal from '../components/AuthModal'
 
 // Referência estável enquanto os dados ainda não chegaram -- ver mesma
 // nota em pages/Catalogo.tsx (Sunset).
@@ -26,6 +27,7 @@ export default function Uiux2Carrinho() {
   // Favoritar é direto; desfavoritar pede confirmação antes -- mesma
   // dinâmica do catálogo, nunca desfavorita silenciosamente.
   const [pendingRemove, setPendingRemove] = useState<Product | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   useEffect(() => {
     if (!customerAuth.token) return
@@ -51,6 +53,10 @@ export default function Uiux2Carrinho() {
   }
 
   const requestToggleFavorite = (product: Product) => {
+    if (!customerAuth.token) {
+      setShowAuthModal(true)
+      return
+    }
     if (favoriteIds.has(product.id)) setPendingRemove(product)
     else toggleFavorite(product.id)
   }
@@ -93,7 +99,7 @@ export default function Uiux2Carrinho() {
                 <p className="text-xs u2-dim">{currency(product.price)} cada</p>
               </div>
               <div className="flex items-center gap-1.5">
-                {customerAuth.token && <FavoriteButton checked={favoriteIds.has(product.id)} onClick={() => requestToggleFavorite(product)} />}
+                <FavoriteButton checked={favoriteIds.has(product.id)} onClick={() => requestToggleFavorite(product)} />
                 <button onClick={() => changeQty(product.id, -1, product.quantity)} aria-label="Diminuir" className="w-7 h-7 flex items-center justify-center u2-dim">
                   <Minus className="w-3.5 h-3.5" />
                 </button>
@@ -127,6 +133,9 @@ export default function Uiux2Carrinho() {
           onConfirm={confirmRemoveFavorite}
           onCancel={() => setPendingRemove(null)}
         />
+      )}
+      {showAuthModal && (
+        <AuthModal initialMode="login" onClose={() => setShowAuthModal(false)} onSuccess={() => setShowAuthModal(false)} />
       )}
     </Shell>
   )

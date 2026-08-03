@@ -104,6 +104,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const tenantConfig = useTenantConfig()
   const cartCount = useCart((s) => s.items.reduce((sum, i) => sum + i.quantity, 0))
   const [menuOpen, setMenuOpen] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
   const isLanding = location.pathname === '/'
   const name = brandName(tenantConfig?.loja_nome)
 
@@ -150,10 +151,14 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {auth.token && (
+            {auth.token ? (
               <Link to="/cliente/favoritos" className="u3-icon-btn" aria-label="Favoritos">
                 <Heart className="w-4 h-4" />
               </Link>
+            ) : (
+              <button type="button" onClick={() => setAuthOpen(true)} className="u3-icon-btn" aria-label="Favoritos">
+                <Heart className="w-4 h-4" />
+              </button>
             )}
             <Link to="/carrinho" className="u3-icon-btn relative" aria-label="Ver sacola">
               <ShoppingBag className="w-4 h-4" />
@@ -191,6 +196,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <Menu className="w-5 h-5" />
         </button>
       </nav>
+      {authOpen && <AuthModal initialMode="login" onClose={() => setAuthOpen(false)} onSuccess={() => setAuthOpen(false)} />}
     </div>
   )
 }

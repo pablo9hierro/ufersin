@@ -444,6 +444,7 @@ Dinâmicas obrigatórias entre os HTML:
 /catalogo
 --------------------------------------------------------------------------------
 HTML obrigatórios:
+- botão "Favoritos" no cabeçalho/navbar
 - campo de texto de busca
 - botão de limpar busca (aparece só com texto digitado)
 - painel de sugestões de busca
@@ -462,7 +463,7 @@ HTML obrigatórios:
 - em cada card: texto do nome
 - em cada card: texto da categoria
 - em cada card: texto do preço
-- em cada card: botão de favoritar (condicional a login)
+- em cada card: botão de favoritar (favoritar item exige login)
 - em cada card: botão "Adicionar" (quando sem quantidade no carrinho)
 - em cada card: botão de diminuir quantidade (quando já no carrinho)
 - em cada card: texto do número da quantidade (quando já no carrinho)
@@ -486,6 +487,10 @@ HTML obrigatórios:
 - dentro do diálogo: botão "Remover"
 
 Dinâmicas obrigatórias entre os HTML:
+- Clicar no botão "Favoritos" do cabeçalho/navbar: se o cliente estiver
+  logado, navega (redireciona) pra página de lista de favoritos
+  (/cliente/favoritos); se não estiver logado, abre o menu Entrar/Criar
+  conta em vez de navegar (mesma regra do SiteHeader).
 - Ao entrar na página, busca em paralelo: lista de produtos, lista de
   categorias, produtos em promoção e contagem de vendas; se o cliente
   estiver logado, busca também a lista de favoritos dele.
@@ -512,11 +517,13 @@ Dinâmicas obrigatórias entre os HTML:
 - Produto sem estoque mostra o texto "Esgotado" no lugar do botão
   "Adicionar"/controle de quantidade — tanto no card quanto no modal de
   detalhe.
-- O botão de favoritar só existe no card/modal se o cliente estiver
-  logado; sem login, esse botão simplesmente não é exibido.
-- Clicar no botão de favoritar de um produto AINDA NÃO favoritado marca
-  ele como favorito imediatamente (sem pedir confirmação) e dispara a
-  chamada ao servidor em paralelo, sem travar a tela.
+- Favoritar item só é permitido com o cliente LOGADO. Sem login, clicar
+  no botão de favoritar (card ou modal) NÃO marca o produto — abre o
+  modal de login/cadastro (prompt de login). Depois do login com sucesso,
+  o cliente pode favoritar de novo pelo mesmo botão.
+- Clicar no botão de favoritar de um produto AINDA NÃO favoritado (estando
+  logado) marca ele como favorito imediatamente (sem pedir confirmação) e
+  dispara a chamada ao servidor em paralelo, sem travar a tela.
 - Clicar no botão de favoritar de um produto JÁ favoritado NÃO desfavorita
   direto — abre o diálogo de confirmação de remoção por cima de tudo.
 - Dentro do diálogo de confirmação: clicar em "Cancelar" fecha o diálogo
@@ -633,9 +640,11 @@ Dinâmicas obrigatórias entre os HTML:
 - Clicar no botão de remover tira o item do carrinho direto, sem pedir
   confirmação nenhuma.
 - Clicar no botão de favoritar segue exatamente a mesma dinâmica do
-  catálogo: marcar é direto e sem confirmação; desmarcar abre o diálogo de
-  confirmação por cima; confirmando a remoção, o item do carrinho CONTINUA
-  visível na lista (só o botão de favoritar muda de estado).
+  catálogo (incluindo a regra de auth): sem login, abre o modal de
+  login/cadastro e NÃO favorita; logado, marcar é direto e sem
+  confirmação; desmarcar abre o diálogo de confirmação por cima;
+  confirmando a remoção, o item do carrinho CONTINUA visível na lista
+  (só o botão de favoritar muda de estado).
 - Clicar na imagem ou no texto do nome do item (fora dos botões de
   quantidade/remover/favoritar) abre o modal de detalhe do produto, com as
   mesmas peças e dinâmicas do catálogo.
@@ -896,6 +905,7 @@ Dinâmicas obrigatórias entre os HTML:
 /consultar
 --------------------------------------------------------------------------------
 HTML obrigatórios:
+- botão "Favoritos" no cabeçalho/navbar
 - campo de texto de telefone
 - botão de buscar
 - lista de pedidos encontrados
@@ -914,6 +924,10 @@ HTML obrigatórios:
 - texto de mensagem "nenhum pedido encontrado" (condicional)
 
 Dinâmicas obrigatórias entre os HTML:
+- Clicar no botão "Favoritos" do cabeçalho/navbar: se o cliente estiver
+  logado, navega (redireciona) pra página de lista de favoritos
+  (/cliente/favoritos); se não estiver logado, abre o menu Entrar/Criar
+  conta em vez de navegar (mesma regra do SiteHeader).
 - Se a página for aberta com um identificador de pedido na URL, busca
   direto esse pedido específico, sem precisar digitar telefone.
 - Senão, se já existir um número de WhatsApp salvo de uma visita anterior
@@ -995,7 +1009,7 @@ Dinâmicas obrigatórias entre os HTML:
 /cliente/favoritos
 --------------------------------------------------------------------------------
 HTML obrigatórios:
-- grade de cards de produto favoritado
+- grade de cards de produto favoritado (só quando logado)
 - em cada card: imagem
 - em cada card: texto do nome
 - em cada card: texto do preço
@@ -1006,11 +1020,14 @@ HTML obrigatórios:
 - botão "Ver catálogo" (estado vazio)
 - modal de detalhe do produto (mesmas peças do catálogo)
 - diálogo de confirmação de remoção (mesmas peças do catálogo)
+- modal de login/cadastro (quando convidado tenta acessar esta página)
 
 Dinâmicas obrigatórias entre os HTML:
-- Ao entrar na página sem estar logado, a página redireciona imediatamente
-  pra Landing, sem chegar a mostrar nenhum conteúdo próprio desta página
-  (nunca aparece nem por um instante antes do redirecionamento).
+- A página de favoritos SÓ é acessível com o cliente LOGADO. Convidado que
+  cair em /cliente/favoritos (URL direta, botão do header, etc.) NÃO vê a
+  lista de favoritos — a tela abre o modal de login/cadastro (prompt de
+  login). Fechar o modal sem logar redireciona pra Landing (ou catálogo);
+  login/cadastro com sucesso libera a página e carrega a lista.
 - Estando logado, busca em paralelo a lista de produtos favoritados e a
   lista de produtos em promoção.
 - Se não houver nenhum produto favoritado, mostra o texto de aviso
@@ -1033,6 +1050,7 @@ Dinâmicas obrigatórias entre os HTML:
 /cliente/cupons
 --------------------------------------------------------------------------------
 HTML obrigatórios:
+- botão "Favoritos" no cabeçalho/navbar
 - slot arrastável de resgate de cupom (aparece só quando existe cupom pendente)
 - aba "Ativos"
 - aba "Inativos"
@@ -1051,6 +1069,9 @@ HTML obrigatórios:
 Dinâmicas obrigatórias entre os HTML:
 - Ao entrar na página sem estar logado, redireciona imediatamente pra
   Landing, sem mostrar conteúdo desta página.
+- Clicar no botão "Favoritos" do cabeçalho/navbar navega (redireciona) pra
+  página de lista de favoritos (/cliente/favoritos). (Nesta rota o cliente
+  já está logado — o redirect de convidado acima garante isso.)
 - Estando logado, busca os 3 grupos de cupons (ativos, inativos,
   histórico) e verifica se existe algum cupom pendente pra resgatar.
 - O slot arrastável só existe/aparece quando há de fato um cupom pendente
@@ -2172,8 +2193,11 @@ seu comportamento devem ser preservados 1:1.
   Props: showBack, showCart, showProfile, showWhatsApp (todos boolean,
     com defaults sensatos).
   Estados: guestMenuOpen, authMode (abre CustomerAuthModal quando definido).
-  Comportamento: botão de perfil vira "ir pra favoritos" (logado) ou "abrir
-    menu de Entrar/Criar conta" (deslogado); contador de itens do carrinho
+  Comportamento: botão "Favoritos" no cabeçalho/navbar (obrigatório em
+    /catalogo, /consultar e /cliente/cupons — e demais páginas de cliente
+    que usam este header): logado → navega pra /cliente/favoritos;
+    deslogado → abre menu/modal Entrar/Criar conta (NÃO navega pra
+    favoritos; favoritos exige login). Contador de itens do carrinho
     reativo ao Zustand `cart`.
 
 8.7 — BrandHeader (cabeçalho especial só da Landing)
@@ -2282,6 +2306,10 @@ ETAPA 9 — CONTRATO TÉCNICO CONSOLIDADO (invariantes de rota, RPC e regra de n
     nova senha), 2 passos peek→claim de resgate de cupom, 2 passos
     busca→ajuste do seletor de endereço, login exigido antes de finalizar
     pedido/ver favoritos/cupons/histórico.
+  - Favoritos (contrato de autenticação): (1) Favoritar um item — somente
+    cliente logado; se deslogado, abre login/criar conta e NÃO grava o
+    favorito. (2) Acessar `/cliente/favoritos` — somente logado; se
+    deslogado, redireciona ao login e NÃO vê a lista.
   - Sequência de ações dentro de cada fluxo: cupom de fidelidade nunca se
     auto-aplica sozinho (só o cupom de produto em promoção de catálogo se
     auto-aplica); carrinho de banner é sempre separado do carrinho normal;

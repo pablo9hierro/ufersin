@@ -6,6 +6,7 @@ import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import ProductDetailModal from '../components/ProductDetailModal'
 import ConfirmRemoveDialog from '../components/ConfirmRemoveDialog'
+import CustomerAuthModal from '../components/CustomerAuthModal'
 import { productService } from '../services/productService'
 import { couponService } from '../services/couponService'
 import { favoriteService } from '../services/favoriteService'
@@ -43,6 +44,7 @@ export default function Carrinho() {
   // Mesma dinâmica de /catalogo: desmarcar favorito pede confirmação
   // (Uiverse.io by Yaya12085), marcar não.
   const [pendingRemove, setPendingRemove] = useState<Product | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
   // Estado 100% local desta página — mesma opção/estilo de /catalogo,
   // mas com o seu próprio useState, sem nenhuma ligação entre os dois:
   // trocar visualização aqui não afeta o catálogo.
@@ -71,8 +73,12 @@ export default function Carrinho() {
       .catch(() => {})
   }
 
-  // Marcar como favorito é direto; desmarcar abre o toggle de confirmação.
+  // Favoritar exige login — convidado abre o modal, não marca o produto.
   const requestToggleFavorite = (product: Product) => {
+    if (!customerAuth.token) {
+      setShowAuthModal(true)
+      return
+    }
     if (favoriteIds.has(product.id)) setPendingRemove(product)
     else toggleFavorite(product.id)
   }
@@ -243,7 +249,7 @@ export default function Carrinho() {
             inCart={qtyInCart(detailProduct.id)}
             outOfStock={detailProduct.quantity <= 0}
             isFavorite={favoriteIds.has(detailProduct.id)}
-            onToggleFavorite={customerAuth.token ? () => requestToggleFavorite(detailProduct) : null}
+            onToggleFavorite={() => requestToggleFavorite(detailProduct)}
             onAdd={() => changeQty(detailProduct.id, 1, detailProduct.quantity)}
             onRemove={() => changeQty(detailProduct.id, -1, detailProduct.quantity)}
             onClose={() => setDetailProduct(null)}
@@ -261,6 +267,9 @@ export default function Carrinho() {
           />
         )}
       </AnimatePresence>
+      {showAuthModal && (
+        <CustomerAuthModal initialMode="login" onClose={() => setShowAuthModal(false)} onSuccess={() => setShowAuthModal(false)} />
+      )}
     </main>
   )
 }

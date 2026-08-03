@@ -11,6 +11,7 @@ import Shell from '../components/Shell'
 import ProductCard from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
+import AuthModal from '../components/AuthModal'
 
 type SortBy = 'padrao' | 'menor_preco' | 'maior_preco' | 'mais_vendido' | 'alfabetica'
 
@@ -32,6 +33,7 @@ export default function Uiux4Catalogo() {
   // Igual em /cliente/favoritos: desmarcar pede confirmação, marcar não --
   // aqui o produto não some da tela ao desmarcar (é o catálogo inteiro).
   const [pendingRemove, setPendingRemove] = useState<Product | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   const { items, addItem, changeQty } = useCart()
   const customerAuth = useCustomerAuth()
@@ -70,8 +72,13 @@ export default function Uiux4Catalogo() {
       .catch(() => {})
   }
 
-  // Favoritar é direto; desfavoritar sempre pede confirmação primeiro.
+  // Favoritar exige login; sem sessão abre o modal. Logado: marcar direto,
+  // desfavoritar pede confirmação.
   const requestToggleFavorite = (product: Product) => {
+    if (!customerAuth.token) {
+      setShowAuthModal(true)
+      return
+    }
     if (favoriteIds.has(product.id)) setPendingRemove(product)
     else toggleFavorite(product.id)
   }
@@ -179,7 +186,7 @@ export default function Uiux4Catalogo() {
                 product={product}
                 qty={qtyInCart(product.id)}
                 isFavorite={favoriteIds.has(product.id)}
-                onToggleFavorite={customerAuth.token ? () => requestToggleFavorite(product) : undefined}
+                onToggleFavorite={() => requestToggleFavorite(product)}
                 onAdd={() => addItem(product)}
                 onRemove={() => changeQty(product.id, -1)}
               />
@@ -195,6 +202,9 @@ export default function Uiux4Catalogo() {
             onConfirm={confirmRemoveFavorite}
             onCancel={() => setPendingRemove(null)}
           />
+        )}
+        {showAuthModal && (
+          <AuthModal initialMode="login" onClose={() => setShowAuthModal(false)} onSuccess={() => setShowAuthModal(false)} />
         )}
       </div>
     </Shell>

@@ -11,6 +11,7 @@ import { currency } from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
 import FavoriteButton from '../components/FavoriteButton'
 import ConfirmDialog from '../components/ConfirmDialog'
+import AuthModal from '../components/AuthModal'
 
 // Referência estável enquanto os dados ainda não chegaram -- ver mesma
 // nota em pages/Catalogo.tsx (Sunset).
@@ -26,6 +27,7 @@ export default function Uiux3Carrinho() {
   const [view, setView] = useState<'list' | 'grid'>('list')
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
   const [pendingRemove, setPendingRemove] = useState<Product | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   useEffect(() => {
     if (!customerAuth.token) return
@@ -50,10 +52,13 @@ export default function Uiux3Carrinho() {
       .catch(() => {})
   }
 
-  // Favoritar é direto e sem confirmação; desfavoritar sempre abre o
-  // diálogo de confirmação -- mesma dinâmica do catálogo. Confirmando a
-  // remoção, o item do carrinho continua visível (só o botão muda de estado).
+  // Favoritar exige login; sem sessão abre o modal. Logado: marcar direto;
+  // desfavoritar sempre abre o diálogo de confirmação.
   const handleToggleFavorite = (product: Product) => {
+    if (!customerAuth.token) {
+      setShowAuthModal(true)
+      return
+    }
     if (favoriteIds.has(product.id)) {
       setPendingRemove(product)
       return
@@ -119,7 +124,7 @@ export default function Uiux3Carrinho() {
                   <p className="text-sm font-medium truncate">{product.name}</p>
                   <p className="text-xs u3-dim">{currency(product.price)} cada</p>
                 </Link>
-                {customerAuth.token && <FavoriteButton checked={favoriteIds.has(product.id)} onClick={() => handleToggleFavorite(product)} />}
+                <FavoriteButton checked={favoriteIds.has(product.id)} onClick={() => handleToggleFavorite(product)} />
                 <div className="flex items-center gap-1.5">
                   <button onClick={() => changeQty(product.id, -1, product.quantity)} aria-label="Diminuir" className="w-7 h-7 flex items-center justify-center u3-dim">
                     <Minus className="w-3.5 h-3.5" />
@@ -143,11 +148,9 @@ export default function Uiux3Carrinho() {
                   <Link to={`/produto/${product.id}`} className="aspect-square rounded-lg overflow-hidden flex items-center justify-center" style={{ background: 'var(--u3-surface-light)' }}>
                     {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-6 h-6 u3-dim" />}
                   </Link>
-                  {customerAuth.token && (
-                    <div className="absolute top-1.5 right-1.5">
-                      <FavoriteButton checked={favoriteIds.has(product.id)} onClick={() => handleToggleFavorite(product)} />
-                    </div>
-                  )}
+                  <div className="absolute top-1.5 right-1.5">
+                    <FavoriteButton checked={favoriteIds.has(product.id)} onClick={() => handleToggleFavorite(product)} />
+                  </div>
                 </div>
                 <Link to={`/produto/${product.id}`}>
                   <p className="text-sm font-medium truncate">{product.name}</p>
@@ -187,6 +190,9 @@ export default function Uiux3Carrinho() {
             onConfirm={confirmRemoveFavorite}
             onCancel={() => setPendingRemove(null)}
           />
+        )}
+        {showAuthModal && (
+          <AuthModal initialMode="login" onClose={() => setShowAuthModal(false)} onSuccess={() => setShowAuthModal(false)} />
         )}
       </div>
     </Shell>

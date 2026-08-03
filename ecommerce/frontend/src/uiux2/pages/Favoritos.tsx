@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from '../../lib/tenantRouter'
+import { useNavigate } from '../../lib/tenantRouter'
 import { Heart, Loader2 } from 'lucide-react'
 import { favoriteService } from '../../services/favoriteService'
 import type { Product } from '../../types'
@@ -9,8 +9,10 @@ import Shell from '../components/Shell'
 import ProductCard from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
+import AuthModal from '../components/AuthModal'
 
 export default function Uiux2Favoritos() {
+  const navigate = useNavigate()
   const { token } = useCustomerAuth()
   const { items, addItem, changeQty } = useCart()
   const [products, setProducts] = useState<Product[]>([])
@@ -19,6 +21,7 @@ export default function Uiux2Favoritos() {
 
   useEffect(() => {
     if (!token) return
+    setLoading(true)
     favoriteService.list(token).then(setProducts).finally(() => setLoading(false))
   }, [token])
 
@@ -34,7 +37,16 @@ export default function Uiux2Favoritos() {
       .catch(() => {})
   }
 
-  if (!token) return <Navigate to="/catalogo" replace />
+  if (!token) {
+    return (
+      <Shell>
+        <div className="px-4 sm:px-8 pt-5 pb-16">
+          <EmptyState icon={Heart} message="Faça login para ver seus favoritos." actionLabel="Ver catálogo" actionHref="/catalogo" />
+        </div>
+        <AuthModal initialMode="login" onClose={() => navigate('/', { replace: true })} onSuccess={() => {}} />
+      </Shell>
+    )
+  }
 
   return (
     <Shell>

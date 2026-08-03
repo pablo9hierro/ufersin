@@ -11,6 +11,7 @@ import Shell from '../components/Shell'
 import ProductCard from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
+import AuthModal from '../components/AuthModal'
 
 export default function Uiux2Catalogo() {
   const [products, setProducts] = useState<Product[]>([])
@@ -25,6 +26,7 @@ export default function Uiux2Catalogo() {
   // Marcar favorito é direto; desmarcar pede confirmação primeiro -- nunca
   // desfavorita silenciosamente.
   const [pendingRemove, setPendingRemove] = useState<Product | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   const { items, addItem, changeQty } = useCart()
   const customerAuth = useCustomerAuth()
@@ -63,8 +65,12 @@ export default function Uiux2Catalogo() {
       .catch(() => {})
   }
 
-  // Favoritar é direto; desfavoritar abre o diálogo de confirmação.
+  // Favoritar exige login; sem sessão abre o modal.
   const requestToggleFavorite = (product: Product) => {
+    if (!customerAuth.token) {
+      setShowAuthModal(true)
+      return
+    }
     if (favoriteIds.has(product.id)) setPendingRemove(product)
     else toggleFavorite(product.id)
   }
@@ -176,7 +182,7 @@ export default function Uiux2Catalogo() {
                 product={product}
                 qty={qtyInCart(product.id)}
                 isFavorite={favoriteIds.has(product.id)}
-                onToggleFavorite={customerAuth.token ? () => requestToggleFavorite(product) : undefined}
+                onToggleFavorite={() => requestToggleFavorite(product)}
                 onAdd={() => addItem(product)}
                 onRemove={() => changeQty(product.id, -1)}
                 promo={promoByProduct.get(product.id)}
@@ -194,6 +200,9 @@ export default function Uiux2Catalogo() {
           onConfirm={confirmRemoveFavorite}
           onCancel={() => setPendingRemove(null)}
         />
+      )}
+      {showAuthModal && (
+        <AuthModal initialMode="login" onClose={() => setShowAuthModal(false)} onSuccess={() => setShowAuthModal(false)} />
       )}
     </Shell>
   )

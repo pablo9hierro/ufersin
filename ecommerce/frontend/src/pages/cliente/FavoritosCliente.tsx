@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate } from '../../lib/tenantRouter'
+import { Link, useNavigate } from '../../lib/tenantRouter'
 import { AnimatePresence } from 'framer-motion'
 import { Heart, Loader2, Package } from 'lucide-react'
 import SiteHeader from '../../components/layout/SiteHeader'
@@ -8,6 +8,7 @@ import CartFab from '../../components/CartFab'
 import ProductDetailModal, { PromoPriceBlock, PromoRibbon, currency } from '../../components/ProductDetailModal'
 import FavoriteHeartButton from '../../components/FavoriteHeartButton'
 import ConfirmRemoveDialog from '../../components/ConfirmRemoveDialog'
+import CustomerAuthModal from '../../components/CustomerAuthModal'
 import { favoriteService } from '../../services/favoriteService'
 import { couponService } from '../../services/couponService'
 import type { Product, PromotionalProduct } from '../../types'
@@ -15,6 +16,7 @@ import { useCart } from '../../store/cart'
 import { useCustomerAuth } from '../../store/customerAuth'
 
 export default function FavoritosCliente() {
+  const navigate = useNavigate()
   const { token } = useCustomerAuth()
   const { items, addItem, changeQty } = useCart()
   const [products, setProducts] = useState<Product[]>([])
@@ -29,6 +31,7 @@ export default function FavoritosCliente() {
 
   useEffect(() => {
     if (!token) return
+    setLoading(true)
     Promise.all([favoriteService.list(token), couponService.listPromotionalProducts().catch(() => [])])
       .then(([favs, promo]) => {
         setProducts(favs)
@@ -58,7 +61,21 @@ export default function FavoritosCliente() {
       .catch(() => {})
   }
 
-  if (!token) return <Navigate to="/" replace />
+  // Página só pra logado — convidado vê prompt de login, não a lista.
+  if (!token) {
+    return (
+      <main className="min-h-screen text-white">
+        <SiteHeader showCart={false} />
+        <PageTransition className="max-w-6xl mx-auto px-5 sm:px-10 pt-6 pb-16">
+          <div className="glass rounded-3xl p-4 sm:p-6 text-center py-20 text-son-silver-dim">
+            <Heart className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p>Faça login para ver seus favoritos.</p>
+          </div>
+        </PageTransition>
+        <CustomerAuthModal initialMode="login" onClose={() => navigate('/', { replace: true })} onSuccess={() => {}} />
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen text-white">

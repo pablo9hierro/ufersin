@@ -8,6 +8,7 @@ import CartFab from '../components/CartFab'
 import ProductDetailModal, { OutOfStockRibbon, PromoPriceBlock, PromoRibbon, currency } from '../components/ProductDetailModal'
 import FavoriteHeartButton from '../components/FavoriteHeartButton'
 import ConfirmRemoveDialog from '../components/ConfirmRemoveDialog'
+import CustomerAuthModal from '../components/CustomerAuthModal'
 import { favoriteService } from '../services/favoriteService'
 import { useCatalog } from '../hooks/useCatalog'
 import type { Category, Product, PromotionalProduct } from '../types'
@@ -79,6 +80,7 @@ export default function Catalogo() {
   // (é o catálogo inteiro, não uma lista só de favoritos), mas o pedido foi
   // deixar a mesma dinâmica de confirmação nos dois lugares.
   const [pendingRemove, setPendingRemove] = useState<Product | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   const { items, addItem, changeQty } = useCart()
   const customerAuth = useCustomerAuth()
@@ -108,8 +110,13 @@ export default function Catalogo() {
       .catch(() => {})
   }
 
-  // Marcar como favorito é direto; desmarcar abre o toggle de confirmação.
+  // Favoritar exige login — convidado abre o modal, não marca o produto.
+  // Logado: marcar é direto; desmarcar abre o toggle de confirmação.
   const requestToggleFavorite = (product: Product) => {
+    if (!customerAuth.token) {
+      setShowAuthModal(true)
+      return
+    }
     if (favoriteIds.has(product.id)) setPendingRemove(product)
     else toggleFavorite(product.id)
   }
@@ -217,11 +224,9 @@ export default function Catalogo() {
         className={`relative bg-son-surface border border-white/5 rounded-2xl overflow-hidden flex flex-col transition-colors ${outOfStock ? 'grayscale opacity-70' : 'hover:border-son-pink/30'}`}
       >
         {outOfStock ? <OutOfStockRibbon /> : promo && <PromoRibbon promo={promo} />}
-        {customerAuth.token && (
-          <div className="absolute top-2 right-2 z-10">
-            <FavoriteHeartButton checked={favoriteIds.has(product.id)} onChange={() => requestToggleFavorite(product)} />
-          </div>
-        )}
+        <div className="absolute top-2 right-2 z-10">
+          <FavoriteHeartButton checked={favoriteIds.has(product.id)} onChange={() => requestToggleFavorite(product)} />
+        </div>
         <button
           type="button"
           onClick={() => !outOfStock && setDetailProduct(product)}
@@ -286,11 +291,9 @@ export default function Catalogo() {
         transition={{ duration: 0.3, delay: Math.min(i * 0.03, 0.3) }}
         className={`relative bg-son-surface border border-white/5 rounded-2xl overflow-visible flex items-center gap-4 p-3 transition-colors ${outOfStock ? 'grayscale opacity-70' : 'hover:border-son-pink/30'}`}
       >
-        {customerAuth.token && (
-          <div className="absolute -top-1.5 -right-1.5 z-10">
-            <FavoriteHeartButton checked={favoriteIds.has(product.id)} onChange={() => requestToggleFavorite(product)} />
-          </div>
-        )}
+        <div className="absolute -top-1.5 -right-1.5 z-10">
+          <FavoriteHeartButton checked={favoriteIds.has(product.id)} onChange={() => requestToggleFavorite(product)} />
+        </div>
         <button
           type="button"
           onClick={() => !outOfStock && setDetailProduct(product)}
@@ -542,7 +545,7 @@ export default function Catalogo() {
             inCart={qtyInCart(detailProduct.id)}
             outOfStock={detailProduct.quantity <= 0}
             isFavorite={favoriteIds.has(detailProduct.id)}
-            onToggleFavorite={customerAuth.token ? () => requestToggleFavorite(detailProduct) : null}
+            onToggleFavorite={() => requestToggleFavorite(detailProduct)}
             onAdd={() => addItem(detailProduct)}
             onRemove={() => changeQty(detailProduct.id, -1)}
             onClose={() => setDetailProduct(null)}
@@ -560,6 +563,9 @@ export default function Catalogo() {
           />
         )}
       </AnimatePresence>
+      {showAuthModal && (
+        <CustomerAuthModal initialMode="login" onClose={() => setShowAuthModal(false)} onSuccess={() => setShowAuthModal(false)} />
+      )}
     </main>
   )
 }

@@ -11,6 +11,7 @@ import ProductCard, { currency } from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
 import FavoriteButton from '../components/FavoriteButton'
+import AuthModal from '../components/AuthModal'
 
 // Referência estável enquanto os dados ainda não chegaram -- ver mesma
 // nota em pages/Catalogo.tsx (Sunset).
@@ -26,6 +27,7 @@ export default function Uiux4Carrinho() {
   const [view, setView] = useState<'list' | 'grid'>('list')
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
   const [pendingRemove, setPendingRemove] = useState<Product | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   useEffect(() => {
     if (!customerAuth.token) return
@@ -50,9 +52,14 @@ export default function Uiux4Carrinho() {
       .catch(() => {})
   }
 
-  // Favoritar é direto; desfavoritar sempre pede confirmação primeiro --
-  // o item do carrinho continua visível depois de confirmar a remoção.
+  // Favoritar exige login; sem sessão abre o modal. Logado: marcar direto;
+  // desfavoritar sempre pede confirmação -- o item do carrinho continua
+  // visível depois de confirmar a remoção.
   const requestToggleFavorite = (product: Product) => {
+    if (!customerAuth.token) {
+      setShowAuthModal(true)
+      return
+    }
     if (favoriteIds.has(product.id)) setPendingRemove(product)
     else toggleFavorite(product.id)
   }
@@ -103,7 +110,7 @@ export default function Uiux4Carrinho() {
                 product={product}
                 qty={item.quantity}
                 isFavorite={favoriteIds.has(product.id)}
-                onToggleFavorite={customerAuth.token ? () => requestToggleFavorite(product) : undefined}
+                onToggleFavorite={() => requestToggleFavorite(product)}
                 onAdd={() => addItem(product)}
                 onRemove={() => changeQty(product.id, -1)}
               />
@@ -128,7 +135,7 @@ export default function Uiux4Carrinho() {
                   <button onClick={() => changeQty(product.id, 1, product.quantity)} disabled={item.quantity >= product.quantity} aria-label="Aumentar" className="w-7 h-7 flex items-center justify-center u4-dim disabled:opacity-30">
                     <Plus className="w-3.5 h-3.5" />
                   </button>
-                  {customerAuth.token && <FavoriteButton checked={favoriteIds.has(product.id)} onClick={() => requestToggleFavorite(product)} />}
+                  <FavoriteButton checked={favoriteIds.has(product.id)} onClick={() => requestToggleFavorite(product)} />
                   <button onClick={() => removeItem(product.id)} aria-label="Remover" className="u4-dim ml-1">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -155,6 +162,9 @@ export default function Uiux4Carrinho() {
             onConfirm={confirmRemoveFavorite}
             onCancel={() => setPendingRemove(null)}
           />
+        )}
+        {showAuthModal && (
+          <AuthModal initialMode="login" onClose={() => setShowAuthModal(false)} onSuccess={() => setShowAuthModal(false)} />
         )}
       </div>
     </Shell>

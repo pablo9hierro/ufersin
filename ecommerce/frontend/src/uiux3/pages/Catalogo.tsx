@@ -11,6 +11,7 @@ import ProductCard from '../components/ProductCard'
 import ListRow from '../components/ListRow'
 import EmptyState from '../components/EmptyState'
 import ConfirmDialog from '../components/ConfirmDialog'
+import AuthModal from '../components/AuthModal'
 
 // Catálogo em DUAS camadas, igual à referência: "Destaques" (poucos
 // itens em cartão grande, foto-protagonista) + "Cardápio" (resto em
@@ -26,6 +27,7 @@ export default function Uiux3Catalogo() {
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set())
   const [salesCounts, setSalesCounts] = useState<Map<string, number>>(new Map())
   const [pendingRemove, setPendingRemove] = useState<Product | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   const { items, addItem, changeQty } = useCart()
   const customerAuth = useCustomerAuth()
@@ -66,9 +68,13 @@ export default function Uiux3Catalogo() {
       .catch(() => {})
   }
 
-  // Favoritar é direto e sem confirmação; desfavoritar sempre abre o
-  // diálogo de confirmação primeiro (nunca remove direto no clique).
+  // Favoritar exige login; sem sessão abre o modal. Logado: marcar direto;
+  // desfavoritar sempre abre o diálogo de confirmação primeiro.
   const handleToggleFavorite = (product: Product) => {
+    if (!customerAuth.token) {
+      setShowAuthModal(true)
+      return
+    }
     if (favoriteIds.has(product.id)) {
       setPendingRemove(product)
       return
@@ -153,7 +159,7 @@ export default function Uiux3Catalogo() {
                       product={product}
                       qty={qtyInCart(product.id)}
                       isFavorite={favoriteIds.has(product.id)}
-                      onToggleFavorite={customerAuth.token ? () => handleToggleFavorite(product) : undefined}
+                      onToggleFavorite={() => handleToggleFavorite(product)}
                       onAdd={() => addItem(product)}
                       onRemove={() => changeQty(product.id, -1)}
                     />
@@ -172,7 +178,7 @@ export default function Uiux3Catalogo() {
                       qty={qtyInCart(product.id)}
                       popular={i === 0}
                       isFavorite={favoriteIds.has(product.id)}
-                      onToggleFavorite={customerAuth.token ? () => handleToggleFavorite(product) : undefined}
+                      onToggleFavorite={() => handleToggleFavorite(product)}
                       onAdd={() => addItem(product)}
                       onRemove={() => changeQty(product.id, -1)}
                     />
@@ -191,6 +197,9 @@ export default function Uiux3Catalogo() {
             onConfirm={confirmRemoveFavorite}
             onCancel={() => setPendingRemove(null)}
           />
+        )}
+        {showAuthModal && (
+          <AuthModal initialMode="login" onClose={() => setShowAuthModal(false)} onSuccess={() => setShowAuthModal(false)} />
         )}
       </div>
     </Shell>
