@@ -192,6 +192,9 @@ pub struct OrderDto {
     pub pix_copia_cola: Option<String>,
     pub customer_lat: Option<f64>,
     pub customer_lng: Option<f64>,
+    pub sold_by_role: Option<String>,
+    pub sold_by_id: Option<String>,
+    pub sold_by_name: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub items: Vec<OrderItemDto>,
@@ -199,6 +202,15 @@ pub struct OrderDto {
 
 impl OrderDto {
     pub fn from_row(row: OrderRow, items: Vec<OrderItemDto>) -> Self {
+        let sold_by_role = row.sold_by_role.clone();
+        let sold_by_id = row.sold_by_id.clone();
+        let sold_by_name = match sold_by_role.as_deref() {
+            Some("admin") => Some("Admin".to_string()),
+            Some("vendedor") => sold_by_id
+                .as_ref()
+                .map(|id| format!("Vendedor {}", &id[..id.len().min(8)])),
+            _ => None,
+        };
         OrderDto {
             id: row.id,
             customer_id: row.customer_id,
@@ -219,6 +231,9 @@ impl OrderDto {
             pix_copia_cola: row.pix_copia_cola,
             customer_lat: row.customer_lat,
             customer_lng: row.customer_lng,
+            sold_by_role,
+            sold_by_id,
+            sold_by_name,
             created_at: row.created_at,
             updated_at: row.updated_at,
             items,
@@ -312,6 +327,12 @@ pub struct FinanceiroSummary {
     pub orders_by_status: Vec<StatusCount>,
     pub top_products: Vec<TopProduct>,
     pub recent_orders: Vec<OrderDto>,
+    /// Vendas `delivery_type = balcao` (PDV) — mesma fonte do histórico,
+    /// pra o card de Relatórios não depender de outro endpoint/RPC.
+    #[serde(default)]
+    pub pdv_sales: Vec<OrderDto>,
+    pub pdv_total_sales: f64,
+    pub pdv_total_count: i64,
     /// Campos extras que o frontend espera (RPC Supabase); no caminho
     /// Railway devolvemos zero/lista vazia pra não crashar a UI.
     #[serde(default)]

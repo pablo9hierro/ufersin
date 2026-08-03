@@ -38,6 +38,10 @@ export const FinanceiroSummarySchema = z.object({
   orders_by_status: z.array(StatusCountSchema),
   top_products: z.array(TopProductSchema),
   recent_orders: z.array(OrderSchema),
+  /** Vendas de balcão (PDV) — preenchido no Railway; opcional no RPC legado. */
+  pdv_sales: z.array(OrderSchema).optional().default([]),
+  pdv_total_sales: z.number().optional().default(0),
+  pdv_total_count: z.number().optional().default(0),
   motoboys: z.array(AdminMotoboyFinanceiroSchema),
   avg_delivery_minutes: z.number(),
 })

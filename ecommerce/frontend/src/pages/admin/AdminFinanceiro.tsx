@@ -379,20 +379,104 @@ function StaffTabs({
   )
 }
 
-function PdvSalesSection({ role }: { role: string }) {
-  const [data, setData] = useState<VendedorRelatorio | null>(null)
-  const [loading, setLoading] = useState(true)
+function ordersToPdvRelatorio(orders: Order[]): VendedorRelatorio {
+  const sales = orders
+    .filter((o) => o.delivery_type === 'balcao')
+    .slice()
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, 100)
+    .map((o) => ({
+      id: o.id,
+      total: o.total,
+      payment_method: o.payment_method,
+      customer_name: o.customer_name,
+      created_at: o.created_at,
+      sold_by_role: (o.sold_by_role as 'admin' | 'vendedor') ?? 'admin',
+      sold_by_id: o.sold_by_id ?? null,
+      sold_by_name: o.sold_by_name ?? (o.sold_by_role === 'admin' ? 'Admin' : null),
+      items: o.items.map((i) => ({
+        product_name: i.product_name,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+      })),
+    }))
+  return {
+    total_sales: sales.reduce((sum, s) => sum + s.total, 0),
+    total_count: sales.length,
+    sales,
+  }
+}
+
+function PdvSalesSection({
+  role,
+  seed,
+}: {
+  role: string
+  /** Vendas já vindas do financeiro Railway (mesma fonte do histórico). */
+  seed?: { orders: Order[]; total_sales?: number; total_count?: number } | null
+}) {
+  const seedKey = seed
+    ? `${seed.total_count ?? seed.orders.length}:${seed.total_sales ?? 0}:${seed.orders.map((o) => o.id).join(',')}`
+    : ''
+  const [data, setData] = useState<VendedorRelatorio | null>(() =>
+    seed && (seed.total_count ?? seed.orders.length) > 0
+      ? {
+          ...ordersToPdvRelatorio(seed.orders),
+          total_sales: seed.total_sales ?? ordersToPdvRelatorio(seed.orders).total_sales,
+          total_count: seed.total_count ?? seed.orders.length,
+        }
+      : null,
+  )
+  const [loading, setLoading] = useState(!data)
   const [selected, setSelected] = useState<string[] | 'all'>('all')
 
   useEffect(() => {
-    pdvService.relatorio().then(setData).finally(() => setLoading(false))
-  }, [])
+    if (seed && (seed.total_count ?? seed.orders.length) > 0) {
+      const fromSeed = ordersToPdvRelatorio(seed.orders)
+      setData({
+        total_sales: seed.total_sales ?? fromSeed.total_sales,
+        total_count: seed.total_count ?? fromSeed.total_count,
+        sales: fromSeed.sales,
+      })
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setLoading(true)
+    ;(async () => {
+      try {
+        const report = await pdvService.relatorio()
+        if (!cancelled && report && report.total_count > 0) {
+          setData(report)
+          return
+        }
+      } catch {
+        /* tenta fallback */
+      }
+      try {
+        const orders = await adminService.orders.list()
+        if (!cancelled) setData(ordersToPdvRelatorio(orders))
+      } catch {
+        if (!cancelled) setData({ total_sales: 0, total_count: 0, sales: [] })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // seedKey is a stable serialization of seed contents
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedKey])
 
   const sellerNames = useMemo(
     () => Array.from(new Set((data?.sales ?? []).map((s) => s.sold_by_name ?? 'Sem nome'))).sort(),
-    [data]
+    [data],
   )
-  const visibleSales = (data?.sales ?? []).filter((s) => selected === 'all' || selected.includes(s.sold_by_name ?? 'Sem nome'))
+  const visibleSales = (data?.sales ?? []).filter(
+    (s) => selected === 'all' || selected.includes(s.sold_by_name ?? 'Sem nome'),
+  )
   const visibleTotal = visibleSales.reduce((sum, s) => sum + s.total, 0)
 
   const toggle = (name: string) => {
@@ -595,13 +679,23 @@ export default function AdminFinanceiro() {
     adminService.financeiro
       .get()
       .then((raw) => {
+        const recent = raw?.recent_orders ?? []
+        const fromApi = raw?.pdv_sales ?? []
+        const pdv_sales =
+          fromApi.length > 0 ? fromApi : recent.filter((o) => o.delivery_type === 'balcao')
+        const pdv_total_count = raw?.pdv_total_count || pdv_sales.length
+        const pdv_total_sales =
+          raw?.pdv_total_sales || pdv_sales.reduce((sum, o) => sum + (o.total ?? 0), 0)
         setData({
           total_revenue: raw?.total_revenue ?? 0,
           total_orders: raw?.total_orders ?? 0,
           total_discount_given: raw?.total_discount_given ?? 0,
           orders_by_status: raw?.orders_by_status ?? [],
           top_products: raw?.top_products ?? [],
-          recent_orders: raw?.recent_orders ?? [],
+          recent_orders: recent,
+          pdv_sales,
+          pdv_total_sales,
+          pdv_total_count,
           motoboys: raw?.motoboys ?? [],
           avg_delivery_minutes: raw?.avg_delivery_minutes ?? 0,
         })
@@ -757,7 +851,14 @@ export default function AdminFinanceiro() {
       {showManagementMetrics && <MotoboysSection motoboys={data.motoboys} />}
 
       <div className="mb-6">
-        <PdvSalesSection role={role} />
+        <PdvSalesSection
+          role={role}
+          seed={{
+            orders: data.pdv_sales,
+            total_sales: data.pdv_total_sales,
+            total_count: data.pdv_total_count,
+          }}
+        />
       </div>
 
       <Card className="p-5">

@@ -591,6 +591,26 @@ pub async fn financeiro(
     for row in recent_rows {
         recent_orders.push(row_to_dto(&mut tx, &claims.tenant_id, row).await?);
     }
+
+    let pdv_rows: Vec<OrderRow> = sqlx::query_as(
+        "SELECT * FROM orders WHERE tenant_id = $1 AND delivery_type = 'balcao' \
+         ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let (pdv_total_sales, pdv_total_count): (f64, i64) = sqlx::query_as(
+        "SELECT COALESCE(SUM(total), 0)::double precision, COUNT(*)::bigint \
+         FROM orders WHERE tenant_id = $1 AND delivery_type = 'balcao'",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let mut pdv_sales = Vec::with_capacity(pdv_rows.len());
+    for row in pdv_rows {
+        pdv_sales.push(row_to_dto(&mut tx, &claims.tenant_id, row).await?);
+    }
+
     tx.commit().await?;
 
     Ok(Json(FinanceiroSummary {
@@ -599,6 +619,9 @@ pub async fn financeiro(
         orders_by_status,
         top_products,
         recent_orders,
+        pdv_sales,
+        pdv_total_sales,
+        pdv_total_count,
         total_discount_given: 0.0,
         motoboys: vec![],
         avg_delivery_minutes: 0.0,
