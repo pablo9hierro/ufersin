@@ -181,6 +181,7 @@ async fn main() -> anyhow::Result<()> {
             post(routes::contratos::pandadoc_session),
         )
         .route("/api/webhooks/abacatepay", post(routes::webhooks::abacatepay_webhook))
+        .route("/api/webhooks/pandadoc", post(routes::webhooks::pandadoc_webhook))
         .route("/api/public/plans", get(routes::plans::list_public))
         .route("/api/public/content", get(routes::plans::list_content))
         .route("/api/public/coupons/preview", post(routes::plans::coupon_preview))

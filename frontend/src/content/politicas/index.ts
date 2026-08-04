@@ -147,6 +147,17 @@ export const politicaPlanoEssential: PoliticaDoc = {
       ],
     },
     {
+      title: 'Cancelamento e reembolso (7 dias)',
+      paragraphs: [
+        'Você pode cancelar a assinatura em até 7 (sete) dias corridos contados da data da assinatura / contratação do plano. Nesse prazo, a Resolutoo promove o estorno / reembolso do valor pago da assinatura via Mercado Pago (ou o mesmo provedor usado na cobrança), observados os prazos desse provedor.',
+        'Após 7 dias, você pode cancelar o plano pelos meios da plataforma, sem direito a reembolso, estorno ou devolução proporcional do valor já pago do período em curso, salvo obrigação legal diversa ou política promocional expressa da Resolutoo.',
+      ],
+      bullets: [
+        'Até 7 dias da assinatura: cancelamento com estorno via Mercado Pago.',
+        'Após 7 dias: cancelamento do plano sem reembolso/estorno.',
+      ],
+    },
+    {
       title: 'O que a Resolutoo faz e o que não faz',
       paragraphs: [
         'A Resolutoo orquestra o checkout da vitrine e encaminha o pagamento das compras para a conta Mercado Pago do lojista.',
@@ -161,7 +172,7 @@ export const politicaPlanoEssential: PoliticaDoc = {
     {
       title: 'Aceite em /assinar',
       paragraphs: [
-        'Ao marcar o checkbox de aceite do contrato de assinatura, você confirma ter lido estes termos e as responsabilidades do lojista publicadas em /politicas-de-privacidade/lojista.',
+        'Ao marcar o checkbox de aceite do contrato de assinatura (e/ou assinar eletronicamente no PandaDoc), você confirma ter lido estes termos e as responsabilidades do lojista publicadas em /politicas-de-privacidade/lojista.',
       ],
     },
   ],

@@ -4,8 +4,14 @@
 //! Estratégia atual: Free + Sandbox pra desenvolver.
 //! Docs: https://developers.pandadoc.com/docs/getting-started
 //! Embedded signing: https://developers.pandadoc.com/docs/embedded-signing
+//! Webhooks: https://developers.pandadoc.com/docs/webhook-verification
 
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
+use subtle::ConstantTimeEq;
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone, Debug)]
 pub struct PandadocConfig {
@@ -16,6 +22,9 @@ pub struct PandadocConfig {
     pub sandbox: bool,
     /// Único template PandaDoc em uso: contrato Resolutoo × lojista.
     pub platform_template_id: Option<String>,
+    /// Shared key do webhook (Dev Center). Env: `PANDADOC_WEBHOOK_SHARED_KEY`
+    /// ou alias `PANDADOC_WEBHOOK_SECRET`. Assinatura HMAC-SHA256 no query `signature`.
+    pub webhook_shared_key: Option<String>,
 }
 
 impl PandadocConfig {
@@ -24,6 +33,8 @@ impl PandadocConfig {
             .ok()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
+        let webhook_shared_key = env_opt("PANDADOC_WEBHOOK_SHARED_KEY")
+            .or_else(|| env_opt("PANDADOC_WEBHOOK_SECRET"));
         Self {
             api_key,
             api_base: std::env::var("PANDADOC_API_BASE")
@@ -32,6 +43,7 @@ impl PandadocConfig {
                 .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
                 .unwrap_or(true),
             platform_template_id: env_opt("PANDADOC_PLATFORM_TEMPLATE_ID"),
+            webhook_shared_key,
         }
     }
 
@@ -50,6 +62,36 @@ fn env_opt(key: &str) -> Option<String> {
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+/// Verifica HMAC-SHA256 (hex) do body bruto com a shared key (PandaDoc).
+/// Comparação em tempo constante.
+pub fn verify_webhook_signature(shared_key: &str, body: &[u8], signature_hex: &str) -> bool {
+    let Ok(mut mac) = HmacSha256::new_from_slice(shared_key.as_bytes()) else {
+        return false;
+    };
+    mac.update(body);
+    let expected = mac.finalize().into_bytes();
+    let Ok(received) = hex::decode(signature_hex.trim()) else {
+        return false;
+    };
+    if expected.len() != received.len() {
+        return false;
+    }
+    bool::from(expected.as_slice().ct_eq(received.as_slice()))
+}
+
+/// Mapeia status PandaDoc (`document.completed`, etc.) → status interno de `contract_documents`.
+pub fn map_document_status(pandadoc_status: &str) -> Option<&'static str> {
+    match pandadoc_status.trim() {
+        "document.draft" | "document.uploaded" => Some("draft"),
+        "document.sent" => Some("sent"),
+        "document.viewed" => Some("viewed"),
+        "document.completed" => Some("completed"),
+        "document.voided" => Some("voided"),
+        "document.declined" => Some("declined"),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

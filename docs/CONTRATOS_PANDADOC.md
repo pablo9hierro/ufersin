@@ -16,15 +16,30 @@
    - Sem `vende_mais_18` → sem idade; checkbox compra normal
    - Com `vende_mais_18` → idade obrigatória + checkboxes compra normal + mais18
 
-## Env (`ufersin-api`)
+## Env (`ufersin-api` no Railway — setar manualmente)
 
 ```
 PANDADOC_API_KEY=                 # Free/Sandbox key do Dev Center
 PANDADOC_API_BASE=https://api.pandadoc.com
 PANDADOC_SANDBOX=true
-PANDADOC_PLATFORM_TEMPLATE_ID=    # único template: contrato lojista
+PANDADOC_PLATFORM_TEMPLATE_ID=    # único template: contrato lojista (após criar no PandaDoc)
+PANDADOC_WEBHOOK_SHARED_KEY=      # shared key do webhook (ou PANDADOC_WEBHOOK_SECRET)
 # NÃO usar PandaDoc no checkout — sem env de template de checkout de propósito.
 ```
+
+## Webhook PandaDoc
+
+- **URL:** `https://<public-ufersin-api-host>/api/webhooks/pandadoc`
+  - Ex. produção: `https://ufersin-api-production.up.railway.app/api/webhooks/pandadoc`
+- **Nome sugerido no Dev Center:** `pandadoc-contract`
+- **Eventos recomendados:** `recipient_completed`, `document_state_changed`, `document_updated`
+- Assinatura HMAC-SHA256 no query `?signature=` (verificação se shared key estiver setada)
+- Atualiza `contract_documents` (status / `signed_at`) de forma idempotente; registra aceite `pandadoc_webhook`
+
+## Template de cláusulas
+
+Texto completo (PT-BR, regra dos 7 dias): `docs/pandadoc-template-plano-essential.md`  
+PDF para upload: gerar com `scripts/generate-essential-contract-pdf.py` → `C:\Users\pablo\Documents\resolutoo-contrato-plano-essential.pdf`
 
 ## API
 
@@ -34,5 +49,6 @@ PANDADOC_PLATFORM_TEMPLATE_ID=    # único template: contrato lojista
 - `POST /api/public/contratos/accept-checkout` — aceite cliente (checkbox only)
 - `POST /api/contratos/pandadoc/session` — **apenas** `kind=platform_subscription`
 - `GET /api/contratos/me` — vias do lojista
+- `POST /api/webhooks/pandadoc` — webhook PandaDoc (contrato lojista)
 
 Sandbox PandaDoc: watermark + destinatários no seu domínio. Produção Free: ~60 docs/ano enviados — suficiente se só o lojista assina o contrato da plataforma.
