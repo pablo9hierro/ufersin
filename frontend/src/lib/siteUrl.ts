@@ -1,4 +1,6 @@
-﻿/** URL canônica do frontend Resolutoo — usada nos links de e-mail do
+﻿import { POLITICA_PATHS, type PoliticaSlug } from '../content/politicas'
+
+/** URL canônica do frontend Resolutoo — usada nos links de e-mail do
  * Supabase Auth (confirmação / reset). Em produção NÃO pode cair em
  * localhost: o Site URL do dashboard Supabase também precisa apontar
  * pra https://resolutoo.com (Authentication → URL Configuration). */
@@ -13,4 +15,9 @@ export function siteOrigin(): string {
 export function authRedirectUrl(path = '/auth/callback'): string {
   const p = path.startsWith('/') ? path : `/${path}`
   return `${siteOrigin()}${p}`
+}
+
+/** Absolute URL for consent/policy pages (also used by ecommerce checkboxes). */
+export function politicaUrl(slug: PoliticaSlug): string {
+  return `${siteOrigin()}${POLITICA_PATHS[slug]}`
 }

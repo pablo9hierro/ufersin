@@ -498,9 +498,28 @@ export default function Assinar() {
                 />
                 <span className="text-xs text-uf-silver-dim">
                   <span className="block text-uf-silver font-semibold mb-0.5">
-                    Li e aceito o contrato de assinatura Resolutoo
+                    Li e aceito o{' '}
+                    <Link
+                      to="/politicas-de-privacidade/plano-essential"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-uf-blue hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      contrato de assinatura Resolutoo
+                    </Link>
                   </span>
-                  Este é o contrato entre você (lojista) e a plataforma.
+                  Contrato entre você (lojista) e a plataforma. Veja também as{' '}
+                  <Link
+                    to="/politicas-de-privacidade/lojista"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-uf-blue hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    responsabilidades do lojista
+                  </Link>
+                  .
                 </span>
               </label>
 

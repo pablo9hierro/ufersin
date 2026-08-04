@@ -16,6 +16,7 @@ import Onboarding from './pages/Onboarding'
 import MeuPlano from './pages/MeuPlano'
 import CompletarConta from './pages/CompletarConta'
 import Obrigado from './pages/Obrigado'
+import PoliticasPrivacidade from './pages/PoliticasPrivacidade'
 
 export default function App() {
   return (
@@ -51,6 +52,8 @@ export default function App() {
       <Route path="/meu-plano" element={<MeuPlano />} />
       <Route path="/meu-plano/:tab" element={<MeuPlano />} />
       <Route path="/obrigado" element={<Obrigado />} />
+      <Route path="/politicas-de-privacidade/:slug" element={<PoliticasPrivacidade />} />
+      <Route path="/politicas-de-privacidade" element={<PoliticasPrivacidade />} />
     </Routes>
   )
 }

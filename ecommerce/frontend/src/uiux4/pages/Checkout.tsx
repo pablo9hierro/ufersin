@@ -25,6 +25,7 @@ import BirthdateInput from '../../components/checkout/BirthdateInput'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal } from '../../lib/cashMask'
 import { useCartDrawer } from '../../store/cartDrawer'
+import { platformPoliticaUrl } from '../../lib/platformUrl'
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
 
@@ -527,8 +528,19 @@ export default function Uiux4Checkout() {
                 className="w-4 h-4 mt-0.5"
               />
               <span>
-                <span className="block font-semibold mb-0.5">Aceito os termos de compra</span>
-                Consentimento de compra normal registrado localmente (checkbox).
+                <span className="block font-semibold mb-0.5">
+                  Aceito os{' '}
+                  <a
+                    href={platformPoliticaUrl('compra')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:opacity-80"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    termos de compra
+                  </a>
+                </span>
+                Consentimento de compra registrado ao finalizar o pedido.
               </span>
             </label>
             {tenantConfig?.vende_mais_18 && (
@@ -540,7 +552,18 @@ export default function Uiux4Checkout() {
                   className="w-4 h-4 mt-0.5"
                 />
                 <span>
-                  <span className="block font-semibold mb-0.5">Aceito os termos para maiores de 18</span>
+                  <span className="block font-semibold mb-0.5">
+                    Aceito os{' '}
+                    <a
+                      href={platformPoliticaUrl('compra-mais-18')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:opacity-80"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      termos para maiores de 18
+                    </a>
+                  </span>
                   Esta loja pode vender produtos 18+ — os dois consentimentos se aplicam ao checkout.
                 </span>
               </label>
