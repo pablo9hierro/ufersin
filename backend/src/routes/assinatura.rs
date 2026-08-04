@@ -290,3 +290,55 @@ pub async fn simular_pagamento(
         sandbox: true,
     }))
 }
+
+#[derive(Debug, Serialize)]
+pub struct CancelarPendenteResult {
+    pub status: String,
+}
+
+/// Abandona tentativa de pagamento (`pendente`) — cancela no gateway (best-effort)
+/// e volta a conta pra `sem_assinatura` pra o lojista poder escolher outro plano.
+pub async fn cancelar_pendente(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<CancelarPendenteResult>, AppError> {
+    let row: Option<(Option<String>, String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT mp_preapproval_id, status, gateway, slug FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let (preapproval_id, status, gateway_kind, slug) =
+        row.ok_or_else(|| AppError::NotFound("conta não encontrada".to_string()))?;
+
+    if status != "pendente" {
+        return Err(AppError::BadRequest(format!(
+            "só é possível cancelar tentativa com status pendente (atual: {status})"
+        )));
+    }
+
+    if let (Some(ext_id), Some(gw)) = (preapproval_id.as_ref(), gateway_kind.as_ref()) {
+        gateway::cancel(&state, gw, ext_id).await;
+    }
+
+    sqlx::query(
+        "UPDATE subscribers SET status = 'sem_assinatura', onboarding_status = 'aguardando_pagamento', \
+         mp_preapproval_id = NULL, updated_at = now() WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .execute(&state.pool)
+    .await?;
+
+    if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Err(e) =
+            crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "sem_assinatura").await
+        {
+            tracing::warn!("sync ecommerce tenant after cancel-pending failed: {e:?}");
+        }
+    }
+
+    Ok(Json(CancelarPendenteResult {
+        status: "sem_assinatura".to_string(),
+    }))
+}

@@ -41,11 +41,20 @@ pub fn sandbox_mode(state: &AppState) -> bool {
     }
 }
 
-fn pick_init_point(parsed: &MpPreapprovalResponse) -> Option<String> {
-    parsed
-        .init_point
-        .clone()
-        .or_else(|| parsed.sandbox_init_point.clone())
+/// Em sandbox (`TEST-…` / sem token), prioriza `sandbox_init_point` pra
+/// não mandar o lojista pro checkout de produção do Mercado Pago.
+fn pick_init_point(parsed: &MpPreapprovalResponse, prefer_sandbox: bool) -> Option<String> {
+    if prefer_sandbox {
+        parsed
+            .sandbox_init_point
+            .clone()
+            .or_else(|| parsed.init_point.clone())
+    } else {
+        parsed
+            .init_point
+            .clone()
+            .or_else(|| parsed.sandbox_init_point.clone())
+    }
 }
 
 fn cycle_frequency(cycle: BillingCycle) -> (i32, &'static str) {
@@ -149,7 +158,7 @@ async fn create_via_preapproval(
         .await
         .map_err(|e| AppError::Internal(format!("mercado pago parse error: {e}")))?;
 
-    let init_point = pick_init_point(&parsed).ok_or_else(|| {
+    let init_point = pick_init_point(&parsed, sandbox_mode(state)).ok_or_else(|| {
         AppError::Internal("mercado pago não devolveu o link de checkout (init_point)".to_string())
     })?;
 
@@ -205,7 +214,7 @@ async fn create_via_plan(
         .await
         .map_err(|e| AppError::Internal(format!("mercado pago plan parse error: {e}")))?;
 
-    let init_point = pick_init_point(&parsed).ok_or_else(|| {
+    let init_point = pick_init_point(&parsed, sandbox_mode(state)).ok_or_else(|| {
         AppError::Internal("mercado pago plan sem init_point".to_string())
     })?;
 

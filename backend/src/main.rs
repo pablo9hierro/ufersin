@@ -138,6 +138,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/assinaturas/simular-pagamento",
             post(routes::assinatura::simular_pagamento),
         )
+        .route(
+            "/api/assinaturas/cancelar-pendente",
+            post(routes::assinatura::cancelar_pendente),
+        )
         .route("/api/me", get(routes::me::me))
         .route("/api/me/plano", post(routes::me::mudar_plano))
         .route("/api/me/cancelar", post(routes::me::cancelar))

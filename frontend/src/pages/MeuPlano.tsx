@@ -18,6 +18,7 @@ import {
 import {
   api,
   ApiError,
+  type BillingCycle,
   type CancelReasonCode,
   type FormaPagamento,
   type MeResponse,
@@ -26,9 +27,10 @@ import {
 } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
-import { fetchPlans, formatBRL, getPlans, getPlanMap, planDisplayName, priceForCycle } from '../lib/plans'
+import { fetchPlans, formatBRL, getPlanMap, planDisplayName, priceForCycle } from '../lib/plans'
 import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import AddressField from '../components/AddressField'
+import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
 import StorefrontCmsPreview, { type CartFabStyle } from '../components/StorefrontCmsPreview'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
 import { supabase } from '../lib/supabaseClient'
@@ -152,6 +154,8 @@ export default function MeuPlano() {
   const [cancelNote, setCancelNote] = useState('')
   const [cancelPhrase, setCancelPhrase] = useState('')
   const [cancelResultMsg, setCancelResultMsg] = useState<string | null>(null)
+  const [cicloPicker, setCicloPicker] = useState<BillingCycle>('mensal')
+  const [cancellingPending, setCancellingPending] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -270,14 +274,15 @@ export default function MeuPlano() {
   /** Only truly active subscriptions get plan details + cancel + layout/financeiro/redes edits. */
   const hasActiveSub = me.plano != null && subStatus === 'ativo'
   /**
-   * Cancelled / paused / never signed / no plan → show assinar cards, never the cancel UI.
-   * `desconhecido` also reassins rather than showing active-plan cancel controls.
+   * Cancelled / paused / pending / never signed / no plan → show landing-style
+   * plan cards (never the active cancel UI or a dead-end pending message).
    */
-  const needsResubscribe =
+  const needsPlanPicker =
     !me.plano ||
     subStatus === 'sem_assinatura' ||
     subStatus === 'cancelado' ||
     subStatus === 'pausado' ||
+    subStatus === 'pendente' ||
     subStatus === 'desconhecido'
   const tabLocked = content['meu_plano.tab_locked'] ?? 'Você ainda não assinou um plano para gerenciar.'
   const panelUrl = hasActiveSub && me.onboarding_status === 'provisionado' && me.slug ? storeAdminLoginUrl(me.slug, me.email) : null
@@ -364,35 +369,76 @@ export default function MeuPlano() {
     setCancelReasons((prev) => (prev.includes(code) ? prev.filter((r) => r !== code) : [...prev, code]))
   }
 
+  const handleCancelarPendente = async () => {
+    setBusyPlano(true)
+    setCancellingPending(true)
+    setError(null)
+    try {
+      const res = await api.cancelarPendente()
+      setMe((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: res.status || 'sem_assinatura',
+              onboarding_status: 'aguardando_pagamento',
+            }
+          : prev,
+      )
+      setCancelResultMsg('Tentativa de pagamento cancelada. Escolha um plano pra tentar de novo.')
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível cancelar a tentativa.')
+    } finally {
+      setBusyPlano(false)
+      setCancellingPending(false)
+    }
+  }
+
   const resubscribeHint =
-    subStatus === 'cancelado'
-      ? 'Assinatura cancelada. Seus dados estão preservados — painel e vitrine ficam offline até você assinar novamente.'
-      : subStatus === 'pausado'
-        ? 'Assinatura pausada (inadimplência). Painel e vitrine ficam offline até a cobrança ser regularizada — você também pode assinar novamente.'
-        : content['meu_plano.no_plan'] ?? 'Escolha um plano pra começar.'
+    subStatus === 'pendente'
+      ? 'Pagamento ainda não confirmado. Escolha um plano pra pagar de novo, ou cancele a tentativa pendente.'
+      : subStatus === 'cancelado'
+        ? 'Assinatura cancelada. Seus dados estão preservados — painel e vitrine ficam offline até você assinar novamente.'
+        : subStatus === 'pausado'
+          ? 'Assinatura pausada (inadimplência). Painel e vitrine ficam offline até a cobrança ser regularizada — você também pode assinar novamente.'
+          : content['meu_plano.no_plan'] ?? 'Escolha um plano pra começar.'
+
+  const planCtaLabel =
+    subStatus === 'pendente'
+      ? (name: string) => `Pagar ${name} de novo`
+      : subStatus === 'cancelado' || subStatus === 'pausado'
+        ? (name: string) => `Assinar ${name} novamente`
+        : (name: string) => `Assinar ${name}`
 
   const planCards = (
-    <div className="space-y-4" data-testid="planos-assinar-banner">
-      <div className="grid sm:grid-cols-3 gap-3" data-testid="planos-assinar-cards">
-        {plansLoaded &&
-          getPlans().map((p) => (
-            <Link
-              key={p.code}
-              to={`/assinar?plano=${p.code}`}
-              className="uf-glass uf-glass-hover rounded-2xl p-4 block"
-              data-testid={`plan-cta-${p.code}`}
-            >
-              <p className="font-bold text-sm">{p.name}</p>
-              <p className="text-lg font-black uf-text mt-1">R$ {formatBRL(p.price)}/mês</p>
-              <p className="text-[11px] text-uf-silver-dim mt-2">
-                {subStatus === 'cancelado' || subStatus === 'pausado' ? 'Assinar novamente' : 'Assinar'}
-              </p>
-            </Link>
-          ))}
+    <div className="space-y-5" data-testid="planos-assinar-banner">
+      <div className="flex justify-center">
+        <BillingCycleToggle ciclo={cicloPicker} onChange={setCicloPicker} />
       </div>
-      <Link to="/planos" className="btn-secondary text-xs px-3 py-2 inline-flex" data-testid="ver-todos-planos">
-        Ver planos e ciclos
-      </Link>
+      {plansLoaded && (
+        <PlanCardsGrid
+          ciclo={cicloPicker}
+          animateOnMount
+          cta={{
+            kind: 'link',
+            to: (code, c) => `/assinar?plano=${code}&ciclo=${c}`,
+            label: planCtaLabel,
+          }}
+        />
+      )}
+      {subStatus === 'pendente' && (
+        <div className="flex flex-wrap gap-2 justify-center pt-1">
+          <button
+            type="button"
+            onClick={handleCancelarPendente}
+            disabled={busyPlano || cancellingPending}
+            className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20"
+            data-testid="cancelar-pendente"
+          >
+            {cancellingPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+            Cancelar tentativa pendente
+          </button>
+        </div>
+      )}
     </div>
   )
 
@@ -585,7 +631,7 @@ export default function MeuPlano() {
         </div>
       </header>
 
-      <div className="uf-container px-5 py-8 relative z-10 max-w-2xl mx-auto">
+      <div className={`uf-container px-5 py-8 relative z-10 mx-auto ${needsPlanPicker ? 'max-w-5xl' : 'max-w-2xl'}`}>
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-2xl font-black mb-1">{me.loja_nome}</h1>
           <p className="text-sm text-uf-silver-dim mb-6">Hub do lojista — plano, layout e integrações.</p>
@@ -628,21 +674,23 @@ export default function MeuPlano() {
           {saved && <p className="text-sm text-emerald-400 mb-4">Salvo!</p>}
           {cancelResultMsg && <p className="text-sm text-emerald-400 mb-4">{cancelResultMsg}</p>}
 
-          {tab === 'plano' && needsResubscribe && (
-            <section className="uf-glass rounded-2xl p-6 space-y-4" data-testid="reassinar-planos">
-              <h2 className="font-bold mb-1 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
-                <Sparkles className="w-4 h-4" />{' '}
-                {me.plano ? planMap[me.plano]?.name ?? planDisplayName(me.plano) : 'Assinar um plano'}
-              </h2>
-              <p className="text-sm text-uf-silver-dim">
-                Status: <span className="text-uf-silver">{statusLabel}</span>
-              </p>
-              <p className="text-sm text-uf-silver-dim">{resubscribeHint}</p>
+          {tab === 'plano' && needsPlanPicker && (
+            <section className="space-y-4" data-testid="reassinar-planos">
+              <div className="uf-glass rounded-2xl p-6 space-y-3">
+                <h2 className="font-bold mb-1 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
+                  <Sparkles className="w-4 h-4" />{' '}
+                  {me.plano ? planMap[me.plano]?.name ?? planDisplayName(me.plano) : 'Assinar um plano'}
+                </h2>
+                <p className="text-sm text-uf-silver-dim">
+                  Status: <span className="text-uf-silver">{statusLabel}</span>
+                </p>
+                <p className="text-sm text-uf-silver-dim">{resubscribeHint}</p>
+              </div>
               {planCards}
             </section>
           )}
 
-          {tab === 'plano' && !needsResubscribe && (
+          {tab === 'plano' && !needsPlanPicker && (
             <div className="space-y-4">
               {hasActiveSub && (
                 <form onSubmit={handleSavePreferenciasVenda} className="uf-glass rounded-2xl p-6 space-y-4" data-testid="preferencias-venda">
@@ -785,11 +833,6 @@ export default function MeuPlano() {
                       Cancelar
                     </button>
                   </>
-                )}
-                {!hasActiveSub && (
-                  <p className="text-xs text-uf-silver-dim mt-2">
-                    Aguardando confirmação do pagamento. Quando ativar, o painel e a vitrine ficam disponíveis.
-                  </p>
                 )}
               </section>
             </div>

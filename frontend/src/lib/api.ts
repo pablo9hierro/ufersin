@@ -350,6 +350,8 @@ export const api = {
   statusAssinatura: (id: string) => request<StatusAssinatura>(`/api/assinaturas/${id}/status`),
   simularPagamento: () =>
     request<StatusAssinatura>('/api/assinaturas/simular-pagamento', { method: 'POST', body: '{}' }),
+  cancelarPendente: () =>
+    request<{ status: string }>('/api/assinaturas/cancelar-pendente', { method: 'POST', body: '{}' }),
 
   listPublicPlans: async () => {
     const rows = await request<PlatformPlan[]>('/api/public/plans')

@@ -69,13 +69,24 @@ pub fn charge_amount(monthly_price: f64, cycle: BillingCycle) -> f64 {
 }
 
 /// Qual gateway processa a assinatura Resolutoo (planos).
-/// Mercado Pago tem prioridade quando `MP_ACCESS_TOKEN` está setado
-/// (assinaturas com CPF ok no MP). AbacatePay fica como fallback quando
-/// só `ABACATEPAY_API_KEY` existe. Sem nenhum token → MP em modo mock.
+/// Preferência: gateway em sandbox/homologação antes de MP produção —
+/// evita redirect pro checkout live do Mercado Pago quando há
+/// AbacatePay `abc_dev_` / `abc_test_` (ou MP `TEST-…` / mock).
+/// Sem nenhum token → MP em modo mock.
 pub fn resolve_gateway_kind(state: &AppState) -> &'static str {
-    if state.mp_token.is_some() {
+    let has_mp = state.mp_token.is_some();
+    let has_ab = state.abacatepay_token.is_some();
+    let mp_sandbox = mercadopago::sandbox_mode(state);
+    let ab_sandbox = abacatepay_gateway::sandbox_mode(state);
+
+    if has_mp && mp_sandbox {
         "mercadopago"
-    } else if state.abacatepay_token.is_some() {
+    } else if has_ab && ab_sandbox {
+        // Prefer Abacate sandbox over live MP (APP_USR-…).
+        "abacatepay"
+    } else if has_mp {
+        "mercadopago"
+    } else if has_ab {
         "abacatepay"
     } else {
         "mercadopago"
@@ -119,7 +130,10 @@ pub async fn create_subscription(
                 external_reference,
             )
             .await?;
-            let sandbox = r.preapproval_id.starts_with("mock-");
+            // TEST-… / sem token → sandbox=true (front fica on-site em /obrigado
+            // com "Simular pagamento"). Antes só mock-* era sandbox e TEST
+            // redirecionava pro hosted checkout do MP.
+            let sandbox = mercadopago::sandbox_mode(state);
             Ok(GatewayCharge {
                 external_id: r.preapproval_id,
                 checkout_url: Some(r.init_point),
