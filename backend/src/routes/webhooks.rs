@@ -21,8 +21,8 @@ pub async fn abacatepay_webhook(State(state): State<AppState>, Json(payload): Js
     let result: Result<Option<(Option<String>, Option<String>)>, _> = sqlx::query_as(
         "UPDATE subscribers SET status = 'ativo', \
          onboarding_status = CASE \
-           WHEN onboarding_status = 'aguardando_pagamento' AND slug IS NOT NULL AND NULLIF(trim(slug), '') IS NOT NULL \
-             THEN 'provisionado' \
+           WHEN slug IS NOT NULL AND NULLIF(trim(slug), '') IS NOT NULL THEN 'provisionado' \
+           WHEN tenant_id IS NOT NULL AND NULLIF(trim(tenant_id), '') IS NOT NULL THEN 'provisionado' \
            WHEN onboarding_status = 'aguardando_pagamento' THEN 'aguardando_onboarding' \
            ELSE onboarding_status END, \
          updated_at = now() WHERE mp_preapproval_id = $1 \

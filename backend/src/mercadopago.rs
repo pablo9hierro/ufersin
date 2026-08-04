@@ -47,7 +47,7 @@ struct MpPoi {
     transaction_data: Option<MpTxData>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct MpTxData {
     qr_code: Option<String>,
     qr_code_base64: Option<String>,
@@ -76,12 +76,21 @@ struct MpRefundResponse {
     id: Option<i64>,
 }
 
-/// Credencial de teste (`TEST-...`) ou ausência de token → sandbox/mock.
+/// Sandbox when `PAYMENT_MODE=sandbox|test|homolog…`, else infer from token
+/// (`TEST-…` / missing). Production mode never treats live `APP_USR-` as sandbox.
 pub fn sandbox_mode(state: &AppState) -> bool {
-    match state.mp_token.as_ref().as_ref() {
-        None => true,
-        Some(t) => t.trim().starts_with("TEST-"),
+    match state.payment_mode.as_str() {
+        "sandbox" | "test" | "homolog" | "homologacao" => true,
+        "production" | "prod" => false,
+        _ => match state.mp_token.as_ref().as_ref() {
+            None => true,
+            Some(t) => t.trim().starts_with("TEST-"),
+        },
     }
+}
+
+fn mp_token_is_test(token: &str) -> bool {
+    token.trim().starts_with("TEST-")
 }
 
 fn pick_init_point(parsed: &MpPreapprovalResponse, prefer_sandbox: bool) -> Option<String> {
@@ -153,6 +162,10 @@ fn mock_pix_charge(reason: &str, sandbox: bool) -> GatewayCharge {
 }
 
 /// Cobrança Pix on-site via Payments API — **nunca** devolve init_point/redirect.
+///
+/// Sandbox (`PAYMENT_MODE=sandbox` or TEST token): always returns a Pix QR.
+/// Live `APP_USR-` tokens are never called under sandbox mode (mock QR instead)
+/// so homologation cannot depend on production Mercado Pago Pix eligibility.
 pub async fn create_onsite_pix(
     state: &AppState,
     reason: &str,
@@ -165,9 +178,31 @@ pub async fn create_onsite_pix(
         return Ok(mock_pix_charge(reason, true));
     };
 
-    match create_mp_pix_payment(state, token, reason, payer_email, amount_reais, external_reference).await
+    // PAYMENT_MODE=sandbox with a production APP_USR token must not hit live Pix.
+    if sandbox && !mp_token_is_test(token) {
+        tracing::info!(
+            "sandbox mode with non-TEST MP token — mock Pix QR (skip live Payments API)"
+        );
+        return Ok(mock_pix_charge(reason, true));
+    }
+
+    match create_mp_pix_payment(state, token, reason, payer_email, amount_reais, external_reference)
+        .await
     {
-        Ok(c) => Ok(c),
+        Ok(c) => {
+            let qr_empty = c.pix_qr_code.as_deref().unwrap_or("").is_empty()
+                && c.pix_qr_base64.as_deref().unwrap_or("").is_empty();
+            if qr_empty && sandbox {
+                tracing::warn!("MP Pix returned empty QR in sandbox — using mock PIX QR");
+                return Ok(mock_pix_charge(reason, true));
+            }
+            if qr_empty {
+                return Err(AppError::Internal(
+                    "mercado pago pix sem QR (qr_code/qr_code_base64 vazios)".to_string(),
+                ));
+            }
+            Ok(c)
+        }
         Err(e) if sandbox => {
             tracing::warn!("MP Pix failed in sandbox ({e:?}) — using mock PIX QR");
             Ok(mock_pix_charge(reason, true))
@@ -211,7 +246,7 @@ async fn create_mp_pix_payment(
         )));
     }
 
-    let parsed: MpPaymentResponse = resp
+    let mut parsed: MpPaymentResponse = resp
         .json()
         .await
         .map_err(|e| AppError::Internal(format!("mercado pago pix parse error: {e}")))?;
@@ -219,10 +254,27 @@ async fn create_mp_pix_payment(
     let payment_id = payment_id_string(&parsed.id)
         .ok_or_else(|| AppError::Internal("mercado pago pix sem payment id".to_string()))?;
 
-    let tx = parsed
+    // MP sometimes returns the payment id before transaction_data is populated —
+    // re-fetch once when QR fields are missing.
+    let mut tx = parsed
         .point_of_interaction
-        .and_then(|p| p.transaction_data)
-        .ok_or_else(|| AppError::Internal("mercado pago pix sem QR".to_string()))?;
+        .as_ref()
+        .and_then(|p| p.transaction_data.clone());
+    let qr_missing = tx
+        .as_ref()
+        .map(|t| t.qr_code.as_deref().unwrap_or("").is_empty())
+        .unwrap_or(true);
+    if qr_missing {
+        if let Ok(refreshed) = fetch_mp_payment(state, token, &payment_id).await {
+            parsed = refreshed;
+            tx = parsed
+                .point_of_interaction
+                .as_ref()
+                .and_then(|p| p.transaction_data.clone());
+        }
+    }
+
+    let tx = tx.ok_or_else(|| AppError::Internal("mercado pago pix sem QR".to_string()))?;
 
     let qr_code = tx
         .qr_code
@@ -237,6 +289,29 @@ async fn create_mp_pix_payment(
         sandbox: sandbox_mode(state),
         payment_step: "pix".to_string(),
     })
+}
+
+async fn fetch_mp_payment(
+    state: &AppState,
+    token: &str,
+    payment_id: &str,
+) -> Result<MpPaymentResponse, AppError> {
+    let resp = state
+        .http
+        .get(format!("https://api.mercadopago.com/v1/payments/{payment_id}"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mp payment refetch failed: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(AppError::Internal(format!(
+            "mp payment refetch status {}",
+            resp.status()
+        )));
+    }
+    resp.json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mp payment refetch parse: {e}")))
 }
 
 /// Placeholder on-site card — front coleta cartão; nunca redirect.

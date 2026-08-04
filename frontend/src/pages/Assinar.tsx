@@ -26,10 +26,11 @@ function hasPixQr(c: AssinaturaCriada | null | undefined): boolean {
 }
 
 function payStepFromCharge(result: AssinaturaCriada, preferred: MetodoPagamento): PayStep {
+  // User asked for Pix → always stay on Pix step (retry UI if QR missing).
+  // Never silently dump Pix failures onto the card form.
+  if (preferred === 'pix') return 'pix'
   if (hasPixQr(result) || result.payment_step === 'pix') {
-    // Only enter Pix UI when QR payload exists — never infinite "Gerando QR".
-    if (hasPixQr(result)) return 'pix'
-    return preferred === 'cartao' ? 'card' : 'form'
+    return hasPixQr(result) ? 'pix' : 'form'
   }
   if (result.payment_step === 'card' || preferred === 'cartao' || preferred === 'cartao_parcelado') {
     return 'card'
@@ -207,11 +208,12 @@ export default function Assinar() {
     setCharge(result)
     setMetodo(preferred === 'pix' ? 'pix' : 'cartao')
     const step = payStepFromCharge(result, preferred)
-    if (preferred === 'pix' && step !== 'pix') {
-      setError('Não foi possível gerar o QR Pix. Tente novamente ou pague com cartão.')
-      setPayStep(step === 'form' ? 'form' : 'card')
+    if (preferred === 'pix' && !hasPixQr(result)) {
+      setError('Não foi possível gerar o QR Pix. Tente gerar novamente.')
+      setPayStep('pix')
       return
     }
+    setError(null)
     setPayStep(step)
   }
 
@@ -284,6 +286,11 @@ export default function Assinar() {
             ? 'Não foi possível gerar o Pix. Tente novamente.'
             : 'Não foi possível abrir o pagamento com cartão.',
       )
+      // Keep Pix step visible with retry — do not bounce back to card.
+      if (next === 'pix') {
+        setMetodo('pix')
+        setPayStep('pix')
+      }
     } finally {
       setSwitchingMethod(false)
     }

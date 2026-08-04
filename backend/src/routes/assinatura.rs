@@ -235,16 +235,16 @@ pub async fn status_assinatura(
     Path(id): Path<String>,
 ) -> Result<Json<StatusAssinatura>, AppError> {
     let sandbox = gateway::sandbox_mode(&state);
-    let row: Option<(Option<String>, String, Option<String>, String, Option<String>, Option<String>)> =
+    let row: Option<(Option<String>, String, Option<String>, String, Option<String>, Option<String>, Option<String>)> =
         sqlx::query_as(
-            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug, plan_code \
+            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug, plan_code, tenant_id \
              FROM subscribers WHERE id = $1",
         )
             .bind(&id)
             .fetch_optional(&state.pool)
             .await?;
 
-    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug, plan_code) =
+    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug, plan_code, tenant_id) =
         row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
 
     let (Some(preapproval_id), Some(gateway_kind)) = (preapproval_id, gateway_kind) else {
@@ -267,21 +267,19 @@ pub async fn status_assinatura(
         novo_status = "ativo";
     }
 
-    // Only promote aguardando_pagamento → onboarding when this is a brand-new store.
-    // If slug/tenant already exists, restore provisionado (same-plan re-subscribe recovery).
+    // If slug/tenant already exists, restore provisionado (re-subscribe recovery).
     let has_store = slug
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .is_some();
-    let novo_onboarding = if novo_status == "ativo"
-        && (onboarding_status == "aguardando_pagamento" || onboarding_status.is_empty())
-    {
-        if has_store {
-            "provisionado"
-        } else {
-            "aguardando_onboarding"
-        }
+        .is_some()
+        || tenant_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_some();
+    let novo_onboarding = if novo_status == "ativo" {
+        onboarding_after_activate(&onboarding_status, has_store)
     } else {
         onboarding_status.as_str()
     };
@@ -327,22 +325,42 @@ pub async fn simular_pagamento(
         ));
     }
 
-    let row: Option<(Option<String>, String, Option<String>, String, Option<String>, Option<String>)> =
+    let row: Option<(Option<String>, String, Option<String>, String, Option<String>, Option<String>, Option<String>)> =
         sqlx::query_as(
-            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug, plan_code \
+            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug, plan_code, tenant_id \
              FROM subscribers WHERE id = $1",
         )
             .bind(&claims.sub)
             .fetch_optional(&state.pool)
             .await?;
 
-    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug, plan_code) =
+    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug, plan_code, tenant_id) =
         row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
 
     if status_atual == "ativo" {
+        let has_store = slug
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_some()
+            || tenant_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .is_some();
+        let fixed = onboarding_after_activate(&onboarding_status, has_store);
+        if fixed != onboarding_status {
+            let _ = sqlx::query(
+                "UPDATE subscribers SET onboarding_status = $1, updated_at = now() WHERE id = $2",
+            )
+            .bind(fixed)
+            .bind(&claims.sub)
+            .execute(&state.pool)
+            .await;
+        }
         return Ok(Json(StatusAssinatura {
             status: "ativo".to_string(),
-            onboarding_status,
+            onboarding_status: fixed.to_string(),
             sandbox: true,
         }));
     }
@@ -356,21 +374,17 @@ pub async fn simular_pagamento(
         let _ = gateway::simulate_payment(&state, gw, ext_id).await;
     }
 
-    let novo_onboarding = if onboarding_status == "aguardando_pagamento" || onboarding_status.is_empty()
-    {
-        let has_store = slug
+    let has_store = slug
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_some()
+        || tenant_id
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .is_some();
-        if has_store {
-            "provisionado"
-        } else {
-            "aguardando_onboarding"
-        }
-    } else {
-        onboarding_status.as_str()
-    };
+    let novo_onboarding = onboarding_after_activate(&onboarding_status, has_store);
 
     sqlx::query(
         "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, updated_at = now() WHERE id = $2",
@@ -436,6 +450,7 @@ pub async fn cancelar_pendente(
         "UPDATE subscribers SET status = 'sem_assinatura', \
          onboarding_status = CASE \
            WHEN tenant_id IS NOT NULL AND NULLIF(trim(tenant_id), '') IS NOT NULL THEN 'provisionado' \
+           WHEN slug IS NOT NULL AND NULLIF(trim(slug), '') IS NOT NULL THEN 'provisionado' \
            WHEN onboarding_status = 'provisionado' THEN 'provisionado' \
            ELSE 'aguardando_pagamento' \
          END, \
@@ -484,9 +499,27 @@ pub(crate) fn onboarding_for_resubscribe(
     }
 }
 
+/// After payment succeeds: restore `provisionado` whenever the store already
+/// exists (tenant_id / slug). Recovers stuck `aguardando_onboarding` after
+/// cancel+re-sub same plan. Upgrade complementary still works because
+/// `onboarding_for_resubscribe` only sets aguardando_onboarding while pending;
+/// once paid with an existing store we treat the shop as provisioned and the
+/// FE (`postPayRedirect` / Meu plano) owns any leftover field collection.
+pub(crate) fn onboarding_after_activate(current: &str, has_store: bool) -> &'static str {
+    if has_store {
+        return "provisionado";
+    }
+    match current {
+        "aguardando_pagamento" | "" => "aguardando_onboarding",
+        "provisionado" => "provisionado",
+        "aguardando_onboarding" => "aguardando_onboarding",
+        _ => "aguardando_onboarding",
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::onboarding_for_resubscribe;
+    use super::{onboarding_after_activate, onboarding_for_resubscribe};
 
     #[test]
     fn new_subscriber_awaits_payment() {
@@ -531,6 +564,26 @@ mod tests {
             "provisionado"
         );
     }
+
+    #[test]
+    fn activate_restores_provisionado_when_store_exists() {
+        assert_eq!(
+            onboarding_after_activate("aguardando_onboarding", true),
+            "provisionado"
+        );
+        assert_eq!(
+            onboarding_after_activate("aguardando_pagamento", true),
+            "provisionado"
+        );
+    }
+
+    #[test]
+    fn activate_new_store_awaits_onboarding() {
+        assert_eq!(
+            onboarding_after_activate("aguardando_pagamento", false),
+            "aguardando_onboarding"
+        );
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -561,15 +614,16 @@ pub async fn pagar_cartao(
         Option<String>,
         String,
         Option<String>,
+        Option<String>,
     )> = sqlx::query_as(
         "SELECT email, status, gateway, COALESCE(valor_mensal, 0), billing_cycle, plan_code, \
-         onboarding_status, slug FROM subscribers WHERE id = $1",
+         onboarding_status, slug, tenant_id FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
     .fetch_optional(&state.pool)
     .await?;
 
-    let (email, status, gateway_kind, valor_mensal, billing_cycle, plan_code, onboarding_status, slug) =
+    let (email, status, gateway_kind, valor_mensal, billing_cycle, plan_code, onboarding_status, slug, tenant_id) =
         row.ok_or_else(|| AppError::NotFound("conta não encontrada".to_string()))?;
 
     if status != "pendente" {
@@ -604,17 +658,13 @@ pub async fn pagar_cartao(
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .is_some();
-    let novo_onboarding = if onboarding_status == "aguardando_pagamento" || onboarding_status.is_empty()
-    {
-        if has_store {
-            "provisionado"
-        } else {
-            "aguardando_onboarding"
-        }
-    } else {
-        onboarding_status.as_str()
-    };
+        .is_some()
+        || tenant_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_some();
+    let novo_onboarding = onboarding_after_activate(&onboarding_status, has_store);
 
     sqlx::query(
         "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, mp_preapproval_id = $2, \

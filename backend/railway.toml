@@ -1,9 +1,10 @@
 [build]
-builder = "NIXPACKS"
-watchPatterns = ["src/**", "migrations/**", "Cargo.toml", "Cargo.lock", "railway.toml"]
+# Prebuilt image from Docker Hub (pablohierro/ufersin-api:…).
+# startCommand must match image CMD (/usr/local/bin on PATH).
+watchPatterns = ["src/**", "migrations/**", "Cargo.toml", "Cargo.lock", "railway.toml", "Dockerfile.local"]
 
 [deploy]
-startCommand = "./target/release/ufersin_backend"
+startCommand = "ufersin_backend"
 healthcheckPath = "/health"
 healthcheckTimeout = 90
 restartPolicyType = "ON_FAILURE"
