@@ -1,7 +1,8 @@
-//! Cliente PandaDoc — **somente** contrato do lojista (`platform_subscription`).
+//! Cliente PandaDoc — **opcional / inerte**.
+//! Produção `/assinar`: **somente checkbox** (não depende de template/webhook).
 //! Checkout do cliente = checkbox local (nunca gasta cota PandaDoc).
 //!
-//! Estratégia atual: Free + Sandbox pra desenvolver.
+//! Código mantido atrás de env pra eventual reativação de e-sign; não bloqueia assinatura.
 //! Docs: https://developers.pandadoc.com/docs/getting-started
 //! Embedded signing: https://developers.pandadoc.com/docs/embedded-signing
 //! Webhooks: https://developers.pandadoc.com/docs/webhook-verification
@@ -126,11 +127,11 @@ pub fn status(cfg: &PandadocConfig) -> StatusResponse {
     let platform_template_configured = cfg.platform_template_id.is_some();
     let platform_signing_ready = cfg.platform_signing_configured();
     let message = if !cfg.enabled() {
-        "PandaDoc Free/Sandbox: defina PANDADOC_API_KEY (e PANDADOC_PLATFORM_TEMPLATE_ID) pra e-sign do lojista em /assinar. Checkout continua só com checkbox.".to_string()
+        "/assinar = checkbox only (produção). PandaDoc opcional: deixe vars vazias ou defina PANDADOC_API_KEY + template só se reativar e-sign.".to_string()
     } else if !platform_template_configured {
-        "API key ok — falta PANDADOC_PLATFORM_TEMPLATE_ID (template do contrato do lojista). Checkout sem PandaDoc.".to_string()
+        "API key ok; PANDADOC_PLATFORM_TEMPLATE_ID vazio — OK. /assinar não exige e-sign (checkbox).".to_string()
     } else {
-        "PandaDoc configurado pro contrato do lojista (sandbox/free). Checkout: checkbox only.".to_string()
+        "PandaDoc env presente (opcional). Frontend /assinar usa só checkbox; sessão e-sign não é requisito.".to_string()
     };
     StatusResponse {
         enabled: cfg.enabled(),
@@ -167,7 +168,7 @@ pub async fn create_signing_session(
             } else {
                 "production_stub"
             },
-            message: "PandaDoc não configurado. Em /assinar use o checkbox local até preencher PANDADOC_API_KEY + PANDADOC_PLATFORM_TEMPLATE_ID (Free/Sandbox).".to_string(),
+            message: "PandaDoc não configurado — OK. /assinar usa checkbox local; e-sign não é requisito.".to_string(),
             pandadoc_document_id: None,
             session_id: None,
             share_link: None,
@@ -178,7 +179,7 @@ pub async fn create_signing_session(
         return CreateSessionResponse {
             ready: false,
             mode: if cfg.sandbox { "sandbox" } else { "production" },
-            message: "Falta PANDADOC_PLATFORM_TEMPLATE_ID. Crie o template do contrato do lojista no PandaDoc Free/Sandbox e cole o ID.".to_string(),
+            message: "PANDADOC_PLATFORM_TEMPLATE_ID vazio — OK para checkbox-only. Template só se reativar e-sign.".to_string(),
             pandadoc_document_id: None,
             session_id: None,
             share_link: None,
@@ -191,7 +192,7 @@ pub async fn create_signing_session(
     CreateSessionResponse {
         ready: false,
         mode: if cfg.sandbox { "sandbox" } else { "production" },
-        message: "Template configurado; create-document/session ainda aguarda cláusulas no PandaDoc. Checkbox em /assinar continua válido.".to_string(),
+        message: "Template configurado, mas /assinar é checkbox-only por decisão de produto; create-document/session permanece stub.".to_string(),
         pandadoc_document_id: None,
         session_id: None,
         share_link: None,

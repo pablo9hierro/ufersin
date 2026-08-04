@@ -1,7 +1,8 @@
 # Contrato de Assinatura — Plano Essential Resolutoo
 
-**Documento para colar / fazer upload no PandaDoc (template do contrato lojista × plataforma).**  
-Versão: agosto de 2026 · Sem segredos · Uso: `platform_subscription` em `/assinar`
+**Texto canônico do contrato lojista × plataforma (checkbox em `/assinar`).**  
+Versão: agosto de 2026 · Sem segredos · Uso: `platform_subscription`  
+PandaDoc: opcional / inerte — o fluxo de produção é **somente checkbox** (não bloqueia assinatura).
 
 ---
 
@@ -9,7 +10,7 @@ Versão: agosto de 2026 · Sem segredos · Uso: `platform_subscription` em `/ass
 
 **CONTRATADA (Provedora da plataforma):** Resolutoo (“Resolutoo”, “plataforma”, “nós”).
 
-**CONTRATANTE (Lojista / Assinante):** a pessoa física ou jurídica que assina o Plano Essential (ou outro plano da plataforma Resolutoo) em resolutoo.com, identificada no momento da contratação e neste documento eletrônico (“você”, “lojista”, “assinante”).
+**CONTRATANTE (Lojista / Assinante):** a pessoa física ou jurídica que assina o Plano Essential (ou outro plano da plataforma Resolutoo) em resolutoo.com, identificada no momento da contratação (“você”, “lojista”, “assinante”).
 
 ---
 
@@ -60,13 +61,13 @@ Versão: agosto de 2026 · Sem segredos · Uso: `platform_subscription` em `/ass
 
 ---
 
-## 5. Aceite eletrônico e assinatura
+## 5. Aceite eletrônico (checkbox)
 
-5.1. O aceite pode ocorrer por checkbox em `/assinar` e/ou por assinatura eletrônica neste documento (PandaDoc ou meio equivalente).
+5.1. O aceite deste contrato ocorre **exclusivamente por checkbox obrigatório** em `/assinar`, com links para `/politicas-de-privacidade/plano-essential` e `/politicas-de-privacidade/lojista`. **Não** há etapa de assinatura manuscrita nem redirecionamento a provedor de e-sign (PandaDoc ou equivalente) como requisito para assinar o plano.
 
-5.2. Ao assinar / aceitar, o lojista declara ter lido e concordado com este contrato e com as responsabilidades do lojista publicadas em `/politicas-de-privacidade/lojista`.
+5.2. Ao marcar o checkbox e prosseguir com o pagamento, o lojista declara ter lido e concordado com este contrato e com as responsabilidades do lojista publicadas em `/politicas-de-privacidade/lojista`.
 
-5.3. Registros de aceite (data, canal, identificação do assinante) poderão ser armazenados pela Resolutoo para comprovação contratual.
+5.3. Registros de aceite (data, canal `checkbox`, identificação do assinante) poderão ser armazenados pela Resolutoo para comprovação contratual.
 
 ---
 
@@ -80,11 +81,13 @@ Versão: agosto de 2026 · Sem segredos · Uso: `platform_subscription` em `/ass
 
 ---
 
-## 7. Limitação e exclusões
+## 7. Disponibilidade, suporte e exclusões
 
-7.1. A Resolutoo não garante disponibilidade ininterrupta da plataforma, mas envidará esforços razoáveis de operação e suporte.
+7.1. **Funcionamento ininterrupto:** durante o período do plano assinado válido, a Resolutoo **garante o funcionamento ininterrupto do site** da loja na plataforma.
 
-7.2. A Resolutoo não se responsabiliza por: (a) atos ou omissões do lojista perante clientes; (b) problemas da conta Mercado Pago do lojista; (c) indisponibilidades de terceiros (Mercado Pago, hospedagem, internet, etc.), na medida permitida pela lei.
+7.2. **Prazo de correção:** eventuais bugs ou erros de funcionamento têm prazo de **até 3 (três) horas** para resolução, contadas a partir do registro / comunicação do problema pelos canais de suporte da plataforma.
+
+7.3. A Resolutoo não se responsabiliza por: (a) atos ou omissões do lojista perante clientes; (b) problemas da conta Mercado Pago do lojista; (c) indisponibilidades de terceiros (Mercado Pago, hospedagem de infraestrutura fora do controle razoável da Resolutoo, internet do assinante, etc.), na medida permitida pela lei — sem prejuízo das obrigações dos itens 7.1 e 7.2 quanto ao site da loja na plataforma.
 
 ---
 
@@ -104,13 +107,13 @@ Versão: agosto de 2026 · Sem segredos · Uso: `platform_subscription` em `/ass
 
 ---
 
-## Campos sugeridos no PandaDoc (tokens)
+## Campos de identificação (registros internos / opcional PandaDoc)
 
 - Nome / razão social do lojista  
 - E-mail do assinante  
 - CPF/CNPJ  
 - Plano: Essential (ou outro)  
-- Data da assinatura  
+- Data do aceite (checkbox)  
 - Valor mensal vigente  
 
-*(Preencher no template PandaDoc; não incluir chaves de API neste arquivo.)*
+*(Upload de template PandaDoc é opcional e não é requisito de produção. Não incluir chaves de API neste arquivo.)*

@@ -127,6 +127,7 @@ export const politicaLojista: PoliticaDoc = {
       title: 'Papel da Resolutoo',
       paragraphs: [
         'A Resolutoo é o provedor da plataforma (vitrine, painel, orquestração do checkout). A assinatura do plano da plataforma é cobrada pela Resolutoo; o dinheiro das vendas da loja segue para a conta MP do lojista.',
+        'Com plano assinado válido, a Resolutoo garante o funcionamento ininterrupto do site da loja; bugs ou erros de funcionamento têm prazo de até 3 horas para resolução (detalhes em /politicas-de-privacidade/plano-essential).',
       ],
     },
   ],
@@ -158,6 +159,17 @@ export const politicaPlanoEssential: PoliticaDoc = {
       ],
     },
     {
+      title: 'Disponibilidade do site e correção de erros',
+      paragraphs: [
+        'Durante o período do plano assinado válido, a Resolutoo garante o funcionamento ininterrupto do site da loja na plataforma.',
+        'Eventuais bugs ou erros de funcionamento têm prazo de até 3 (três) horas para resolução, contadas a partir do registro / comunicação do problema pelos canais de suporte da plataforma.',
+      ],
+      bullets: [
+        'Plano válido: funcionamento ininterrupto do site.',
+        'Bugs / erros de funcionamento: resolução em até 3 horas.',
+      ],
+    },
+    {
       title: 'O que a Resolutoo faz e o que não faz',
       paragraphs: [
         'A Resolutoo orquestra o checkout da vitrine e encaminha o pagamento das compras para a conta Mercado Pago do lojista.',
@@ -172,7 +184,7 @@ export const politicaPlanoEssential: PoliticaDoc = {
     {
       title: 'Aceite em /assinar',
       paragraphs: [
-        'Ao marcar o checkbox de aceite do contrato de assinatura (e/ou assinar eletronicamente no PandaDoc), você confirma ter lido estes termos e as responsabilidades do lojista publicadas em /politicas-de-privacidade/lojista.',
+        'Ao marcar o checkbox de aceite do contrato de assinatura em /assinar, você confirma ter lido estes termos e as responsabilidades do lojista publicadas em /politicas-de-privacidade/lojista. Não há etapa de assinatura manuscrita nem redirecionamento a provedor de e-sign.',
       ],
     },
   ],

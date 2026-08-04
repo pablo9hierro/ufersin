@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Check, Copy, CreditCard, ExternalLink, Loader2, QrCode, Rocket, Tag, X } from 'lucide-react'
+import { Check, Copy, CreditCard, Loader2, QrCode, Rocket, Tag, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   api,
@@ -10,7 +10,6 @@ import {
   type BillingCycle,
   type CouponPreview,
   type MetodoPagamento,
-  type PandadocStatus,
   type PlanoCode,
 } from '../lib/api'
 import { CmsEditProvider, CmsText, usePlatformContent } from '../lib/cms'
@@ -60,8 +59,6 @@ export default function Assinar() {
   const [aceiteContrato, setAceiteContrato] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [pandadocStatus, setPandadocStatus] = useState<PandadocStatus | null>(null)
-  const [pandadocShareLink, setPandadocShareLink] = useState<string | null>(null)
   const { content, ready: contentReady } = usePlatformContent()
 
   const [payStep, setPayStep] = useState<PayStep>('form')
@@ -81,7 +78,6 @@ export default function Assinar() {
 
   useEffect(() => {
     fetchPlans().finally(() => setPlansReady(true))
-    api.getPandadocStatus().then(setPandadocStatus).catch(() => {})
   }, [])
 
   // Prefill public Mercado Pago sandbox test card; clear when not sandbox.
@@ -192,7 +188,6 @@ export default function Assinar() {
   if (!planInfo) return <Navigate to="/planos" replace />
   const monthly = preview?.monthly_after ?? planInfo.price
   const charged = priceForCycle(monthly, ciclo)
-  const platformSigningReady = pandadocStatus?.platform_signing_ready ?? false
   // Never block Assinar on preview races ("cupom inválido" while typing /
   // CUPOM60 lag). Server validates on submit.
   const sandbox = Boolean(charge?.sandbox)
@@ -245,20 +240,7 @@ export default function Assinar() {
         /* catálogo pode ainda não ter migrado */
       }
 
-      if (platformSigningReady && session?.user.email) {
-        try {
-          const signerName =
-            session.user.user_metadata?.responsavel_nome ||
-            session.user.user_metadata?.full_name ||
-            session.user.user_metadata?.name ||
-            undefined
-          const pd = await api.contratosPandadocSession(session.user.email, signerName)
-          if (pd.ready && pd.share_link) setPandadocShareLink(pd.share_link)
-        } catch {
-          /* checkbox já registrou */
-        }
-      }
-
+      // Product: checkbox-only consent — no PandaDoc e-sign / redirect.
       await startOrRefreshCharge(metodo)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível iniciar a assinatura. Tente novamente.')
@@ -522,18 +504,6 @@ export default function Assinar() {
                   .
                 </span>
               </label>
-
-              {pandadocShareLink && (
-                <a
-                  href={pandadocShareLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-xs text-uf-blue hover:underline"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Abrir documento PandaDoc (opcional)
-                </a>
-              )}
 
               {error && <p className="error-msg">{error}</p>}
 

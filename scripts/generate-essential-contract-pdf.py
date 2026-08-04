@@ -1,10 +1,137 @@
-"""Gera PDF do contrato Plano Essential Resolutoo (sem segredos)."""
+"""Gera PDF + MD do contrato Plano Essential Resolutoo (sem segredos).
+
+Aceite de produção: checkbox em /assinar (sem e-sign obrigatório).
+"""
 from pathlib import Path
 from fpdf import FPDF
 
-OUT = Path(r"C:\Users\pablo\Documents\resolutoo-contrato-plano-essential.pdf")
+OUT_PDF = Path(r"C:\Users\pablo\Documents\resolutoo-contrato-plano-essential.pdf")
+OUT_MD = Path(r"C:\Users\pablo\Documents\resolutoo-contrato-plano-essential.md")
+# Cópia canônica no repo (fonte compartilhada com docs/)
+REPO_MD = Path(__file__).resolve().parents[1] / "docs" / "pandadoc-template-plano-essential.md"
 FONT = r"C:\Windows\Fonts\arial.ttf"
 FONT_B = r"C:\Windows\Fonts\arialbd.ttf"
+
+MD_BODY = """# Contrato de Assinatura — Plano Essential Resolutoo
+
+**Texto canônico do contrato lojista × plataforma (checkbox em `/assinar`).**  
+Versão: agosto de 2026 · Sem segredos · Uso: `platform_subscription`  
+PandaDoc: opcional / inerte — o fluxo de produção é **somente checkbox** (não bloqueia assinatura).
+
+---
+
+## Partes
+
+**CONTRATADA (Provedora da plataforma):** Resolutoo (“Resolutoo”, “plataforma”, “nós”).
+
+**CONTRATANTE (Lojista / Assinante):** a pessoa física ou jurídica que assina o Plano Essential (ou outro plano da plataforma Resolutoo) em resolutoo.com, identificada no momento da contratação (“você”, “lojista”, “assinante”).
+
+---
+
+## 1. Objeto
+
+1.1. Este contrato regula a **assinatura do Plano Essential** (e, no que couber, demais planos da plataforma Resolutoo) para acesso à plataforma: vitrine/loja online, painel administrativo e recursos do plano vigente no momento da contratação.
+
+1.2. A Resolutoo atua como **provedora da plataforma** (software e orquestração). A assinatura da plataforma é cobrada pela Resolutoo, pelos meios disponibilizados em `/assinar` (ex.: Mercado Pago e/ou outros gateways indicados).
+
+1.3. Este contrato **não** substitui as responsabilidades do lojista na operação da loja perante seus clientes, nem os termos de uso/privacidade publicados em resolutoo.com (incluindo `/politicas-de-privacidade/plano-essential` e `/politicas-de-privacidade/lojista`).
+
+---
+
+## 2. Papel da Resolutoo e da conta Mercado Pago do lojista
+
+2.1. A Resolutoo disponibiliza a vitrine, o carrinho e a orquestração do checkout das vendas da loja.
+
+2.2. Os **pagamentos Pix (e demais meios da loja) das compras dos clientes** são recebidos na **conta Mercado Pago do lojista** (conta do assinante), e não na conta da Resolutoo.
+
+2.3. Saques, limites, cadastro, bloqueios, disputas, falhas de estorno/saque e suporte da conta Mercado Pago da loja são de **responsabilidade do lojista perante o Mercado Pago**. A Resolutoo **não administra** e **não é responsável** por problemas nessa conta.
+
+2.4. Distinção clara:
+- **Assinatura do plano Resolutoo** → cobrança pela plataforma Resolutoo.
+- **Vendas na vitrine** → pagamento na conta Mercado Pago do lojista.
+- **Conta MP do lojista** → gestão e suporte com o Mercado Pago.
+
+---
+
+## 3. Preço, cobrança e vigência
+
+3.1. O valor, periodicidade e benefícios do Plano Essential (ou plano escolhido) são os vigentes na oferta apresentada em `/assinar` no momento da contratação.
+
+3.2. A assinatura permanece ativa enquanto o pagamento recorrente (ou o período pago) estiver em dia, conforme regras do meio de pagamento utilizado, salvo cancelamento nos termos deste contrato.
+
+3.3. A Resolutoo pode atualizar preços e recursos de planos mediante comunicação prévia nos canais da plataforma, respeitando o ciclo já pago quando aplicável.
+
+---
+
+## 4. Cancelamento e reembolso (regra dos 7 dias)
+
+4.1. **Prazo de arrependimento / estorno (até 7 dias):** o assinante pode **cancelar a assinatura em até 7 (sete) dias corridos**, contados da data da assinatura / contratação do plano. Nesse caso, a Resolutoo promoverá o **estorno / reembolso** do valor pago da assinatura **via Mercado Pago** (ou via o mesmo provedor de pagamento utilizado na cobrança), observados os prazos e regras operacionais desse provedor.
+
+4.2. **Após 7 dias:** o assinante **pode cancelar o plano** a qualquer momento pelos meios disponibilizados na plataforma (ex.: área do assinante / cancelamento), **sem direito a reembolso, estorno ou devolução proporcional** do valor já pago referente ao período em curso, salvo obrigação legal diversa ou política promocional expressa e escrita da Resolutoo.
+
+4.3. O cancelamento encerra o acesso aos recursos do plano conforme o fluxo operacional da plataforma (imediatamente ou ao fim do período já pago, conforme indicado no produto no momento do cancelamento).
+
+4.4. Cancelamento de **pedidos de clientes na loja** (compras na vitrine) segue regras próprias dos termos de compra / responsabilidades do lojista — **não** se confunde com o cancelamento da assinatura do Plano Essential.
+
+---
+
+## 5. Aceite eletrônico (checkbox)
+
+5.1. O aceite deste contrato ocorre **exclusivamente por checkbox obrigatório** em `/assinar`, com links para `/politicas-de-privacidade/plano-essential` e `/politicas-de-privacidade/lojista`. **Não** há etapa de assinatura manuscrita nem redirecionamento a provedor de e-sign (PandaDoc ou equivalente) como requisito para assinar o plano.
+
+5.2. Ao marcar o checkbox e prosseguir com o pagamento, o lojista declara ter lido e concordado com este contrato e com as responsabilidades do lojista publicadas em `/politicas-de-privacidade/lojista`.
+
+5.3. Registros de aceite (data, canal `checkbox`, identificação do assinante) poderão ser armazenados pela Resolutoo para comprovação contratual.
+
+---
+
+## 6. Obrigações do lojista
+
+6.1. Utilizar a plataforma de forma lícita, fornecer dados cadastrais verdadeiros e manter a conta Mercado Pago da loja em condições de operar.
+
+6.2. Cumprir a legislação aplicável às suas vendas (incluindo regras de idade 18+ quando ativar essa modalidade), entrega, atendimento e políticas perante o consumidor.
+
+6.3. Não utilizar a plataforma para fins ilícitos, fraudulentos ou que violem direitos de terceiros.
+
+---
+
+## 7. Disponibilidade, suporte e exclusões
+
+7.1. **Funcionamento ininterrupto:** durante o período do plano assinado válido, a Resolutoo **garante o funcionamento ininterrupto do site** da loja na plataforma.
+
+7.2. **Prazo de correção:** eventuais bugs ou erros de funcionamento têm prazo de **até 3 (três) horas** para resolução, contadas a partir do registro / comunicação do problema pelos canais de suporte da plataforma.
+
+7.3. A Resolutoo não se responsabiliza por: (a) atos ou omissões do lojista perante clientes; (b) problemas da conta Mercado Pago do lojista; (c) indisponibilidades de terceiros (Mercado Pago, hospedagem de infraestrutura fora do controle razoável da Resolutoo, internet do assinante, etc.), na medida permitida pela lei — sem prejuízo das obrigações dos itens 7.1 e 7.2 quanto ao site da loja na plataforma.
+
+---
+
+## 8. Privacidade e dados
+
+8.1. O tratamento de dados pessoais observados na operação da plataforma segue as políticas publicadas em resolutoo.com e a legislação aplicável (incluindo a LGPD, quando cabível).
+
+---
+
+## 9. Foro e disposições gerais
+
+9.1. Este contrato constitui o acordo entre as partes quanto à assinatura do plano da plataforma, prevalecendo sobre comunicações informais conflitantes, sem prejuízo de políticas publicadas no site.
+
+9.2. A invalidade de qualquer cláusula não prejudica as demais.
+
+9.3. Fica eleito o foro da comarca da sede da Resolutoo, salvo foro obrigatório diverso por lei (ex.: consumidor, quando aplicável).
+
+---
+
+## Campos de identificação (registros internos / opcional PandaDoc)
+
+- Nome / razão social do lojista  
+- E-mail do assinante  
+- CPF/CNPJ  
+- Plano: Essential (ou outro)  
+- Data do aceite (checkbox)  
+- Valor mensal vigente  
+
+*(Upload de template PandaDoc é opcional e não é requisito de produção. Não incluir chaves de API neste arquivo.)*
+"""
 
 
 class PDF(FPDF):
@@ -21,6 +148,9 @@ class PDF(FPDF):
 
 
 def main() -> None:
+    OUT_MD.write_text(MD_BODY, encoding="utf-8")
+    REPO_MD.write_text(MD_BODY, encoding="utf-8")
+
     pdf = PDF(format="A4")
     pdf.alias_nb_pages()
     pdf.set_auto_page_break(auto=True, margin=18)
@@ -50,8 +180,15 @@ def main() -> None:
         pdf.ln(0.8)
 
     h1("CONTRATO DE ASSINATURA — PLANO ESSENTIAL RESOLUTOO")
-    p("Versão: agosto de 2026. Documento para upload/template no PandaDoc (assinatura eletrônica do lojista).", bold=False)
-    p("Partes e objeto abaixo. Ao assinar eletronicamente, o lojista declara ter lido e aceito integralmente este contrato.")
+    p(
+        "Versão: agosto de 2026. Aceite de produção: checkbox obrigatório em /assinar "
+        "(sem assinatura manuscrita / e-sign como requisito).",
+        bold=False,
+    )
+    p(
+        "Ao marcar o checkbox e concluir o pagamento, o lojista declara ter lido e aceito "
+        "integralmente este contrato."
+    )
 
     h2("PARTES")
     p(
@@ -60,7 +197,7 @@ def main() -> None:
     p(
         "CONTRATANTE (Lojista / Assinante): a pessoa física ou jurídica que assina o Plano Essential "
         "(ou outro plano da plataforma Resolutoo) em resolutoo.com, identificada no momento da contratação "
-        "e neste documento eletrônico (“você”, “lojista”, “assinante”)."
+        "(“você”, “lojista”, “assinante”)."
     )
 
     h2("1. OBJETO")
@@ -140,18 +277,21 @@ def main() -> None:
         "do Plano Essential."
     )
 
-    h2("5. ACEITE ELETRÔNICO E ASSINATURA")
+    h2("5. ACEITE ELETRÔNICO (CHECKBOX)")
     p(
-        "5.1. O aceite pode ocorrer por checkbox em /assinar e/ou por assinatura eletrônica neste documento "
-        "(PandaDoc ou meio equivalente)."
+        "5.1. O aceite deste contrato ocorre exclusivamente por checkbox obrigatório em /assinar, com links "
+        "para /politicas-de-privacidade/plano-essential e /politicas-de-privacidade/lojista. Não há etapa de "
+        "assinatura manuscrita nem redirecionamento a provedor de e-sign como requisito para assinar o plano.",
+        bold=True,
     )
     p(
-        "5.2. Ao assinar / aceitar, o lojista declara ter lido e concordado com este contrato e com as "
-        "responsabilidades do lojista publicadas em /politicas-de-privacidade/lojista."
+        "5.2. Ao marcar o checkbox e prosseguir com o pagamento, o lojista declara ter lido e concordado "
+        "com este contrato e com as responsabilidades do lojista publicadas em "
+        "/politicas-de-privacidade/lojista."
     )
     p(
-        "5.3. Registros de aceite (data, canal, identificação do assinante) poderão ser armazenados pela "
-        "Resolutoo para comprovação contratual."
+        "5.3. Registros de aceite (data, canal checkbox, identificação do assinante) poderão ser armazenados "
+        "pela Resolutoo para comprovação contratual."
     )
 
     h2("6. OBRIGAÇÕES DO LOJISTA")
@@ -167,15 +307,24 @@ def main() -> None:
         "6.3. Não utilizar a plataforma para fins ilícitos, fraudulentos ou que violem direitos de terceiros."
     )
 
-    h2("7. LIMITAÇÃO E EXCLUSÕES")
+    h2("7. DISPONIBILIDADE, SUPORTE E EXCLUSÕES")
     p(
-        "7.1. A Resolutoo não garante disponibilidade ininterrupta da plataforma, mas envidará esforços "
-        "razoáveis de operação e suporte."
+        "7.1. Funcionamento ininterrupto: durante o período do plano assinado válido, a Resolutoo garante "
+        "o funcionamento ininterrupto do site da loja na plataforma.",
+        bold=True,
     )
     p(
-        "7.2. A Resolutoo não se responsabiliza por: (a) atos ou omissões do lojista perante clientes; "
+        "7.2. Prazo de correção: eventuais bugs ou erros de funcionamento têm prazo de até 3 (três) horas "
+        "para resolução, contadas a partir do registro / comunicação do problema pelos canais de suporte "
+        "da plataforma.",
+        bold=True,
+    )
+    p(
+        "7.3. A Resolutoo não se responsabiliza por: (a) atos ou omissões do lojista perante clientes; "
         "(b) problemas da conta Mercado Pago do lojista; (c) indisponibilidades de terceiros (Mercado Pago, "
-        "hospedagem, internet, etc.), na medida permitida pela lei."
+        "hospedagem de infraestrutura fora do controle razoável da Resolutoo, internet do assinante, etc.), "
+        "na medida permitida pela lei — sem prejuízo das obrigações dos itens 7.1 e 7.2 quanto ao site da "
+        "loja na plataforma."
     )
 
     h2("8. PRIVACIDADE E DADOS")
@@ -195,23 +344,26 @@ def main() -> None:
         "(ex.: consumidor, quando aplicável)."
     )
 
-    h2("CAMPOS PARA PREENCHIMENTO / TOKENS PANDADOC")
+    h2("CAMPOS DE IDENTIFICAÇÃO")
     p(
         "Nome / razão social do lojista · E-mail do assinante · CPF/CNPJ · Plano (Essential ou outro) · "
-        "Data da assinatura · Valor mensal vigente."
+        "Data do aceite (checkbox) · Valor mensal vigente."
     )
     p(
-        "Espaço para assinatura eletrônica do lojista (PandaDoc). Não incluir chaves de API neste documento."
+        "Upload de template PandaDoc é opcional e não é requisito de produção. Não incluir chaves de API "
+        "neste documento."
     )
 
-    pdf.ln(8)
-    p("Assinatura do Lojista / Assinante: _________________________________", bold=False)
-    pdf.ln(4)
-    p("Data: ____ / ____ / ________", bold=False)
+    pdf.ln(6)
+    p("Aceite do Lojista / Assinante: checkbox em /assinar (registro na plataforma).", bold=False)
+    pdf.ln(2)
+    p("Data do aceite: registrada automaticamente no momento da contratação.", bold=False)
 
-    pdf.output(str(OUT))
-    print(OUT)
-    print("bytes", OUT.stat().st_size)
+    pdf.output(str(OUT_PDF))
+    print(OUT_PDF)
+    print("bytes", OUT_PDF.stat().st_size)
+    print(OUT_MD)
+    print(REPO_MD)
 
 
 if __name__ == "__main__":
