@@ -269,11 +269,17 @@ export default function MeuPlano() {
     subStatus === 'pendente' ||
     subStatus === 'desconhecido'
   const tabLocked = content['meu_plano.tab_locked'] ?? 'Você ainda não assinou um plano para gerenciar.'
-  /** Active sub + tenant slug → store exists; show vitrine/painel CTAs (don't require exact provisionado). */
-  const storeSlug = me.slug?.trim() || null
-  const storeReady = hasActiveSub && !!storeSlug
-  const panelUrl = storeReady && storeSlug ? storeAdminLoginUrl(storeSlug, me.email) : null
-  const publicUrl = storeReady && storeSlug ? storePublicUrl(storeSlug) : null
+  /**
+   * Any logged merchant with a tenant slug gets Vitrine / Painel CTAs.
+   * Do not gate on hasActiveSub or onboarding_status === provisionado — those
+   * hid the buttons for real stores (e.g. re-subscribe / status edge cases).
+   */
+  const storeSlug =
+    me.slug?.trim() ||
+    me.dominio?.match(/[?&]tenant=([^&]+)/i)?.[1]?.trim() ||
+    null
+  const panelUrl = storeSlug ? storeAdminLoginUrl(storeSlug, me.email) : null
+  const publicUrl = storeSlug ? storePublicUrl(storeSlug) : null
 
   const handleLogout = async () => {
     await authStore.signOut('lojista')
@@ -631,16 +637,19 @@ export default function MeuPlano() {
           <p className="text-sm text-uf-silver-dim mb-6">Hub do lojista — plano, layout e integrações.</p>
 
           {(panelUrl || publicUrl) && (
-            <div className="flex flex-wrap gap-2 mb-6" data-testid="loja-atalhos-hub">
+            <div
+              className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6"
+              data-testid="loja-atalhos-hub"
+            >
               {publicUrl && (
                 <a
                   href={publicUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="btn-primary text-xs px-3 py-2 inline-flex items-center gap-1.5"
+                  className="btn-primary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"
                   data-testid="abrir-vitrine"
                 >
-                  <Store className="w-3.5 h-3.5" />
+                  <Store className="w-4 h-4" />
                   Vitrine
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
@@ -650,10 +659,10 @@ export default function MeuPlano() {
                   href={panelUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="btn-secondary text-xs px-3 py-2 inline-flex items-center gap-1.5"
+                  className="btn-secondary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"
                   data-testid="abrir-painel-loja"
                 >
-                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  <LayoutDashboard className="w-4 h-4" />
                   Painel da loja
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
@@ -684,6 +693,46 @@ export default function MeuPlano() {
 
           {tab === 'plano' && needsPlanPicker && (
             <section className="space-y-4" data-testid="reassinar-planos">
+              {(panelUrl || publicUrl) && (
+                <section
+                  className="uf-glass rounded-2xl p-5 space-y-3 border border-uf-blue/30"
+                  data-testid="loja-atalhos-reassinar"
+                >
+                  <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Sua loja</h2>
+                  <p className="text-xs text-uf-silver-dim">
+                    Sua loja{storeSlug ? ` (${storeSlug})` : ''} continua acessível. Abra a vitrine ou o painel
+                    enquanto reassina.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {publicUrl && (
+                      <a
+                        href={publicUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-primary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"
+                        data-testid="abrir-vitrine-reassinar"
+                      >
+                        <Store className="w-4 h-4" />
+                        Vitrine
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                    {panelUrl && (
+                      <a
+                        href={panelUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-secondary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"
+                        data-testid="abrir-painel-loja-reassinar"
+                      >
+                        <LayoutDashboard className="w-4 h-4" />
+                        Painel da loja
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </section>
+              )}
               <div className="uf-glass rounded-2xl p-6 space-y-3">
                 <h2 className="font-bold mb-1 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
                   <Sparkles className="w-4 h-4" />{' '}
@@ -702,25 +751,25 @@ export default function MeuPlano() {
             <div className="space-y-4">
               {(panelUrl || publicUrl) && (
                 <section
-                  className="uf-glass rounded-2xl p-5 space-y-3"
+                  className="uf-glass rounded-2xl p-5 space-y-3 border border-uf-blue/30"
                   data-testid="loja-atalhos-plano"
                 >
-                  <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Sua loja</h2>
-                  <p className="text-xs text-uf-silver-dim">
-                    Abra a vitrine pública ou o painel admin da loja{me.slug ? ` (${me.slug})` : ''}.
+                  <h2 className="font-bold text-base text-white">Sua loja</h2>
+                  <p className="text-sm text-uf-silver-dim">
+                    Abra a vitrine pública ou o painel admin{storeSlug ? ` (${storeSlug})` : ''}.
                   </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {publicUrl && (
                       <a
                         href={publicUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="btn-primary text-sm px-4 py-2.5 inline-flex items-center gap-2"
+                        className="btn-primary text-base px-4 py-3.5 inline-flex items-center justify-center gap-2 font-semibold"
                         data-testid="abrir-vitrine-plano"
                       >
-                        <Store className="w-4 h-4" />
+                        <Store className="w-5 h-5" />
                         Vitrine
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-4 h-4" />
                       </a>
                     )}
                     {panelUrl && (
@@ -728,12 +777,12 @@ export default function MeuPlano() {
                         href={panelUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="btn-secondary text-sm px-4 py-2.5 inline-flex items-center gap-2"
+                        className="btn-secondary text-base px-4 py-3.5 inline-flex items-center justify-center gap-2 font-semibold"
                         data-testid="abrir-painel-loja-plano"
                       >
-                        <LayoutDashboard className="w-4 h-4" />
+                        <LayoutDashboard className="w-5 h-5" />
                         Painel da loja
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-4 h-4" />
                       </a>
                     )}
                   </div>
