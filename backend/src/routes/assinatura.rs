@@ -64,16 +64,21 @@ pub async fn assinar_plano(
 
     let list_monthly = plans::monthly_price(&state.pool, &body.plano).await?;
 
-    let row: Option<(String, String, String)> =
-        sqlx::query_as("SELECT loja_nome, email, status FROM subscribers WHERE id = $1")
-            .bind(&claims.sub)
-            .fetch_optional(&state.pool)
-            .await?;
-    let (loja_nome, email, status) =
+    let row: Option<(String, String, String, Option<f64>, Option<String>, Option<String>)> =
+        sqlx::query_as(
+            "SELECT loja_nome, email, status, valor_mensal, mp_preapproval_id, gateway FROM subscribers WHERE id = $1",
+        )
+        .bind(&claims.sub)
+        .fetch_optional(&state.pool)
+        .await?;
+    let (loja_nome, email, status, existing_monthly, prev_ext_id, prev_gateway) =
         row.ok_or_else(|| AppError::NotFound("conta não encontrada — finalize o cadastro primeiro".to_string()))?;
     if matches!(status.as_str(), "ativo" | "pausado") {
         return Err(AppError::BadRequest("essa conta já tem uma assinatura ativa".to_string()));
     }
+
+    // Reuse pending subscription when switching Pix ↔ cartão (same plan pricing).
+    let reuse_pending = status == "pendente" && existing_monthly.is_some();
 
     let cupom_code = body
         .cupom
@@ -82,7 +87,9 @@ pub async fn assinar_plano(
         .filter(|s| !s.is_empty())
         .map(|s| s.to_uppercase());
 
-    let monthly = if let Some(ref code) = cupom_code {
+    let monthly = if reuse_pending {
+        existing_monthly.unwrap_or(list_monthly)
+    } else if let Some(ref code) = cupom_code {
         let (after, _) = coupons::redeem_on_subscribe(&state.pool, &claims.sub, &body.plano, code).await?;
         after
     } else {
@@ -97,6 +104,14 @@ pub async fn assinar_plano(
         cycle.as_str(),
         loja_nome.trim()
     );
+
+    // Drop previous pending charge when switching payment method (best-effort).
+    if reuse_pending {
+        if let (Some(ext_id), Some(gw)) = (prev_ext_id.as_ref(), prev_gateway.as_ref()) {
+            gateway::cancel(&state, gw, ext_id).await;
+        }
+    }
+
     let mut charge = gateway::create_subscription(
         &state,
         gateway_kind,
@@ -111,6 +126,16 @@ pub async fn assinar_plano(
     .await?;
     // Hard guarantee: never hand a hosted-checkout URL to the front.
     charge.checkout_url = None;
+
+    // Pix must always include copia-e-cola (or base64). Never leave the FE on "Gerando QR".
+    if charge.payment_step == "pix"
+        && charge.pix_qr_code.as_deref().unwrap_or("").is_empty()
+        && charge.pix_qr_base64.as_deref().unwrap_or("").is_empty()
+    {
+        return Err(AppError::Internal(
+            "cobrança Pix criada sem QR — tente novamente ou use cartão".to_string(),
+        ));
+    }
 
     // Always pendente until Pix paid / card charged / simular — so Assinar can
     // render on-site payment UI (never auto-activate on create).
