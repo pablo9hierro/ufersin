@@ -80,10 +80,10 @@ export default function Assinar() {
     fetchPlans().finally(() => setPlansReady(true))
   }, [])
 
-  // Prefill public Mercado Pago sandbox test card; clear when not sandbox.
+  // Prefill public Mercado Pago sandbox test card; never in production builds.
   useEffect(() => {
     if (payStep !== 'card') return
-    if (charge?.sandbox) {
+    if (!import.meta.env.PROD && charge?.sandbox) {
       setCardNumber('5031 4332 1540 6351')
       setCardHolder('APRO')
       setExpMonth('11')
@@ -190,7 +190,9 @@ export default function Assinar() {
   const charged = priceForCycle(monthly, ciclo)
   // Never block Assinar on preview races ("cupom inválido" while typing /
   // CUPOM60 lag). Server validates on submit.
-  const sandbox = Boolean(charge?.sandbox)
+  // Production builds never show Simular / test-card autofill, even if API
+  // mis-flags sandbox.
+  const sandbox = !import.meta.env.PROD && Boolean(charge?.sandbox)
 
   const goActive = (onboarding: string) => {
     setPayStep('done')

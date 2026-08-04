@@ -15,7 +15,8 @@ export default function Obrigado() {
   const id = searchParams.get('id')
   const checkoutUrl = searchParams.get('checkout')
   const [status, setStatus] = useState<StatusAssinatura['status'] | 'verificando' | 'erro'>('verificando')
-  const [sandbox, setSandbox] = useState(Boolean(checkoutUrl))
+  const allowSandboxUi = !import.meta.env.PROD
+  const [sandbox, setSandbox] = useState(allowSandboxUi && Boolean(checkoutUrl))
   const [simulating, setSimulating] = useState(false)
   const [simError, setSimError] = useState<string | null>(null)
 
@@ -34,7 +35,7 @@ export default function Obrigado() {
         .then((r) => {
           if (cancelled) return
           setStatus(r.status)
-          setSandbox(Boolean(r.sandbox))
+          setSandbox(allowSandboxUi && Boolean(r.sandbox))
           if (r.status === 'ativo') {
             if (!isAuthenticated) return
             void resolvePostPayDestination(r.onboarding_status).then((dest) => {
@@ -62,7 +63,7 @@ export default function Obrigado() {
     try {
       const r = await api.simularPagamento()
       setStatus(r.status)
-      setSandbox(Boolean(r.sandbox))
+      setSandbox(allowSandboxUi && Boolean(r.sandbox))
       if (r.status === 'ativo' && isAuthenticated) {
         void resolvePostPayDestination(r.onboarding_status).then((dest) => {
           setTimeout(() => navigate(dest), 800)
@@ -85,7 +86,7 @@ export default function Obrigado() {
             <p className="text-sm text-uf-silver-dim">
               Isso costuma levar só alguns segundos depois de autorizar o pagamento. Não feche esta página.
             </p>
-            {(sandbox || checkoutUrl) && isAuthenticated && (
+            {allowSandboxUi && (sandbox || checkoutUrl) && isAuthenticated && (
               <div className="mt-6 uf-glass rounded-2xl p-4 text-left space-y-3">
                 <p className="text-xs text-amber-300/90">
                   Homologação — nenhum valor real será cobrado. Simule pra avançar, ou abra o checkout de teste.
@@ -142,7 +143,7 @@ export default function Obrigado() {
             <p className="text-sm text-uf-silver-dim mb-6">
               Se você concluiu o pagamento e isso persistir, fale com a gente pelo WhatsApp.
             </p>
-            {sandbox && isAuthenticated && (
+            {allowSandboxUi && sandbox && isAuthenticated && (
               <button type="button" onClick={handleSimulate} disabled={simulating} className="btn-primary w-full py-3 mb-4">
                 {simulating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Simular pagamento (homologação)
