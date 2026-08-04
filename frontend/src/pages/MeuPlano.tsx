@@ -6,12 +6,14 @@ import {
   AtSign,
   CreditCard,
   ExternalLink,
+  LayoutDashboard,
   Loader2,
   LogOut,
   Palette,
   Save,
   Share2,
   Sparkles,
+  Store,
   Upload,
   X,
 } from 'lucide-react'
@@ -36,30 +38,8 @@ import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles
 import { supabase } from '../lib/supabaseClient'
 
 const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
-const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
-  { value: 'mercado_pago', label: 'Mercado Pago' },
-  { value: 'abacate_pay', label: 'Abacate Pay' },
-]
 
 type Tab = 'plano' | 'layout' | 'financeiro' | 'redes'
-type IntegracaoPagamento = PlataformaPagamento
-
-const TAB_PATH: Record<Tab, string> = {
-  plano: '/meu-plano',
-  layout: '/meu-plano/layout',
-  financeiro: '/meu-plano/financeiro',
-  redes: '/meu-plano/redes',
-}
-
-function tabFromParam(param: string | undefined): Tab {
-  if (param === 'layout' || param === 'financeiro' || param === 'redes') return param
-  return 'plano'
-}
-
-function plataformasParaDocumento(tipo: TipoDocumento) {
-  if (tipo === 'cpf') return PLATAFORMAS.filter((p) => p.value === 'mercado_pago')
-  return PLATAFORMAS
-}
 
 function contentMap(items: { key: string; value: string }[]) {
   return Object.fromEntries(items.map((i) => [i.key, i.value]))
@@ -285,8 +265,11 @@ export default function MeuPlano() {
     subStatus === 'pendente' ||
     subStatus === 'desconhecido'
   const tabLocked = content['meu_plano.tab_locked'] ?? 'Você ainda não assinou um plano para gerenciar.'
-  const panelUrl = hasActiveSub && me.onboarding_status === 'provisionado' && me.slug ? storeAdminLoginUrl(me.slug, me.email) : null
-  const publicUrl = hasActiveSub && me.onboarding_status === 'provisionado' && me.slug ? storePublicUrl(me.slug) : null
+  /** Active sub + tenant slug → store exists; show vitrine/painel CTAs (don't require exact provisionado). */
+  const storeSlug = me.slug?.trim() || null
+  const storeReady = hasActiveSub && !!storeSlug
+  const panelUrl = storeReady && storeSlug ? storeAdminLoginUrl(storeSlug, me.email) : null
+  const publicUrl = storeReady && storeSlug ? storePublicUrl(storeSlug) : null
 
   const handleLogout = async () => {
     await authStore.signOut('lojista')
@@ -380,7 +363,11 @@ export default function MeuPlano() {
           ? {
               ...prev,
               status: res.status || 'sem_assinatura',
-              onboarding_status: 'aguardando_pagamento',
+              // Keep provisionado when store already exists — BE preserves it.
+              onboarding_status:
+                prev.onboarding_status === 'provisionado' || prev.tenant_id
+                  ? 'provisionado'
+                  : 'aguardando_pagamento',
             }
           : prev,
       )
@@ -637,15 +624,29 @@ export default function MeuPlano() {
           <p className="text-sm text-uf-silver-dim mb-6">Hub do lojista — plano, layout e integrações.</p>
 
           {(panelUrl || publicUrl) && (
-            <div className="flex flex-wrap gap-2 mb-6">
+            <div className="flex flex-wrap gap-2 mb-6" data-testid="loja-atalhos-hub">
               {publicUrl && (
-                <a href={publicUrl} target="_blank" rel="noreferrer" className="btn-primary text-xs px-3 py-2 inline-flex">
-                  Ver loja
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-primary text-xs px-3 py-2 inline-flex items-center gap-1.5"
+                  data-testid="abrir-vitrine"
+                >
+                  <Store className="w-3.5 h-3.5" />
+                  Vitrine
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
               {panelUrl && (
-                <a href={panelUrl} target="_blank" rel="noreferrer" className="btn-secondary text-xs px-3 py-2 inline-flex">
+                <a
+                  href={panelUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-secondary text-xs px-3 py-2 inline-flex items-center gap-1.5"
+                  data-testid="abrir-painel-loja"
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
                   Painel da loja
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
@@ -692,6 +693,46 @@ export default function MeuPlano() {
 
           {tab === 'plano' && !needsPlanPicker && (
             <div className="space-y-4">
+              {(panelUrl || publicUrl) && (
+                <section
+                  className="uf-glass rounded-2xl p-5 space-y-3"
+                  data-testid="loja-atalhos-plano"
+                >
+                  <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Sua loja</h2>
+                  <p className="text-xs text-uf-silver-dim">
+                    Abra a vitrine pública ou o painel admin da loja{me.slug ? ` (${me.slug})` : ''}.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {publicUrl && (
+                      <a
+                        href={publicUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-primary text-sm px-4 py-2.5 inline-flex items-center gap-2"
+                        data-testid="abrir-vitrine-plano"
+                      >
+                        <Store className="w-4 h-4" />
+                        Vitrine
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                    {panelUrl && (
+                      <a
+                        href={panelUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-secondary text-sm px-4 py-2.5 inline-flex items-center gap-2"
+                        data-testid="abrir-painel-loja-plano"
+                      >
+                        <LayoutDashboard className="w-4 h-4" />
+                        Painel da loja
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </section>
+              )}
+
               {hasActiveSub && (
                 <form onSubmit={handleSavePreferenciasVenda} className="uf-glass rounded-2xl p-6 space-y-4" data-testid="preferencias-venda">
                   <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Preferências de venda</h2>
