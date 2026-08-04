@@ -25,6 +25,18 @@ function hasPixQr(c: AssinaturaCriada | null | undefined): boolean {
   return Boolean(c?.pix_qr_code?.trim() || c?.pix_qr_base64?.trim())
 }
 
+function payStepFromCharge(result: AssinaturaCriada, preferred: MetodoPagamento): PayStep {
+  if (hasPixQr(result) || result.payment_step === 'pix') {
+    // Only enter Pix UI when QR payload exists — never infinite "Gerando QR".
+    if (hasPixQr(result)) return 'pix'
+    return preferred === 'cartao' ? 'card' : 'form'
+  }
+  if (result.payment_step === 'card' || preferred === 'cartao' || preferred === 'cartao_parcelado') {
+    return 'card'
+  }
+  return 'card'
+}
+
 export default function Assinar() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()

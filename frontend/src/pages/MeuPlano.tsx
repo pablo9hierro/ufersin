@@ -24,7 +24,6 @@ import {
   type CancelReasonCode,
   type FormaPagamento,
   type MeResponse,
-  type TipoDocumento,
 } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
@@ -123,8 +122,6 @@ export default function MeuPlano() {
   const [landingHeroImageUrl, setLandingHeroImageUrl] = useState('')
   const [cartFabStyle, setCartFabStyle] = useState<CartFabStyle>('sacola')
   const [cartFabAnimate, setCartFabAnimate] = useState(false)
-  const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('cnpj')
-
   const [whatsapp, setWhatsapp] = useState('')
   const [instagram, setInstagram] = useState('')
   const [facebook, setFacebook] = useState('')
@@ -181,7 +178,6 @@ export default function MeuPlano() {
         setLandingHeroImageUrl(m.landing_hero_image_url ?? '')
         setCartFabStyle(m.cart_fab_style === 'cart_icon' ? 'cart_icon' : 'sacola')
         setCartFabAnimate(!!m.cart_fab_animate)
-        setTipoDocumento(m.tipo_documento ?? 'cnpj')
         setWhatsapp(m.whatsapp ?? '')
         setInstagram((m.instagram ?? '').replace(/^@/, ''))
         setFacebook(m.facebook ?? '')
