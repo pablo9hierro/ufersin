@@ -157,7 +157,8 @@ export interface SuperadminCoupon {
 }
 
 export interface StatusAssinatura {
-  status: 'sem_assinatura' | 'pendente' | 'ativo' | 'pausado' | 'cancelado'
+  /** Runtime may still send EN variants (canceled/cancelled/paused); MeuPlano normalizes. */
+  status: string
   onboarding_status: 'aguardando_pagamento' | 'aguardando_onboarding' | 'provisionado'
   sandbox?: boolean
 }
@@ -176,7 +177,8 @@ export interface MeResponse {
   plano: PlanoCode | null
   valor_mensal: number | null
   billing_cycle: BillingCycle
-  status: 'sem_assinatura' | 'pendente' | 'ativo' | 'pausado' | 'cancelado'
+  /** Runtime may still send EN variants (canceled/cancelled/paused); MeuPlano normalizes. */
+  status: string
   gateway: string | null
   metodo_pagamento: string | null
   slug: string | null

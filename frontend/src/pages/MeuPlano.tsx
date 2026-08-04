@@ -63,6 +63,42 @@ function contentMap(items: { key: string; value: string }[]) {
   return Object.fromEntries(items.map((i) => [i.key, i.value]))
 }
 
+/** Canonical statuses for Meu Plano branching (API may send PT/EN / casing variants). */
+type SubStatus = 'sem_assinatura' | 'pendente' | 'ativo' | 'pausado' | 'cancelado' | 'desconhecido'
+
+/**
+ * Normalize subscriber status from `/api/me` (and gateways).
+ * Handles: cancelado | canceled | cancelled, pausado | paused, ativo | active, etc.
+ */
+function normalizeSubscriptionStatus(raw: string | null | undefined): SubStatus {
+  const s = (raw ?? '').trim().toLowerCase()
+  if (!s || s === 'null' || s === 'none' || s === 'sem_assinatura' || s === 'sem-assinatura') {
+    return 'sem_assinatura'
+  }
+  if (s === 'ativo' || s === 'active' || s === 'authorized') return 'ativo'
+  if (s === 'pausado' || s === 'paused') return 'pausado'
+  if (s === 'cancelado' || s === 'canceled' || s === 'cancelled') return 'cancelado'
+  if (s === 'pendente' || s === 'pending') return 'pendente'
+  return 'desconhecido'
+}
+
+function subscriptionStatusLabel(status: SubStatus, raw: string | null | undefined): string {
+  switch (status) {
+    case 'sem_assinatura':
+      return 'sem assinatura'
+    case 'pendente':
+      return 'pendente'
+    case 'ativo':
+      return 'ativo'
+    case 'pausado':
+      return 'pausado'
+    case 'cancelado':
+      return 'cancelado'
+    default:
+      return (raw ?? '').trim() || '—'
+  }
+}
+
 export default function MeuPlano() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
@@ -229,8 +265,20 @@ export default function MeuPlano() {
   }
 
   const planMap = getPlanMap()
-  const hasActiveSub = me.plano != null && me.status === 'ativo'
-  const needsResubscribe = me.status === 'cancelado' || me.status === 'pausado'
+  const subStatus = normalizeSubscriptionStatus(me.status)
+  const statusLabel = subscriptionStatusLabel(subStatus, me.status)
+  /** Only truly active subscriptions get plan details + cancel + layout/financeiro/redes edits. */
+  const hasActiveSub = me.plano != null && subStatus === 'ativo'
+  /**
+   * Cancelled / paused / never signed / no plan → show assinar cards, never the cancel UI.
+   * `desconhecido` also reassins rather than showing active-plan cancel controls.
+   */
+  const needsResubscribe =
+    !me.plano ||
+    subStatus === 'sem_assinatura' ||
+    subStatus === 'cancelado' ||
+    subStatus === 'pausado' ||
+    subStatus === 'desconhecido'
   const tabLocked = content['meu_plano.tab_locked'] ?? 'Você ainda não assinou um plano para gerenciar.'
   const panelUrl = hasActiveSub && me.onboarding_status === 'provisionado' && me.slug ? storeAdminLoginUrl(me.slug, me.email) : null
   const publicUrl = hasActiveSub && me.onboarding_status === 'provisionado' && me.slug ? storePublicUrl(me.slug) : null
@@ -316,23 +364,35 @@ export default function MeuPlano() {
     setCancelReasons((prev) => (prev.includes(code) ? prev.filter((r) => r !== code) : [...prev, code]))
   }
 
+  const resubscribeHint =
+    subStatus === 'cancelado'
+      ? 'Assinatura cancelada. Seus dados estão preservados — painel e vitrine ficam offline até você assinar novamente.'
+      : subStatus === 'pausado'
+        ? 'Assinatura pausada (inadimplência). Painel e vitrine ficam offline até a cobrança ser regularizada — você também pode assinar novamente.'
+        : content['meu_plano.no_plan'] ?? 'Escolha um plano pra começar.'
+
   const planCards = (
-    <div className="grid sm:grid-cols-3 gap-3" data-testid="planos-assinar-cards">
-      {plansLoaded &&
-        getPlans().map((p) => (
-          <Link
-            key={p.code}
-            to={`/assinar?plano=${p.code}`}
-            className="uf-glass uf-glass-hover rounded-2xl p-4 block"
-            data-testid={`plan-cta-${p.code}`}
-          >
-            <p className="font-bold text-sm">{p.name}</p>
-            <p className="text-lg font-black uf-text mt-1">R$ {formatBRL(p.price)}/mês</p>
-            {needsResubscribe && (
-              <p className="text-[11px] text-uf-silver-dim mt-2">Assinar novamente</p>
-            )}
-          </Link>
-        ))}
+    <div className="space-y-4" data-testid="planos-assinar-banner">
+      <div className="grid sm:grid-cols-3 gap-3" data-testid="planos-assinar-cards">
+        {plansLoaded &&
+          getPlans().map((p) => (
+            <Link
+              key={p.code}
+              to={`/assinar?plano=${p.code}`}
+              className="uf-glass uf-glass-hover rounded-2xl p-4 block"
+              data-testid={`plan-cta-${p.code}`}
+            >
+              <p className="font-bold text-sm">{p.name}</p>
+              <p className="text-lg font-black uf-text mt-1">R$ {formatBRL(p.price)}/mês</p>
+              <p className="text-[11px] text-uf-silver-dim mt-2">
+                {subStatus === 'cancelado' || subStatus === 'pausado' ? 'Assinar novamente' : 'Assinar'}
+              </p>
+            </Link>
+          ))}
+      </div>
+      <Link to="/planos" className="btn-secondary text-xs px-3 py-2 inline-flex" data-testid="ver-todos-planos">
+        Ver planos e ciclos
+      </Link>
     </div>
   )
 
@@ -505,36 +565,6 @@ export default function MeuPlano() {
     { id: 'redes', label: 'Redes sociais', path: TAB_PATH.redes },
   ]
 
-  if (!me.plano) {
-    const noPlanMsg = content['meu_plano.no_plan'] ?? 'Escolha um plano pra começar.'
-    return (
-      <main className="min-h-screen bg-uf-black text-uf-silver relative">
-        <div className="uf-mesh" />
-        <header className="border-b border-white/5 px-5 py-4 relative z-10">
-          <div className="uf-container flex items-center justify-between">
-            <Link to="/" className="text-lg font-black uf-text">
-              Resolutoo
-            </Link>
-            <div className="flex items-center gap-3">
-              <Link to="/esqueci-senha" className="btn-ghost text-sm">
-                Trocar senha
-              </Link>
-              <button onClick={handleLogout} className="btn-ghost text-sm">
-                <LogOut className="w-4 h-4" />
-                Sair
-              </button>
-            </div>
-          </div>
-        </header>
-        <div className="uf-container px-5 py-12 relative z-10 max-w-3xl mx-auto">
-          <h1 className="text-2xl font-black mb-2">Meu plano</h1>
-          <p className="text-sm text-uf-silver-dim mb-8">{noPlanMsg}</p>
-          {planCards}
-        </div>
-      </main>
-    )
-  }
-
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver relative">
       <div className="uf-mesh" />
@@ -598,7 +628,21 @@ export default function MeuPlano() {
           {saved && <p className="text-sm text-emerald-400 mb-4">Salvo!</p>}
           {cancelResultMsg && <p className="text-sm text-emerald-400 mb-4">{cancelResultMsg}</p>}
 
-          {tab === 'plano' && me.plano && (
+          {tab === 'plano' && needsResubscribe && (
+            <section className="uf-glass rounded-2xl p-6 space-y-4" data-testid="reassinar-planos">
+              <h2 className="font-bold mb-1 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
+                <Sparkles className="w-4 h-4" />{' '}
+                {me.plano ? planMap[me.plano]?.name ?? planDisplayName(me.plano) : 'Assinar um plano'}
+              </h2>
+              <p className="text-sm text-uf-silver-dim">
+                Status: <span className="text-uf-silver">{statusLabel}</span>
+              </p>
+              <p className="text-sm text-uf-silver-dim">{resubscribeHint}</p>
+              {planCards}
+            </section>
+          )}
+
+          {tab === 'plano' && !needsResubscribe && (
             <div className="space-y-4">
               {hasActiveSub && (
                 <form onSubmit={handleSavePreferenciasVenda} className="uf-glass rounded-2xl p-6 space-y-4" data-testid="preferencias-venda">
@@ -708,30 +752,22 @@ export default function MeuPlano() {
 
               <section className="uf-glass rounded-2xl p-6" data-testid="meu-plano-atual">
                 <h2 className="font-bold mb-4 flex items-center gap-2 text-sm text-uf-silver-dim uppercase tracking-wide">
-                  <Sparkles className="w-4 h-4" /> {planMap[me.plano]?.name ?? planDisplayName(me.plano)}
+                  <Sparkles className="w-4 h-4" /> {me.plano ? planMap[me.plano]?.name ?? planDisplayName(me.plano) : 'Plano'}
                 </h2>
                 <p className="text-sm text-uf-silver-dim mb-1">
-                  Status: <span className="text-uf-silver">{me.status}</span>
+                  Status: <span className="text-uf-silver">{statusLabel}</span>
                 </p>
-                <p className="text-2xl font-black mb-1">R$ {formatBRL(me.valor_mensal ?? planMap[me.plano]?.price ?? 0)}/mês</p>
-                {me.billing_cycle === 'semestral' && (
-                  <p className="text-xs text-uf-silver-dim mb-4">
-                    Ciclo semestral · R$ {formatBRL(priceForCycle(me.valor_mensal ?? 0, 'semestral'))} por período
-                  </p>
-                )}
-                {me.coupon_code && <p className="text-xs text-emerald-400 mb-4">Cupom ativo: {me.coupon_code}</p>}
-
-                {needsResubscribe ? (
-                  <div className="space-y-4" data-testid="reassinar-planos">
-                    <p className="text-sm text-uf-silver-dim">
-                      {me.status === 'cancelado'
-                        ? 'Assinatura cancelada. Seus dados estão preservados — painel e vitrine ficam offline até você assinar novamente.'
-                        : 'Assinatura pausada (inadimplência). Painel e vitrine ficam offline até a cobrança ser regularizada — você também pode assinar novamente.'}
-                    </p>
-                    {planCards}
-                  </div>
-                ) : hasActiveSub ? (
+                {hasActiveSub && (
                   <>
+                    <p className="text-2xl font-black mb-1">
+                      R$ {formatBRL(me.valor_mensal ?? (me.plano ? planMap[me.plano]?.price : 0) ?? 0)}/mês
+                    </p>
+                    {me.billing_cycle === 'semestral' && (
+                      <p className="text-xs text-uf-silver-dim mb-4">
+                        Ciclo semestral · R$ {formatBRL(priceForCycle(me.valor_mensal ?? 0, 'semestral'))} por período
+                      </p>
+                    )}
+                    {me.coupon_code && <p className="text-xs text-emerald-400 mb-4">Cupom ativo: {me.coupon_code}</p>}
                     <p className="text-xs text-uf-silver-dim mb-4">
                       Você pode cancelar a qualquer momento (mês pré-pago).
                       {me.refund_eligible_on_cancel
@@ -749,8 +785,9 @@ export default function MeuPlano() {
                       Cancelar
                     </button>
                   </>
-                ) : (
-                  <p className="text-xs text-uf-silver-dim">
+                )}
+                {!hasActiveSub && (
+                  <p className="text-xs text-uf-silver-dim mt-2">
                     Aguardando confirmação do pagamento. Quando ativar, o painel e a vitrine ficam disponíveis.
                   </p>
                 )}
@@ -758,7 +795,7 @@ export default function MeuPlano() {
             </div>
           )}
 
-          {cancelStep === 'reasons' && (
+          {cancelStep === 'reasons' && hasActiveSub && (
             <div
               className="fixed inset-0 z-50 flex items-center justify-center px-5 bg-black/70 backdrop-blur-sm"
               data-testid="cancelar-assinatura-dialog-reasons"
@@ -872,7 +909,7 @@ export default function MeuPlano() {
             </div>
           )}
 
-          {cancelStep === 'confirm' && (
+          {cancelStep === 'confirm' && hasActiveSub && (
             <div
               className="fixed inset-0 z-50 flex items-center justify-center px-5 bg-black/70 backdrop-blur-sm"
               data-testid="cancelar-assinatura-dialog-confirm"
