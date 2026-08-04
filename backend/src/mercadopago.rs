@@ -720,13 +720,37 @@ async fn get_preapproval_status(state: &AppState, stored_id: &str) -> Result<Str
 }
 
 pub async fn cancel_subscription(state: &AppState, stored_id: &str) -> Result<(), AppError> {
-    if stored_id.starts_with("mock-")
-        || stored_id.starts_with(PIX_ID_PREFIX)
-        || stored_id.starts_with(PAY_ID_PREFIX)
-        || stored_id.starts_with(PENDING_CARD_PREFIX)
-    {
+    if stored_id.starts_with("mock-") || stored_id.starts_with(PENDING_CARD_PREFIX) {
         return Ok(());
     }
+
+    // Cancel on-site Pix / card payment at Mercado Pago (best-effort).
+    if let Some(pay_id) = stored_id
+        .strip_prefix(PIX_ID_PREFIX)
+        .or_else(|| stored_id.strip_prefix(PAY_ID_PREFIX))
+    {
+        let Some(token) = state.mp_token.as_ref().as_ref() else {
+            return Ok(());
+        };
+        let url = format!("https://api.mercadopago.com/v1/payments/{pay_id}");
+        let resp = state
+            .http
+            .put(&url)
+            .bearer_auth(token)
+            .json(&json!({ "status": "cancelled" }))
+            .send()
+            .await;
+        match resp {
+            Ok(r) if r.status().is_success() => {}
+            Ok(r) => {
+                let text = r.text().await.unwrap_or_default();
+                tracing::warn!("mercado pago cancel payment non-success: {text}");
+            }
+            Err(e) => tracing::warn!("mercado pago cancel payment failed: {e}"),
+        }
+        return Ok(());
+    }
+
     let token = state
         .mp_token
         .as_ref()
