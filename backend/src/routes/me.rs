@@ -39,6 +39,8 @@ struct SubscriberRow {
     plataforma_pagamento: Option<String>,
     /// True when `plataforma_credenciais` has a non-empty token — never the secret itself.
     has_plataforma_credenciais: bool,
+    /// Raw token for masking only — never serialized on `MeResponse`.
+    plataforma_credenciais_token: Option<String>,
     layout_style: String,
     instagram: Option<String>,
     facebook: Option<String>,
@@ -90,6 +92,8 @@ pub struct MeResponse {
     pub plataforma_pagamento: Option<String>,
     /// True when payment platform credentials are registered (never the secret).
     pub has_plataforma_credenciais: bool,
+    /// Masked Access Token for UI placeholder (e.g. `APP_USR-••••••••abcdef`). Never the full secret.
+    pub plataforma_credenciais_mask: Option<String>,
     pub layout_style: String,
     pub instagram: Option<String>,
     pub facebook: Option<String>,
@@ -130,6 +134,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                   NULLIF(trim(plataforma_credenciais->>'token'), ''),
                   NULL
                 ) IS NOT NULL as has_plataforma_credenciais,
+                NULLIF(trim(plataforma_credenciais->>'token'), '') as plataforma_credenciais_token,
                 COALESCE(layout_style, 'ufersin') as layout_style, instagram, facebook, endereco_numero,
                 COALESCE(vende_mais_18, false) as vende_mais_18,
                 COALESCE(apenas_retirada, false) as apenas_retirada,
@@ -178,6 +183,11 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         forma_pagamento: row.forma_pagamento,
         plataforma_pagamento: row.plataforma_pagamento,
         has_plataforma_credenciais: row.has_plataforma_credenciais,
+        plataforma_credenciais_mask: row
+            .plataforma_credenciais_token
+            .as_deref()
+            .map(mask_mp_access_token)
+            .filter(|s| !s.is_empty()),
         layout_style: row.layout_style,
         instagram: row.instagram,
         facebook: row.facebook,
@@ -202,6 +212,27 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
 fn within_cancel_refund_window(assinante_desde: chrono::DateTime<chrono::Utc>) -> bool {
     let age = chrono::Utc::now().signed_duration_since(assinante_desde);
     age.num_days() < 7
+}
+
+/// Safe UI hint for stored Mercado Pago Access Token (prefix + last 6). Never the full secret.
+fn mask_mp_access_token(token: &str) -> String {
+    let t = token.trim();
+    if t.is_empty() {
+        return String::new();
+    }
+    let last_n = 6usize.min(t.len());
+    let last = &t[t.len() - last_n..];
+    if t.starts_with("APP_USR-") {
+        return format!("APP_USR-••••••••{last}");
+    }
+    if t.starts_with("TEST-") {
+        return format!("TEST-••••••••{last}");
+    }
+    if t.len() > 12 {
+        format!("{}••••••••{last}", &t[..8])
+    } else {
+        format!("••••••••{last}")
+    }
 }
 
 /// Multipart upload ("file") → Supabase Storage → atualiza `logo_url`.

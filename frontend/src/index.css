@@ -176,6 +176,10 @@ body {
     0 0 18px rgba(77, 124, 255, 0.25);
   color: #f4f6fb;
 }
+.input-field--credential-missing {
+  border-color: rgba(122, 162, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(77, 124, 255, 0.22);
+}
 .input-field--credential::placeholder {
   color: rgba(196, 203, 217, 0.45);
   font-family: inherit;

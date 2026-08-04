@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -36,6 +36,17 @@ import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles
 import { supabase } from '../lib/supabaseClient'
 
 const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
+
+/** Safe UI hint for Mercado Pago Access Token (prefix + last 6). Never the full secret. */
+function maskMpAccessToken(token: string): string {
+  const t = token.trim()
+  if (!t) return ''
+  const last = t.slice(-Math.min(6, t.length))
+  if (t.startsWith('APP_USR-')) return `APP_USR-••••••••${last}`
+  if (t.startsWith('TEST-')) return `TEST-••••••••${last}`
+  if (t.length > 12) return `${t.slice(0, 8)}••••••••${last}`
+  return `••••••••${last}`
+}
 
 type Tab = 'plano' | 'layout' | 'financeiro' | 'redes'
 
@@ -133,6 +144,8 @@ export default function MeuPlano() {
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [credencial, setCredencial] = useState('')
   const [hasCredenciais, setHasCredenciais] = useState(false)
+  const [credencialMask, setCredencialMask] = useState<string | null>(null)
+  const credencialInputRef = useRef<HTMLInputElement>(null)
 
   const [cancelStep, setCancelStep] = useState<'reasons' | 'confirm' | null>(null)
   const [cancelReasons, setCancelReasons] = useState<CancelReasonCode[]>([])
@@ -189,6 +202,11 @@ export default function MeuPlano() {
         setVenderExternamente(m.vender_externamente !== false)
         // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
         setHasCredenciais(!!m.has_plataforma_credenciais || m.forma_pagamento === 'plataforma')
+        setCredencialMask(
+          typeof m.plataforma_credenciais_mask === 'string' && m.plataforma_credenciais_mask.trim()
+            ? m.plataforma_credenciais_mask.trim()
+            : null,
+        )
         // Preferências de venda: reconcile via RPC pública se a API Railway
         // ainda não expõe flags novas no /api/me.
         if (m.slug) {
@@ -231,6 +249,13 @@ export default function MeuPlano() {
       cancelled = true
     }
   }, [isAuthenticated, navigate, session?.user?.email])
+
+  // Strong focus on Mercado Pago token when missing (same UX as onboarding credential field).
+  useEffect(() => {
+    if (loading || tab !== 'financeiro' || hasCredenciais) return
+    const id = window.setTimeout(() => credencialInputRef.current?.focus(), 80)
+    return () => window.clearTimeout(id)
+  }, [loading, tab, hasCredenciais])
 
   if (!ready || loading) {
     return (
@@ -474,6 +499,7 @@ export default function MeuPlano() {
         fields.plataforma_credenciais.token.trim()
       ) {
         setHasCredenciais(true)
+        setCredencialMask(maskMpAccessToken(fields.plataforma_credenciais.token))
       }
       window.setTimeout(() => setSaved(false), 3000)
     } catch (e) {
@@ -1234,12 +1260,13 @@ export default function MeuPlano() {
                   <CreditCard className="w-4 h-4" /> Mercado Pago: (chave api produção)
                 </label>
                 <input
-                  className="input-field input-field--credential"
+                  ref={credencialInputRef}
+                  className={`input-field input-field--credential${!hasCredenciais ? ' input-field--credential-missing' : ''}`}
                   value={credencial}
                   onChange={(e) => setCredencial(e.target.value)}
                   placeholder={
                     hasCredenciais
-                      ? 'Deixe em branco pra manter o token atual'
+                      ? credencialMask || 'APP_USR-••••••••••••'
                       : 'Access Token de produção (APP_USR-…)'
                   }
                   autoComplete="off"
@@ -1247,7 +1274,7 @@ export default function MeuPlano() {
                 />
                 <p className="text-[11px] text-uf-silver-dim mt-1">
                   {hasCredenciais
-                    ? 'Credencial cadastrada — Pix online e confirmação automática ativos.'
+                    ? 'Deixe em branco pra manter o token atual. Credencial cadastrada — Pix online e confirmação automática ativos.'
                     : 'Sem Access Token, o site não gera cobrança Pix online.'}
                 </p>
               </div>
