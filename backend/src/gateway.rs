@@ -139,26 +139,23 @@ pub fn sandbox_mode(state: &AppState) -> bool {
 }
 
 pub async fn get_status(state: &AppState, gateway: &str, external_id: &str) -> Result<String, AppError> {
+    let onsite = external_id.starts_with("pay-")
+        || external_id.starts_with("mpix-")
+        || external_id.starts_with("mock-")
+        || external_id.starts_with("pending-card-");
     match gateway {
-        "abacatepay" if !external_id.starts_with("pay-")
-            && !external_id.starts_with("mock-")
-            && !external_id.starts_with("pending-card-") =>
-        {
-            abacatepay_gateway::get_status(state, external_id).await
-        }
+        "abacatepay" if !onsite => abacatepay_gateway::get_status(state, external_id).await,
         _ => mercadopago::get_onsite_payment_status(state, external_id).await,
     }
 }
 
 pub async fn cancel(state: &AppState, gateway: &str, external_id: &str) {
+    let onsite = external_id.starts_with("pay-")
+        || external_id.starts_with("mpix-")
+        || external_id.starts_with("mock-")
+        || external_id.starts_with("pending-card-");
     let result = match gateway {
-        "abacatepay"
-            if !external_id.starts_with("pay-")
-                && !external_id.starts_with("mock-")
-                && !external_id.starts_with("pending-card-") =>
-        {
-            abacatepay_gateway::cancel(state, external_id).await
-        }
+        "abacatepay" if !onsite => abacatepay_gateway::cancel(state, external_id).await,
         _ => mercadopago::cancel_subscription(state, external_id).await,
     };
     if let Err(e) = result {

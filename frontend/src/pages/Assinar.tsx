@@ -64,6 +64,33 @@ export default function Assinar() {
     api.getPandadocStatus().then(setPandadocStatus).catch(() => {})
   }, [])
 
+  // Poll while Pix QR is on screen — activate when MP / simulate confirms.
+  useEffect(() => {
+    if (payStep !== 'pix' || !charge?.id) return
+    let cancelled = false
+    const tick = () => {
+      if (cancelled) return
+      api
+        .statusAssinatura(charge.id)
+        .then((r) => {
+          if (cancelled || r.status !== 'ativo') return
+          setPayStep('done')
+          if (r.onboarding_status === 'aguardando_onboarding') {
+            window.setTimeout(() => navigate('/onboarding'), 900)
+          } else {
+            window.setTimeout(() => navigate('/meu-plano'), 900)
+          }
+        })
+        .catch(() => {})
+    }
+    tick()
+    const t = window.setInterval(tick, 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(t)
+    }
+  }, [payStep, charge?.id, navigate])
+
   useEffect(() => {
     if (!isAuthenticated) return
     if (isKnownPlatformAdminEmail(session?.user?.email)) {
@@ -126,7 +153,8 @@ export default function Assinar() {
   const monthly = preview?.monthly_after ?? planInfo.price
   const charged = priceForCycle(monthly, ciclo)
   const platformSigningReady = pandadocStatus?.platform_signing_ready ?? false
-  const couponBlocksSubmit = !!previewError && !preview
+  // Never block Assinar on preview races ("cupom inválido" while typing /
+  // CUPOM60 lag). Server validates on submit.
   const sandbox = Boolean(charge?.sandbox)
 
   const goActive = (onboarding: string) => {
@@ -291,7 +319,7 @@ export default function Assinar() {
                 <input
                   className="input-field uppercase"
                   value={cupom}
-                  onChange={(e) => setCupom(e.target.value.toUpperCase())}
+                  onChange={(e) => setCupom(e.target.value.toUpperCase().replace(/\s+/g, ''))}
                   onBlur={() => setCupom((c) => c.trim())}
                   placeholder="CODIGO"
                   autoComplete="off"
@@ -382,7 +410,7 @@ export default function Assinar() {
 
               <button
                 type="submit"
-                disabled={loading || !aceiteContrato || couponBlocksSubmit}
+                disabled={loading || !aceiteContrato}
                 className="btn-primary w-full py-3.5"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}

@@ -2,24 +2,23 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::error::AppError;
-use crate::gateway::{BillingCycle, GatewayCharge, PaymentMethod};
+use crate::gateway::{BillingCycle, GatewayCharge};
 use crate::state::AppState;
 
 /// Prefixo gravado em `subscribers.mp_preapproval_id` quando o checkout
 /// foi criado via `/preapproval_plan` (necessário em contas TEST onde
 /// `POST /preapproval` com status pending devolve 500).
 const PLAN_ID_PREFIX: &str = "mpp-";
-/// Prefixo pra cobrança Pix avulsa (`POST /v1/payments`) — on-site QR,
-/// nunca init_point / hosted checkout.
-const PIX_ID_PREFIX: &str = "mpix-";
+
+/// Pix avulso on-site (`POST /v1/payments`) — nunca init_point.
+pub const PIX_ID_PREFIX: &str = "mpix-";
+pub const PAY_ID_PREFIX: &str = "pay-";
+pub const PENDING_CARD_PREFIX: &str = "pending-card-";
 const MOCK_PIX_PREFIX: &str = "mock-pix-";
-const MOCK_CARD_PREFIX: &str = "mock-card-";
 
 pub struct SubscriptionResult {
     pub preapproval_id: String,
-    /// Legado — NÃO usar pra redirecionar o lojista. Assinatura Resolutoo
-    /// é on-site (Pix QR / formulário de cartão). Mantido só pra correlacionar
-    /// fluxos antigos de preapproval.
+    /// Legado — NÃO usar pra redirecionar. Assinar Resolutoo é on-site.
     pub init_point: String,
 }
 
@@ -36,651 +35,22 @@ struct MpSearchResponse {
     results: Option<Vec<MpPreapprovalResponse>>,
 }
 
-/// Credencial de teste (`TEST-...`) ou ausência de token → sandbox/mock.
-/// Com token de produção o checkout é real (sem "Simular pagamento").
-pub fn sandbox_mode(state: &AppState) -> bool {
-    match state.mp_token.as_ref().as_ref() {
-        None => true,
-        Some(t) => t.trim().starts_with("TEST-"),
-    }
-}
-
-/// Em sandbox (`TEST-…` / sem token), prioriza `sandbox_init_point` pra
-/// não mandar o lojista pro checkout de produção do Mercado Pago.
-fn pick_init_point(parsed: &MpPreapprovalResponse, prefer_sandbox: bool) -> Option<String> {
-    if prefer_sandbox {
-        parsed
-            .sandbox_init_point
-            .clone()
-            .or_else(|| parsed.init_point.clone())
-    } else {
-        parsed
-            .init_point
-            .clone()
-            .or_else(|| parsed.sandbox_init_point.clone())
-    }
-}
-
-fn cycle_frequency(cycle: BillingCycle) -> (i32, &'static str) {
-    match cycle {
-        BillingCycle::Mensal => (1, "months"),
-        BillingCycle::Semestral => (6, "months"),
-    }
-}
-
-fn completion_back_url(state: &AppState, external_reference: &str) -> String {
-    // Anexa o id da assinatura no back_url — sem isso, quando o Mercado
-    // Pago manda o lojista de volta pro site não tem como saber QUAL
-    // assinatura ele acabou de tentar autorizar.
-    let separador = if state.back_url.contains('?') { "&" } else { "?" };
-    format!("{}{separador}id={external_reference}", state.back_url.as_str())
-}
-
-/// Cobrança de assinatura Resolutoo — **sempre on-site**.
-/// - Pix → `POST /v1/payments` (QR + copia-cola). Nunca preapproval / init_point.
-/// - Cartão → formulário on-site (sandbox/mock). Débito automático opcional
-///   só marca a intenção; não redireciona pro hosted checkout do MP.
-pub async fn create_onsite_charge(
-    state: &AppState,
-    reason: &str,
-    payer_email: &str,
-    amount_reais: f64,
-    cycle: BillingCycle,
-    external_reference: &str,
-    method: PaymentMethod,
-    _auto_debit: bool,
-) -> Result<GatewayCharge, AppError> {
-    match method {
-        PaymentMethod::Pix => {
-            create_pix_charge(state, reason, payer_email, amount_reais, external_reference).await
-        }
-        PaymentMethod::Cartao | PaymentMethod::CartaoParcelado => {
-            // Cartão on-site: sem redirect. Em sandbox/mock o front usa
-            // formulário + "Simular pagamento" / cartões de teste.
-            let _ = cycle;
-            Ok(GatewayCharge {
-                external_id: format!("{MOCK_CARD_PREFIX}{}", uuid::Uuid::new_v4()),
-                checkout_url: None,
-                pix_qr_code: None,
-                pix_qr_base64: None,
-                sandbox: true,
-            })
-        }
-    }
-}
-
-/// EMV Pix determinístico a partir do id — permite regenerar o QR no poll
-/// de status sem gravar a string no banco.
-pub fn mock_pix_copia_cola(seed: &str) -> String {
-    let hex: String = seed
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .take(32)
-        .collect();
-    let mut chunk = hex;
-    while chunk.len() < 32 {
-        chunk.push('0');
-    }
-    format!(
-        "00020126580014BR.GOV.BCB.PIX0136{chunk}5204000053039865802BR5913RESOLUTOO DEMO6009SAO PAULO62070503***6304ABCD"
-    )
-}
-
-fn mock_pix_charge() -> GatewayCharge {
-    let id = format!("{MOCK_PIX_PREFIX}{}", uuid::Uuid::new_v4());
-    let copia = mock_pix_copia_cola(&id);
-    GatewayCharge {
-        external_id: id,
-        checkout_url: None,
-        pix_qr_code: Some(copia),
-        pix_qr_base64: None,
-        sandbox: true,
-    }
-}
-
-/// Pix avulso on-site via Payments API (ou mock sem token / TEST sem QR).
-pub async fn create_pix_charge(
-    state: &AppState,
-    reason: &str,
-    payer_email: &str,
-    amount_reais: f64,
-    external_reference: &str,
-) -> Result<GatewayCharge, AppError> {
-    let sandbox = sandbox_mode(state);
-    let Some(token) = state.mp_token.as_ref().as_ref() else {
-        return Ok(mock_pix_charge());
-    };
-
-    let idem = uuid::Uuid::new_v4().to_string();
-    let body = json!({
-        "transaction_amount": amount_reais,
-        "description": reason,
-        "payment_method_id": "pix",
-        "payer": { "email": payer_email },
-        "external_reference": external_reference,
-    });
-
-    let resp = state
-        .http
-        .post("https://api.mercadopago.com/v1/payments")
-        .bearer_auth(token)
-        .header("X-Idempotency-Key", &idem)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago pix request failed: {e}")))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("mercado pago create pix payment failed: {status} {text}");
-        // Contas TEST às vezes não liberam Pix — cai no mock on-site pra
-        // o lojista ainda ver QR + simular, em vez de redirect cartão.
-        if sandbox {
-            tracing::warn!("MP Pix unavailable in sandbox — using local mock Pix QR");
-            return Ok(mock_pix_charge());
-        }
-        return Err(AppError::Internal(format!(
-            "não foi possível criar cobrança Pix no Mercado Pago (status {status})"
-        )));
-    }
-
-    let parsed: MpPaymentResponse = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago pix parse error: {e}")))?;
-
-    let tx = parsed
-        .point_of_interaction
-        .as_ref()
-        .and_then(|p| p.transaction_data.as_ref());
-    let qr_code = tx.and_then(|t| t.qr_code.clone()).filter(|s| !s.is_empty());
-    let qr_base64 = tx
-        .and_then(|t| t.qr_code_base64.clone())
-        .filter(|s| !s.is_empty());
-
-    let Some(qr_code) = qr_code else {
-        if sandbox {
-            tracing::warn!("MP Pix response missing qr_code — using local mock Pix QR");
-            return Ok(mock_pix_charge());
-        }
-        return Err(AppError::Internal(
-            "mercado pago Pix sem qr_code na resposta".to_string(),
-        ));
-    };
-
-    let payment_id = parsed
-        .id
-        .map(|id| format!("{PIX_ID_PREFIX}{id}"))
-        .unwrap_or_else(|| format!("{PIX_ID_PREFIX}{}", uuid::Uuid::new_v4()));
-
-    Ok(GatewayCharge {
-        external_id: payment_id,
-        checkout_url: None,
-        pix_qr_code: Some(qr_code),
-        pix_qr_base64: qr_base64,
-        sandbox,
-    })
-}
-
-/// Cria checkout de assinatura recorrente (legado — só débito automático
-/// com preapproval). Preferir `create_onsite_charge` no fluxo /assinar.
-pub async fn create_subscription(
-    state: &AppState,
-    reason: &str,
-    payer_email: &str,
-    amount_reais: f64,
-    cycle: BillingCycle,
-    external_reference: &str,
-) -> Result<SubscriptionResult, AppError> {
-    let back_url = completion_back_url(state, external_reference);
-
-    match state.mp_token.as_ref() {
-        Some(token) => {
-            match create_via_preapproval(state, token, reason, payer_email, amount_reais, cycle, external_reference, &back_url)
-                .await
-            {
-                Ok(r) => Ok(r),
-                Err(e) => {
-                    tracing::warn!(
-                        "mercado pago POST /preapproval failed ({e:?}) — falling back to /preapproval_plan"
-                    );
-                    create_via_plan(state, token, reason, amount_reais, cycle, external_reference, &back_url).await
-                }
-            }
-        }
-        None => {
-            // Modo mock: sem MP_ACCESS_TOKEN — link fake só pra testar o fluxo.
-            Ok(SubscriptionResult {
-                preapproval_id: format!("mock-{}", uuid::Uuid::new_v4()),
-                init_point: format!("{back_url}&mock_subscription=1"),
-            })
-        }
-    }
-}
-
 #[derive(Debug, Deserialize)]
 struct MpPaymentResponse {
-    id: Option<i64>,
+    id: Option<serde_json::Value>,
     status: Option<String>,
-    point_of_interaction: Option<MpPointOfInteraction>,
+    point_of_interaction: Option<MpPoi>,
 }
 
 #[derive(Debug, Deserialize)]
-struct MpPointOfInteraction {
-    transaction_data: Option<MpPixTransactionData>,
+struct MpPoi {
+    transaction_data: Option<MpTxData>,
 }
 
 #[derive(Debug, Deserialize)]
-struct MpPixTransactionData {
+struct MpTxData {
     qr_code: Option<String>,
     qr_code_base64: Option<String>,
-}
-
-/// Reconsulta QR Pix (poll / refresh) a partir do id gravado.
-pub async fn pix_qr_for_stored_id(
-    state: &AppState,
-    stored_id: &str,
-) -> Result<(Option<String>, Option<String>), AppError> {
-    if let Some(rest) = stored_id.strip_prefix(MOCK_PIX_PREFIX) {
-        let copia = mock_pix_copia_cola(&format!("{MOCK_PIX_PREFIX}{rest}"));
-        return Ok((Some(copia), None));
-    }
-    if stored_id.starts_with(MOCK_PIX_PREFIX) {
-        return Ok((Some(mock_pix_copia_cola(stored_id)), None));
-    }
-    let Some(payment_id) = stored_id.strip_prefix(PIX_ID_PREFIX) else {
-        return Ok((None, None));
-    };
-    let Some(token) = state.mp_token.as_ref().as_ref() else {
-        return Ok((None, None));
-    };
-    let url = format!("https://api.mercadopago.com/v1/payments/{payment_id}");
-    let resp = state
-        .http
-        .get(&url)
-        .bearer_auth(token)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago pix get failed: {e}")))?;
-    if !resp.status().is_success() {
-        return Ok((None, None));
-    }
-    let parsed: MpPaymentResponse = resp.json().await.unwrap_or(MpPaymentResponse {
-        id: None,
-        status: None,
-        point_of_interaction: None,
-    });
-    let tx = parsed
-        .point_of_interaction
-        .as_ref()
-        .and_then(|p| p.transaction_data.as_ref());
-    Ok((
-        tx.and_then(|t| t.qr_code.clone()),
-        tx.and_then(|t| t.qr_code_base64.clone()),
-    ))
-}
-
-pub fn is_onsite_pix_id(stored_id: &str) -> bool {
-    stored_id.starts_with(PIX_ID_PREFIX) || stored_id.starts_with(MOCK_PIX_PREFIX)
-}
-
-pub fn is_onsite_card_id(stored_id: &str) -> bool {
-    stored_id.starts_with(MOCK_CARD_PREFIX)
-}
-
-async fn create_via_preapproval(
-    state: &AppState,
-    token: &str,
-    reason: &str,
-    payer_email: &str,
-    amount_reais: f64,
-    cycle: BillingCycle,
-    external_reference: &str,
-    back_url: &str,
-) -> Result<SubscriptionResult, AppError> {
-    let (frequency, frequency_type) = cycle_frequency(cycle);
-    let body = json!({
-        "reason": reason,
-        "external_reference": external_reference,
-        "payer_email": payer_email,
-        "back_url": back_url,
-        "status": "pending",
-        "auto_recurring": {
-            "frequency": frequency,
-            "frequency_type": frequency_type,
-            "transaction_amount": amount_reais,
-            "currency_id": "BRL"
-        }
-    });
-
-    let resp = state
-        .http
-        .post("https://api.mercadopago.com/preapproval")
-        .bearer_auth(token)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("mercado pago create preapproval failed: {status} {text}");
-        return Err(AppError::Internal(format!(
-            "não foi possível criar a assinatura no Mercado Pago (status {status})"
-        )));
-    }
-
-    let parsed: MpPreapprovalResponse = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago parse error: {e}")))?;
-
-    let init_point = pick_init_point(&parsed, sandbox_mode(state)).ok_or_else(|| {
-        AppError::Internal("mercado pago não devolveu o link de checkout (init_point)".to_string())
-    })?;
-
-    Ok(SubscriptionResult {
-        preapproval_id: parsed.id,
-        init_point,
-    })
-}
-
-async fn create_via_plan(
-    state: &AppState,
-    token: &str,
-    reason: &str,
-    amount_reais: f64,
-    cycle: BillingCycle,
-    external_reference: &str,
-    back_url: &str,
-) -> Result<SubscriptionResult, AppError> {
-    let (frequency, frequency_type) = cycle_frequency(cycle);
-    // Plano único por tentativa de assinatura — permite correlacionar via
-    // search?preapproval_plan_id=… depois que o lojista autoriza no checkout.
-    let body = json!({
-        "reason": format!("{reason} [{external_reference}]"),
-        "back_url": back_url,
-        "auto_recurring": {
-            "frequency": frequency,
-            "frequency_type": frequency_type,
-            "transaction_amount": amount_reais,
-            "currency_id": "BRL"
-        }
-    });
-
-    let resp = state
-        .http
-        .post("https://api.mercadopago.com/preapproval_plan")
-        .bearer_auth(token)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago plan request failed: {e}")))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("mercado pago create preapproval_plan failed: {status} {text}");
-        return Err(AppError::Internal(format!(
-            "não foi possível criar o plano de assinatura no Mercado Pago (status {status})"
-        )));
-    }
-
-    let parsed: MpPreapprovalResponse = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago plan parse error: {e}")))?;
-
-    let init_point = pick_init_point(&parsed, sandbox_mode(state)).ok_or_else(|| {
-        AppError::Internal("mercado pago plan sem init_point".to_string())
-    })?;
-
-    Ok(SubscriptionResult {
-        preapproval_id: format!("{PLAN_ID_PREFIX}{}", parsed.id),
-        init_point,
-    })
-}
-
-fn plan_id_from_stored(stored: &str) -> Option<&str> {
-    stored.strip_prefix(PLAN_ID_PREFIX)
-}
-
-async fn search_preapprovals_for_plan(
-    state: &AppState,
-    token: &str,
-    plan_id: &str,
-) -> Result<Vec<MpPreapprovalResponse>, AppError> {
-    let url = format!("https://api.mercadopago.com/preapproval/search?preapproval_plan_id={plan_id}");
-    let resp = state
-        .http
-        .get(&url)
-        .bearer_auth(token)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago search failed: {e}")))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("mercado pago search preapproval failed: {status} {text}");
-        return Err(AppError::Internal("failed to search subscription status".to_string()));
-    }
-
-    let parsed: MpSearchResponse = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago search parse error: {e}")))?;
-    Ok(parsed.results.unwrap_or_default())
-}
-
-/// Consulta o status atual da assinatura.
-/// "pending" -> lojista ainda não completou o checkout; "authorized" -> ativa;
-/// "cancelled"/"paused" são autoexplicativos.
-pub async fn get_subscription_status(state: &AppState, stored_id: &str) -> Result<String, AppError> {
-    // On-site Pix/cartão mock: fica pending até "Simular pagamento" (ou
-    // webhook/poll de pagamento real aprovado).
-    if stored_id.starts_with(MOCK_PIX_PREFIX) || stored_id.starts_with(MOCK_CARD_PREFIX) {
-        return Ok("pending".to_string());
-    }
-    if stored_id.starts_with("mock-") {
-        return Ok("authorized".to_string());
-    }
-
-    if let Some(payment_id) = stored_id.strip_prefix(PIX_ID_PREFIX) {
-        let token = state
-            .mp_token
-            .as_ref()
-            .as_ref()
-            .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
-        let url = format!("https://api.mercadopago.com/v1/payments/{payment_id}");
-        let resp = state
-            .http
-            .get(&url)
-            .bearer_auth(token)
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("mercado pago pix status failed: {e}")))?;
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            tracing::error!("mercado pago get pix payment failed: {status} {text}");
-            return Err(AppError::Internal("failed to fetch pix payment status".to_string()));
-        }
-        let parsed: MpPaymentResponse = resp
-            .json()
-            .await
-            .map_err(|e| AppError::Internal(format!("mercado pago pix parse error: {e}")))?;
-        return Ok(match parsed.status.as_deref() {
-            Some("approved") | Some("authorized") => "authorized".to_string(),
-            Some("cancelled") | Some("canceled") | Some("rejected") => "cancelled".to_string(),
-            _ => "pending".to_string(),
-        });
-    }
-
-    let token = state
-        .mp_token
-        .as_ref()
-        .as_ref()
-        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
-
-    if let Some(plan_id) = plan_id_from_stored(stored_id) {
-        let results = search_preapprovals_for_plan(state, token, plan_id).await?;
-        if results.is_empty() {
-            return Ok("pending".to_string());
-        }
-        // Preferência: authorized > paused > cancelled > pending
-        let mut best = "pending".to_string();
-        for r in results {
-            match r.status.as_deref() {
-                Some("authorized") => return Ok("authorized".to_string()),
-                Some("paused") => best = "paused".to_string(),
-                Some("cancelled") | Some("canceled") if best == "pending" => {
-                    best = "cancelled".to_string();
-                }
-                _ => {}
-            }
-        }
-        return Ok(best);
-    }
-
-    let url = format!("https://api.mercadopago.com/preapproval/{stored_id}");
-    let resp = state
-        .http
-        .get(&url)
-        .bearer_auth(token)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("mercado pago get preapproval failed: {status} {text}");
-        return Err(AppError::Internal("failed to fetch subscription status".to_string()));
-    }
-
-    let parsed: MpPreapprovalResponse = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago parse error: {e}")))?;
-    Ok(parsed.status.unwrap_or_else(|| "pending".to_string()))
-}
-
-/// Cancela a cobrança recorrente — chamado quando o assinante cancela pelo dashboard.
-pub async fn cancel_subscription(state: &AppState, stored_id: &str) -> Result<(), AppError> {
-    if stored_id.starts_with("mock-") || stored_id.starts_with(PIX_ID_PREFIX) {
-        // Pix avulso / mock: nada a cancelar no preapproval.
-        return Ok(());
-    }
-    let token = state
-        .mp_token
-        .as_ref()
-        .as_ref()
-        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
-
-    if let Some(plan_id) = plan_id_from_stored(stored_id) {
-        let results = search_preapprovals_for_plan(state, token, plan_id).await?;
-        for r in results {
-            if matches!(r.status.as_deref(), Some("authorized") | Some("paused") | Some("pending")) {
-                cancel_preapproval_id(state, token, &r.id).await?;
-            }
-        }
-        // Desativa o plano pra não aceitar novos checkouts nesse id.
-        let url = format!("https://api.mercadopago.com/preapproval_plan/{plan_id}");
-        let resp = state
-            .http
-            .put(&url)
-            .bearer_auth(token)
-            .json(&json!({ "status": "cancelled" }))
-            .send()
-            .await;
-        if let Ok(r) = resp {
-            if !r.status().is_success() {
-                let text = r.text().await.unwrap_or_default();
-                tracing::warn!("mercado pago cancel plan non-success: {text}");
-            }
-        }
-        return Ok(());
-    }
-
-    cancel_preapproval_id(state, token, stored_id).await
-}
-
-async fn cancel_preapproval_id(state: &AppState, token: &str, preapproval_id: &str) -> Result<(), AppError> {
-    let url = format!("https://api.mercadopago.com/preapproval/{preapproval_id}");
-    let resp = state
-        .http
-        .put(&url)
-        .bearer_auth(token)
-        .json(&json!({ "status": "cancelled" }))
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("mercado pago cancel preapproval failed: {status} {text}");
-        return Err(AppError::Internal("failed to cancel subscription".to_string()));
-    }
-    Ok(())
-}
-
-/// Atualiza o valor da cobrança recorrente (upgrade/downgrade / cupom).
-pub async fn update_subscription_amount(
-    state: &AppState,
-    stored_id: &str,
-    amount_reais: f64,
-) -> Result<(), AppError> {
-    if stored_id.starts_with("mock-") {
-        return Ok(());
-    }
-    let token = state
-        .mp_token
-        .as_ref()
-        .as_ref()
-        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
-
-    // Preferência: se for plan_…, atualiza o plano; senão PUT no preapproval.
-    if let Some(plan_id) = plan_id_from_stored(stored_id) {
-        let url = format!("https://api.mercadopago.com/preapproval_plan/{plan_id}");
-        let resp = state
-            .http
-            .put(&url)
-            .bearer_auth(token)
-            .json(&json!({
-                "auto_recurring": { "transaction_amount": amount_reais }
-            }))
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
-        if !resp.status().is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            tracing::error!("mercado pago update plan amount failed: {text}");
-            return Err(AppError::Internal("falha ao atualizar valor no Mercado Pago".to_string()));
-        }
-        return Ok(());
-    }
-
-    let url = format!("https://api.mercadopago.com/preapproval/{stored_id}");
-    let resp = state
-        .http
-        .put(&url)
-        .bearer_auth(token)
-        .json(&json!({
-            "auto_recurring": { "transaction_amount": amount_reais }
-        }))
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
-    if !resp.status().is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("mercado pago update preapproval amount failed: {text}");
-        return Err(AppError::Internal("falha ao atualizar valor no Mercado Pago".to_string()));
-    }
-    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -706,122 +76,38 @@ struct MpRefundResponse {
     id: Option<i64>,
 }
 
-/// Estorna o pagamento mais recente ligado à assinatura (preapproval).
-/// Usado no cancelamento dentro da janela de 7 dias.
-pub async fn refund_latest_subscription_payment(
-    state: &AppState,
-    stored_id: &str,
-) -> Result<Option<String>, AppError> {
-    if stored_id.starts_with("mock-") {
-        return Ok(None);
+/// Credencial de teste (`TEST-...`) ou ausência de token → sandbox/mock.
+pub fn sandbox_mode(state: &AppState) -> bool {
+    match state.mp_token.as_ref().as_ref() {
+        None => true,
+        Some(t) => t.trim().starts_with("TEST-"),
     }
-    let token = state
-        .mp_token
-        .as_ref()
-        .as_ref()
-        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
+}
 
-    let preapproval_id = if let Some(plan_id) = plan_id_from_stored(stored_id) {
-        let results = search_preapprovals_for_plan(state, token, plan_id).await?;
-        let authorized = results.into_iter().find(|r| {
-            matches!(
-                r.status.as_deref(),
-                Some("authorized") | Some("paused") | Some("pending")
-            )
-        });
-        match authorized {
-            Some(r) => r.id,
-            None => return Ok(None),
-        }
+fn pick_init_point(parsed: &MpPreapprovalResponse, prefer_sandbox: bool) -> Option<String> {
+    if prefer_sandbox {
+        parsed
+            .sandbox_init_point
+            .clone()
+            .or_else(|| parsed.init_point.clone())
     } else {
-        stored_id.to_string()
-    };
-
-    let url = format!(
-        "https://api.mercadopago.com/authorized_payments/search?preapproval_id={preapproval_id}"
-    );
-    let resp = state
-        .http
-        .get(&url)
-        .bearer_auth(token)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
-    if !resp.status().is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("mercado pago authorized_payments search failed: {text}");
-        return Err(AppError::Internal("falha ao localizar cobrança da assinatura".to_string()));
+        parsed
+            .init_point
+            .clone()
+            .or_else(|| parsed.sandbox_init_point.clone())
     }
-    let parsed: MpAuthorizedSearch = resp
-        .json()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago parse error: {e}")))?;
+}
 
-    let payment_id = parsed.results.unwrap_or_default().into_iter().find_map(|ap| {
-        let ok = matches!(
-            ap.status
-                .as_deref()
-                .or(ap.payment.as_ref().and_then(|p| p.status.as_deref())),
-            Some("approved") | Some("authorized") | Some("processed")
-        );
-        if !ok {
-            return None;
-        }
-        ap.payment
-            .as_ref()
-            .and_then(|p| p.id)
-            .or(ap.id)
-            .map(|id| id.to_string())
-    });
-
-    let Some(payment_id) = payment_id else {
-        return Ok(None);
-    };
-
-    let refund_url = format!("https://api.mercadopago.com/v1/payments/{payment_id}/refunds");
-    let resp = state
-        .http
-        .post(&refund_url)
-        .bearer_auth(token)
-        .json(&json!({}))
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(format!("mercado pago refund failed: {e}")))?;
-    if !resp.status().is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        tracing::error!("mercado pago refund failed: {text}");
-        return Err(AppError::Internal("falha ao estornar pagamento no Mercado Pago".to_string()));
+fn cycle_frequency(cycle: BillingCycle) -> (i32, &'static str) {
+    match cycle {
+        BillingCycle::Mensal => (1, "months"),
+        BillingCycle::Semestral => (6, "months"),
     }
-    let refund: MpRefundResponse = resp.json().await.unwrap_or(MpRefundResponse { id: None });
-    Ok(Some(
-        refund
-            .id
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| format!("refund-{payment_id}")),
-    ))
 }
 
-// ─── On-site (no hosted redirect) ───────────────────────────────────────────
-
-pub const PAY_ID_PREFIX: &str = "pay-";
-pub const PENDING_CARD_PREFIX: &str = "pending-card-";
-
-#[derive(Debug, Deserialize)]
-struct MpPaymentResponse {
-    id: Option<serde_json::Value>,
-    status: Option<String>,
-    point_of_interaction: Option<MpPoi>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MpPoi {
-    transaction_data: Option<MpTxData>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MpTxData {
-    qr_code: Option<String>,
-    qr_code_base64: Option<String>,
+fn completion_back_url(state: &AppState, external_reference: &str) -> String {
+    let separador = if state.back_url.contains('?') { "&" } else { "?" };
+    format!("{}{separador}id={external_reference}", state.back_url.as_str())
 }
 
 fn payment_id_string(v: &Option<serde_json::Value>) -> Option<String> {
@@ -829,6 +115,15 @@ fn payment_id_string(v: &Option<serde_json::Value>) -> Option<String> {
         Some(serde_json::Value::Number(n)) => Some(n.to_string()),
         Some(serde_json::Value::String(s)) => Some(s.clone()),
         _ => None,
+    }
+}
+
+fn normalize_qr_b64(raw: Option<String>) -> Option<String> {
+    let raw = raw.filter(|s| !s.is_empty())?;
+    if raw.starts_with("data:") {
+        Some(raw)
+    } else {
+        Some(format!("data:image/png;base64,{raw}"))
     }
 }
 
@@ -846,42 +141,38 @@ fn fake_pix_copia_cola(reason: &str) -> String {
     )
 }
 
-/// Cobrança Pix on-site via Payments API — nunca devolve init_point/redirect.
+fn mock_pix_charge(reason: &str, sandbox: bool) -> GatewayCharge {
+    GatewayCharge {
+        external_id: format!("{MOCK_PIX_PREFIX}{}", uuid::Uuid::new_v4()),
+        checkout_url: None,
+        pix_qr_code: Some(fake_pix_copia_cola(reason)),
+        pix_qr_base64: None,
+        sandbox,
+        payment_step: "pix".to_string(),
+    }
+}
+
+/// Cobrança Pix on-site via Payments API — **nunca** devolve init_point/redirect.
 pub async fn create_onsite_pix(
     state: &AppState,
     reason: &str,
     payer_email: &str,
     amount_reais: f64,
     external_reference: &str,
-) -> Result<crate::gateway::GatewayCharge, AppError> {
+) -> Result<GatewayCharge, AppError> {
     let sandbox = sandbox_mode(state);
-    match state.mp_token.as_ref().as_ref() {
-        Some(token) if !sandbox || token.trim().starts_with("TEST-") => {
-            // TEST- e APP_USR-: cria Pix real na API (sandbox PIX funciona com TEST).
-            match create_mp_pix_payment(state, token, reason, payer_email, amount_reais, external_reference)
-                .await
-            {
-                Ok(c) => Ok(c),
-                Err(e) if sandbox => {
-                    tracing::warn!("MP Pix failed in sandbox ({e:?}) — using mock PIX QR");
-                    Ok(mock_pix_charge(reason, sandbox))
-                }
-                Err(e) => Err(e),
-            }
-        }
-        _ => Ok(mock_pix_charge(reason, true)),
-    }
-}
+    let Some(token) = state.mp_token.as_ref().as_ref() else {
+        return Ok(mock_pix_charge(reason, true));
+    };
 
-fn mock_pix_charge(reason: &str, sandbox: bool) -> crate::gateway::GatewayCharge {
-    let copia = fake_pix_copia_cola(reason);
-    crate::gateway::GatewayCharge {
-        external_id: format!("mock-pix-{}", uuid::Uuid::new_v4()),
-        checkout_url: None,
-        pix_qr_code: Some(copia),
-        pix_qr_base64: None,
-        sandbox,
-        payment_step: "pix".to_string(),
+    match create_mp_pix_payment(state, token, reason, payer_email, amount_reais, external_reference).await
+    {
+        Ok(c) => Ok(c),
+        Err(e) if sandbox => {
+            tracing::warn!("MP Pix failed in sandbox ({e:?}) — using mock PIX QR");
+            Ok(mock_pix_charge(reason, true))
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -892,15 +183,13 @@ async fn create_mp_pix_payment(
     payer_email: &str,
     amount_reais: f64,
     external_reference: &str,
-) -> Result<crate::gateway::GatewayCharge, AppError> {
+) -> Result<GatewayCharge, AppError> {
     let body = json!({
         "transaction_amount": (amount_reais * 100.0).round() / 100.0,
         "description": reason.chars().take(200).collect::<String>(),
         "payment_method_id": "pix",
         "external_reference": external_reference,
-        "payer": {
-            "email": payer_email,
-        }
+        "payer": { "email": payer_email },
     });
 
     let resp = state
@@ -937,29 +226,22 @@ async fn create_mp_pix_payment(
 
     let qr_code = tx
         .qr_code
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| AppError::Internal("mercado pago pix sem qr_code".to_string()))?;
-    let raw_b64 = tx.qr_code_base64.unwrap_or_default();
-    let pix_qr_base64 = if raw_b64.is_empty() {
-        None
-    } else if raw_b64.starts_with("data:") {
-        Some(raw_b64)
-    } else {
-        Some(format!("data:image/png;base64,{raw_b64}"))
-    };
 
-    Ok(crate::gateway::GatewayCharge {
-        external_id: format!("{PAY_ID_PREFIX}{payment_id}"),
+    Ok(GatewayCharge {
+        external_id: format!("{PIX_ID_PREFIX}{payment_id}"),
         checkout_url: None,
         pix_qr_code: Some(qr_code),
-        pix_qr_base64,
+        pix_qr_base64: normalize_qr_b64(tx.qr_code_base64),
         sandbox: sandbox_mode(state),
         payment_step: "pix".to_string(),
     })
 }
 
 /// Placeholder on-site card — front coleta cartão; nunca redirect.
-pub fn create_onsite_card_pending(sandbox: bool) -> crate::gateway::GatewayCharge {
-    crate::gateway::GatewayCharge {
+pub fn create_onsite_card_pending(sandbox: bool) -> GatewayCharge {
+    GatewayCharge {
         external_id: format!("{PENDING_CARD_PREFIX}{}", uuid::Uuid::new_v4()),
         checkout_url: None,
         pix_qr_code: None,
@@ -988,14 +270,13 @@ pub async fn pay_onsite_card(
     let sandbox = sandbox_mode(state);
 
     if sandbox {
-        // MP test cards (homologação) — aceita e ativa localmente.
         let ok = matches!(
             digits.as_str(),
-            "5031433215406351" // Mastercard
-                | "4235647728025682" // Visa
-                | "4009175336724084" // Visa debit
+            "5031433215406351"
+                | "4235647728025682"
+                | "4009175336724084"
                 | "5411750505590619"
-                | "371180303257522" // Amex
+                | "371180303257522"
                 | "4111111111111111"
         ) || (digits.len() >= 13 && digits.starts_with('4'));
         if !ok {
@@ -1020,7 +301,6 @@ pub async fn pay_onsite_card(
     let payment_token = if let Some(t) = card_token.map(str::trim).filter(|s| !s.is_empty()) {
         t.to_string()
     } else {
-        // Tokeniza no server com access token (homolog/prod). Preferível: MP.js no front.
         create_card_token(state, token, &digits, card_holder, exp_month, exp_year, cvv).await?
     };
 
@@ -1069,16 +349,15 @@ pub async fn pay_onsite_card(
         .ok_or_else(|| AppError::Internal("mercado pago card sem payment id".to_string()))?;
 
     if auto_debit {
-        // Best-effort: tenta criar preapproval recorrente em background sem redirect.
         tracing::info!(
-            "auto_debit solicitado — preapproval on-site best-effort para {external_reference}"
+            "auto_debit solicitado — preapproval best-effort (sem redirect) para {external_reference}"
         );
         let _ = create_subscription(
             state,
             reason,
             payer_email,
             amount_reais,
-            crate::gateway::BillingCycle::Mensal,
+            BillingCycle::Mensal,
             external_reference,
         )
         .await;
@@ -1090,7 +369,7 @@ pub async fn pay_onsite_card(
 fn detect_brand(digits: &str) -> &'static str {
     if digits.starts_with('4') {
         "visa"
-    } else if digits.starts_with('5') || digits.starts_with("2") {
+    } else if digits.starts_with('5') || digits.starts_with('2') {
         "master"
     } else if digits.starts_with('3') {
         "amex"
@@ -1152,15 +431,24 @@ async fn create_card_token(
         .ok_or_else(|| AppError::Internal("card token sem id".to_string()))
 }
 
-/// Status de cobrança on-site (pay-… / mock-pix-… / pending-card-…).
+/// Status de cobrança on-site (mpix-/pay-/mock-/pending-card-…) ou preapproval legado.
 pub async fn get_onsite_payment_status(state: &AppState, stored_id: &str) -> Result<String, AppError> {
+    if stored_id.starts_with(MOCK_PIX_PREFIX)
+        || stored_id.starts_with("mock-card-")
+        || stored_id.starts_with(PENDING_CARD_PREFIX)
+    {
+        return Ok("pending".to_string());
+    }
+    // Mock preapproval antigo (sem token) — treat as authorized for pollers.
     if stored_id.starts_with("mock-") {
-        return Ok("pending".to_string());
+        return Ok("authorized".to_string());
     }
-    if stored_id.starts_with(PENDING_CARD_PREFIX) {
-        return Ok("pending".to_string());
-    }
-    if let Some(pay_id) = stored_id.strip_prefix(PAY_ID_PREFIX) {
+
+    let payment_id = stored_id
+        .strip_prefix(PIX_ID_PREFIX)
+        .or_else(|| stored_id.strip_prefix(PAY_ID_PREFIX));
+
+    if let Some(pay_id) = payment_id {
         let Some(token) = state.mp_token.as_ref().as_ref() else {
             return Ok("pending".to_string());
         };
@@ -1182,5 +470,493 @@ pub async fn get_onsite_payment_status(state: &AppState, stored_id: &str) -> Res
             _ => "pending".to_string(),
         });
     }
-    get_subscription_status(state, stored_id).await
+
+    get_preapproval_status(state, stored_id).await
+}
+
+/// Preapproval legado (só auto-débito best-effort). Nunca usar no fluxo Pix.
+pub async fn create_subscription(
+    state: &AppState,
+    reason: &str,
+    payer_email: &str,
+    amount_reais: f64,
+    cycle: BillingCycle,
+    external_reference: &str,
+) -> Result<SubscriptionResult, AppError> {
+    let back_url = completion_back_url(state, external_reference);
+
+    match state.mp_token.as_ref() {
+        Some(token) => {
+            match create_via_preapproval(
+                state,
+                token,
+                reason,
+                payer_email,
+                amount_reais,
+                cycle,
+                external_reference,
+                &back_url,
+            )
+            .await
+            {
+                Ok(r) => Ok(r),
+                Err(e) => {
+                    tracing::warn!(
+                        "mercado pago POST /preapproval failed ({e:?}) — falling back to /preapproval_plan"
+                    );
+                    create_via_plan(
+                        state,
+                        token,
+                        reason,
+                        amount_reais,
+                        cycle,
+                        external_reference,
+                        &back_url,
+                    )
+                    .await
+                }
+            }
+        }
+        None => Ok(SubscriptionResult {
+            preapproval_id: format!("mock-{}", uuid::Uuid::new_v4()),
+            init_point: format!("{back_url}&mock_subscription=1"),
+        }),
+    }
+}
+
+async fn create_via_preapproval(
+    state: &AppState,
+    token: &str,
+    reason: &str,
+    payer_email: &str,
+    amount_reais: f64,
+    cycle: BillingCycle,
+    external_reference: &str,
+    back_url: &str,
+) -> Result<SubscriptionResult, AppError> {
+    let (frequency, frequency_type) = cycle_frequency(cycle);
+    let body = json!({
+        "reason": reason,
+        "external_reference": external_reference,
+        "payer_email": payer_email,
+        "back_url": back_url,
+        "status": "pending",
+        "auto_recurring": {
+            "frequency": frequency,
+            "frequency_type": frequency_type,
+            "transaction_amount": amount_reais,
+            "currency_id": "BRL"
+        }
+    });
+
+    let resp = state
+        .http
+        .post("https://api.mercadopago.com/preapproval")
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago create preapproval failed: {status} {text}");
+        return Err(AppError::Internal(format!(
+            "mercado pago preapproval failed ({status})"
+        )));
+    }
+
+    let parsed: MpPreapprovalResponse = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago parse error: {e}")))?;
+    let init_point = pick_init_point(&parsed, sandbox_mode(state)).ok_or_else(|| {
+        AppError::Internal("mercado pago não devolveu o link de checkout (init_point)".to_string())
+    })?;
+
+    Ok(SubscriptionResult {
+        preapproval_id: parsed.id,
+        init_point,
+    })
+}
+
+async fn create_via_plan(
+    state: &AppState,
+    token: &str,
+    reason: &str,
+    amount_reais: f64,
+    cycle: BillingCycle,
+    external_reference: &str,
+    back_url: &str,
+) -> Result<SubscriptionResult, AppError> {
+    let (frequency, frequency_type) = cycle_frequency(cycle);
+    let body = json!({
+        "reason": reason,
+        "external_reference": external_reference,
+        "auto_recurring": {
+            "frequency": frequency,
+            "frequency_type": frequency_type,
+            "transaction_amount": amount_reais,
+            "currency_id": "BRL",
+            "free_trial": null,
+        },
+        "back_url": back_url,
+    });
+
+    let resp = state
+        .http
+        .post("https://api.mercadopago.com/preapproval_plan")
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago create preapproval_plan failed: {status} {text}");
+        return Err(AppError::Internal(format!(
+            "mercado pago preapproval_plan failed ({status})"
+        )));
+    }
+
+    let parsed: MpPreapprovalResponse = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago plan parse error: {e}")))?;
+    let init_point = pick_init_point(&parsed, sandbox_mode(state)).ok_or_else(|| {
+        AppError::Internal("mercado pago plan sem init_point".to_string())
+    })?;
+
+    Ok(SubscriptionResult {
+        preapproval_id: format!("{PLAN_ID_PREFIX}{}", parsed.id),
+        init_point,
+    })
+}
+
+fn plan_id_from_stored(stored: &str) -> Option<&str> {
+    stored.strip_prefix(PLAN_ID_PREFIX)
+}
+
+async fn search_preapprovals_for_plan(
+    state: &AppState,
+    token: &str,
+    plan_id: &str,
+) -> Result<Vec<MpPreapprovalResponse>, AppError> {
+    let url = format!("https://api.mercadopago.com/preapproval/search?preapproval_plan_id={plan_id}");
+    let resp = state
+        .http
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago search preapproval failed: {status} {text}");
+        return Err(AppError::Internal("failed to search preapprovals".to_string()));
+    }
+    let parsed: MpSearchResponse = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago search parse error: {e}")))?;
+    Ok(parsed.results.unwrap_or_default())
+}
+
+pub async fn get_subscription_status(state: &AppState, stored_id: &str) -> Result<String, AppError> {
+    get_onsite_payment_status(state, stored_id).await
+}
+
+async fn get_preapproval_status(state: &AppState, stored_id: &str) -> Result<String, AppError> {
+    let token = state
+        .mp_token
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
+
+    if let Some(plan_id) = plan_id_from_stored(stored_id) {
+        let results = search_preapprovals_for_plan(state, token, plan_id).await?;
+        if results.is_empty() {
+            return Ok("pending".to_string());
+        }
+        let mut best = "pending".to_string();
+        for r in results {
+            match r.status.as_deref() {
+                Some("authorized") => return Ok("authorized".to_string()),
+                Some("paused") => best = "paused".to_string(),
+                Some("cancelled") | Some("canceled") if best == "pending" => {
+                    best = "cancelled".to_string();
+                }
+                _ => {}
+            }
+        }
+        return Ok(best);
+    }
+
+    let url = format!("https://api.mercadopago.com/preapproval/{stored_id}");
+    let resp = state
+        .http
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago get preapproval failed: {status} {text}");
+        return Err(AppError::Internal("failed to fetch subscription status".to_string()));
+    }
+
+    let parsed: MpPreapprovalResponse = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago parse error: {e}")))?;
+    Ok(parsed.status.unwrap_or_else(|| "pending".to_string()))
+}
+
+pub async fn cancel_subscription(state: &AppState, stored_id: &str) -> Result<(), AppError> {
+    if stored_id.starts_with("mock-")
+        || stored_id.starts_with(PIX_ID_PREFIX)
+        || stored_id.starts_with(PAY_ID_PREFIX)
+        || stored_id.starts_with(PENDING_CARD_PREFIX)
+    {
+        return Ok(());
+    }
+    let token = state
+        .mp_token
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
+
+    if let Some(plan_id) = plan_id_from_stored(stored_id) {
+        let results = search_preapprovals_for_plan(state, token, plan_id).await?;
+        for r in results {
+            if matches!(
+                r.status.as_deref(),
+                Some("authorized") | Some("paused") | Some("pending")
+            ) {
+                cancel_preapproval_id(state, token, &r.id).await?;
+            }
+        }
+        let url = format!("https://api.mercadopago.com/preapproval_plan/{plan_id}");
+        let resp = state
+            .http
+            .put(&url)
+            .bearer_auth(token)
+            .json(&json!({ "status": "cancelled" }))
+            .send()
+            .await;
+        if let Ok(r) = resp {
+            if !r.status().is_success() {
+                let text = r.text().await.unwrap_or_default();
+                tracing::warn!("mercado pago cancel plan non-success: {text}");
+            }
+        }
+        return Ok(());
+    }
+
+    cancel_preapproval_id(state, token, stored_id).await
+}
+
+async fn cancel_preapproval_id(
+    state: &AppState,
+    token: &str,
+    preapproval_id: &str,
+) -> Result<(), AppError> {
+    let url = format!("https://api.mercadopago.com/preapproval/{preapproval_id}");
+    let resp = state
+        .http
+        .put(&url)
+        .bearer_auth(token)
+        .json(&json!({ "status": "cancelled" }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago cancel preapproval failed: {status} {text}");
+        return Err(AppError::Internal("failed to cancel subscription".to_string()));
+    }
+    Ok(())
+}
+
+pub async fn update_subscription_amount(
+    state: &AppState,
+    stored_id: &str,
+    amount_reais: f64,
+) -> Result<(), AppError> {
+    if stored_id.starts_with("mock-")
+        || stored_id.starts_with(PIX_ID_PREFIX)
+        || stored_id.starts_with(PAY_ID_PREFIX)
+        || stored_id.starts_with(PENDING_CARD_PREFIX)
+    {
+        return Ok(());
+    }
+    let token = state
+        .mp_token
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
+
+    if let Some(plan_id) = plan_id_from_stored(stored_id) {
+        let url = format!("https://api.mercadopago.com/preapproval_plan/{plan_id}");
+        let resp = state
+            .http
+            .put(&url)
+            .bearer_auth(token)
+            .json(&json!({
+                "auto_recurring": { "transaction_amount": amount_reais }
+            }))
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            tracing::error!("mercado pago update plan amount failed: {text}");
+            return Err(AppError::Internal(
+                "falha ao atualizar valor no Mercado Pago".to_string(),
+            ));
+        }
+        return Ok(());
+    }
+
+    let url = format!("https://api.mercadopago.com/preapproval/{stored_id}");
+    let resp = state
+        .http
+        .put(&url)
+        .bearer_auth(token)
+        .json(&json!({
+            "auto_recurring": { "transaction_amount": amount_reais }
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago update preapproval amount failed: {text}");
+        return Err(AppError::Internal(
+            "falha ao atualizar valor no Mercado Pago".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub async fn refund_latest_subscription_payment(
+    state: &AppState,
+    stored_id: &str,
+) -> Result<Option<String>, AppError> {
+    if stored_id.starts_with("mock-") {
+        return Ok(None);
+    }
+
+    // Pix/card on-site payment id → refund that payment directly.
+    if let Some(pay_id) = stored_id
+        .strip_prefix(PIX_ID_PREFIX)
+        .or_else(|| stored_id.strip_prefix(PAY_ID_PREFIX))
+    {
+        return refund_payment_id(state, pay_id).await.map(Some);
+    }
+
+    let token = state
+        .mp_token
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
+
+    let preapproval_id = if let Some(plan_id) = plan_id_from_stored(stored_id) {
+        let results = search_preapprovals_for_plan(state, token, plan_id).await?;
+        let authorized = results.into_iter().find(|r| {
+            matches!(
+                r.status.as_deref(),
+                Some("authorized") | Some("paused") | Some("pending")
+            )
+        });
+        match authorized {
+            Some(r) => r.id,
+            None => return Ok(None),
+        }
+    } else {
+        stored_id.to_string()
+    };
+
+    let url = format!(
+        "https://api.mercadopago.com/authorized_payments/search?preapproval_id={preapproval_id}"
+    );
+    let resp = state
+        .http
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago request failed: {e}")))?;
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago authorized_payments search failed: {text}");
+        return Err(AppError::Internal(
+            "falha ao localizar cobrança da assinatura".to_string(),
+        ));
+    }
+    let parsed: MpAuthorizedSearch = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago parse error: {e}")))?;
+
+    let payment_id = parsed.results.unwrap_or_default().into_iter().find_map(|ap| {
+        let ok = matches!(
+            ap.status
+                .as_deref()
+                .or(ap.payment.as_ref().and_then(|p| p.status.as_deref())),
+            Some("approved") | Some("authorized") | Some("processed")
+        );
+        if !ok {
+            return None;
+        }
+        ap.payment
+            .as_ref()
+            .and_then(|p| p.id)
+            .or(ap.id)
+            .map(|id| id.to_string())
+    });
+
+    let Some(payment_id) = payment_id else {
+        return Ok(None);
+    };
+
+    refund_payment_id(state, &payment_id).await.map(Some)
+}
+
+async fn refund_payment_id(state: &AppState, payment_id: &str) -> Result<String, AppError> {
+    let token = state
+        .mp_token
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
+    let refund_url = format!("https://api.mercadopago.com/v1/payments/{payment_id}/refunds");
+    let resp = state
+        .http
+        .post(&refund_url)
+        .bearer_auth(token)
+        .json(&json!({}))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mercado pago refund failed: {e}")))?;
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("mercado pago refund failed: {text}");
+        return Err(AppError::Internal(
+            "falha ao estornar pagamento no Mercado Pago".to_string(),
+        ));
+    }
+    let refund: MpRefundResponse = resp.json().await.unwrap_or(MpRefundResponse { id: None });
+    Ok(refund
+        .id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| format!("refund-{payment_id}")))
 }
