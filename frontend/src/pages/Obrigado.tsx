@@ -3,6 +3,7 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Clock, Loader2, XCircle } from 'lucide-react'
 import { api, ApiError, type StatusAssinatura } from '../lib/api'
 import { useIsAuthenticated } from '../lib/authStore'
+import { resolvePostPayDestination } from '../lib/postPayRedirect'
 
 const POLL_MS = 3000
 const POLL_TIMEOUT_MS = 120_000
@@ -35,9 +36,10 @@ export default function Obrigado() {
           setStatus(r.status)
           setSandbox(Boolean(r.sandbox))
           if (r.status === 'ativo') {
-            if (isAuthenticated && r.onboarding_status === 'aguardando_onboarding') {
-              setTimeout(() => navigate('/onboarding'), 1800)
-            }
+            if (!isAuthenticated) return
+            void resolvePostPayDestination(r.onboarding_status).then((dest) => {
+              if (!cancelled) setTimeout(() => navigate(dest), 1200)
+            })
             return
           }
           if (Date.now() - inicio < POLL_TIMEOUT_MS) {
@@ -61,10 +63,10 @@ export default function Obrigado() {
       const r = await api.simularPagamento()
       setStatus(r.status)
       setSandbox(Boolean(r.sandbox))
-      // Para o poller: status já é ativo localmente; próximo poll não deve
-      // rebaixar (backend também protege), e navegamos pro onboarding.
-      if (r.status === 'ativo' && isAuthenticated && r.onboarding_status === 'aguardando_onboarding') {
-        setTimeout(() => navigate('/onboarding'), 800)
+      if (r.status === 'ativo' && isAuthenticated) {
+        void resolvePostPayDestination(r.onboarding_status).then((dest) => {
+          setTimeout(() => navigate(dest), 800)
+        })
       }
     } catch (e) {
       setSimError(e instanceof ApiError ? e.message : 'Não foi possível simular o pagamento.')
@@ -118,7 +120,9 @@ export default function Obrigado() {
             <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
             <h1 className="text-2xl font-black mb-2">Assinatura ativa</h1>
             <p className="text-sm text-uf-silver-dim mb-6">
-              {isAuthenticated ? 'Te levando pra configurar sua loja...' : 'Faça login pra continuar configurando sua loja.'}
+              {isAuthenticated
+                ? 'Te levando pra área logada...'
+                : 'Faça login pra continuar configurando sua loja.'}
             </p>
           </>
         )}

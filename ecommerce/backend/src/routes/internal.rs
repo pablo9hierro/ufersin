@@ -219,9 +219,9 @@ pub async fn sync_payment_credentials(
         ));
     }
     if let Some(pp) = &input.plataforma_pagamento {
-        if !matches!(pp.as_str(), "mercado_pago" | "abacate_pay") {
+        if pp.as_str() != "mercado_pago" {
             return Err(AppError::BadRequest(
-                "plataforma_pagamento deve ser 'mercado_pago' ou 'abacate_pay'".to_string(),
+                "plataforma_pagamento deve ser 'mercado_pago'".to_string(),
             ));
         }
     }
@@ -248,6 +248,9 @@ pub struct SetTenantStatusInput {
     pub tenant_slug: String,
     /// `ativo` | `suspenso` | `cancelado` — never deletes the tenant or its data.
     pub status: String,
+    /// Optional: `essential` | `management` | `premium` — updates subscription plan_id on reactivate/upgrade.
+    #[serde(default)]
+    pub plan_code: Option<String>,
 }
 
 /// Rodoletas pushes subscription lifecycle (cancel / non-payment / re-subscribe)
@@ -267,6 +270,17 @@ pub async fn set_tenant_status(
             "status deve ser 'ativo', 'suspenso' ou 'cancelado'".to_string(),
         ));
     }
+    let plan_id = match input.plan_code.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(code) if matches!(code, "essential" | "management" | "premium") => {
+            Some(format!("plan_{code}"))
+        }
+        Some(_) => {
+            return Err(AppError::BadRequest(
+                "plan_code deve ser essential, management ou premium".to_string(),
+            ))
+        }
+        None => None,
+    };
 
     let sub_status = match input.status.as_str() {
         "ativo" => "active",
@@ -284,15 +298,28 @@ pub async fn set_tenant_status(
         return Err(AppError::NotFound("tenant not found".to_string()));
     }
 
-    sqlx::query(
-        "UPDATE subscriptions SET status = $1, \
-         canceled_at = CASE WHEN $1 = 'canceled' THEN COALESCE(canceled_at, now()::text) ELSE NULL END \
-         WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $2)",
-    )
-    .bind(sub_status)
-    .bind(&slug)
-    .execute(&mut *tx)
-    .await?;
+    if let Some(plan_id) = plan_id {
+        sqlx::query(
+            "UPDATE subscriptions SET status = $1, plan_id = $2, \
+             canceled_at = CASE WHEN $1 = 'canceled' THEN COALESCE(canceled_at, now()::text) ELSE NULL END \
+             WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $3)",
+        )
+        .bind(sub_status)
+        .bind(&plan_id)
+        .bind(&slug)
+        .execute(&mut *tx)
+        .await?;
+    } else {
+        sqlx::query(
+            "UPDATE subscriptions SET status = $1, \
+             canceled_at = CASE WHEN $1 = 'canceled' THEN COALESCE(canceled_at, now()::text) ELSE NULL END \
+             WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $2)",
+        )
+        .bind(sub_status)
+        .bind(&slug)
+        .execute(&mut *tx)
+        .await?;
+    }
 
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)

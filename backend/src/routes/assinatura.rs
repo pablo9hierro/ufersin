@@ -64,15 +64,38 @@ pub async fn assinar_plano(
 
     let list_monthly = plans::monthly_price(&state.pool, &body.plano).await?;
 
-    let row: Option<(String, String, String, Option<f64>, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            "SELECT loja_nome, email, status, valor_mensal, mp_preapproval_id, gateway FROM subscribers WHERE id = $1",
-        )
-        .bind(&claims.sub)
-        .fetch_optional(&state.pool)
-        .await?;
-    let (loja_nome, email, status, existing_monthly, prev_ext_id, prev_gateway) =
-        row.ok_or_else(|| AppError::NotFound("conta não encontrada — finalize o cadastro primeiro".to_string()))?;
+    let row: Option<(
+        String,
+        String,
+        String,
+        Option<f64>,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT loja_nome, email, status, valor_mensal, mp_preapproval_id, gateway, \
+         onboarding_status, tenant_id, plan_code, slug, documento FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (
+        loja_nome,
+        email,
+        status,
+        existing_monthly,
+        prev_ext_id,
+        prev_gateway,
+        onboarding_status,
+        tenant_id,
+        old_plan,
+        slug,
+        documento,
+    ) = row.ok_or_else(|| AppError::NotFound("conta não encontrada — finalize o cadastro primeiro".to_string()))?;
     if matches!(status.as_str(), "ativo" | "pausado") {
         return Err(AppError::BadRequest("essa conta já tem uma assinatura ativa".to_string()));
     }
@@ -128,19 +151,50 @@ pub async fn assinar_plano(
     charge.checkout_url = None;
 
     // Pix must always include copia-e-cola (or base64). Never leave the FE on "Gerando QR".
-    if charge.payment_step == "pix"
+    // Never coerce a Pix request into the card step.
+    if matches!(body.metodo, PaymentMethod::Pix) {
+        let qr_empty = charge.pix_qr_code.as_deref().unwrap_or("").is_empty()
+            && charge.pix_qr_base64.as_deref().unwrap_or("").is_empty();
+        if charge.payment_step != "pix" || qr_empty {
+            return Err(AppError::BadRequest(
+                "não foi possível gerar o QR Pix — tente novamente".to_string(),
+            ));
+        }
+    } else if charge.payment_step == "pix"
         && charge.pix_qr_code.as_deref().unwrap_or("").is_empty()
         && charge.pix_qr_base64.as_deref().unwrap_or("").is_empty()
     {
-        return Err(AppError::Internal(
+        return Err(AppError::BadRequest(
             "cobrança Pix criada sem QR — tente novamente ou use cartão".to_string(),
         ));
     }
 
     // Always pendente until Pix paid / card charged / simular — so Assinar can
     // render on-site payment UI (never auto-activate on create).
+    // NEVER wipe store/onboarding data on re-subscribe: only flip status + plan.
     let status = "pendente";
-    let onboarding = "aguardando_pagamento";
+    let has_store = tenant_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_some()
+        || slug
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_some()
+        || documento
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_some()
+        || onboarding_status == "provisionado";
+    let onboarding = onboarding_for_resubscribe(
+        &onboarding_status,
+        has_store,
+        old_plan.as_deref(),
+        &body.plano,
+    );
 
     sqlx::query(
         "UPDATE subscribers SET plan_code = $1, gateway = $2, valor_mensal = $3, billing_cycle = $4, status = $5, \
@@ -181,15 +235,16 @@ pub async fn status_assinatura(
     Path(id): Path<String>,
 ) -> Result<Json<StatusAssinatura>, AppError> {
     let sandbox = gateway::sandbox_mode(&state);
-    let row: Option<(Option<String>, String, Option<String>, String, Option<String>)> =
+    let row: Option<(Option<String>, String, Option<String>, String, Option<String>, Option<String>)> =
         sqlx::query_as(
-            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug FROM subscribers WHERE id = $1",
+            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug, plan_code \
+             FROM subscribers WHERE id = $1",
         )
             .bind(&id)
             .fetch_optional(&state.pool)
             .await?;
 
-    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug) =
+    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug, plan_code) =
         row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
 
     let (Some(preapproval_id), Some(gateway_kind)) = (preapproval_id, gateway_kind) else {
@@ -212,8 +267,21 @@ pub async fn status_assinatura(
         novo_status = "ativo";
     }
 
-    let novo_onboarding = if novo_status == "ativo" && onboarding_status == "aguardando_pagamento" {
-        "aguardando_onboarding"
+    // Only promote aguardando_pagamento → onboarding when this is a brand-new store.
+    // If slug/tenant already exists, restore provisionado (same-plan re-subscribe recovery).
+    let has_store = slug
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_some();
+    let novo_onboarding = if novo_status == "ativo"
+        && (onboarding_status == "aguardando_pagamento" || onboarding_status.is_empty())
+    {
+        if has_store {
+            "provisionado"
+        } else {
+            "aguardando_onboarding"
+        }
     } else {
         onboarding_status.as_str()
     };
@@ -228,9 +296,13 @@ pub async fn status_assinatura(
 
         if novo_status != status_atual {
             if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-                if let Err(e) =
-                    crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, novo_status)
-                        .await
+                if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status_with_plan(
+                    &state,
+                    slug,
+                    novo_status,
+                    plan_code.as_deref(),
+                )
+                .await
                 {
                     tracing::warn!("sync ecommerce tenant status after poll failed: {e:?}");
                 }
@@ -255,15 +327,16 @@ pub async fn simular_pagamento(
         ));
     }
 
-    let row: Option<(Option<String>, String, Option<String>, String, Option<String>)> =
+    let row: Option<(Option<String>, String, Option<String>, String, Option<String>, Option<String>)> =
         sqlx::query_as(
-            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug FROM subscribers WHERE id = $1",
+            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug, plan_code \
+             FROM subscribers WHERE id = $1",
         )
             .bind(&claims.sub)
             .fetch_optional(&state.pool)
             .await?;
 
-    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug) =
+    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug, plan_code) =
         row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
 
     if status_atual == "ativo" {
@@ -283,8 +356,18 @@ pub async fn simular_pagamento(
         let _ = gateway::simulate_payment(&state, gw, ext_id).await;
     }
 
-    let novo_onboarding = if onboarding_status == "aguardando_pagamento" || onboarding_status.is_empty() {
-        "aguardando_onboarding"
+    let novo_onboarding = if onboarding_status == "aguardando_pagamento" || onboarding_status.is_empty()
+    {
+        let has_store = slug
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_some();
+        if has_store {
+            "provisionado"
+        } else {
+            "aguardando_onboarding"
+        }
     } else {
         onboarding_status.as_str()
     };
@@ -298,7 +381,13 @@ pub async fn simular_pagamento(
     .await?;
 
     if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "ativo").await
+        if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status_with_plan(
+            &state,
+            slug,
+            "ativo",
+            plan_code.as_deref(),
+        )
+        .await
         {
             tracing::warn!("sync ecommerce tenant online after simulate failed: {e:?}");
         }
@@ -342,8 +431,14 @@ pub async fn cancelar_pendente(
         gateway::cancel(&state, gw, ext_id).await;
     }
 
+    // Preserve provisionado / tenant data — only abandon the pending charge.
     sqlx::query(
-        "UPDATE subscribers SET status = 'sem_assinatura', onboarding_status = 'aguardando_pagamento', \
+        "UPDATE subscribers SET status = 'sem_assinatura', \
+         onboarding_status = CASE \
+           WHEN tenant_id IS NOT NULL AND NULLIF(trim(tenant_id), '') IS NOT NULL THEN 'provisionado' \
+           WHEN onboarding_status = 'provisionado' THEN 'provisionado' \
+           ELSE 'aguardando_pagamento' \
+         END, \
          mp_preapproval_id = NULL, updated_at = now() WHERE id = $1",
     )
     .bind(&claims.sub)
@@ -361,6 +456,81 @@ pub async fn cancelar_pendente(
     Ok(Json(CancelarPendenteResult {
         status: "sem_assinatura".to_string(),
     }))
+}
+
+/// Decide onboarding_status when starting (re)subscribe payment.
+/// Absolute rule: never downgrade a provisioned store back to full onboarding
+/// unless this is a plan **upgrade** that needs complementary fields.
+/// `has_store` = tenant_id OR slug OR documento OR already provisionado.
+pub(crate) fn onboarding_for_resubscribe(
+    current_onboarding: &str,
+    has_store: bool,
+    old_plan: Option<&str>,
+    new_plan: &str,
+) -> &'static str {
+    let store_ready = has_store || current_onboarding == "provisionado";
+    if !store_ready {
+        return "aguardando_pagamento";
+    }
+    let upgrading = old_plan
+        .map(|o| plans::is_upgrade(o, new_plan))
+        .unwrap_or(false);
+    if upgrading {
+        // Complementary onboarding after pay (FE prefills; no wipe / re-provision).
+        "aguardando_onboarding"
+    } else {
+        // Same plan (or downgrade): skip onboarding entirely after pay.
+        "provisionado"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::onboarding_for_resubscribe;
+
+    #[test]
+    fn new_subscriber_awaits_payment() {
+        assert_eq!(
+            onboarding_for_resubscribe("aguardando_pagamento", false, None, "essential"),
+            "aguardando_pagamento"
+        );
+    }
+
+    #[test]
+    fn same_plan_resubscribe_keeps_provisionado() {
+        assert_eq!(
+            onboarding_for_resubscribe("provisionado", true, Some("essential"), "essential"),
+            "provisionado"
+        );
+    }
+
+    #[test]
+    fn upgrade_resubscribe_needs_complementary() {
+        assert_eq!(
+            onboarding_for_resubscribe("provisionado", true, Some("essential"), "management"),
+            "aguardando_onboarding"
+        );
+        assert_eq!(
+            onboarding_for_resubscribe("provisionado", true, Some("essential"), "premium"),
+            "aguardando_onboarding"
+        );
+    }
+
+    #[test]
+    fn downgrade_resubscribe_skips_onboarding() {
+        assert_eq!(
+            onboarding_for_resubscribe("provisionado", true, Some("premium"), "essential"),
+            "provisionado"
+        );
+    }
+
+    #[test]
+    fn tenant_id_alone_counts_as_store_ready() {
+        assert_eq!(
+            onboarding_for_resubscribe("aguardando_pagamento", true, Some("essential"), "essential"),
+            "provisionado"
+        );
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -430,9 +600,18 @@ pub async fn pagar_cartao(
     .await?;
 
     let gw = gateway_kind.unwrap_or_else(|| "mercadopago".to_string());
+    let has_store = slug
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_some();
     let novo_onboarding = if onboarding_status == "aguardando_pagamento" || onboarding_status.is_empty()
     {
-        "aguardando_onboarding"
+        if has_store {
+            "provisionado"
+        } else {
+            "aguardando_onboarding"
+        }
     } else {
         onboarding_status.as_str()
     };
@@ -449,7 +628,13 @@ pub async fn pagar_cartao(
     .await?;
 
     if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "ativo").await
+        if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status_with_plan(
+            &state,
+            slug,
+            "ativo",
+            Some(plan.as_str()),
+        )
+        .await
         {
             tracing::warn!("sync ecommerce after card pay failed: {e:?}");
         }

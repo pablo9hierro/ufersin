@@ -17,23 +17,12 @@ import { CmsEditProvider, CmsText, usePlatformContent } from '../lib/cms'
 import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlanMap, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
+import { resolvePostPayDestination } from '../lib/postPayRedirect'
 
 type PayStep = 'form' | 'pix' | 'card' | 'done'
 
 function hasPixQr(c: AssinaturaCriada | null | undefined): boolean {
   return Boolean(c?.pix_qr_code?.trim() || c?.pix_qr_base64?.trim())
-}
-
-function payStepFromCharge(result: AssinaturaCriada, preferred: MetodoPagamento): PayStep {
-  if (hasPixQr(result) || result.payment_step === 'pix') {
-    // Only enter Pix UI when QR payload exists — never infinite "Gerando QR".
-    if (hasPixQr(result)) return 'pix'
-    return preferred === 'cartao' ? 'card' : 'form'
-  }
-  if (result.payment_step === 'card' || preferred === 'cartao' || preferred === 'cartao_parcelado') {
-    return 'card'
-  }
-  return 'card'
 }
 
 export default function Assinar() {
@@ -111,11 +100,13 @@ export default function Assinar() {
         .then((r) => {
           if (cancelled || r.status !== 'ativo') return
           setPayStep('done')
-          if (r.onboarding_status === 'aguardando_onboarding') {
-            window.setTimeout(() => navigate('/onboarding'), 900)
-          } else {
-            window.setTimeout(() => navigate('/meu-plano'), 900)
-          }
+          const onboarding = r.onboarding_status
+          window.setTimeout(() => {
+            if (cancelled) return
+            void resolvePostPayDestination(onboarding).then((dest) => {
+              if (!cancelled) navigate(dest)
+            })
+          }, 900)
         })
         .catch(() => {})
     }
@@ -195,11 +186,9 @@ export default function Assinar() {
 
   const goActive = (onboarding: string) => {
     setPayStep('done')
-    if (onboarding === 'aguardando_onboarding') {
-      setTimeout(() => navigate('/onboarding'), 900)
-    } else {
-      setTimeout(() => navigate('/meu-plano'), 900)
-    }
+    window.setTimeout(() => {
+      void resolvePostPayDestination(onboarding).then((dest) => navigate(dest))
+    }, 900)
   }
 
   const applyCharge = (result: AssinaturaCriada, preferred: MetodoPagamento) => {
@@ -266,7 +255,11 @@ export default function Assinar() {
 
   const handleSwitchMethod = async (next: MetodoPagamento) => {
     if (switchingMethod || payingCard || simulating || cancelling) return
-    if ((next === 'pix' && payStep === 'pix') || (next === 'cartao' && payStep === 'card')) return
+    // Allow Pix retry when already on pix step but QR is missing.
+    const alreadyShowing =
+      (next === 'pix' && payStep === 'pix' && hasPixQr(charge)) ||
+      (next === 'cartao' && payStep === 'card')
+    if (alreadyShowing) return
     setError(null)
     setSwitchingMethod(true)
     try {

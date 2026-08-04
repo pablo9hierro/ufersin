@@ -1,27 +1,19 @@
-﻿import { useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { AtSign, CheckCircle2, CreditCard, Loader2, MessageCircle, Palette, Rocket, Store } from 'lucide-react'
-import { api, ApiError, type FormaPagamento, type PlataformaPagamento, type TipoDocumento } from '../lib/api'
+import { api, ApiError, type MeResponse, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
 import AddressField from '../components/AddressField'
 import { isValidDocumento, onlyDigits } from '../lib/documento'
-import { resolveSessionHome } from '../lib/sessionHome'
+import { planDisplayName } from '../lib/plans'
+import { storeAlreadyExists } from '../lib/postPayRedirect'
 import type { StorefrontStyle } from '../lib/storefrontStyles'
 
 const CORES_DEFAULT = '#0f5132'
-const PLATAFORMAS: { value: PlataformaPagamento; label: string }[] = [
-  { value: 'mercado_pago', label: 'Mercado Pago' },
-  { value: 'abacate_pay', label: 'Abacate Pay' },
-]
-
-type IntegracaoPagamento = PlataformaPagamento
-
-function plataformasParaDocumento(tipo: TipoDocumento): typeof PLATAFORMAS {
-  if (tipo === 'cpf') return PLATAFORMAS.filter((p) => p.value === 'mercado_pago')
-  return PLATAFORMAS
-}
+/** Full = first-time; complementary = upgrade (prefill + delta); skip = already provisioned. */
+type OnboardingMode = 'loading' | 'full' | 'complementary' | 'skip'
 
 function slugify(s: string) {
   return s
@@ -49,11 +41,55 @@ function formatDocumento(tipo: TipoDocumento, value: string) {
     .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
 }
 
-/** Etapa 1 — após pagamento, antes do painel. Provisiona o tenant. */
+function applyMePrefill(me: MeResponse): {
+  nomeLoja: string
+  tipoDocumento: TipoDocumento
+  documento: string
+  endereco: string
+  enderecoNumero: string
+  instagram: string
+  venderExternamente: boolean
+  vendeMais18: boolean
+  apenasRetirada: boolean
+  pagamentoNaRetirada: boolean
+  entregaSomentePix: boolean
+  layoutStyle: StorefrontStyle
+  whatsappHabilitado: boolean
+  hasCreds: boolean
+} {
+  const tipo = (me.tipo_documento === 'cpf' ? 'cpf' : 'cnpj') as TipoDocumento
+  const layout =
+    me.layout_style === 'burgerbite' || me.layout_style === 'burgerhouse' || me.layout_style === 'ufersin'
+      ? me.layout_style
+      : 'ufersin'
+  return {
+    nomeLoja: me.loja_nome?.trim() || '',
+    tipoDocumento: tipo,
+    documento: me.documento ? formatDocumento(tipo, me.documento) : '',
+    endereco: me.endereco?.trim() || '',
+    enderecoNumero: me.endereco_numero?.trim() || '',
+    instagram: (me.instagram || '').replace(/^@/, ''),
+    venderExternamente: me.vender_externamente !== false,
+    vendeMais18: Boolean(me.vende_mais_18),
+    apenasRetirada: Boolean(me.apenas_retirada),
+    pagamentoNaRetirada: Boolean(me.pagamento_na_retirada),
+    entregaSomentePix: Boolean(me.entrega_somente_pix),
+    layoutStyle: layout,
+    whatsappHabilitado: me.whatsapp_habilitado !== false,
+    hasCreds: Boolean(me.has_plataforma_credenciais),
+  }
+}
+
+/** Etapa 1 — após pagamento. Never shows blank form when store data already exists. */
 export default function Onboarding() {
   const ready = useAuthReady()
   const isAuthenticated = useIsAuthenticated()
   const navigate = useNavigate()
+
+  const [mode, setMode] = useState<OnboardingMode>('loading')
+  const [planLabel, setPlanLabel] = useState<string | null>(null)
+  const [hasCreds, setHasCreds] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const [nomeLoja, setNomeLoja] = useState('')
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('cnpj')
@@ -61,7 +97,6 @@ export default function Onboarding() {
   const [endereco, setEndereco] = useState('')
   const [enderecoNumero, setEnderecoNumero] = useState('')
   const [instagram, setInstagram] = useState('')
-  const [integracao, setIntegracao] = useState<IntegracaoPagamento>('mercado_pago')
   const [credencial, setCredencial] = useState('')
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [vendeMais18, setVendeMais18] = useState(false)
@@ -74,17 +109,116 @@ export default function Onboarding() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
 
-  if (!ready) {
+  useEffect(() => {
+    if (!ready || !isAuthenticated) return
+    let cancelled = false
+    setLoadError(null)
+    setMode('loading')
+
+    ;(async () => {
+      try {
+        const me = await api.me()
+        if (cancelled) return
+
+        setPlanLabel(me.plano ? planDisplayName(me.plano) : null)
+        const pre = applyMePrefill(me)
+        setNomeLoja(pre.nomeLoja)
+        setTipoDocumento(pre.tipoDocumento)
+        setDocumento(pre.documento)
+        setEndereco(pre.endereco)
+        setEnderecoNumero(pre.enderecoNumero)
+        setInstagram(pre.instagram)
+        setVenderExternamente(pre.venderExternamente)
+        setVendeMais18(pre.vendeMais18)
+        setApenasRetirada(pre.apenasRetirada)
+        setPagamentoNaRetirada(pre.pagamentoNaRetirada)
+        setEntregaSomentePix(pre.entregaSomentePix)
+        setLayoutStyle(pre.layoutStyle)
+        setWhatsappHabilitado(pre.whatsappHabilitado)
+        setHasCreds(pre.hasCreds)
+
+        const exists = storeAlreadyExists(me)
+
+        // Absolute rule: existing loja that is NOT upgrade-complementary → /meu-plano.
+        if (me.onboarding_status === 'provisionado' || (exists && me.onboarding_status !== 'aguardando_onboarding')) {
+          setMode('skip')
+          if (!cancelled) navigate('/meu-plano', { replace: true })
+          return
+        }
+
+        // Upgrade complementary only (BE set aguardando_onboarding + store exists).
+        if (exists && me.onboarding_status === 'aguardando_onboarding') {
+          setMode('complementary')
+          return
+        }
+
+        // Brand-new store — full onboarding (may still prefill loja_nome from cadastro).
+        setMode('full')
+      } catch (e) {
+        if (cancelled) return
+        setLoadError(e instanceof ApiError ? e.message : 'Não foi possível carregar os dados da loja.')
+        setMode('loading')
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [ready, isAuthenticated, navigate, reloadKey])
+
+  if (!ready || mode === 'loading' || mode === 'skip') {
     return (
-      <main className="min-h-screen bg-uf-black flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+      <main className="min-h-screen bg-uf-black flex flex-col items-center justify-center gap-4 px-5">
+        {loadError ? (
+          <>
+            <p className="text-sm text-red-400 text-center max-w-md">{loadError}</p>
+            <button type="button" className="btn-primary px-6 py-3" onClick={() => setReloadKey((k) => k + 1)}>
+              Tentar de novo
+            </button>
+          </>
+        ) : (
+          <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+        )}
       </main>
     )
   }
   if (!isAuthenticated) return <Navigate to="/login" replace />
 
-  const plataformasDisponiveis = plataformasParaDocumento(tipoDocumento)
+  const complementary = mode === 'complementary'
+  const mpTokenRequired = !hasCreds
+  const returning = complementary || Boolean(nomeLoja || documento || endereco)
+
+  const finishOk = () => {
+    setDone(true)
+    setTimeout(() => navigate('/meu-plano'), 1800)
+  }
+
+  const handleKeepCurrent = async () => {
+    setError(null)
+    if (mpTokenRequired && !credencial.trim()) {
+      setError('Informe o Access Token do Mercado Pago pra continuar.')
+      return
+    }
+    setLoading(true)
+    try {
+      if (credencial.trim()) {
+        await api.editarOnboarding({
+          forma_pagamento: 'plataforma',
+          plataforma_pagamento: 'mercado_pago',
+          plataforma_credenciais: { token: credencial.trim() },
+        })
+      } else {
+        await api.editarOnboarding({})
+      }
+      finishOk()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível concluir.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -96,45 +230,57 @@ export default function Onboarding() {
     }
     if (!endereco.trim()) return setError('Informe o endereço da loja.')
     if (!instagram.trim().replace(/^@/, '')) return setError('Informe o Instagram da loja.')
-
-    let formaPagamento: FormaPagamento = 'manual'
-    let plataformaPagamento: PlataformaPagamento =
-      tipoDocumento === 'cpf' ? 'mercado_pago' : integracao
-    if (tipoDocumento === 'cpf' && integracao === 'abacate_pay') {
-      return setError('Com CPF só Mercado Pago está disponível.')
-    }
-    // Cobrança online só com token; sem credencial fica manual (baixa no painel).
-    if (credencial.trim()) {
-      formaPagamento = 'plataforma'
+    if (mpTokenRequired && !credencial.trim()) {
+      return setError('Access Token do Mercado Pago é obrigatório.')
     }
 
     const slug = slugify(nomeLoja) || `loja-${Date.now().toString(36)}`
     setLoading(true)
     try {
-      await api.onboarding({
-        nome_loja: nomeLoja.trim(),
-        categoria: 'Outro',
-        whatsapp: '',
-        endereco: endereco.trim(),
-        endereco_numero: enderecoNumero.trim() || undefined,
-        cor_principal: CORES_DEFAULT,
-        slug,
-        documento: onlyDigits(documento),
-        tipo_documento: tipoDocumento,
-        instagram: instagram.trim().replace(/^@/, ''),
-        vender_externamente: venderExternamente,
-        vende_mais_18: vendeMais18,
-        apenas_retirada: apenasRetirada,
-        pagamento_na_retirada: pagamentoNaRetirada,
-        entrega_somente_pix: entregaSomentePix,
-        whatsapp_habilitado: whatsappHabilitado,
-        forma_pagamento: formaPagamento,
-        plataforma_pagamento: plataformaPagamento,
-        plataforma_credenciais: credencial.trim() ? { token: credencial.trim() } : undefined,
-        layout_style: venderExternamente ? layoutStyle : 'ufersin',
-      })
-      setDone(true)
-      resolveSessionHome().then((dest) => setTimeout(() => navigate(dest), 2200))
+      if (complementary) {
+        await api.editarOnboarding({
+          nome_loja: nomeLoja.trim(),
+          endereco: endereco.trim(),
+          endereco_numero: enderecoNumero.trim() || undefined,
+          documento: onlyDigits(documento),
+          tipo_documento: tipoDocumento,
+          instagram: instagram.trim().replace(/^@/, ''),
+          vender_externamente: venderExternamente,
+          vende_mais_18: vendeMais18,
+          apenas_retirada: apenasRetirada,
+          pagamento_na_retirada: pagamentoNaRetirada,
+          entrega_somente_pix: entregaSomentePix,
+          whatsapp_habilitado: whatsappHabilitado,
+          forma_pagamento: 'plataforma',
+          plataforma_pagamento: 'mercado_pago',
+          plataforma_credenciais: credencial.trim() ? { token: credencial.trim() } : undefined,
+          layout_style: venderExternamente ? layoutStyle : 'ufersin',
+        })
+      } else {
+        await api.onboarding({
+          nome_loja: nomeLoja.trim(),
+          categoria: 'Outro',
+          whatsapp: '',
+          endereco: endereco.trim(),
+          endereco_numero: enderecoNumero.trim() || undefined,
+          cor_principal: CORES_DEFAULT,
+          slug,
+          documento: onlyDigits(documento),
+          tipo_documento: tipoDocumento,
+          instagram: instagram.trim().replace(/^@/, ''),
+          vender_externamente: venderExternamente,
+          vende_mais_18: vendeMais18,
+          apenas_retirada: apenasRetirada,
+          pagamento_na_retirada: pagamentoNaRetirada,
+          entrega_somente_pix: entregaSomentePix,
+          whatsapp_habilitado: whatsappHabilitado,
+          forma_pagamento: 'plataforma',
+          plataforma_pagamento: 'mercado_pago',
+          plataforma_credenciais: { token: credencial.trim() },
+          layout_style: venderExternamente ? layoutStyle : 'ufersin',
+        })
+      }
+      finishOk()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível finalizar o onboarding.')
     } finally {
@@ -147,9 +293,11 @@ export default function Onboarding() {
       <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 text-center">
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}>
           <CheckCircle2 className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-black mb-2">Painel liberado!</h1>
+          <h1 className="text-2xl font-black mb-2">{complementary ? 'Plano atualizado!' : 'Painel liberado!'}</h1>
           <p className="text-sm text-uf-silver-dim">
-            No primeiro acesso à loja você conclui WhatsApp e horário de funcionamento.
+            {complementary
+              ? 'Sua loja e dados anteriores foram preservados.'
+              : 'No primeiro acesso à loja você conclui WhatsApp e horário de funcionamento.'}
           </p>
         </motion.div>
       </main>
@@ -166,12 +314,31 @@ export default function Onboarding() {
         className="mx-auto relative z-10 max-w-2xl"
       >
         <div className="text-center mb-8">
-          <span className="uf-eyebrow mb-4">Onboarding</span>
-          <h1 className="text-2xl sm:text-3xl font-black mt-4">Configure sua loja</h1>
+          <span className="uf-eyebrow mb-4">{complementary ? 'Upgrade' : 'Onboarding'}</span>
+          <h1 className="text-2xl sm:text-3xl font-black mt-4">
+            {complementary
+              ? `Complementos do plano ${planLabel ?? 'novo'}`
+              : 'Configure sua loja'}
+          </h1>
           <p className="text-sm text-uf-silver-dim mt-2">
-            Dados essenciais pra liberar o painel. WhatsApp e horários ficam no primeiro acesso à loja.
+            {complementary
+              ? 'Dados da loja já carregados — confirme ou ajuste só o que mudou. Nada é apagado.'
+              : 'Dados essenciais pra liberar o painel. WhatsApp e horários ficam no primeiro acesso à loja.'}
           </p>
         </div>
+
+        {returning && (
+          <div className="mb-4 uf-glass rounded-xl px-4 py-3 text-xs text-emerald-300/90 border border-emerald-500/20">
+            Dados existentes carregados
+            {nomeLoja ? (
+              <>
+                {' '}
+                — <span className="font-semibold text-uf-silver">{nomeLoja}</span>
+              </>
+            ) : null}
+            . Revise antes de continuar.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 sm:p-8 space-y-4">
           <div>
@@ -195,8 +362,7 @@ export default function Onboarding() {
                   type="button"
                   onClick={() => {
                     setTipoDocumento(t)
-                    setDocumento('')
-                    if (t === 'cpf' && integracao === 'abacate_pay') setIntegracao('mercado_pago')
+                    if (!documento) setDocumento('')
                   }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase transition-all ${
                     tipoDocumento === t ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'
@@ -241,37 +407,26 @@ export default function Onboarding() {
 
           <div>
             <label className="label flex items-center gap-1.5">
-              <CreditCard className="w-3.5 h-3.5" /> Integrar com *
+              <CreditCard className="w-3.5 h-3.5" /> Mercado Pago: (chave api produção)
             </label>
-            <div className="space-y-2">
-              {plataformasDisponiveis.map((p) => (
-                <button
-                  key={p.value}
-                  type="button"
-                  onClick={() => setIntegracao(p.value)}
-                  className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${
-                    integracao === p.value ? 'border-uf-blue' : 'border-transparent'
-                  }`}
-                >
-                  <span className="block text-sm font-semibold text-uf-silver">{p.label}</span>
-                </button>
-              ))}
-            </div>
-            {tipoDocumento === 'cpf' && (
-              <p className="text-[11px] text-uf-silver-dim mt-2">Com CPF só Mercado Pago está disponível. Abacate Pay exige CNPJ.</p>
-            )}
-            <div className="mt-3">
-              <label className="label">Credencial (opcional agora)</label>
-              <input
-                className="input-field"
-                value={credencial}
-                onChange={(e) => setCredencial(e.target.value)}
-                placeholder={integracao === 'mercado_pago' ? 'Access Token' : 'Chave de API'}
-              />
-              <p className="text-[11px] text-uf-silver-dim mt-1">
-                Sem credencial, vendas ficam em cobrança manual. Pode completar depois em Meu plano → Financeiro.
-              </p>
-            </div>
+            <input
+              className="input-field input-field--credential"
+              value={credencial}
+              onChange={(e) => setCredencial(e.target.value)}
+              placeholder={
+                hasCreds
+                  ? 'Token já salvo — deixe em branco pra manter'
+                  : 'Access Token de produção (APP_USR-…)'
+              }
+              required={mpTokenRequired}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="text-[11px] text-uf-silver-dim mt-1">
+              {hasCreds
+                ? 'Credencial Mercado Pago já cadastrada (não exibimos o token por segurança).'
+                : 'Obrigatório pra liberar o painel e receber pagamentos na loja via Mercado Pago.'}
+            </p>
           </div>
 
           <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
@@ -372,8 +527,19 @@ export default function Onboarding() {
 
           <button type="submit" disabled={loading} className="btn-primary w-full py-3.5">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
-            Liberar painel
+            {complementary ? 'Salvar e liberar painel' : 'Liberar painel'}
           </button>
+
+          {complementary && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={handleKeepCurrent}
+              className="btn-secondary w-full py-3 text-sm"
+            >
+              Manter dados atuais e continuar
+            </button>
+          )}
         </form>
       </motion.div>
     </main>

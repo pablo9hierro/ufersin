@@ -18,21 +18,30 @@ pub async fn abacatepay_webhook(State(state): State<AppState>, Json(payload): Js
         return StatusCode::OK;
     }
 
-    let result: Result<Option<(Option<String>,)>, _> = sqlx::query_as(
+    let result: Result<Option<(Option<String>, Option<String>)>, _> = sqlx::query_as(
         "UPDATE subscribers SET status = 'ativo', \
-         onboarding_status = CASE WHEN onboarding_status = 'aguardando_pagamento' THEN 'aguardando_onboarding' ELSE onboarding_status END, \
+         onboarding_status = CASE \
+           WHEN onboarding_status = 'aguardando_pagamento' AND slug IS NOT NULL AND NULLIF(trim(slug), '') IS NOT NULL \
+             THEN 'provisionado' \
+           WHEN onboarding_status = 'aguardando_pagamento' THEN 'aguardando_onboarding' \
+           ELSE onboarding_status END, \
          updated_at = now() WHERE mp_preapproval_id = $1 \
-         RETURNING slug",
+         RETURNING slug, plan_code",
     )
     .bind(&external_id)
     .fetch_optional(&state.pool)
     .await;
 
     match result {
-        Ok(Some((slug,))) => {
+        Ok(Some((slug, plan_code))) => {
             if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-                if let Err(e) =
-                    crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "ativo").await
+                if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status_with_plan(
+                    &state,
+                    slug,
+                    "ativo",
+                    plan_code.as_deref(),
+                )
+                .await
                 {
                     tracing::warn!("abacatepay webhook: sync tenant online failed: {e:?}");
                 }

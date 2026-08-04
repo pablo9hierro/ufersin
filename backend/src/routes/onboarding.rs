@@ -333,42 +333,28 @@ fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
             body.tipo_documento.to_uppercase()
         )));
     }
-    if !matches!(body.forma_pagamento.as_str(), "manual" | "plataforma") {
+    // Lojista payments: Mercado Pago only — Access Token required on first onboarding.
+    if body.forma_pagamento != "plataforma" {
         return Err(AppError::BadRequest(
-            "forma_pagamento deve ser 'manual' ou 'plataforma'".to_string(),
+            "informe o Access Token do Mercado Pago pra receber pagamentos na loja".to_string(),
         ));
     }
-    if body.forma_pagamento == "plataforma" {
-        match body.plataforma_pagamento.as_deref() {
-            Some("mercado_pago") | Some("abacate_pay") => {}
-            _ => {
-                return Err(AppError::BadRequest(
-                    "escolha Mercado Pago ou Abacate Pay".to_string(),
-                ))
-            }
-        }
-        // CPF (PF) só pode usar Mercado Pago — AbacatePay exige CNPJ.
-        if body.tipo_documento == "cpf" && body.plataforma_pagamento.as_deref() == Some("abacate_pay") {
-            return Err(AppError::BadRequest(
-                "com CPF só é permitido Mercado Pago; AbacatePay exige CNPJ".to_string(),
-            ));
-        }
-        // Sem token: trata como cobrança manual (PIX online só com credencial).
-        let token_ok = body
-            .plataforma_credenciais
-            .as_ref()
-            .and_then(|v| v.get("token"))
-            .and_then(|t| t.as_str())
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false);
-        if !token_ok {
-            // Caller may still send plataforma_pagamento as preference; forma
-            // must be manual until credentials exist. Mutate via returning
-            // early is awkward — FE sends manual; BE also rejects inconsistent.
-            return Err(AppError::BadRequest(
-                "informe a credencial da plataforma para ativar cobrança online, ou salve sem ativar (manual)".to_string(),
-            ));
-        }
+    if body.plataforma_pagamento.as_deref() != Some("mercado_pago") {
+        return Err(AppError::BadRequest(
+            "pagamentos da loja usam apenas Mercado Pago".to_string(),
+        ));
+    }
+    let token_ok = body
+        .plataforma_credenciais
+        .as_ref()
+        .and_then(|v| v.get("token"))
+        .and_then(|t| t.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if !token_ok {
+        return Err(AppError::BadRequest(
+            "Access Token do Mercado Pago é obrigatório".to_string(),
+        ));
     }
     Ok(())
 }
@@ -442,15 +428,15 @@ pub async fn editar_onboarding(
     AuthSubscriber(claims): AuthSubscriber,
     Json(mut body): Json<EditOnboardingInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let row: Option<(Option<String>, String, String, bool, String, bool)> = sqlx::query_as(
-        "SELECT tenant_id, status, slug, whatsapp_habilitado, COALESCE(tipo_documento, 'cnpj'), \
+    let row: Option<(Option<String>, String, String, bool, bool)> = sqlx::query_as(
+        "SELECT tenant_id, status, slug, whatsapp_habilitado, \
          COALESCE(NULLIF(trim(plataforma_credenciais->>'token'), ''), NULL) IS NOT NULL \
          FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
     .fetch_optional(&state.pool)
     .await?;
-    let (tenant_id, status, slug, was_whatsapp_on, current_tipo_documento, has_existing_creds) =
+    let (tenant_id, status, slug, was_whatsapp_on, has_existing_creds) =
         row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
     if tenant_id.is_none() {
         return Err(AppError::BadRequest("finalize o onboarding inicial antes de editar".to_string()));
@@ -469,9 +455,9 @@ pub async fn editar_onboarding(
         }
     }
     if let Some(pp) = &body.plataforma_pagamento {
-        if !matches!(pp.as_str(), "mercado_pago" | "abacate_pay") {
+        if pp.as_str() != "mercado_pago" {
             return Err(AppError::BadRequest(
-                "plataforma_pagamento deve ser 'mercado_pago' ou 'abacate_pay'".to_string(),
+                "pagamentos da loja usam apenas Mercado Pago".to_string(),
             ));
         }
     }
@@ -486,18 +472,6 @@ pub async fn editar_onboarding(
         .unwrap_or(false);
     if body.forma_pagamento.as_deref() == Some("plataforma") && !new_token_ok && !has_existing_creds {
         body.forma_pagamento = Some("manual".to_string());
-    }
-
-    // Efetivo após o UPDATE (COALESCE): CPF + AbacatePay é inválido.
-    let effective_tipo = body
-        .tipo_documento
-        .as_deref()
-        .unwrap_or(current_tipo_documento.as_str());
-    let effective_plataforma = body.plataforma_pagamento.as_deref();
-    if effective_tipo == "cpf" && effective_plataforma == Some("abacate_pay") {
-        return Err(AppError::BadRequest(
-            "com CPF só é permitido Mercado Pago; AbacatePay exige CNPJ".to_string(),
-        ));
     }
 
     if let Some(ls) = &body.layout_style {
@@ -546,6 +520,9 @@ pub async fn editar_onboarding(
            WHEN $28::text IS NULL THEN landing_hero_image_url \
            WHEN NULLIF($28, '') IS NULL THEN NULL \
            ELSE $28 END, \
+         onboarding_status = CASE \
+           WHEN onboarding_status = 'aguardando_onboarding' THEN 'provisionado' \
+           ELSE onboarding_status END, \
          updated_at = now() \
          WHERE id = $29",
     )
@@ -684,10 +661,20 @@ async fn teardown_store_whatsapp(state: &AppState, slug: &str) -> Result<(), App
 /// - `pausado` / `pendente` / `inadimplente` / `suspenso` → `suspenso`
 /// - `cancelado` / `sem_assinatura` → `cancelado`
 /// Never deletes store data.
+/// Optional `plan_code` updates the ecommerce subscription plan (upgrade path).
 pub async fn sync_ecommerce_tenant_status(
     state: &AppState,
     slug: &str,
     subscriber_status: &str,
+) -> Result<(), AppError> {
+    sync_ecommerce_tenant_status_with_plan(state, slug, subscriber_status, None).await
+}
+
+pub async fn sync_ecommerce_tenant_status_with_plan(
+    state: &AppState,
+    slug: &str,
+    subscriber_status: &str,
+    plan_code: Option<&str>,
 ) -> Result<(), AppError> {
     if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
         tracing::warn!(
@@ -710,15 +697,19 @@ pub async fn sync_ecommerce_tenant_status(
         "{}/internal/set-tenant-status",
         state.ecommerce_internal_url.trim_end_matches('/')
     );
+    let mut body = serde_json::json!({
+        "tenant_slug": slug,
+        "status": tenant_status,
+    });
+    if let Some(plan) = plan_code.map(str::trim).filter(|s| !s.is_empty()) {
+        body["plan_code"] = serde_json::json!(plan);
+    }
     let resp = state
         .http
         .post(&url)
         .header("x-internal-key", state.ecommerce_internal_key.as_str())
         .header("content-type", "application/json")
-        .json(&serde_json::json!({
-            "tenant_slug": slug,
-            "status": tenant_status,
-        }))
+        .json(&body)
         .send()
         .await
         .map_err(|e| AppError::Internal(format!("set-tenant-status unreachable: {e}")))?;

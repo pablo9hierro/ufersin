@@ -154,10 +154,32 @@ body {
   color: var(--color-uf-silver);
   outline: none;
   font-size: 0.9rem;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
 }
 .input-field:focus {
   border-color: var(--color-uf-blue);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(77, 124, 255, 0.35);
+}
+/* Credential / token fields — stronger focus so caret is obvious on dark UI */
+.input-field--credential {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.18);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.01em;
+}
+.input-field--credential:focus {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #7aa2ff;
+  box-shadow:
+    0 0 0 3px rgba(77, 124, 255, 0.45),
+    0 0 18px rgba(77, 124, 255, 0.25);
+  color: #f4f6fb;
+}
+.input-field--credential::placeholder {
+  color: rgba(196, 203, 217, 0.45);
+  font-family: inherit;
+  letter-spacing: 0;
 }
 /* Native <select> popups often ignore parent theme; force readable option paint. */
 .input-field option {

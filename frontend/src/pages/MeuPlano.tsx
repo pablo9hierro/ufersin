@@ -24,7 +24,6 @@ import {
   type CancelReasonCode,
   type FormaPagamento,
   type MeResponse,
-  type PlataformaPagamento,
   type TipoDocumento,
 } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
@@ -40,6 +39,18 @@ import { supabase } from '../lib/supabaseClient'
 const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
 
 type Tab = 'plano' | 'layout' | 'financeiro' | 'redes'
+
+const TAB_PATH: Record<Tab, string> = {
+  plano: '/meu-plano',
+  layout: '/meu-plano/layout',
+  financeiro: '/meu-plano/financeiro',
+  redes: '/meu-plano/redes',
+}
+
+function tabFromParam(param: string | undefined): Tab {
+  if (param === 'layout' || param === 'financeiro' || param === 'redes') return param
+  return 'plano'
+}
 
 function contentMap(items: { key: string; value: string }[]) {
   return Object.fromEntries(items.map((i) => [i.key, i.value]))
@@ -123,7 +134,6 @@ export default function MeuPlano() {
   const [entregaSomentePix, setEntregaSomentePix] = useState(false)
   const [pagamentoManual, setPagamentoManual] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
-  const [integracao, setIntegracao] = useState<IntegracaoPagamento>('mercado_pago')
   const [credencial, setCredencial] = useState('')
   const [hasCredenciais, setHasCredenciais] = useState(false)
 
@@ -183,12 +193,6 @@ export default function MeuPlano() {
         setVenderExternamente(m.vender_externamente !== false)
         // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
         setHasCredenciais(!!m.has_plataforma_credenciais || m.forma_pagamento === 'plataforma')
-        if (m.plataforma_pagamento) {
-          const plat = m.tipo_documento === 'cpf' ? 'mercado_pago' : m.plataforma_pagamento
-          setIntegracao(plat)
-        } else {
-          setIntegracao('mercado_pago')
-        }
         // Preferências de venda: reconcile via RPC pública se a API Railway
         // ainda não expõe flags novas no /api/me.
         if (m.slug) {
@@ -553,14 +557,17 @@ export default function MeuPlano() {
 
   const handleSaveFinanceiro = (e: React.FormEvent) => {
     e.preventDefault()
-    const plataformaPagamento: PlataformaPagamento = tipoDocumento === 'cpf' ? 'mercado_pago' : integracao
     const token = credencial.trim()
-    // Online PIX only with a registered token (new or already saved).
+    // Online PIX only with a registered Mercado Pago token (new or already saved).
     const ativarPlataforma = !!token || hasCredenciais
-    const formaPagamento: FormaPagamento = ativarPlataforma ? 'plataforma' : 'manual'
+    if (!ativarPlataforma) {
+      setError('Informe o Access Token do Mercado Pago pra ativar cobrança online.')
+      return
+    }
+    const formaPagamento: FormaPagamento = 'plataforma'
     saveOnboarding({
       forma_pagamento: formaPagamento,
-      plataforma_pagamento: plataformaPagamento,
+      plataforma_pagamento: 'mercado_pago',
       plataforma_credenciais: token ? { token } : undefined,
     })
   }
@@ -1175,40 +1182,28 @@ export default function MeuPlano() {
             <form onSubmit={handleSaveFinanceiro} className="uf-glass rounded-2xl p-6 space-y-4">
               <p className="text-xs text-uf-silver-dim">
                 {content['meu_plano.financeiro_hint'] ??
-                  'Cadastre a credencial da plataforma pra cobrança Pix online. Sem credencial, vendas ficam em cobrança manual.'}
+                  'Cadastre o Access Token de produção do Mercado Pago pra cobrança Pix online na loja.'}
               </p>
               <div>
                 <label className="label flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4" /> Plataforma
+                  <CreditCard className="w-4 h-4" /> Mercado Pago: (chave api produção)
                 </label>
-                <div className="space-y-2">
-                  {plataformasParaDocumento(tipoDocumento).map((p) => (
-                    <button
-                      key={p.value}
-                      type="button"
-                      onClick={() => setIntegracao(p.value)}
-                      className={`w-full text-left uf-glass rounded-xl px-3 py-2.5 border ${integracao === p.value ? 'border-uf-blue' : 'border-transparent'}`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-                {tipoDocumento === 'cpf' && (
-                  <p className="text-[11px] text-uf-silver-dim mt-2">Com CPF só Mercado Pago está disponível. Abacate Pay exige CNPJ.</p>
-                )}
-              </div>
-              <div>
-                <label className="label">Credencial (token)</label>
                 <input
-                  className="input-field"
+                  className="input-field input-field--credential"
                   value={credencial}
                   onChange={(e) => setCredencial(e.target.value)}
-                  placeholder={hasCredenciais ? 'Deixe em branco pra manter a atual' : 'Access Token / chave de API'}
+                  placeholder={
+                    hasCredenciais
+                      ? 'Deixe em branco pra manter o token atual'
+                      : 'Access Token de produção (APP_USR-…)'
+                  }
+                  autoComplete="off"
+                  spellCheck={false}
                 />
                 <p className="text-[11px] text-uf-silver-dim mt-1">
                   {hasCredenciais
                     ? 'Credencial cadastrada — Pix online e confirmação automática ativos.'
-                    : 'Sem credencial, o site não gera cobrança Pix; o lojista confirma pagamentos manualmente.'}
+                    : 'Sem Access Token, o site não gera cobrança Pix online.'}
                 </p>
               </div>
               <button type="submit" disabled={saving} className="btn-primary w-full py-3">
