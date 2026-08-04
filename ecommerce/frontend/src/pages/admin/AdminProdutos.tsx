@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Barcode, FileUp, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import BarcodePreview from '../../components/admin/BarcodePreview'
+import PackageUnitFields from '../../components/admin/PackageUnitFields'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
@@ -12,6 +13,13 @@ import {
   isOutOfStock,
 } from '../../lib/productHelpers'
 import { countIncompleteNfeDrafts } from '../../lib/nfeImportDrafts'
+import {
+  mergeUnitIntoDescription,
+  parseUnitFromDescription,
+  stripUnitFromDescription,
+  type CatalogUnit,
+  type PackageContentUnit,
+} from '../../lib/catalogUnit'
 import type { Category, Product } from '../../types'
 
 // Timestamp (10 dígitos) + 2 dígitos aleatórios — não é um EAN de verdade
@@ -25,7 +33,23 @@ function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
 }
 
-const EMPTY_FORM = { name: '', description: '', price: '', quantity: '', image_url: '', category_id: '', barcode: '', cost_price: '', low_stock_threshold: '' }
+/** max-w-md (28rem) + 30% — mesmo tamanho do modal XML */
+const DIALOG_MAX = 'max-w-[36.4rem]'
+
+const EMPTY_FORM = {
+  name: '',
+  description: '',
+  price: '',
+  quantity: '',
+  image_url: '',
+  category_id: '',
+  barcode: '',
+  cost_price: '',
+  low_stock_threshold: '',
+  unit: '' as CatalogUnit,
+  package_qty: '',
+  package_content_unit: 'un' as PackageContentUnit,
+}
 
 type Tab = 'todos' | 'baixo' | 'falta'
 
@@ -78,9 +102,10 @@ export default function AdminProdutos() {
   }
   const openEdit = (p: Product) => {
     setEditing(p)
+    const unitBits = parseUnitFromDescription(p.description)
     setForm({
       name: p.name,
-      description: p.description ?? '',
+      description: stripUnitFromDescription(p.description),
       price: String(p.price),
       quantity: String(p.quantity),
       image_url: p.image_url ?? '',
@@ -88,13 +113,30 @@ export default function AdminProdutos() {
       barcode: p.barcode ?? '',
       cost_price: p.cost_price != null ? String(p.cost_price) : '',
       low_stock_threshold: p.low_stock_threshold != null ? String(p.low_stock_threshold) : '',
+      unit: unitBits.unit,
+      package_qty: unitBits.package_qty,
+      package_content_unit: unitBits.package_content_unit,
     })
     setShowForm(true)
   }
 
   const save = async () => {
+    if (form.unit === 'pacote') {
+      const pq = Number(form.package_qty)
+      if (!Number.isFinite(pq) || pq <= 0 || form.package_qty.trim() === '') {
+        setUploadError('Informe quanto vem dentro de um pacote (unidades, kilos ou metros).')
+        return
+      }
+    }
     setSaving(true)
-    const payload = buildProductPayload(form)
+    setUploadError(null)
+    const description = mergeUnitIntoDescription(
+      form.description,
+      form.unit,
+      form.package_qty,
+      form.package_content_unit
+    )
+    const payload = buildProductPayload({ ...form, description })
     try {
       if (editing) await adminService.products.update(editing.id, payload)
       else await adminService.products.create(payload)
@@ -342,7 +384,7 @@ export default function AdminProdutos() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
-          <div className="glass rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className={`glass rounded-2xl p-6 ${DIALOG_MAX} w-full max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-white">{editing ? 'Editar produto' : 'Novo produto'}</h3>
               <button onClick={() => setShowForm(false)} className="text-son-silver-dim hover:text-white">
@@ -422,6 +464,14 @@ export default function AdminProdutos() {
                   ))}
                 </select>
               </div>
+              <PackageUnitFields
+                value={{
+                  unit: form.unit,
+                  package_qty: form.package_qty,
+                  package_content_unit: form.package_content_unit,
+                }}
+                onChange={(patch) => setForm({ ...form, ...patch })}
+              />
               <div>
                 <label className="label flex items-center gap-1.5">
                   <Barcode className="w-3.5 h-3.5" /> Código de barras

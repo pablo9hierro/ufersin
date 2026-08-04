@@ -1,6 +1,7 @@
 import { resolveTenantSlug } from './tenantConfig'
 import { isDemoModeActive } from './demoMode'
-import type { NfeUnit } from './nfeXml'
+import type { CatalogUnit, PackageContentUnit } from './catalogUnit'
+import { formatPackageMeta } from './catalogUnit'
 
 export type NfeImportForm = {
   name: string
@@ -16,8 +17,10 @@ export type NfeImportForm = {
   supplier_code: string
   ncm: string
   cfop: string
-  unit: NfeUnit
+  unit: CatalogUnit
   unit_raw: string
+  package_qty: string
+  package_content_unit: PackageContentUnit
 }
 
 export type NfeImportDraft = {
@@ -66,6 +69,20 @@ export function emptyNfeForm(): NfeImportForm {
     cfop: '',
     unit: '',
     unit_raw: '',
+    package_qty: '',
+    package_content_unit: 'un',
+  }
+}
+
+function normalizeForm(raw: Partial<NfeImportForm> | undefined): NfeImportForm {
+  const base = emptyNfeForm()
+  if (!raw || typeof raw !== 'object') return base
+  return {
+    ...base,
+    ...raw,
+    package_qty: raw.package_qty ?? '',
+    package_content_unit: raw.package_content_unit ?? 'un',
+    unit: (raw.unit as CatalogUnit) ?? '',
   }
 }
 
@@ -76,7 +93,7 @@ export function loadNfeImportDrafts(tenantOverride?: string): NfeImportDraft[] {
     if (!raw) return []
     const parsed = JSON.parse(raw) as NfeImportDraft[]
     if (!Array.isArray(parsed)) return []
-    return parsed
+    return parsed.map((d) => ({ ...d, form: normalizeForm(d.form) }))
   } catch {
     return []
   }
@@ -103,7 +120,8 @@ export function composeNfeDescription(form: NfeImportForm): string | null {
   if (form.supplier_code.trim()) meta.push(`Cód. fornecedor: ${form.supplier_code.trim()}`)
   if (form.ncm.trim()) meta.push(`NCM: ${form.ncm.trim()}`)
   if (form.cfop.trim()) meta.push(`CFOP: ${form.cfop.trim()}`)
-  if (form.unit) meta.push(`Unidade: ${form.unit}`)
+  const unitMeta = formatPackageMeta(form.unit, form.package_qty, form.package_content_unit)
+  if (unitMeta) meta.push(...unitMeta.split('\n'))
   else if (form.unit_raw.trim()) meta.push(`Unidade NF: ${form.unit_raw.trim()}`)
   if (meta.length) parts.push(meta.join('\n'))
   return parts.length ? parts.join('\n\n') : null
@@ -122,6 +140,12 @@ export function isDraftReadyToSave(form: NfeImportForm): string | null {
   if (form.cost_price.trim() !== '') {
     const c = Number(form.cost_price)
     if (!Number.isFinite(c) || c < 0) return 'Valor de custo inválido.'
+  }
+  if (form.unit === 'pacote') {
+    const pq = Number(form.package_qty)
+    if (!Number.isFinite(pq) || pq <= 0 || form.package_qty.trim() === '') {
+      return 'Informe quanto vem dentro de um pacote (unidades, kilos ou metros).'
+    }
   }
   return null
 }

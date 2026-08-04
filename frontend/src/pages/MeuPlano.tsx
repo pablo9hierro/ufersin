@@ -771,46 +771,6 @@ export default function MeuPlano() {
 
           {tab === 'plano' && !needsPlanPicker && (
             <div className="space-y-4">
-              {(panelUrl || publicUrl) && (
-                <section
-                  className="uf-glass rounded-2xl p-5 space-y-3 border border-uf-blue/30"
-                  data-testid="loja-atalhos-plano"
-                >
-                  <h2 className="font-bold text-base text-white">Sua loja</h2>
-                  <p className="text-sm text-uf-silver-dim">
-                    Abra a vitrine pública ou o painel admin{storeSlug ? ` (${storeSlug})` : ''}.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {publicUrl && (
-                      <a
-                        href={publicUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-primary text-base px-4 py-3.5 inline-flex items-center justify-center gap-2 font-semibold"
-                        data-testid="abrir-vitrine-plano"
-                      >
-                        <Store className="w-5 h-5" />
-                        Vitrine
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    )}
-                    {panelUrl && (
-                      <a
-                        href={panelUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-secondary text-base px-4 py-3.5 inline-flex items-center justify-center gap-2 font-semibold"
-                        data-testid="abrir-painel-loja-plano"
-                      >
-                        <LayoutDashboard className="w-5 h-5" />
-                        Painel da loja
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    )}
-                  </div>
-                </section>
-              )}
-
               {hasActiveSub && (
                 <form onSubmit={handleSavePreferenciasVenda} className="uf-glass rounded-2xl p-6 space-y-4" data-testid="preferencias-venda">
                   <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Preferências de venda</h2>

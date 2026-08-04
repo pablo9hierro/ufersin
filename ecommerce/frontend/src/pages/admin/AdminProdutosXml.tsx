@@ -13,9 +13,12 @@ import {
   Trash2,
   Barcode,
   AlertCircle,
+  X,
+  Pencil,
 } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import BarcodePreview from '../../components/admin/BarcodePreview'
+import PackageUnitFields from '../../components/admin/PackageUnitFields'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
@@ -37,24 +40,21 @@ function generateBarcode(): string {
   return `${String(Date.now()).slice(-10)}${String(Math.floor(Math.random() * 90) + 10)}`
 }
 
-const UNIT_OPTIONS: { value: NfeImportForm['unit']; label: string }[] = [
-  { value: '', label: 'Selecionar…' },
-  { value: 'un', label: 'un (unidade)' },
-  { value: 'kg', label: 'kg (quilo)' },
-  { value: 'mt', label: 'mt (metro)' },
-]
+/** max-w-md (28rem) + 30% */
+const DIALOG_MAX = 'max-w-[36.4rem]'
 
 const MANUAL_FIELDS = [
   'Preço de venda (revenda)',
   'Alerta de estoque baixo (repor ao chegar em)',
   'Categoria',
   'Imagem',
-  'Unidade padronizada (se a NF não mapear para un/kg/mt)',
+  'Unidade padronizada (un/kg/mt/pacote)',
 ]
 
 export default function AdminProdutosXml() {
   const [drafts, setDrafts] = useState<NfeImportDraft[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
+  const [modalOpen, setModalOpen] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -94,6 +94,13 @@ export default function AdminProdutosXml() {
       }
       return copy
     })
+  }
+
+  const openDraft = (i: number) => {
+    setActiveIndex(i)
+    setSaveError(null)
+    setUploadError(null)
+    setModalOpen(true)
   }
 
   const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -145,7 +152,9 @@ export default function AdminProdutosXml() {
     }
     setDrafts((prev) => {
       const next = [...prev, ...created]
-      setActiveIndex(prev.length)
+      const firstNew = prev.length
+      setActiveIndex(firstNew)
+      setModalOpen(true)
       return next
     })
   }
@@ -160,12 +169,8 @@ export default function AdminProdutosXml() {
       if (n >= drafts.length) return 0
       return n
     })
-  }
-
-  const toggleCollapse = (id: string) => {
-    setDrafts((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, collapsed: !d.collapsed, updatedAt: new Date().toISOString() } : d))
-    )
+    setSaveError(null)
+    setUploadError(null)
   }
 
   const removeDraft = (id: string) => {
@@ -173,6 +178,7 @@ export default function AdminProdutosXml() {
       setDrafts((prev) => {
         const next = prev.filter((d) => d.id !== id)
         setActiveIndex((i) => Math.min(i, Math.max(0, next.length - 1)))
+        if (next.length === 0) setModalOpen(false)
         return next
       })
     })
@@ -195,7 +201,7 @@ export default function AdminProdutosXml() {
   }
 
   const saveToCatalog = async () => {
-    if (!active || active.status === 'saved') return
+    if (!active) return
     const err = isDraftReadyToSave(active.form)
     if (err) {
       setSaveError(err)
@@ -216,20 +222,29 @@ export default function AdminProdutosXml() {
         cost_price: active.form.cost_price,
         low_stock_threshold: active.form.low_stock_threshold,
       })
-      const created = await adminService.products.create(payload)
-      setDrafts((prev) =>
-        prev.map((d) =>
-          d.id === active.id
-            ? {
-                ...d,
-                status: 'saved',
-                collapsed: true,
-                catalogProductId: created.id,
-                updatedAt: new Date().toISOString(),
-              }
-            : d
+      if (active.status === 'saved' && active.catalogProductId) {
+        await adminService.products.update(active.catalogProductId, payload)
+        setDrafts((prev) =>
+          prev.map((d) =>
+            d.id === active.id ? { ...d, status: 'saved', updatedAt: new Date().toISOString() } : d
+          )
         )
-      )
+      } else {
+        const created = await adminService.products.create(payload)
+        setDrafts((prev) =>
+          prev.map((d) =>
+            d.id === active.id
+              ? {
+                  ...d,
+                  status: 'saved',
+                  collapsed: true,
+                  catalogProductId: created.id,
+                  updatedAt: new Date().toISOString(),
+                }
+              : d
+          )
+        )
+      }
     } catch (e) {
       setSaveError(e instanceof ApiError ? e.message : 'Falha ao salvar no catálogo.')
     } finally {
@@ -238,7 +253,6 @@ export default function AdminProdutosXml() {
   }
 
   const incompleteCount = drafts.filter((d) => d.status === 'incomplete').length
-  const formOpen = active && !active.collapsed
 
   return (
     <div>
@@ -266,8 +280,9 @@ export default function AdminProdutosXml() {
 
       <Card className="p-4 mb-6">
         <p className="text-sm text-son-silver-dim mb-2">
-          Envie uma ou várias notas. Cada linha de produto vira um rascunho. Rascunhos incompletos ficam salvos neste
-          navegador (por loja) até você preencher e salvar no catálogo.
+          Envie NF-e de <span className="text-emerald-400 font-semibold">entrada/compra do distribuidor</span> (não
+          funciona com XML de saída/emissão da loja). Cada linha vira um rascunho neste navegador até você completar e
+          salvar no catálogo.
           {incompleteCount > 0 ? (
             <span className="text-son-pink font-semibold"> {incompleteCount} pendente(s).</span>
           ) : null}
@@ -294,107 +309,113 @@ export default function AdminProdutosXml() {
       {drafts.length === 0 ? (
         <div className="text-center py-16 text-son-silver-dim">
           <FileUp className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>Nenhum rascunho ainda. Envie um XML de NF-e para começar.</p>
+          <p>Nenhum rascunho ainda. Envie um XML de NF-e de entrada para começar.</p>
         </div>
       ) : (
-        <>
-          <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-hide">
-            {drafts.map((d, i) => {
-              const incomplete = d.status === 'incomplete'
-              const selected = i === activeIndex
-              return (
-                <button
-                  key={d.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveIndex(i)
-                    if (d.collapsed) toggleCollapse(d.id)
-                  }}
-                  className={`shrink-0 min-w-[140px] max-w-[200px] rounded-xl px-3 py-2.5 text-left text-xs transition-colors border ${
-                    incomplete ? 'border-red-500/70' : 'border-emerald-500/50'
-                  } ${selected ? 'bg-white/10' : 'bg-son-surface hover:bg-white/5'}`}
-                >
-                  <div className="flex items-center gap-1 mb-1">
-                    {d.status === 'saved' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                    )}
-                    <span className="font-bold text-white truncate">#{i + 1}</span>
-                  </div>
-                  <p className="text-son-silver truncate">{d.form.name || 'Sem nome'}</p>
-                  <p className="text-son-silver-dim truncate mt-0.5">
-                    {d.status === 'saved' ? 'Salvo no catálogo' : 'Incompleto'}
-                  </p>
-                </button>
-              )
-            })}
-          </div>
+        <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-hide">
+          {drafts.map((d, i) => {
+            const incomplete = d.status === 'incomplete'
+            const selected = i === activeIndex && modalOpen
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => openDraft(i)}
+                className={`shrink-0 min-w-[140px] max-w-[200px] rounded-xl px-3 py-2.5 text-left text-xs transition-colors border ${
+                  incomplete ? 'border-red-500/70' : 'border-emerald-500/50'
+                } ${selected ? 'bg-white/10' : 'bg-son-surface hover:bg-white/5'}`}
+              >
+                <div className="flex items-center gap-1 mb-1">
+                  {d.status === 'saved' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                  )}
+                  <span className="font-bold text-white truncate">#{i + 1}</span>
+                </div>
+                <p className="text-son-silver truncate">{d.form.name || 'Sem nome'}</p>
+                <p className="text-son-silver-dim truncate mt-0.5 flex items-center gap-1">
+                  {d.status === 'saved' ? 'Salvo no catálogo' : 'Incompleto'}
+                  <Pencil className="w-3 h-3 opacity-60" />
+                </p>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
-          <div className="flex items-center justify-between mb-4">
-            <button type="button" onClick={() => go(-1)} className="btn-secondary py-2 px-3" aria-label="Anterior">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <p className="text-sm text-son-silver-dim">
-              Produto {activeIndex + 1} de {drafts.length}
-            </p>
-            <button type="button" onClick={() => go(1)} className="btn-secondary py-2 px-3" aria-label="Próximo">
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-
-          {active && (
-            <Card
-              className={`p-5 border ${
-                active.status === 'incomplete' ? 'border-red-500/60' : 'border-emerald-500/40'
-              }`}
+      {modalOpen && active && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setModalOpen(false)}
+          data-testid="xml-product-modal-overlay"
+        >
+          <div className="flex items-center gap-2 sm:gap-3 w-full justify-center max-w-[min(100%,48rem)]">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                go(-1)
+              }}
+              className="shrink-0 w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-[#c4b45a] hover:bg-[#d4c46a] text-[#1a1a0a] font-black text-xl flex items-center justify-center shadow-lg"
+              aria-label="Produto anterior"
+              data-testid="xml-nav-prev"
             >
-              <div className="flex items-start justify-between gap-3 mb-4">
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+
+            <div
+              className={`glass rounded-2xl p-6 ${DIALOG_MAX} w-full max-h-[90vh] overflow-y-auto`}
+              onClick={(e) => e.stopPropagation()}
+              data-testid="xml-product-modal"
+            >
+              <div className="flex items-center justify-between mb-4 gap-2">
                 <div className="min-w-0">
-                  <h3 className="font-bold text-white truncate">{active.form.name || 'Produto'}</h3>
-                  <p className="text-xs text-son-silver-dim mt-1">
-                    NF {active.source.nNF || '—'} · item {active.source.nItem} · {active.source.emitName || active.source.fileName}
+                  <h3 className="font-bold text-white truncate">
+                    {active.status === 'saved' ? 'Editar produto (XML)' : 'Completar cadastro (XML)'}
+                  </h3>
+                  <p className="text-xs text-son-silver-dim mt-0.5">
+                    Produto {activeIndex + 1} de {drafts.length} · NF {active.source.nNF || '—'} · item{' '}
+                    {active.source.nItem} · {active.source.emitName || active.source.fileName}
                   </p>
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => toggleCollapse(active.id)}
-                    className="btn-secondary text-sm py-2 px-3"
-                  >
-                    {active.collapsed ? 'Expandir' : 'Recolher'}
-                  </button>
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => removeDraft(active.id)}
-                    className="btn-secondary text-sm py-2 px-3 hover:text-son-pink"
+                    className="text-son-silver-dim hover:text-son-pink"
                     title="Remover rascunho"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(false)}
+                    className="text-son-silver-dim hover:text-white"
+                  >
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
               </div>
 
-              {formOpen ? (
-                <div className="space-y-3">
-                  {active.status === 'saved' && (
-                    <p className="text-sm text-emerald-400 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4" /> Já salvo no catálogo. Você pode editar o rascunho, mas não
-                      recria o produto.
-                    </p>
-                  )}
+              <div className="space-y-4">
+                {active.status === 'saved' && (
+                  <p className="text-sm text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> Já no catálogo — edite e salve de novo para atualizar.
+                  </p>
+                )}
 
+                <section className="rounded-xl border-2 border-emerald-500/60 bg-emerald-500/5 p-4 space-y-3">
+                  <h4 className="text-sm font-bold text-emerald-400">Dados capturados pelo xml:</h4>
                   <div>
                     <label className="label">Nome</label>
                     <input
                       className="input-field"
                       value={active.form.name}
                       onChange={(e) => updateActiveForm({ name: e.target.value })}
-                      disabled={active.status === 'saved'}
                     />
                     <p className="text-[10px] text-son-silver-dim mt-1">NF-e: xProd</p>
                   </div>
-
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="label">Cód. fornecedor</label>
@@ -402,7 +423,6 @@ export default function AdminProdutosXml() {
                         className="input-field"
                         value={active.form.supplier_code}
                         onChange={(e) => updateActiveForm({ supplier_code: e.target.value })}
-                        disabled={active.status === 'saved'}
                       />
                       <p className="text-[10px] text-son-silver-dim mt-1">NF-e: cProd</p>
                     </div>
@@ -412,12 +432,73 @@ export default function AdminProdutosXml() {
                         className="input-field"
                         value={active.form.ncm}
                         onChange={(e) => updateActiveForm({ ncm: e.target.value })}
-                        disabled={active.status === 'saved'}
                       />
                       <p className="text-[10px] text-son-silver-dim mt-1">NF-e: NCM</p>
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">Estoque</label>
+                      <input
+                        className="input-field"
+                        type="number"
+                        step="any"
+                        value={active.form.quantity}
+                        onChange={(e) => updateActiveForm({ quantity: e.target.value })}
+                      />
+                      <p className="text-[10px] text-son-silver-dim mt-1">NF-e: qCom</p>
+                    </div>
+                    <div>
+                      <label className="label">Valor de custo</label>
+                      <input
+                        className="input-field"
+                        type="number"
+                        step="0.01"
+                        value={active.form.cost_price}
+                        onChange={(e) => updateActiveForm({ cost_price: e.target.value })}
+                      />
+                      <p className="text-[10px] text-son-silver-dim mt-1">NF-e: vUnCom</p>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label flex items-center gap-1.5">
+                      <Barcode className="w-3.5 h-3.5" /> Código de barras
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        className="input-field"
+                        placeholder="cEAN da nota ou gere um"
+                        value={active.form.barcode}
+                        onChange={(e) => updateActiveForm({ barcode: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateActiveForm({ barcode: generateBarcode() })}
+                        className="btn-secondary text-sm py-2 px-3 flex-shrink-0"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Gerar
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-son-silver-dim mt-1">NF-e: cEAN</p>
+                    {active.form.barcode && (
+                      <div className="mt-2">
+                        <BarcodePreview value={active.form.barcode} productName={active.form.name} />
+                      </div>
+                    )}
+                  </div>
+                  <PackageUnitFields
+                    value={{
+                      unit: active.form.unit,
+                      package_qty: active.form.package_qty,
+                      package_content_unit: active.form.package_content_unit,
+                    }}
+                    onChange={(patch) => updateActiveForm(patch)}
+                    hint={`NF-e: uCom${active.form.unit_raw ? ` = ${active.form.unit_raw}` : ''}`}
+                  />
+                </section>
 
+                <section className="rounded-xl border-2 border-red-500/60 bg-red-500/5 p-4 space-y-3">
+                  <h4 className="text-sm font-bold text-red-400">Dados para complementar cadastro do produto:</h4>
                   <div>
                     <label className="label">Descrição (opcional)</label>
                     <textarea
@@ -425,11 +506,9 @@ export default function AdminProdutosXml() {
                       rows={2}
                       value={active.form.description}
                       onChange={(e) => updateActiveForm({ description: e.target.value })}
-                      disabled={active.status === 'saved'}
-                      placeholder="Texto livre — cód. fornecedor/NCM/unidade entram automaticamente ao salvar"
+                      placeholder="Texto livre"
                     />
                   </div>
-
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="label">
@@ -442,119 +521,34 @@ export default function AdminProdutosXml() {
                         placeholder="Preencher manualmente"
                         value={active.form.price}
                         onChange={(e) => updateActiveForm({ price: e.target.value })}
-                        disabled={active.status === 'saved'}
                       />
-                      <p className="text-[10px] text-amber-400/80 mt-1">Não vem da NF-e</p>
-                    </div>
-                    <div>
-                      <label className="label">Estoque</label>
-                      <input
-                        className="input-field"
-                        type="number"
-                        step="any"
-                        value={active.form.quantity}
-                        onChange={(e) => updateActiveForm({ quantity: e.target.value })}
-                        disabled={active.status === 'saved'}
-                      />
-                      <p className="text-[10px] text-son-silver-dim mt-1">NF-e: qCom (sugestão)</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label">Valor de custo</label>
-                      <input
-                        className="input-field"
-                        type="number"
-                        step="0.01"
-                        value={active.form.cost_price}
-                        onChange={(e) => updateActiveForm({ cost_price: e.target.value })}
-                        disabled={active.status === 'saved'}
-                      />
-                      <p className="text-[10px] text-son-silver-dim mt-1">NF-e: vUnCom</p>
                     </div>
                     <div>
                       <label className="label">Repor ao chegar em</label>
                       <input
                         className="input-field border-amber-500/40"
                         type="number"
-                        placeholder="Opcional — manual"
+                        placeholder="Opcional"
                         value={active.form.low_stock_threshold}
                         onChange={(e) => updateActiveForm({ low_stock_threshold: e.target.value })}
-                        disabled={active.status === 'saved'}
                       />
-                      <p className="text-[10px] text-amber-400/80 mt-1">Não vem da NF-e</p>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="label">Unidade</label>
-                      <select
-                        className="input-field"
-                        value={active.form.unit}
-                        onChange={(e) => updateActiveForm({ unit: e.target.value as NfeImportForm['unit'] })}
-                        disabled={active.status === 'saved'}
-                      >
-                        {UNIT_OPTIONS.map((o) => (
-                          <option key={o.value || 'empty'} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-son-silver-dim mt-1">
-                        NF-e: uCom{active.form.unit_raw ? ` = ${active.form.unit_raw}` : ''}
-                        {!active.form.unit ? ' — selecione se não mapeou' : ''}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="label">Categoria</label>
-                      <select
-                        className="input-field border-amber-500/40"
-                        value={active.form.category_id}
-                        onChange={(e) => updateActiveForm({ category_id: e.target.value })}
-                        disabled={active.status === 'saved'}
-                      >
-                        <option value="">Sem categoria (manual)</option>
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-amber-400/80 mt-1">Não vem da NF-e</p>
-                    </div>
-                  </div>
-
                   <div>
-                    <label className="label flex items-center gap-1.5">
-                      <Barcode className="w-3.5 h-3.5" /> Código de barras
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        className="input-field"
-                        placeholder="cEAN da nota ou gere um"
-                        value={active.form.barcode}
-                        onChange={(e) => updateActiveForm({ barcode: e.target.value })}
-                        disabled={active.status === 'saved'}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => updateActiveForm({ barcode: generateBarcode() })}
-                        className="btn-secondary text-sm py-2 px-3 flex-shrink-0"
-                        disabled={active.status === 'saved'}
-                      >
-                        <Sparkles className="w-3.5 h-3.5" /> Gerar
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-son-silver-dim mt-1">NF-e: cEAN (ignora SEM GTIN)</p>
-                    {active.form.barcode && (
-                      <div className="mt-2">
-                        <BarcodePreview value={active.form.barcode} productName={active.form.name} />
-                      </div>
-                    )}
+                    <label className="label">Categoria</label>
+                    <select
+                      className="input-field border-amber-500/40"
+                      value={active.form.category_id}
+                      onChange={(e) => updateActiveForm({ category_id: e.target.value })}
+                    >
+                      <option value="">Sem categoria</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-
                   <div>
                     <label className="label">Imagem</label>
                     <input
@@ -577,38 +571,40 @@ export default function AdminProdutosXml() {
                       <button
                         type="button"
                         onClick={() => imageInputRef.current?.click()}
-                        disabled={uploading || active.status === 'saved'}
+                        disabled={uploading}
                         className="btn-secondary text-sm py-2 px-3"
                       >
                         <ImagePlus className="w-3.5 h-3.5" />
                         {active.form.image_url ? 'Trocar imagem' : 'Enviar imagem'}
                       </button>
                     </div>
-                    <p className="text-[10px] text-amber-400/80 mt-1">Não vem da NF-e (opcional no catálogo)</p>
                     {uploadError && <p className="error-msg mt-1">{uploadError}</p>}
                   </div>
+                </section>
 
-                  {saveError && <p className="error-msg">{saveError}</p>}
+                {saveError && <p className="error-msg">{saveError}</p>}
 
-                  {active.status !== 'saved' && (
-                    <button type="button" onClick={saveToCatalog} disabled={saving} className="btn-primary w-full mt-2">
-                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                      Salvar para catálogo
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => toggleCollapse(active.id)}
-                  className="w-full text-left text-sm text-son-silver-dim hover:text-white py-2"
-                >
-                  Formulário recolhido — clique para expandir e {active.status === 'saved' ? 'revisar' : 'concluir'}.
+                <button type="button" onClick={saveToCatalog} disabled={saving} className="btn-primary w-full mt-1">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Salvar
                 </button>
-              )}
-            </Card>
-          )}
-        </>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                go(1)
+              }}
+              className="shrink-0 w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-[#c4b45a] hover:bg-[#d4c46a] text-[#1a1a0a] font-black text-xl flex items-center justify-center shadow-lg"
+              aria-label="Próximo produto"
+              data-testid="xml-nav-next"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
       )}
 
       {confirmDialogElement}
