@@ -12,12 +12,20 @@ fn normalize_slug(raw: Option<&str>) -> Option<String> {
 }
 
 async fn resolve_tenant_id(state: &AppState, slug: &str) -> Result<String, AppError> {
-    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
-        .bind(slug)
-        .fetch_optional(&state.pool)
-        .await?;
-    row.map(|(id,)| id)
-        .ok_or_else(|| AppError::Unauthorized("invalid credentials".to_string()))
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT id, status FROM tenants WHERE slug = $1")
+            .bind(slug)
+            .fetch_optional(&state.pool)
+            .await?;
+    let Some((id, status)) = row else {
+        return Err(AppError::Unauthorized("invalid credentials".to_string()));
+    };
+    if matches!(status.as_str(), "suspenso" | "cancelado") {
+        return Err(AppError::Unauthorized(
+            "loja offline — assine novamente no Resolutoo pra reativar o painel".to_string(),
+        ));
+    }
+    Ok(id)
 }
 
 pub async fn admin_login(
@@ -56,8 +64,8 @@ pub async fn admin_login(
 
     // No slug: resolve tenant from credentials. Password is verified before
     // any tenant is chosen so a wrong password never leaks store membership.
-    let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
-        "SELECT a.id, a.password_hash, a.name, a.tenant_id, t.slug
+    let rows: Vec<(String, String, String, String, String, String)> = sqlx::query_as(
+        "SELECT a.id, a.password_hash, a.name, a.tenant_id, t.slug, t.status
          FROM admins a
          INNER JOIN tenants t ON t.id = a.tenant_id
          WHERE lower(a.email) = lower($1)",
@@ -67,13 +75,22 @@ pub async fn admin_login(
     .await?;
 
     let mut matches: Vec<(String, String, String, String)> = Vec::new();
-    for (id, hash, name, tenant_id, slug) in rows {
-        if verify_password(&input.password, &hash) {
-            matches.push((id, name, tenant_id, slug));
+    let mut offline_only = false;
+    for (id, hash, name, tenant_id, slug, status) in rows {
+        if !verify_password(&input.password, &hash) {
+            continue;
         }
+        if matches!(status.as_str(), "suspenso" | "cancelado") {
+            offline_only = true;
+            continue;
+        }
+        matches.push((id, name, tenant_id, slug));
     }
 
     match matches.len() {
+        0 if offline_only => Err(AppError::Unauthorized(
+            "loja offline — assine novamente no Resolutoo pra reativar o painel".to_string(),
+        )),
         0 => Err(AppError::Unauthorized("invalid credentials".to_string())),
         1 => {
             let (id, name, tenant_id, slug) = matches.remove(0);

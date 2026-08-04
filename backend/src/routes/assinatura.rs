@@ -120,6 +120,24 @@ pub async fn assinar_plano(
     .execute(&state.pool)
     .await?;
 
+    if status == "ativo" {
+        let slug: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT slug FROM subscribers WHERE id = $1")
+                .bind(&claims.sub)
+                .fetch_optional(&state.pool)
+                .await?;
+        if let Some((Some(slug),)) = slug {
+            let slug = slug.trim();
+            if !slug.is_empty() {
+                if let Err(e) =
+                    crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "ativo").await
+                {
+                    tracing::warn!("sync ecommerce tenant online after subscribe failed: {e:?}");
+                }
+            }
+        }
+    }
+
     Ok(Json(AssinaturaCriada {
         id: claims.sub,
         checkout_url: charge.checkout_url,
@@ -143,13 +161,15 @@ pub async fn status_assinatura(
     Path(id): Path<String>,
 ) -> Result<Json<StatusAssinatura>, AppError> {
     let sandbox = gateway::sandbox_mode(&state);
-    let row: Option<(Option<String>, String, Option<String>, String)> =
-        sqlx::query_as("SELECT mp_preapproval_id, status, gateway, onboarding_status FROM subscribers WHERE id = $1")
+    let row: Option<(Option<String>, String, Option<String>, String, Option<String>)> =
+        sqlx::query_as(
+            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug FROM subscribers WHERE id = $1",
+        )
             .bind(&id)
             .fetch_optional(&state.pool)
             .await?;
 
-    let (preapproval_id, status_atual, gateway_kind, onboarding_status) =
+    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug) =
         row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
 
     let (Some(preapproval_id), Some(gateway_kind)) = (preapproval_id, gateway_kind) else {
@@ -185,6 +205,17 @@ pub async fn status_assinatura(
             .bind(&id)
             .execute(&state.pool)
             .await?;
+
+        if novo_status != status_atual {
+            if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                if let Err(e) =
+                    crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, novo_status)
+                        .await
+                {
+                    tracing::warn!("sync ecommerce tenant status after poll failed: {e:?}");
+                }
+            }
+        }
     }
 
     Ok(Json(StatusAssinatura {
@@ -204,13 +235,15 @@ pub async fn simular_pagamento(
         ));
     }
 
-    let row: Option<(Option<String>, String, Option<String>, String)> =
-        sqlx::query_as("SELECT mp_preapproval_id, status, gateway, onboarding_status FROM subscribers WHERE id = $1")
+    let row: Option<(Option<String>, String, Option<String>, String, Option<String>)> =
+        sqlx::query_as(
+            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug FROM subscribers WHERE id = $1",
+        )
             .bind(&claims.sub)
             .fetch_optional(&state.pool)
             .await?;
 
-    let (preapproval_id, status_atual, gateway_kind, onboarding_status) =
+    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug) =
         row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
 
     if status_atual == "ativo" {
@@ -243,6 +276,13 @@ pub async fn simular_pagamento(
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
+
+    if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "ativo").await
+        {
+            tracing::warn!("sync ecommerce tenant online after simulate failed: {e:?}");
+        }
+    }
 
     Ok(Json(StatusAssinatura {
         status: "ativo".to_string(),

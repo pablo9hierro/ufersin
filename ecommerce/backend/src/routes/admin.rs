@@ -527,14 +527,10 @@ pub async fn update_order_status(
 
     // Metadata-only PATCH (stay on same status) — used before generating PIX QR.
     if input.status == order.status {
-        let dto = row_to_dto(
-            &mut tx,
-            &claims.tenant_id,
-            crate::orders_common::fetch_order_row(&mut *tx, &claims.tenant_id, &id)
-                .await?
-                .ok_or_else(|| AppError::NotFound("order not found".to_string()))?,
-        )
-        .await?;
+        let row = crate::orders_common::fetch_order_row(&mut *tx, &claims.tenant_id, &id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("order not found".to_string()))?;
+        let dto = row_to_dto(&mut tx, &claims.tenant_id, row).await?;
         tx.commit().await?;
         return Ok(Json(dto));
     }

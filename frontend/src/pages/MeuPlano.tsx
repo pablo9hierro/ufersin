@@ -13,6 +13,7 @@ import {
   Share2,
   Sparkles,
   Upload,
+  X,
 } from 'lucide-react'
 import {
   api,
@@ -108,12 +109,12 @@ export default function MeuPlano() {
   const [credencial, setCredencial] = useState('')
   const [hasCredenciais, setHasCredenciais] = useState(false)
 
-  const [cancelOpen, setCancelOpen] = useState(false)
-  const [cancelConfirm, setCancelConfirm] = useState(false)
+  const [cancelStep, setCancelStep] = useState<'reasons' | 'confirm' | null>(null)
   const [cancelReasons, setCancelReasons] = useState<CancelReasonCode[]>([])
   const [competitorNote, setCompetitorNote] = useState('')
   const [otherNote, setOtherNote] = useState('')
   const [cancelNote, setCancelNote] = useState('')
+  const [cancelPhrase, setCancelPhrase] = useState('')
   const [cancelResultMsg, setCancelResultMsg] = useState<string | null>(null)
 
   useEffect(() => {
@@ -229,18 +230,48 @@ export default function MeuPlano() {
 
   const planMap = getPlanMap()
   const hasActiveSub = me.plano != null && me.status === 'ativo'
+  const needsResubscribe = me.status === 'cancelado' || me.status === 'pausado'
   const tabLocked = content['meu_plano.tab_locked'] ?? 'Você ainda não assinou um plano para gerenciar.'
-  const panelUrl = me.onboarding_status === 'provisionado' && me.slug ? storeAdminLoginUrl(me.slug, me.email) : null
-  const publicUrl = me.onboarding_status === 'provisionado' && me.slug ? storePublicUrl(me.slug) : null
+  const panelUrl = hasActiveSub && me.onboarding_status === 'provisionado' && me.slug ? storeAdminLoginUrl(me.slug, me.email) : null
+  const publicUrl = hasActiveSub && me.onboarding_status === 'provisionado' && me.slug ? storePublicUrl(me.slug) : null
 
   const handleLogout = async () => {
     await authStore.signOut('lojista')
     navigate('/')
   }
 
+  const resetCancelForm = () => {
+    setCancelStep(null)
+    setCancelReasons([])
+    setCompetitorNote('')
+    setOtherNote('')
+    setCancelNote('')
+    setCancelPhrase('')
+  }
+
+  const openCancelReasons = () => {
+    resetCancelForm()
+    setCancelStep('reasons')
+    setError(null)
+  }
+
+  const goToCancelConfirm = () => {
+    if (cancelReasons.length === 0) {
+      setError('Selecione pelo menos um motivo do cancelamento.')
+      return
+    }
+    if (cancelReasons.includes('other') && !otherNote.trim()) {
+      setError('Descreva o motivo em "Outro".')
+      return
+    }
+    setError(null)
+    setCancelPhrase('')
+    setCancelStep('confirm')
+  }
+
   const handleCancelar = async () => {
-    if (!cancelConfirm) {
-      setError('Marque "Quer realmente cancelar?" para continuar.')
+    if (cancelPhrase !== 'quero cancelar') {
+      setError('Digite exatamente "quero cancelar" para confirmar.')
       return
     }
     if (cancelReasons.length === 0) {
@@ -257,13 +288,14 @@ export default function MeuPlano() {
     try {
       const res = await api.cancelar({
         confirm: true,
+        confirm_phrase: cancelPhrase,
         reasons: cancelReasons,
         competitor_note: cancelReasons.includes('found_better') ? competitorNote.trim() || undefined : undefined,
         other_note: cancelReasons.includes('other') ? otherNote.trim() || undefined : undefined,
         note: cancelNote.trim() || undefined,
       })
       setMe((prev) => (prev ? { ...prev, status: 'cancelado' } : prev))
-      setCancelOpen(false)
+      resetCancelForm()
       if (res.refund_status === 'refunded') {
         setCancelResultMsg('Assinatura cancelada. Estorno automático enviado ao pagador via Mercado Pago.')
       } else if (res.refund_eligible && res.refund_status === 'refund_failed') {
@@ -283,6 +315,26 @@ export default function MeuPlano() {
   const toggleCancelReason = (code: CancelReasonCode) => {
     setCancelReasons((prev) => (prev.includes(code) ? prev.filter((r) => r !== code) : [...prev, code]))
   }
+
+  const planCards = (
+    <div className="grid sm:grid-cols-3 gap-3" data-testid="planos-assinar-cards">
+      {plansLoaded &&
+        getPlans().map((p) => (
+          <Link
+            key={p.code}
+            to={`/assinar?plano=${p.code}`}
+            className="uf-glass uf-glass-hover rounded-2xl p-4 block"
+            data-testid={`plan-cta-${p.code}`}
+          >
+            <p className="font-bold text-sm">{p.name}</p>
+            <p className="text-lg font-black uf-text mt-1">R$ {formatBRL(p.price)}/mês</p>
+            {needsResubscribe && (
+              <p className="text-[11px] text-uf-silver-dim mt-2">Assinar novamente</p>
+            )}
+          </Link>
+        ))}
+    </div>
+  )
 
   const saveOnboarding = async (fields: Parameters<typeof api.editarOnboarding>[0]) => {
     setError(null)
@@ -477,20 +529,7 @@ export default function MeuPlano() {
         <div className="uf-container px-5 py-12 relative z-10 max-w-3xl mx-auto">
           <h1 className="text-2xl font-black mb-2">Meu plano</h1>
           <p className="text-sm text-uf-silver-dim mb-8">{noPlanMsg}</p>
-          <div className="grid sm:grid-cols-3 gap-3">
-            {plansLoaded &&
-              getPlans().map((p) => (
-                <Link
-                  key={p.code}
-                  to={`/assinar?plano=${p.code}`}
-                  className="uf-glass uf-glass-hover rounded-2xl p-4 block"
-                  data-testid={`plan-cta-${p.code}`}
-                >
-                  <p className="font-bold text-sm">{p.name}</p>
-                  <p className="text-lg font-black uf-text mt-1">R$ {formatBRL(p.price)}/mês</p>
-                </Link>
-              ))}
-          </div>
+          {planCards}
         </div>
       </main>
     )
@@ -681,137 +720,205 @@ export default function MeuPlano() {
                   </p>
                 )}
                 {me.coupon_code && <p className="text-xs text-emerald-400 mb-4">Cupom ativo: {me.coupon_code}</p>}
-                <p className="text-xs text-uf-silver-dim mb-4">
-                  Você pode cancelar a qualquer momento (mês pré-pago).
-                  {me.refund_eligible_on_cancel
-                    ? ' Dentro de 7 dias do início da assinatura, o cancelamento gera estorno automático via Mercado Pago.'
-                    : ' Já passou a janela de 7 dias — cancelar não gera estorno automático.'}
-                </p>
-                {me.status !== 'cancelado' && !cancelOpen && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCancelOpen(true)
-                      setCancelConfirm(false)
-                      setCancelReasons([])
-                      setCompetitorNote('')
-                      setOtherNote('')
-                      setCancelNote('')
-                      setError(null)
-                    }}
-                    disabled={busyPlano}
-                    className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20"
-                    data-testid="abrir-cancelar-assinatura"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    Cancelar assinatura
-                  </button>
-                )}
-                {me.status !== 'cancelado' && cancelOpen && (
-                  <div className="mt-4 space-y-3 border-t border-white/10 pt-4" data-testid="cancelar-assinatura-form">
-                    <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={cancelConfirm}
-                        onChange={(e) => setCancelConfirm(e.target.checked)}
-                        className="w-4 h-4 mt-0.5"
-                        data-testid="cancel-confirm"
-                      />
-                      <span className="text-sm text-uf-silver font-semibold">Quer realmente cancelar?</span>
-                    </label>
 
-                    <p className="text-xs text-uf-silver-dim">Motivo (pode marcar mais de um):</p>
-
-                    <label className="uf-glass rounded-xl px-3 py-2.5 flex flex-col gap-2 cursor-pointer">
-                      <span className="flex items-start gap-2.5">
-                        <input
-                          type="checkbox"
-                          checked={cancelReasons.includes('unexpected')}
-                          onChange={() => toggleCancelReason('unexpected')}
-                          className="w-4 h-4 mt-0.5"
-                        />
-                        <span className="text-xs text-uf-silver">O sistema não era aquilo que eu esperava :(</span>
-                      </span>
-                      {cancelReasons.includes('unexpected') && (
-                        <textarea
-                          className="input-field text-xs min-h-[4rem]"
-                          placeholder="Complemento opcional"
-                          value={cancelNote}
-                          onChange={(e) => setCancelNote(e.target.value)}
-                        />
-                      )}
-                    </label>
-
-                    <label className="uf-glass rounded-xl px-3 py-2.5 flex flex-col gap-2 cursor-pointer">
-                      <span className="flex items-start gap-2.5">
-                        <input
-                          type="checkbox"
-                          checked={cancelReasons.includes('found_better')}
-                          onChange={() => toggleCancelReason('found_better')}
-                          className="w-4 h-4 mt-0.5"
-                        />
-                        <span className="text-xs text-uf-silver">Encontrei outro sistema melhor/mais barato</span>
-                      </span>
-                      {cancelReasons.includes('found_better') && (
-                        <input
-                          className="input-field text-xs"
-                          placeholder="Qual sistema? (opcional)"
-                          value={competitorNote}
-                          onChange={(e) => setCompetitorNote(e.target.value)}
-                        />
-                      )}
-                    </label>
-
-                    <label className="uf-glass rounded-xl px-3 py-2.5 flex flex-col gap-2 cursor-pointer">
-                      <span className="flex items-start gap-2.5">
-                        <input
-                          type="checkbox"
-                          checked={cancelReasons.includes('other')}
-                          onChange={() => toggleCancelReason('other')}
-                          className="w-4 h-4 mt-0.5"
-                        />
-                        <span className="text-xs text-uf-silver">Outro</span>
-                      </span>
-                      {cancelReasons.includes('other') && (
-                        <textarea
-                          className="input-field text-xs min-h-[4rem]"
-                          placeholder="Descreva o motivo"
-                          value={otherNote}
-                          onChange={(e) => setOtherNote(e.target.value)}
-                          required
-                        />
-                      )}
-                    </label>
-
-                    <p className="text-xs text-uf-silver-dim">
-                      {me.refund_eligible_on_cancel
-                        ? 'Este cancelamento está na janela de 7 dias: haverá tentativa de estorno automático no Mercado Pago.'
-                        : 'Este cancelamento está fora da janela de 7 dias: sem estorno automático.'}
+                {needsResubscribe ? (
+                  <div className="space-y-4" data-testid="reassinar-planos">
+                    <p className="text-sm text-uf-silver-dim">
+                      {me.status === 'cancelado'
+                        ? 'Assinatura cancelada. Seus dados estão preservados — painel e vitrine ficam offline até você assinar novamente.'
+                        : 'Assinatura pausada (inadimplência). Painel e vitrine ficam offline até a cobrança ser regularizada — você também pode assinar novamente.'}
                     </p>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={handleCancelar}
-                        disabled={busyPlano}
-                        className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20"
-                        data-testid="confirmar-cancelamento"
-                      >
-                        {busyPlano ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-                        Confirmar cancelamento
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCancelOpen(false)}
-                        disabled={busyPlano}
-                        className="btn-ghost text-xs px-3 py-2"
-                      >
-                        Voltar
-                      </button>
-                    </div>
+                    {planCards}
                   </div>
+                ) : hasActiveSub ? (
+                  <>
+                    <p className="text-xs text-uf-silver-dim mb-4">
+                      Você pode cancelar a qualquer momento (mês pré-pago).
+                      {me.refund_eligible_on_cancel
+                        ? ' Dentro de 7 dias do início da assinatura, o cancelamento gera estorno automático via Mercado Pago.'
+                        : ' Já passou a janela de 7 dias — cancelar não gera estorno automático.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={openCancelReasons}
+                      disabled={busyPlano}
+                      className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20"
+                      data-testid="abrir-cancelar-assinatura"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Cancelar
+                    </button>
+                  </>
+                ) : (
+                  <p className="text-xs text-uf-silver-dim">
+                    Aguardando confirmação do pagamento. Quando ativar, o painel e a vitrine ficam disponíveis.
+                  </p>
                 )}
               </section>
+            </div>
+          )}
+
+          {cancelStep === 'reasons' && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center px-5 bg-black/70 backdrop-blur-sm"
+              data-testid="cancelar-assinatura-dialog-reasons"
+              onClick={() => !busyPlano && resetCancelForm()}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Motivo do cancelamento"
+                className="uf-glass rounded-3xl p-6 w-full max-w-md relative max-h-[90vh] overflow-y-auto"
+                style={{ background: 'var(--color-uf-surface)' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => resetCancelForm()}
+                  disabled={busyPlano}
+                  aria-label="Fechar"
+                  className="absolute top-5 right-5 text-uf-silver-dim hover:text-uf-silver"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <h3 className="text-lg font-black mb-1 pr-8">Cancelar assinatura</h3>
+                <p className="text-xs text-uf-silver-dim mb-4">
+                  Motivo (pode marcar mais de um). A loja e os dados são preservados; painel e vitrine ficam offline.
+                </p>
+
+                <div className="space-y-3" data-testid="cancelar-assinatura-form">
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex flex-col gap-2 cursor-pointer">
+                    <span className="flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={cancelReasons.includes('unexpected')}
+                        onChange={() => toggleCancelReason('unexpected')}
+                        className="w-4 h-4 mt-0.5"
+                      />
+                      <span className="text-xs text-uf-silver">O sistema não era aquilo que eu esperava :(</span>
+                    </span>
+                    {cancelReasons.includes('unexpected') && (
+                      <textarea
+                        className="input-field text-xs min-h-[4rem]"
+                        placeholder="Complemento opcional"
+                        value={cancelNote}
+                        onChange={(e) => setCancelNote(e.target.value)}
+                      />
+                    )}
+                  </label>
+
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex flex-col gap-2 cursor-pointer">
+                    <span className="flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={cancelReasons.includes('found_better')}
+                        onChange={() => toggleCancelReason('found_better')}
+                        className="w-4 h-4 mt-0.5"
+                      />
+                      <span className="text-xs text-uf-silver">Encontrei outro sistema melhor/mais barato</span>
+                    </span>
+                    {cancelReasons.includes('found_better') && (
+                      <input
+                        className="input-field text-xs"
+                        placeholder="Qual sistema? (opcional)"
+                        value={competitorNote}
+                        onChange={(e) => setCompetitorNote(e.target.value)}
+                      />
+                    )}
+                  </label>
+
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex flex-col gap-2 cursor-pointer">
+                    <span className="flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={cancelReasons.includes('other')}
+                        onChange={() => toggleCancelReason('other')}
+                        className="w-4 h-4 mt-0.5"
+                      />
+                      <span className="text-xs text-uf-silver">Outro</span>
+                    </span>
+                    {cancelReasons.includes('other') && (
+                      <textarea
+                        className="input-field text-xs min-h-[4rem]"
+                        placeholder="Descreva o motivo"
+                        value={otherNote}
+                        onChange={(e) => setOtherNote(e.target.value)}
+                        required
+                      />
+                    )}
+                  </label>
+
+                  <p className="text-xs text-uf-silver-dim">
+                    {me.refund_eligible_on_cancel
+                      ? 'Este cancelamento está na janela de 7 dias: haverá tentativa de estorno automático no Mercado Pago.'
+                      : 'Este cancelamento está fora da janela de 7 dias: sem estorno automático.'}
+                  </p>
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button type="button" onClick={() => resetCancelForm()} className="btn-ghost text-xs px-3 py-2">
+                      Fechar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goToCancelConfirm}
+                      className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20"
+                      data-testid="cancelar-assinatura-prosseguir"
+                    >
+                      Cancelar assinatura
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {cancelStep === 'confirm' && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center px-5 bg-black/70 backdrop-blur-sm"
+              data-testid="cancelar-assinatura-dialog-confirm"
+              onClick={() => !busyPlano && setCancelStep('reasons')}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Confirmar cancelamento"
+                className="uf-glass rounded-3xl p-6 w-full max-w-md relative"
+                style={{ background: 'var(--color-uf-surface)' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-lg font-black mb-2">Deseja mesmo cancelar?</h3>
+                <p className="text-xs text-uf-silver-dim mb-4">
+                  Digite exatamente <span className="font-mono text-uf-silver">quero cancelar</span> para confirmar.
+                </p>
+                <input
+                  className="input-field text-sm mb-4"
+                  value={cancelPhrase}
+                  onChange={(e) => setCancelPhrase(e.target.value)}
+                  placeholder="quero cancelar"
+                  autoComplete="off"
+                  data-testid="cancel-confirm-phrase"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCancelStep('reasons')}
+                    disabled={busyPlano}
+                    className="btn-ghost text-xs px-3 py-2"
+                  >
+                    Fechar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelar}
+                    disabled={busyPlano || cancelPhrase !== 'quero cancelar'}
+                    className="btn-secondary text-xs px-3 py-2 !text-red-300 !border-red-400/20 disabled:opacity-40"
+                    data-testid="confirmar-cancelamento"
+                  >
+                    {busyPlano ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                    Confirmar cancelamento
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

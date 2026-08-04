@@ -347,6 +347,12 @@ async function fetchTenantConfig(slug: string): Promise<TenantConfig> {
   ])
   if (fromSb) return fromSb
   if (fromApi) return fromApi
+  // Slug conhecido sem config ativa = loja offline (cancelado / inadimplente).
+  // Não cair no DEFAULT (que liberaria vitrine falsa); vender_externamente=false
+  // faz o StyleAware mostrar página indisponível.
+  if (slug) {
+    return { ...DEFAULT_CONFIG, slug, vender_externamente: false, loja_nome: '' }
+  }
   return { ...DEFAULT_CONFIG, slug }
 }
 

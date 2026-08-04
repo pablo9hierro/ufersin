@@ -242,3 +242,58 @@ pub async fn sync_payment_credentials(
     }
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SetTenantStatusInput {
+    pub tenant_slug: String,
+    /// `ativo` | `suspenso` | `cancelado` — never deletes the tenant or its data.
+    pub status: String,
+}
+
+/// Rodoletas pushes subscription lifecycle (cancel / non-payment / re-subscribe)
+/// so painel + vitrine go offline without wiping store data.
+pub async fn set_tenant_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SetTenantStatusInput>,
+) -> Result<StatusCode, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = input.tenant_slug.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest("tenant_slug obrigatório".to_string()));
+    }
+    if !matches!(input.status.as_str(), "ativo" | "suspenso" | "cancelado") {
+        return Err(AppError::BadRequest(
+            "status deve ser 'ativo', 'suspenso' ou 'cancelado'".to_string(),
+        ));
+    }
+
+    let sub_status = match input.status.as_str() {
+        "ativo" => "active",
+        "suspenso" => "past_due",
+        _ => "canceled",
+    };
+
+    let mut tx = state.pool.begin().await?;
+    let result = sqlx::query("UPDATE tenants SET status = $1, updated_at = now()::text WHERE slug = $2")
+        .bind(&input.status)
+        .bind(&slug)
+        .execute(&mut *tx)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    }
+
+    sqlx::query(
+        "UPDATE subscriptions SET status = $1, \
+         canceled_at = CASE WHEN $1 = 'canceled' THEN COALESCE(canceled_at, now()::text) ELSE NULL END \
+         WHERE tenant_id = (SELECT id FROM tenants WHERE slug = $2)",
+    )
+    .bind(sub_status)
+    .bind(&slug)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}

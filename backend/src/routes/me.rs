@@ -308,9 +308,12 @@ pub async fn mudar_plano(
 
 #[derive(Debug, Deserialize)]
 pub struct CancelarInput {
-    /// Confirmação explícita ("Quer realmente cancelar?").
+    /// Confirmação explícita (front envia true após digitar a frase).
     #[serde(default)]
     pub confirm: bool,
+    /// Deve ser exatamente `quero cancelar` (case-sensitive).
+    #[serde(default)]
+    pub confirm_phrase: Option<String>,
     /// Motivos multi-select (códigos estáveis).
     #[serde(default)]
     pub reasons: Vec<String>,
@@ -326,15 +329,21 @@ pub struct CancelarInput {
 }
 
 const CANCEL_REASON_CODES: &[&str] = &["unexpected", "found_better", "other"];
+const CANCEL_CONFIRM_PHRASE: &str = "quero cancelar";
 
 pub async fn cancelar(
     State(state): State<AppState>,
     AuthSubscriber(claims): AuthSubscriber,
     Json(body): Json<CancelarInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    if body.confirm_phrase.as_deref() != Some(CANCEL_CONFIRM_PHRASE) {
+        return Err(AppError::BadRequest(
+            "digite exatamente \"quero cancelar\" para confirmar".to_string(),
+        ));
+    }
     if !body.confirm {
         return Err(AppError::BadRequest(
-            "marque a confirmação \"Quer realmente cancelar?\" para continuar".to_string(),
+            "confirmação de cancelamento obrigatória".to_string(),
         ));
     }
     if body.reasons.is_empty() {
@@ -352,13 +361,19 @@ pub async fn cancelar(
         }
     }
 
-    let row: Option<(Option<String>, Option<String>, chrono::DateTime<chrono::Utc>, String)> = sqlx::query_as(
-        "SELECT gateway, mp_preapproval_id, created_at, status FROM subscribers WHERE id = $1",
+    let row: Option<(
+        Option<String>,
+        Option<String>,
+        chrono::DateTime<chrono::Utc>,
+        String,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT gateway, mp_preapproval_id, created_at, status, slug FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
     .fetch_optional(&state.pool)
     .await?;
-    let (gw, external_id, created_at, status) =
+    let (gw, external_id, created_at, status, slug) =
         row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
     if status == "cancelado" {
         return Ok(Json(serde_json::json!({ "status": "cancelado", "refund_status": "not_applicable" })));
@@ -408,6 +423,7 @@ pub async fn cancelar(
     });
     let cancel_note = body.note.as_deref().map(str::trim).filter(|s| !s.is_empty());
 
+    // Preserva plan_code / tenant_id / slug — só marca cancelado (loja offline até reassinar).
     sqlx::query(
         "UPDATE subscribers SET status = 'cancelado', updated_at = now(), \
          cancelled_at = now(), cancel_reasons = $2, cancel_note = $3, \
@@ -421,6 +437,13 @@ pub async fn cancelar(
     .bind(&refund_id)
     .execute(&state.pool)
     .await?;
+
+    if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "cancelado").await
+        {
+            tracing::warn!("sync ecommerce tenant offline after cancel failed: {e:?}");
+        }
+    }
 
     Ok(Json(serde_json::json!({
         "status": "cancelado",

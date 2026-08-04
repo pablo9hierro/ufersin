@@ -678,6 +678,53 @@ async fn teardown_store_whatsapp(state: &AppState, slug: &str) -> Result<(), App
     Ok(())
 }
 
+/// Sync ecommerce tenant + subscription status without deleting store data.
+/// `subscriber_status` → ecommerce: ativo→ativo, pausado→suspenso, cancelado→cancelado.
+pub async fn sync_ecommerce_tenant_status(
+    state: &AppState,
+    slug: &str,
+    subscriber_status: &str,
+) -> Result<(), AppError> {
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Ok(());
+    }
+    let tenant_status = match subscriber_status {
+        "ativo" => "ativo",
+        "pausado" => "suspenso",
+        "cancelado" => "cancelado",
+        _ => return Ok(()),
+    };
+    let url = format!(
+        "{}/internal/set-tenant-status",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "tenant_slug": slug,
+            "status": tenant_status,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("set-tenant-status unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        // Soft: provision may not exist yet; cancel still succeeds locally.
+        if status.as_u16() == 404 {
+            tracing::warn!("set-tenant-status: tenant slug {slug} not found yet");
+            return Ok(());
+        }
+        return Err(AppError::Internal(format!(
+            "set-tenant-status failed: {status} {text}"
+        )));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 pub struct TenantConfigResponse {
     pub slug: String,

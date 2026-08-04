@@ -18,17 +18,30 @@ pub async fn abacatepay_webhook(State(state): State<AppState>, Json(payload): Js
         return StatusCode::OK;
     }
 
-    let result = sqlx::query(
+    let result: Result<Option<(Option<String>,)>, _> = sqlx::query_as(
         "UPDATE subscribers SET status = 'ativo', \
          onboarding_status = CASE WHEN onboarding_status = 'aguardando_pagamento' THEN 'aguardando_onboarding' ELSE onboarding_status END, \
-         updated_at = now() WHERE mp_preapproval_id = $1",
+         updated_at = now() WHERE mp_preapproval_id = $1 \
+         RETURNING slug",
     )
     .bind(&external_id)
-    .execute(&state.pool)
+    .fetch_optional(&state.pool)
     .await;
 
-    if let Err(e) = result {
-        tracing::warn!("abacatepay webhook: failed to update subscriber for charge {external_id}: {e:?}");
+    match result {
+        Ok(Some((slug,))) => {
+            if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                if let Err(e) =
+                    crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "ativo").await
+                {
+                    tracing::warn!("abacatepay webhook: sync tenant online failed: {e:?}");
+                }
+            }
+        }
+        Ok(None) => {}
+        Err(e) => {
+            tracing::warn!("abacatepay webhook: failed to update subscriber for charge {external_id}: {e:?}");
+        }
     }
 
     StatusCode::OK

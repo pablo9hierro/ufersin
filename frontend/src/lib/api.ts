@@ -310,6 +310,8 @@ export type CancelReasonCode = 'unexpected' | 'found_better' | 'other'
 
 export interface CancelarAssinaturaInput {
   confirm: boolean
+  /** Must be exactly `quero cancelar` (case-sensitive). */
+  confirm_phrase: string
   reasons: CancelReasonCode[]
   competitor_note?: string
   other_note?: string
