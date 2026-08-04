@@ -369,7 +369,8 @@ HTML obrigatórios:
 - carrossel de promoção (só Management/Premium)
 - cada card do carrossel: imagem, texto de título, texto de subtítulo
 - pontos de navegação do carrossel (quando em modo trilho de vários cards)
-- card de imagem do hero Essential (condicional — só Essential, se houver URL)
+- card de imagem do hero Essential (condicional — só Essential, se houver URL;
+  com espaçamento inferior próprio `mb-4`, sem encostar no próximo elemento)
 - texto do badge do hero (editável pelo lojista em /meu-plano/layout)
 - texto do título/headline do hero (editável pelo lojista em /meu-plano/layout)
 - texto do subtítulo do hero (editável pelo lojista em /meu-plano/layout)
@@ -431,6 +432,11 @@ Dinâmicas obrigatórias entre os HTML:
   posicionado acima do badge/headline. Sem URL, o card some (não há
   placeholder obrigatório). Essential NÃO busca promoções ativas e NÃO
   tem acesso à gestão de banners no painel.
+- O card de imagem do hero Essential TEM espaçamento inferior próprio
+  (padrão: `mb-4` / 1rem no wrapper do card, uiux2/3/4). O card NÃO pode
+  ficar encostado no próximo elemento (badge, headline ou qualquer bloco
+  abaixo); a margem/padding de baixo é do próprio card, não só do
+  padding-top do conteúdo seguinte.
 - Arrastar o carrossel horizontalmente (mais que uma distância mínima)
   troca de card manualmente pra frente ou pra trás, conforme a direção do
   arrasto; um toque curto sem arrastar é tratado como clique normal no

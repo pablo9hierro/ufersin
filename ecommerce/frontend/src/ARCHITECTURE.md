@@ -78,6 +78,8 @@ Resumo das regras adicionadas/atualizadas nessa spec:
 5. **Loja fechada** — landing cinza + banner; checkout bloqueado.
 6. **Rotas do hub** — `/meu-plano`, `/meu-plano/layout`, `/financeiro`, `/redes`.
 7. **Auth plataforma** — storage keys separadas lojista/superadmin.
+8. **Hero image card (Essential)** — `mb-4` próprio no card (uiux2/3/4);
+   nunca encostar no badge/headline abaixo.
 
 ## Fora de escopo desta rodada
 
