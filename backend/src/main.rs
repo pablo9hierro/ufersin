@@ -101,6 +101,15 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("SUPABASE_SERVICE_ROLE_KEY not set — upload de logo em /api/me/upload-logo vai falhar");
     }
 
+    let payment_mode = env_trimmed("PAYMENT_MODE").to_ascii_lowercase();
+    if payment_mode.is_empty() {
+        tracing::info!(
+            "PAYMENT_MODE not set — sandbox inferido de MP TEST-… / Abacate abc_dev_ / mock"
+        );
+    } else {
+        tracing::info!("PAYMENT_MODE={payment_mode}");
+    }
+
     let state = AppState {
         pool,
         http,
@@ -114,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
         pandadoc,
         supabase_url: supabase_url.clone(),
         supabase_service_key,
+        payment_mode,
     };
 
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
@@ -137,6 +147,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/assinaturas/simular-pagamento",
             post(routes::assinatura::simular_pagamento),
+        )
+        .route(
+            "/api/assinaturas/pagar-cartao",
+            post(routes::assinatura::pagar_cartao),
         )
         .route(
             "/api/assinaturas/cancelar-pendente",

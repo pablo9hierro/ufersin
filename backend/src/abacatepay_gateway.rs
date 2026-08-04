@@ -275,6 +275,7 @@ fn sandbox_mock_charge(state: &AppState, external_reference: &str) -> GatewayCha
         pix_qr_code: None,
         pix_qr_base64: None,
         sandbox: true,
+        payment_step: "done".to_string(),
     }
 }
 
@@ -370,6 +371,7 @@ async fn create_subscription_checkout(
         pix_qr_code: None,
         pix_qr_base64: None,
         sandbox: is_sandbox_key(token),
+        payment_step: "done".to_string(),
     })
 }
 

@@ -72,13 +72,16 @@ export interface AssinarPlanoInput {
 }
 export interface AssinaturaCriada {
   id: string
+  /** Always null for platform Assinar — payment is on-site (no MP redirect). */
   checkout_url: string | null
   pix_qr_code: string | null
   pix_qr_base64: string | null
-  /** Homologação AbacatePay — permite simular pagamento. */
+  /** Homologação — permite simular pagamento. */
   sandbox?: boolean
   valor_mensal?: number
   valor_cobrado?: number
+  /** `pix` | `card` | `done` */
+  payment_step?: string
 }
 
 export interface PlatformPlan {
@@ -350,6 +353,19 @@ export const api = {
   statusAssinatura: (id: string) => request<StatusAssinatura>(`/api/assinaturas/${id}/status`),
   simularPagamento: () =>
     request<StatusAssinatura>('/api/assinaturas/simular-pagamento', { method: 'POST', body: '{}' }),
+  pagarCartao: (input: {
+    card_number: string
+    card_holder: string
+    exp_month: string
+    exp_year: string
+    cvv: string
+    auto_debit?: boolean
+    card_token?: string
+  }) =>
+    request<StatusAssinatura>('/api/assinaturas/pagar-cartao', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   cancelarPendente: () =>
     request<{ status: string }>('/api/assinaturas/cancelar-pendente', { method: 'POST', body: '{}' }),
 
@@ -361,7 +377,7 @@ export const api = {
   previewCoupon: (code: string, plano: PlanoCode) =>
     request<CouponPreview>('/api/public/coupons/preview', {
       method: 'POST',
-      body: JSON.stringify({ code, plano }),
+      body: JSON.stringify({ code: code.trim().toUpperCase(), plano }),
     }),
 
   /** Gate do /dashboard — 403 se autenticado mas não é dono da plataforma. */

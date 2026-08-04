@@ -38,4 +38,6 @@ pub struct AppState {
     pub supabase_url: String,
     /// Service role — só server-side (upload de logo).
     pub supabase_service_key: String,
+    /// `sandbox` | `production` | `` (auto via tokens). Ver PAYMENT_MODE.
+    pub payment_mode: String,
 }

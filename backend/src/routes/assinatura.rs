@@ -5,6 +5,7 @@ use crate::auth::AuthSubscriber;
 use crate::coupons;
 use crate::error::AppError;
 use crate::gateway::{self, BillingCycle, PaymentMethod};
+use crate::mercadopago;
 use crate::plans;
 use crate::state::AppState;
 
@@ -36,17 +37,20 @@ fn default_cycle() -> String {
 #[derive(Debug, Serialize)]
 pub struct AssinaturaCriada {
     pub id: String,
+    /// Always null for platform Assinar — payment is on-site (no MP redirect).
     pub checkout_url: Option<String>,
     pub pix_qr_code: Option<String>,
     pub pix_qr_base64: Option<String>,
-    /// Homologação AbacatePay (`abc_dev_`) — front pode oferecer "Simular pagamento".
+    /// Homologação — front pode oferecer "Simular pagamento".
     pub sandbox: bool,
     pub valor_mensal: f64,
     pub valor_cobrado: f64,
+    /// `pix` | `card` | `done`
+    pub payment_step: String,
 }
 
-/// Atrela um plano à conta já existente e dispara a cobrança recorrente.
-/// Preço vem exclusivamente de `platform_plans` (+ cupom server-side).
+/// Atrela um plano à conta já existente e dispara cobrança **on-site**
+/// (Pix QR ou passo cartão). Nunca redireciona pra mercadopago.com.br.
 pub async fn assinar_plano(
     State(state): State<AppState>,
     AuthSubscriber(claims): AuthSubscriber,
@@ -71,7 +75,14 @@ pub async fn assinar_plano(
         return Err(AppError::BadRequest("essa conta já tem uma assinatura ativa".to_string()));
     }
 
-    let monthly = if let Some(code) = body.cupom.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let cupom_code = body
+        .cupom
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_uppercase());
+
+    let monthly = if let Some(ref code) = cupom_code {
         let (after, _) = coupons::redeem_on_subscribe(&state.pool, &claims.sub, &body.plano, code).await?;
         after
     } else {
@@ -86,7 +97,7 @@ pub async fn assinar_plano(
         cycle.as_str(),
         loja_nome.trim()
     );
-    let charge = gateway::create_subscription(
+    let mut charge = gateway::create_subscription(
         &state,
         gateway_kind,
         &reason,
@@ -98,12 +109,13 @@ pub async fn assinar_plano(
         body.metodo,
     )
     .await?;
+    // Hard guarantee: never hand a hosted-checkout URL to the front.
+    charge.checkout_url = None;
 
-    let (status, onboarding) = if charge.sandbox && charge.external_id.starts_with("mock-") {
-        ("ativo", "aguardando_onboarding")
-    } else {
-        ("pendente", "aguardando_pagamento")
-    };
+    // Always pendente until Pix paid / card charged / simular — so Assinar can
+    // render on-site payment UI (never auto-activate on create).
+    let status = "pendente";
+    let onboarding = "aguardando_pagamento";
 
     sqlx::query(
         "UPDATE subscribers SET plan_code = $1, gateway = $2, valor_mensal = $3, billing_cycle = $4, status = $5, \
@@ -120,32 +132,15 @@ pub async fn assinar_plano(
     .execute(&state.pool)
     .await?;
 
-    if status == "ativo" {
-        let slug: Option<(Option<String>,)> =
-            sqlx::query_as("SELECT slug FROM subscribers WHERE id = $1")
-                .bind(&claims.sub)
-                .fetch_optional(&state.pool)
-                .await?;
-        if let Some((Some(slug),)) = slug {
-            let slug = slug.trim();
-            if !slug.is_empty() {
-                if let Err(e) =
-                    crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "ativo").await
-                {
-                    tracing::warn!("sync ecommerce tenant online after subscribe failed: {e:?}");
-                }
-            }
-        }
-    }
-
     Ok(Json(AssinaturaCriada {
         id: claims.sub,
-        checkout_url: charge.checkout_url,
+        checkout_url: None,
         pix_qr_code: charge.pix_qr_code,
         pix_qr_base64: charge.pix_qr_base64,
-        sandbox: charge.sandbox,
+        sandbox: charge.sandbox || gateway::sandbox_mode(&state),
         valor_mensal: monthly,
         valor_cobrado: valor,
+        payment_step: charge.payment_step,
     }))
 }
 
@@ -340,5 +335,104 @@ pub async fn cancelar_pendente(
 
     Ok(Json(CancelarPendenteResult {
         status: "sem_assinatura".to_string(),
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PagarCartaoInput {
+    pub card_number: String,
+    pub card_holder: String,
+    pub exp_month: String,
+    pub exp_year: String,
+    pub cvv: String,
+    /// Aceitar cobrança recorrente em débito automático — opcional, default false.
+    #[serde(default)]
+    pub auto_debit: bool,
+    pub card_token: Option<String>,
+}
+
+/// Cobra cartão **on-site** (sem redirect MP) e ativa a assinatura.
+pub async fn pagar_cartao(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<PagarCartaoInput>,
+) -> Result<Json<StatusAssinatura>, AppError> {
+    let row: Option<(
+        String,
+        String,
+        Option<String>,
+        f64,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT email, status, gateway, COALESCE(valor_mensal, 0), billing_cycle, plan_code, \
+         onboarding_status, slug FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let (email, status, gateway_kind, valor_mensal, billing_cycle, plan_code, onboarding_status, slug) =
+        row.ok_or_else(|| AppError::NotFound("conta não encontrada".to_string()))?;
+
+    if status != "pendente" {
+        return Err(AppError::BadRequest(format!(
+            "pagamento com cartão só com assinatura pendente (atual: {status})"
+        )));
+    }
+
+    let cycle = BillingCycle::parse(&billing_cycle).unwrap_or(BillingCycle::Mensal);
+    let amount = gateway::charge_amount(valor_mensal, cycle);
+    let plan = plan_code.unwrap_or_else(|| "essential".to_string());
+    let reason = format!("Assinatura Resolutoo ({}/{})", plan, cycle.as_str());
+
+    let payment_id = mercadopago::pay_onsite_card(
+        &state,
+        email.trim(),
+        amount,
+        &claims.sub,
+        &reason,
+        &body.card_number,
+        &body.card_holder,
+        &body.exp_month,
+        &body.exp_year,
+        &body.cvv,
+        body.card_token.as_deref(),
+        body.auto_debit,
+    )
+    .await?;
+
+    let gw = gateway_kind.unwrap_or_else(|| "mercadopago".to_string());
+    let novo_onboarding = if onboarding_status == "aguardando_pagamento" || onboarding_status.is_empty()
+    {
+        "aguardando_onboarding"
+    } else {
+        onboarding_status.as_str()
+    };
+
+    sqlx::query(
+        "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, mp_preapproval_id = $2, \
+         gateway = $3, updated_at = now() WHERE id = $4",
+    )
+    .bind(novo_onboarding)
+    .bind(&payment_id)
+    .bind(&gw)
+    .bind(&claims.sub)
+    .execute(&state.pool)
+    .await?;
+
+    if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "ativo").await
+        {
+            tracing::warn!("sync ecommerce after card pay failed: {e:?}");
+        }
+    }
+
+    Ok(Json(StatusAssinatura {
+        status: "ativo".to_string(),
+        onboarding_status: novo_onboarding.to_string(),
+        sandbox: gateway::sandbox_mode(&state),
     }))
 }
