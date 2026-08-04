@@ -119,6 +119,15 @@ fn completion_back_url(state: &AppState, external_reference: &str) -> String {
     format!("{}{separador}id={external_reference}", state.back_url.as_str())
 }
 
+fn notification_url(state: &AppState) -> Option<String> {
+    let base = state.public_api_url.as_str().trim().trim_end_matches('/');
+    if base.is_empty() {
+        None
+    } else {
+        Some(format!("{base}/api/webhooks/mercadopago"))
+    }
+}
+
 fn payment_id_string(v: &Option<serde_json::Value>) -> Option<String> {
     match v {
         Some(serde_json::Value::Number(n)) => Some(n.to_string()),
@@ -219,13 +228,16 @@ async fn create_mp_pix_payment(
     amount_reais: f64,
     external_reference: &str,
 ) -> Result<GatewayCharge, AppError> {
-    let body = json!({
+    let mut body = json!({
         "transaction_amount": (amount_reais * 100.0).round() / 100.0,
         "description": reason.chars().take(200).collect::<String>(),
         "payment_method_id": "pix",
         "external_reference": external_reference,
         "payer": { "email": payer_email },
     });
+    if let Some(url) = notification_url(state) {
+        body["notification_url"] = json!(url);
+    }
 
     let resp = state
         .http
@@ -379,7 +391,7 @@ pub async fn pay_onsite_card(
         create_card_token(state, token, &digits, card_holder, exp_month, exp_year, cvv).await?
     };
 
-    let body = json!({
+    let mut body = json!({
         "transaction_amount": (amount_reais * 100.0).round() / 100.0,
         "token": payment_token,
         "description": reason.chars().take(200).collect::<String>(),
@@ -388,6 +400,9 @@ pub async fn pay_onsite_card(
         "external_reference": external_reference,
         "payer": { "email": payer_email },
     });
+    if let Some(url) = notification_url(state) {
+        body["notification_url"] = json!(url);
+    }
 
     let resp = state
         .http
@@ -504,6 +519,64 @@ async fn create_card_token(
         .and_then(|x| x.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| AppError::Internal("card token sem id".to_string()))
+}
+
+/// Snapshot used by webhooks / recovery paths (never trust MP body alone —
+/// always re-fetch with our access token).
+#[derive(Debug, Clone)]
+pub struct MpPaymentSnapshot {
+    pub id: String,
+    pub status: String,
+    pub external_reference: Option<String>,
+}
+
+/// Fetch payment by id from Mercado Pago Payments API.
+pub async fn fetch_payment_snapshot(
+    state: &AppState,
+    payment_id: &str,
+) -> Result<MpPaymentSnapshot, AppError> {
+    let token = state
+        .mp_token
+        .as_ref()
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("MP_ACCESS_TOKEN not set".to_string()))?;
+    let resp = state
+        .http
+        .get(format!("https://api.mercadopago.com/v1/payments/{payment_id}"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("mp payment fetch failed: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(AppError::Internal(format!(
+            "mp payment fetch status {}",
+            resp.status()
+        )));
+    }
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("mp payment parse: {e}")))?;
+    let id = match v.get("id") {
+        Some(serde_json::Value::Number(n)) => n.to_string(),
+        Some(serde_json::Value::String(s)) => s.clone(),
+        _ => payment_id.to_string(),
+    };
+    let status = v
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("pending")
+        .to_string();
+    let external_reference = v
+        .get("external_reference")
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    Ok(MpPaymentSnapshot {
+        id,
+        status,
+        external_reference,
+    })
 }
 
 /// Status de cobrança on-site (mpix-/pay-/mock-/pending-card-…) ou preapproval legado.

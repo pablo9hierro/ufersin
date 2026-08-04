@@ -235,82 +235,14 @@ pub async fn status_assinatura(
     Path(id): Path<String>,
 ) -> Result<Json<StatusAssinatura>, AppError> {
     let sandbox = gateway::sandbox_mode(&state);
-    let row: Option<(Option<String>, String, Option<String>, String, Option<String>, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug, plan_code, tenant_id \
-             FROM subscribers WHERE id = $1",
-        )
-            .bind(&id)
-            .fetch_optional(&state.pool)
-            .await?;
-
-    let (preapproval_id, status_atual, gateway_kind, onboarding_status, slug, plan_code, tenant_id) =
-        row.ok_or_else(|| AppError::NotFound("assinatura não encontrada".to_string()))?;
-
-    let (Some(preapproval_id), Some(gateway_kind)) = (preapproval_id, gateway_kind) else {
-        return Ok(Json(StatusAssinatura {
-            status: status_atual,
-            onboarding_status,
-            sandbox,
-        }));
+    let synced = sync_pending_subscription_payment(&state, &id).await?;
+    let Some((status, onboarding_status)) = synced else {
+        return Err(AppError::NotFound("assinatura não encontrada".to_string()));
     };
-
-    let gw_status = gateway::get_status(&state, &gateway_kind, &preapproval_id).await?;
-    let mut novo_status = match gw_status.as_str() {
-        "authorized" | "PAID" | "ACTIVE" | "active" | "paid" | "COMPLETED" | "completed" => "ativo",
-        "paused" | "PAUSED" => "pausado",
-        "cancelled" | "CANCELLED" | "canceled" => "cancelado",
-        _ => "pendente",
-    };
-
-    if status_atual == "ativo" && novo_status == "pendente" {
-        novo_status = "ativo";
-    }
-
-    // If slug/tenant already exists, restore provisionado (re-subscribe recovery).
-    let has_store = slug
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .is_some()
-        || tenant_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .is_some();
-    let novo_onboarding = if novo_status == "ativo" {
-        onboarding_after_activate(&onboarding_status, has_store)
-    } else {
-        onboarding_status.as_str()
-    };
-
-    if novo_status != status_atual || novo_onboarding != onboarding_status {
-        sqlx::query("UPDATE subscribers SET status = $1, onboarding_status = $2, updated_at = now() WHERE id = $3")
-            .bind(novo_status)
-            .bind(novo_onboarding)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-
-        if novo_status != status_atual {
-            if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-                if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status_with_plan(
-                    &state,
-                    slug,
-                    novo_status,
-                    plan_code.as_deref(),
-                )
-                .await
-                {
-                    tracing::warn!("sync ecommerce tenant status after poll failed: {e:?}");
-                }
-            }
-        }
-    }
 
     Ok(Json(StatusAssinatura {
-        status: novo_status.to_string(),
-        onboarding_status: novo_onboarding.to_string(),
+        status,
+        onboarding_status,
         sandbox,
     }))
 }
@@ -515,6 +447,236 @@ pub(crate) fn onboarding_after_activate(current: &str, has_store: bool) -> &'sta
         "aguardando_onboarding" => "aguardando_onboarding",
         _ => "aguardando_onboarding",
     }
+}
+
+fn subscriber_has_store(slug: Option<&str>, tenant_id: Option<&str>) -> bool {
+    slug.map(str::trim).filter(|s| !s.is_empty()).is_some()
+        || tenant_id.map(str::trim).filter(|s| !s.is_empty()).is_some()
+}
+
+/// Flip `pendente` → `ativo` and unlock onboarding. Shared by poll, webhook, `/api/me`.
+pub async fn activate_paid_subscriber(
+    state: &AppState,
+    id: &str,
+    onboarding_status: &str,
+    slug: Option<&str>,
+    tenant_id: Option<&str>,
+    plan_code: Option<&str>,
+    payment_external_id: Option<&str>,
+) -> Result<(String, String), AppError> {
+    let novo_onboarding =
+        onboarding_after_activate(onboarding_status, subscriber_has_store(slug, tenant_id));
+
+    if let Some(ext) = payment_external_id.map(str::trim).filter(|s| !s.is_empty()) {
+        sqlx::query(
+            "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, \
+             mp_preapproval_id = COALESCE(NULLIF(trim(mp_preapproval_id), ''), $2), \
+             updated_at = now() \
+             WHERE id = $3 AND status IN ('pendente', 'sem_assinatura')",
+        )
+        .bind(novo_onboarding)
+        .bind(ext)
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    } else {
+        sqlx::query(
+            "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, updated_at = now() \
+             WHERE id = $2 AND status IN ('pendente', 'sem_assinatura')",
+        )
+        .bind(novo_onboarding)
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+    }
+
+    // Idempotent: if already ativo, still fix onboarding_status when stuck on aguardando_pagamento.
+    sqlx::query(
+        "UPDATE subscribers SET onboarding_status = $1, updated_at = now() \
+         WHERE id = $2 AND status = 'ativo' AND onboarding_status = 'aguardando_pagamento'",
+    )
+    .bind(novo_onboarding)
+    .bind(id)
+    .execute(&state.pool)
+    .await?;
+
+    if let Some(slug) = slug.map(str::trim).filter(|s| !s.is_empty()) {
+        if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status_with_plan(
+            state,
+            slug,
+            "ativo",
+            plan_code,
+        )
+        .await
+        {
+            tracing::warn!("sync ecommerce tenant after activate failed: {e:?}");
+        }
+    }
+
+    Ok(("ativo".to_string(), novo_onboarding.to_string()))
+}
+
+/// If subscriber is still `pendente` but gateway already shows paid, activate.
+/// Used by status poll and `/api/me` so closing the Pix tab cannot leave them stuck.
+pub async fn sync_pending_subscription_payment(
+    state: &AppState,
+    id: &str,
+) -> Result<Option<(String, String)>, AppError> {
+    let row: Option<(
+        Option<String>,
+        String,
+        Option<String>,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT mp_preapproval_id, status, gateway, onboarding_status, slug, plan_code, tenant_id \
+         FROM subscribers WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let Some((preapproval_id, status_atual, gateway_kind, onboarding_status, slug, plan_code, tenant_id)) =
+        row
+    else {
+        return Ok(None);
+    };
+
+    if status_atual == "ativo" {
+        let fixed = onboarding_after_activate(
+            &onboarding_status,
+            subscriber_has_store(slug.as_deref(), tenant_id.as_deref()),
+        );
+        if fixed != onboarding_status.as_str() {
+            let _ = sqlx::query(
+                "UPDATE subscribers SET onboarding_status = $1, updated_at = now() WHERE id = $2",
+            )
+            .bind(fixed)
+            .bind(id)
+            .execute(&state.pool)
+            .await;
+            return Ok(Some(("ativo".to_string(), fixed.to_string())));
+        }
+        return Ok(Some((
+            "ativo".to_string(),
+            onboarding_status,
+        )));
+    }
+
+    if !matches!(status_atual.as_str(), "pendente" | "sem_assinatura") {
+        return Ok(Some((status_atual, onboarding_status)));
+    }
+
+    let (Some(preapproval_id), Some(gateway_kind)) = (preapproval_id, gateway_kind) else {
+        return Ok(Some((status_atual, onboarding_status)));
+    };
+
+    let gw_status = gateway::get_status(state, &gateway_kind, &preapproval_id).await?;
+    let paid = matches!(
+        gw_status.as_str(),
+        "authorized" | "PAID" | "ACTIVE" | "active" | "paid" | "COMPLETED" | "completed"
+    );
+    if !paid {
+        return Ok(Some((status_atual, onboarding_status)));
+    }
+
+    let (st, onb) = activate_paid_subscriber(
+        state,
+        id,
+        &onboarding_status,
+        slug.as_deref(),
+        tenant_id.as_deref(),
+        plan_code.as_deref(),
+        Some(&preapproval_id),
+    )
+    .await?;
+    Ok(Some((st, onb)))
+}
+
+/// Activate from a confirmed Mercado Pago payment id (webhook path).
+pub async fn activate_from_mp_payment_id(
+    state: &AppState,
+    payment_id: &str,
+) -> Result<bool, AppError> {
+    let snap = mercadopago::fetch_payment_snapshot(state, payment_id).await?;
+    if !matches!(snap.status.as_str(), "approved" | "authorized") {
+        tracing::info!(
+            payment_id = %snap.id,
+            status = %snap.status,
+            "mp webhook: payment not approved yet — ignore"
+        );
+        return Ok(false);
+    }
+
+    let mpix = format!("{}{}", mercadopago::PIX_ID_PREFIX, snap.id);
+    let pay = format!("{}{}", mercadopago::PAY_ID_PREFIX, snap.id);
+
+    let row: Option<(String, String, String, Option<String>, Option<String>, Option<String>)> =
+        if let Some(ref ext) = snap.external_reference {
+            sqlx::query_as(
+                "SELECT id, status, onboarding_status, slug, tenant_id, plan_code \
+                 FROM subscribers \
+                 WHERE id = $1 OR mp_preapproval_id = $2 OR mp_preapproval_id = $3 \
+                 ORDER BY CASE WHEN id = $1 THEN 0 ELSE 1 END \
+                 LIMIT 1",
+            )
+            .bind(ext)
+            .bind(&mpix)
+            .bind(&pay)
+            .fetch_optional(&state.pool)
+            .await?
+        } else {
+            sqlx::query_as(
+                "SELECT id, status, onboarding_status, slug, tenant_id, plan_code \
+                 FROM subscribers WHERE mp_preapproval_id = $1 OR mp_preapproval_id = $2 \
+                 LIMIT 1",
+            )
+            .bind(&mpix)
+            .bind(&pay)
+            .fetch_optional(&state.pool)
+            .await?
+        };
+
+    let Some((id, status, onboarding, slug, tenant_id, plan_code)) = row else {
+        tracing::warn!(
+            payment_id = %snap.id,
+            external_reference = ?snap.external_reference,
+            "mp webhook: no subscriber matched — ignored"
+        );
+        return Ok(false);
+    };
+
+    if status == "ativo" && onboarding != "aguardando_pagamento" {
+        return Ok(true);
+    }
+
+    let ext_id = if snap.status == "approved" || snap.id.chars().all(|c| c.is_ascii_digit()) {
+        // Prefer stored prefix: Pix payments use mpix-, card pay-
+        // Keep existing mp_preapproval_id if already set; pass mpix as default.
+        Some(mpix.as_str())
+    } else {
+        Some(mpix.as_str())
+    };
+
+    activate_paid_subscriber(
+        state,
+        &id,
+        &onboarding,
+        slug.as_deref(),
+        tenant_id.as_deref(),
+        plan_code.as_deref(),
+        ext_id,
+    )
+    .await?;
+
+    tracing::info!(
+        subscriber_id = %id,
+        payment_id = %snap.id,
+        "mp webhook: subscriber activated after approved payment"
+    );
+    Ok(true)
 }
 
 #[cfg(test)]

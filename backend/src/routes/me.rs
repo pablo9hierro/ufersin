@@ -151,6 +151,26 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
     .await?;
 
     let row = row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
+
+    // Recover stuck pendente/aguardando_pagamento when Pix/card already approved on MP
+    // (user closed Assinar before poll / webhook lag).
+    let (status, onboarding_status) = if matches!(
+        row.status.as_str(),
+        "pendente" | "sem_assinatura"
+    ) || row.onboarding_status == "aguardando_pagamento"
+    {
+        match crate::routes::assinatura::sync_pending_subscription_payment(&state, &row.id).await {
+            Ok(Some((st, onb))) => (st, onb),
+            Ok(None) => (row.status.clone(), row.onboarding_status.clone()),
+            Err(e) => {
+                tracing::warn!("/api/me pending payment sync failed: {e:?}");
+                (row.status.clone(), row.onboarding_status.clone())
+            }
+        }
+    } else {
+        (row.status.clone(), row.onboarding_status.clone())
+    };
+
     let metodo_pagamento = row.gateway.as_deref().map(|g| if g == "abacatepay" { "Pix" } else { "Cartão de crédito" }.to_string());
     let dominio = row.slug.as_ref().map(|s| format!("resolutoo.com/loja/?tenant={s}"));
     let refund_eligible_on_cancel = within_cancel_refund_window(row.created_at);
@@ -164,12 +184,12 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         plano: row.plan_code,
         valor_mensal: row.valor_mensal,
         billing_cycle: row.billing_cycle,
-        status: row.status,
+        status,
         gateway: row.gateway,
         metodo_pagamento,
         slug: row.slug,
         dominio,
-        onboarding_status: row.onboarding_status,
+        onboarding_status,
         tenant_id: row.tenant_id,
         assinante_desde: row.created_at,
         categoria: row.categoria,

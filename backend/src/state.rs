@@ -40,4 +40,9 @@ pub struct AppState {
     pub supabase_service_key: String,
     /// `sandbox` | `production` | `` (auto via tokens). Ver PAYMENT_MODE.
     pub payment_mode: String,
+    /// Public base URL of this API (no trailing slash), e.g.
+    /// `https://ufersin-api-production.up.railway.app`. Used as Mercado Pago
+    /// `notification_url` so Pix/card approvals activate without the browser
+    /// staying open. From `PUBLIC_API_URL` or `https://{RAILWAY_PUBLIC_DOMAIN}`.
+    pub public_api_url: Arc<String>,
 }

@@ -110,6 +110,30 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("PAYMENT_MODE={payment_mode}");
     }
 
+    let public_api_url = {
+        let explicit = env_trimmed("PUBLIC_API_URL").trim_end_matches('/').to_string();
+        if !explicit.is_empty() {
+            explicit
+        } else {
+            let domain = env_trimmed("RAILWAY_PUBLIC_DOMAIN");
+            if domain.is_empty() {
+                String::new()
+            } else {
+                format!("https://{}", domain.trim_end_matches('/'))
+            }
+        }
+    };
+    if public_api_url.is_empty() {
+        tracing::warn!(
+            "PUBLIC_API_URL / RAILWAY_PUBLIC_DOMAIN unset — Pix/card payments won't set \
+             Mercado Pago notification_url (activation will rely on browser poll + /api/me)"
+        );
+    } else {
+        tracing::info!(
+            "MP webhook notification_url base={public_api_url}/api/webhooks/mercadopago"
+        );
+    }
+
     let state = AppState {
         pool,
         http,
@@ -124,6 +148,7 @@ async fn main() -> anyhow::Result<()> {
         supabase_url: supabase_url.clone(),
         supabase_service_key,
         payment_mode,
+        public_api_url: Arc::new(public_api_url),
     };
 
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
@@ -181,6 +206,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::contratos::pandadoc_session),
         )
         .route("/api/webhooks/abacatepay", post(routes::webhooks::abacatepay_webhook))
+        .route(
+            "/api/webhooks/mercadopago",
+            get(routes::webhooks::mercadopago_webhook).post(routes::webhooks::mercadopago_webhook),
+        )
         .route("/api/webhooks/pandadoc", post(routes::webhooks::pandadoc_webhook))
         .route("/api/public/plans", get(routes::plans::list_public))
         .route("/api/public/content", get(routes::plans::list_content))

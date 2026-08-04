@@ -76,9 +76,18 @@ pub fn payment_mode_sandbox(state: &AppState) -> bool {
 }
 
 /// Prefer sandbox gateways; never prefer live MP redirect for Assinar.
+///
+/// With `PAYMENT_MODE=production` and an MP token, always label as
+/// `mercadopago` — even if a leftover AbacatePay `abc_dev_` key is set
+/// (that used to mis-tag live Pix as `gateway=abacatepay`).
 pub fn resolve_gateway_kind(state: &AppState) -> &'static str {
-    let has_mp = state.mp_token.is_some();
-    let has_ab = state.abacatepay_token.is_some();
+    let has_mp = state.mp_token.as_ref().as_ref().is_some();
+    let has_ab = state.abacatepay_token.as_ref().as_ref().is_some();
+
+    if matches!(state.payment_mode.as_str(), "production" | "prod") && has_mp {
+        return "mercadopago";
+    }
+
     let mp_sandbox = mercadopago::sandbox_mode(state);
     let ab_sandbox = abacatepay_gateway::sandbox_mode(state);
 
