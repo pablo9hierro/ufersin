@@ -25,7 +25,11 @@ import {
   type PlanoCode,
 } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import { resolveTenantSlug } from '../../lib/tenantConfig'
+import {
+  LOJA_OFFLINE_MSG,
+  resolveTenantSlug,
+  stashLojaOfflineMessage,
+} from '../../lib/tenantConfig'
 import { adminService } from '../../services/adminService'
 import { subscribeWhatsAppGateChange } from '../../lib/whatsappGateEvents'
 import {
@@ -97,6 +101,16 @@ export default function AdminLayout() {
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
   const whatsappRequired = tenantConfig?.whatsapp_habilitado === true
   const tenantReady = tenantConfig != null
+  const lojaOffline = !demo && tenantReady && tenantConfig?.ativa === false
+
+  // Assinatura não ativa (cancelado / sem config Resolutoo): derruba sessão
+  // mesmo com JWT antigo ainda no localStorage.
+  useEffect(() => {
+    if (!lojaOffline) return
+    stashLojaOfflineMessage(LOJA_OFFLINE_MSG)
+    gateSession = null
+    logout()
+  }, [lojaOffline, logout])
 
   // null = ainda checando; true = gate ativo; false = liberado
   const [gateLocked, setGateLocked] = useState<boolean | null>(() => {
@@ -297,6 +311,20 @@ export default function AdminLayout() {
   }, [demo, whatsappRequired, gateLocked, applyVerdict])
 
   if (!effectiveToken) return <Navigate to="/admin/login" state={{ from: location }} replace />
+
+  // Wait for Resolutoo tenant-config before rendering the shell — cancelado
+  // must not flash the painel from a warm WA-gate session cache.
+  if (!demo && !tenantReady) {
+    return (
+      <div className="min-h-screen bg-son-black flex items-center justify-center text-son-silver-dim text-sm">
+        Carregando…
+      </div>
+    )
+  }
+
+  if (lojaOffline) {
+    return <Navigate to="/admin/login" state={{ from: location, offline: true }} replace />
+  }
 
   if (gateLocked === null) {
     return (

@@ -679,20 +679,32 @@ async fn teardown_store_whatsapp(state: &AppState, slug: &str) -> Result<(), App
 }
 
 /// Sync ecommerce tenant + subscription status without deleting store data.
-/// `subscriber_status` → ecommerce: ativo→ativo, pausado→suspenso, cancelado→cancelado.
+/// Maps Resolutoo subscriber status → ecommerce tenant status:
+/// - `ativo` → `ativo`
+/// - `pausado` / `pendente` / `inadimplente` / `suspenso` → `suspenso`
+/// - `cancelado` / `sem_assinatura` → `cancelado`
+/// Never deletes store data.
 pub async fn sync_ecommerce_tenant_status(
     state: &AppState,
     slug: &str,
     subscriber_status: &str,
 ) -> Result<(), AppError> {
     if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        tracing::warn!(
+            "sync ecommerce tenant status skipped (ECOMMERCE_INTERNAL_URL/KEY unset) slug={slug} status={subscriber_status}"
+        );
         return Ok(());
     }
     let tenant_status = match subscriber_status {
         "ativo" => "ativo",
-        "pausado" => "suspenso",
-        "cancelado" => "cancelado",
-        _ => return Ok(()),
+        "pausado" | "pendente" | "inadimplente" | "suspenso" => "suspenso",
+        "cancelado" | "sem_assinatura" => "cancelado",
+        _ => {
+            tracing::warn!(
+                "sync ecommerce tenant status: unknown subscriber status {subscriber_status:?} for {slug}"
+            );
+            return Ok(());
+        }
     };
     let url = format!(
         "{}/internal/set-tenant-status",

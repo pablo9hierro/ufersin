@@ -1,12 +1,17 @@
-import { useState } from 'react'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, Loader2, Lock, Users } from 'lucide-react'
 import Logo from '../../components/ui/Logo'
 import { ApiError } from '../../lib/apiError'
 import { getDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
 import { authService } from '../../services/authService'
 import { useAdminAuth } from '../../store/adminAuth'
-import { persistTenantSlug, resetTenantConfigCache } from '../../lib/tenantConfig'
+import {
+  LOJA_OFFLINE_MSG,
+  persistTenantSlug,
+  resetTenantConfigCache,
+  takeLojaOfflineMessage,
+} from '../../lib/tenantConfig'
 
 // Login exclusivo do admin — não tenta mais vendedor/motoboy em cascata
 // (isso causava logins acidentais na conta admin: o campo de e-mail vinha
@@ -24,6 +29,7 @@ import { persistTenantSlug, resetTenantConfigCache } from '../../lib/tenantConfi
 export default function AdminLogin() {
   const { token, login } = useAdminAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   // Só aceita e-mail da query quando há tenant (deep link do Meu Plano).
   // Sem tenant, ignorar ?email= evita vazar e-mail de outra sessão/plataforma.
@@ -35,6 +41,17 @@ export default function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const fromState =
+      location.state &&
+      typeof location.state === 'object' &&
+      (location.state as { offline?: boolean }).offline
+        ? LOJA_OFFLINE_MSG
+        : null
+    const stashed = takeLojaOfflineMessage()
+    if (fromState || stashed) setError(fromState || stashed)
+  }, [location.state])
 
   // Demo ativa nesta aba: pular o formulário (nunca pedir senha / autofill).
   if (isDemoModeActive()) {
@@ -79,7 +96,8 @@ export default function AdminLogin() {
       login(res.token, res.name, resolvedSlug)
       navigate('/admin/pedidos')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao entrar.')
+      const msg = err instanceof ApiError ? err.message : 'Erro ao entrar.'
+      setError(msg)
     } finally {
       setLoading(false)
     }

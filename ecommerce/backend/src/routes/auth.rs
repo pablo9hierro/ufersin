@@ -5,6 +5,7 @@ use crate::auth::{make_token, verify_password};
 use crate::error::AppError;
 use crate::models::{LoginInput, LoginResponse};
 use crate::state::AppState;
+use crate::tenant::LOJA_OFFLINE_MSG;
 
 fn normalize_slug(raw: Option<&str>) -> Option<String> {
     let s = raw.map(str::trim).filter(|s| !s.is_empty())?.to_lowercase();
@@ -21,9 +22,7 @@ async fn resolve_tenant_id(state: &AppState, slug: &str) -> Result<String, AppEr
         return Err(AppError::Unauthorized("invalid credentials".to_string()));
     };
     if matches!(status.as_str(), "suspenso" | "cancelado") {
-        return Err(AppError::Unauthorized(
-            "loja offline — assine novamente no Resolutoo pra reativar o painel".to_string(),
-        ));
+        return Err(AppError::Unauthorized(LOJA_OFFLINE_MSG.to_string()));
     }
     Ok(id)
 }
@@ -88,9 +87,7 @@ pub async fn admin_login(
     }
 
     match matches.len() {
-        0 if offline_only => Err(AppError::Unauthorized(
-            "loja offline — assine novamente no Resolutoo pra reativar o painel".to_string(),
-        )),
+        0 if offline_only => Err(AppError::Unauthorized(LOJA_OFFLINE_MSG.to_string())),
         0 => Err(AppError::Unauthorized("invalid credentials".to_string())),
         1 => {
             let (id, name, tenant_id, slug) = matches.remove(0);

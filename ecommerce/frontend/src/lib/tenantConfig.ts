@@ -15,6 +15,8 @@ import { fetchWithTimeout } from './fetchTimeout'
 export interface TenantConfig {
   slug: string
   loja_nome: string
+  /** False when Resolutoo has no active subscription for this slug (cancelado / offline). */
+  ativa: boolean
   plano: 'essential' | 'management' | 'premium'
   vender_externamente: boolean
   whatsapp_habilitado: boolean
@@ -95,6 +97,7 @@ export function deliveryPixOnlyError(
 const DEFAULT_CONFIG: TenantConfig = {
   slug: '',
   loja_nome: '',
+  ativa: true,
   plano: 'essential',
   vender_externamente: true,
   whatsapp_habilitado: false,
@@ -168,6 +171,31 @@ export function persistTenantSlug(slug: string) {
     localStorage.setItem(SLUG_STORAGE_KEY, s)
   } catch {
     /* ignore */
+  }
+}
+
+export const LOJA_OFFLINE_MSG =
+  'loja offline — assine novamente no Resolutoo pra reativar o painel'
+
+const OFFLINE_MSG_KEY = 'resolutoo_loja_offline_msg'
+
+export function stashLojaOfflineMessage(message?: string | null) {
+  if (typeof sessionStorage === 'undefined') return
+  try {
+    sessionStorage.setItem(OFFLINE_MSG_KEY, (message || LOJA_OFFLINE_MSG).trim() || LOJA_OFFLINE_MSG)
+  } catch {
+    /* ignore */
+  }
+}
+
+export function takeLojaOfflineMessage(): string | null {
+  if (typeof sessionStorage === 'undefined') return null
+  try {
+    const msg = sessionStorage.getItem(OFFLINE_MSG_KEY)
+    sessionStorage.removeItem(OFFLINE_MSG_KEY)
+    return msg?.trim() || null
+  } catch {
+    return null
   }
 }
 
@@ -268,6 +296,8 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     ...DEFAULT_CONFIG,
     ...data,
     slug,
+    // Public tenant-config only returns ativo subscribers — treat as online.
+    ativa: true,
     whatsapp,
     endereco: String(data.endereco ?? '').trim(),
     endereco_numero: String(data.endereco_numero ?? '').trim(),
@@ -349,9 +379,9 @@ async function fetchTenantConfig(slug: string): Promise<TenantConfig> {
   if (fromApi) return fromApi
   // Slug conhecido sem config ativa = loja offline (cancelado / inadimplente).
   // Não cair no DEFAULT (que liberaria vitrine falsa); vender_externamente=false
-  // faz o StyleAware mostrar página indisponível.
+  // faz o StyleAware mostrar página indisponível. `ativa: false` derruba o painel.
   if (slug) {
-    return { ...DEFAULT_CONFIG, slug, vender_externamente: false, loja_nome: '' }
+    return { ...DEFAULT_CONFIG, slug, ativa: false, vender_externamente: false, loja_nome: '' }
   }
   return { ...DEFAULT_CONFIG, slug }
 }

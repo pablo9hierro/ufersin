@@ -75,6 +75,25 @@ pub async fn load_tenant(pool: &PgPool, tenant_id: &str) -> Result<Tenant, AppEr
     .ok_or_else(|| AppError::Internal("tenant not found".to_string()))
 }
 
+/// Reject staff JWTs / sessions when Resolutoo marked the store offline
+/// (`suspenso` / `cancelado` via `/internal/set-tenant-status`).
+pub const LOJA_OFFLINE_MSG: &str =
+    "loja offline — assine novamente no Resolutoo pra reativar o painel";
+
+pub async fn ensure_tenant_active(pool: &PgPool, tenant_id: &str) -> Result<(), AppError> {
+    let status: Option<(String,)> = sqlx::query_as("SELECT status FROM tenants WHERE id = $1")
+        .bind(tenant_id)
+        .fetch_optional(pool)
+        .await?;
+    let Some((status,)) = status else {
+        return Err(AppError::Unauthorized(LOJA_OFFLINE_MSG.to_string()));
+    };
+    if matches!(status.as_str(), "suspenso" | "cancelado") {
+        return Err(AppError::Unauthorized(LOJA_OFFLINE_MSG.to_string()));
+    }
+    Ok(())
+}
+
 pub async fn load_tenant_payment(pool: &PgPool, tenant_id: &str) -> Result<TenantPayment, AppError> {
     sqlx::query_as(
         "SELECT forma_pagamento, plataforma_pagamento, plataforma_credenciais \

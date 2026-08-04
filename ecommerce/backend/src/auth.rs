@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 use crate::state::AppState;
+use crate::tenant;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
@@ -97,6 +98,7 @@ impl FromRequestParts<AppState> for AdminUser {
         if claims.role != "admin" {
             return Err(AppError::Forbidden("admin role required".to_string()));
         }
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
         Ok(AdminUser(claims))
     }
 }
@@ -228,7 +230,10 @@ pub async fn lookup_session_token(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    subject.ok_or_else(|| AppError::Unauthorized("invalid or expired session".to_string()))
+    let (subject_id, tenant_id) =
+        subject.ok_or_else(|| AppError::Unauthorized("invalid or expired session".to_string()))?;
+    tenant::ensure_tenant_active(pool, &tenant_id).await?;
+    Ok((subject_id, tenant_id))
 }
 
 /// Extractor: JWT with role admin **or** vendedor (PDV shared surface).
@@ -245,6 +250,7 @@ impl FromRequestParts<AppState> for PdvUser {
         if claims.role != "admin" && claims.role != "vendedor" {
             return Err(AppError::Forbidden("admin or vendedor role required".to_string()));
         }
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
         Ok(PdvUser(claims))
     }
 }
@@ -263,6 +269,7 @@ impl FromRequestParts<AppState> for MotoboyUser {
         if claims.role != "motoboy" {
             return Err(AppError::Forbidden("motoboy role required".to_string()));
         }
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
         Ok(MotoboyUser(claims))
     }
 }

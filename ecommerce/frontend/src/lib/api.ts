@@ -7,7 +7,7 @@ import { localApi } from './localApi'
 import { supabasePublicApi } from './supabasePublicApi'
 import { supabase } from './supabaseClient'
 import { fetchWithTimeout } from './fetchTimeout'
-import { resolveTenantSlug } from './tenantConfig'
+import { resolveTenantSlug, stashLojaOfflineMessage } from './tenantConfig'
 import type {
   BadgesSettings,
   BgSettings,
@@ -106,11 +106,12 @@ async function request<T>(
     } catch {
       // resposta sem corpo JSON
     }
-    // JWT Railway inválido/expirado: limpa sessão local. O shell do admin
-    // só checa se o token existe no localStorage — sem isso o lojista fica
-    // preso em telas tipo /financeiro com "invalid or expired token".
+    // JWT Railway inválido/expirado/loja offline: limpa sessão local. O shell
+    // do admin só checa se o token existe no localStorage — sem isso o lojista
+    // fica preso em telas tipo /financeiro com "invalid or expired token".
     // Em demo pública o token é mock local — nunca derrubar pra /admin/login.
     if (res.status === 401 && path.startsWith('/api/admin') && !isDemoModeActive()) {
+      if (/loja offline/i.test(message)) stashLojaOfflineMessage(message)
       useAdminAuth.getState().logout()
     }
     throw new ApiError(res.status, message)
