@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Check, Copy, CreditCard, ExternalLink, Loader2, QrCode, Rocket, Tag } from 'lucide-react'
+import { Check, Copy, CreditCard, ExternalLink, Loader2, QrCode, Rocket, Tag, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   api,
@@ -19,6 +19,22 @@ import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlanMap, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
 
 type PayStep = 'form' | 'pix' | 'card' | 'done'
+
+function hasPixQr(c: AssinaturaCriada | null | undefined): boolean {
+  return Boolean(c?.pix_qr_code?.trim() || c?.pix_qr_base64?.trim())
+}
+
+function payStepFromCharge(result: AssinaturaCriada, preferred: MetodoPagamento): PayStep {
+  if (hasPixQr(result) || result.payment_step === 'pix') {
+    // Only enter Pix UI when QR payload exists — never infinite "Gerando QR".
+    if (hasPixQr(result)) return 'pix'
+    return preferred === 'cartao' ? 'card' : 'form'
+  }
+  if (result.payment_step === 'card' || preferred === 'cartao' || preferred === 'cartao_parcelado') {
+    return 'card'
+  }
+  return 'card'
+}
 
 export default function Assinar() {
   const [searchParams] = useSearchParams()
@@ -50,6 +66,8 @@ export default function Assinar() {
   const [charge, setCharge] = useState<AssinaturaCriada | null>(null)
   const [copied, setCopied] = useState(false)
   const [simulating, setSimulating] = useState(false)
+  const [switchingMethod, setSwitchingMethod] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   const [cardNumber, setCardNumber] = useState('')
   const [cardHolder, setCardHolder] = useState('')
@@ -64,9 +82,27 @@ export default function Assinar() {
     api.getPandadocStatus().then(setPandadocStatus).catch(() => {})
   }, [])
 
+  // Prefill public Mercado Pago sandbox test card; clear when not sandbox.
+  useEffect(() => {
+    if (payStep !== 'card') return
+    if (charge?.sandbox) {
+      setCardNumber('5031 4332 1540 6351')
+      setCardHolder('APRO')
+      setExpMonth('11')
+      setExpYear('2030')
+      setCvv('123')
+      return
+    }
+    setCardNumber('')
+    setCardHolder('')
+    setExpMonth('')
+    setExpYear('')
+    setCvv('')
+  }, [payStep, charge?.sandbox])
+
   // Poll while Pix QR is on screen — activate when MP / simulate confirms.
   useEffect(() => {
-    if (payStep !== 'pix' || !charge?.id) return
+    if (payStep !== 'pix' || !charge?.id || !hasPixQr(charge)) return
     let cancelled = false
     const tick = () => {
       if (cancelled) return
@@ -89,7 +125,7 @@ export default function Assinar() {
       cancelled = true
       window.clearInterval(t)
     }
-  }, [payStep, charge?.id, navigate])
+  }, [payStep, charge?.id, charge?.pix_qr_code, charge?.pix_qr_base64, navigate])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -166,6 +202,31 @@ export default function Assinar() {
     }
   }
 
+  const applyCharge = (result: AssinaturaCriada, preferred: MetodoPagamento) => {
+    setCharge(result)
+    setMetodo(preferred === 'pix' ? 'pix' : 'cartao')
+    const step = payStepFromCharge(result, preferred)
+    if (preferred === 'pix' && step !== 'pix') {
+      setError('Não foi possível gerar o QR Pix. Tente novamente ou pague com cartão.')
+      setPayStep(step === 'form' ? 'form' : 'card')
+      return
+    }
+    setPayStep(step)
+  }
+
+  const startOrRefreshCharge = async (nextMetodo: MetodoPagamento) => {
+    const code = cupom.trim().toUpperCase()
+    // When already pending, omit cupom so BE reuses valor_mensal (no double redeem).
+    const omitCupom = Boolean(charge?.id)
+    const result = await api.assinarPlano({
+      plano,
+      metodo: nextMetodo,
+      ciclo,
+      ...(!omitCupom && code ? { cupom: code } : {}),
+    })
+    applyCharge(result, nextMetodo)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -195,25 +256,60 @@ export default function Assinar() {
         }
       }
 
-      const code = cupom.trim().toUpperCase()
-      const result = await api.assinarPlano({
-        plano,
-        metodo,
-        ciclo,
-        ...(code ? { cupom: code } : {}),
-      })
-
-      // Never redirect to mercadopago.com.br — always stay on resolutoo.com.
-      setCharge(result)
-      if (metodo === 'pix' || result.payment_step === 'pix' || result.pix_qr_code) {
-        setPayStep('pix')
-      } else {
-        setPayStep('card')
-      }
+      await startOrRefreshCharge(metodo)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível iniciar a assinatura. Tente novamente.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSwitchMethod = async (next: MetodoPagamento) => {
+    if (switchingMethod || payingCard || simulating || cancelling) return
+    if ((next === 'pix' && payStep === 'pix') || (next === 'cartao' && payStep === 'card')) return
+    setError(null)
+    setSwitchingMethod(true)
+    try {
+      await startOrRefreshCharge(next)
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : next === 'pix'
+            ? 'Não foi possível gerar o Pix. Tente novamente.'
+            : 'Não foi possível abrir o pagamento com cartão.',
+      )
+    } finally {
+      setSwitchingMethod(false)
+    }
+  }
+
+  const handleCancelPayment = async () => {
+    if (cancelling || switchingMethod || payingCard) return
+    setError(null)
+    setCancelling(true)
+    try {
+      try {
+        await api.cancelarPendente()
+      } catch (err) {
+        // Already cleared / not pending — still leave pay UI.
+        if (!(err instanceof ApiError && (err.status === 400 || err.status === 404))) {
+          throw err
+        }
+      }
+      setCharge(null)
+      setPayStep('form')
+      setCopied(false)
+      setCardNumber('')
+      setCardHolder('')
+      setExpMonth('')
+      setExpYear('')
+      setCvv('')
+      setAutoDebit(false)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível cancelar o pagamento.')
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -262,6 +358,8 @@ export default function Assinar() {
       setPayingCard(false)
     }
   }
+
+  const payBusy = switchingMethod || cancelling || simulating || payingCard
 
   return (
     <CmsEditProvider editable={false} content={content}>
@@ -421,6 +519,17 @@ export default function Assinar() {
 
           {payStep === 'pix' && charge && (
             <div className="uf-glass rounded-2xl p-6 space-y-4" data-testid="onsite-pix">
+              <button
+                type="button"
+                disabled={payBusy}
+                onClick={() => handleSwitchMethod('cartao')}
+                className="btn-secondary w-full py-3 text-sm"
+                data-testid="switch-to-card"
+              >
+                {switchingMethod ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                Pagar com cartão
+              </button>
+
               <h2 className="font-bold text-lg flex items-center gap-2">
                 <QrCode className="w-5 h-5" /> Pague com Pix
               </h2>
@@ -428,36 +537,78 @@ export default function Assinar() {
                 Escaneie o QR ou copie o código. Pagamento permanece em resolutoo.com — sem redirecionar ao Mercado
                 Pago.
               </p>
-              <div className="flex justify-center bg-white rounded-2xl p-4">
-                {charge.pix_qr_base64 ? (
-                  <img src={charge.pix_qr_base64} alt="QR Pix" className="w-48 h-48 object-contain" />
-                ) : charge.pix_qr_code ? (
-                  <QRCodeSVG value={charge.pix_qr_code} size={192} />
-                ) : (
-                  <p className="text-sm text-uf-black p-4">Gerando QR…</p>
-                )}
-              </div>
-              {charge.pix_qr_code && (
-                <button type="button" onClick={handleCopyPix} className="btn-secondary w-full py-3 text-sm">
-                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  {copied ? 'Copiado!' : 'Copiar código Pix'}
-                </button>
+
+              {hasPixQr(charge) ? (
+                <>
+                  <div className="flex justify-center bg-white rounded-2xl p-4">
+                    {charge.pix_qr_base64 ? (
+                      <img src={charge.pix_qr_base64} alt="QR Pix" className="w-48 h-48 object-contain" />
+                    ) : (
+                      <QRCodeSVG value={charge.pix_qr_code!} size={192} />
+                    )}
+                  </div>
+                  {charge.pix_qr_code && (
+                    <button type="button" onClick={handleCopyPix} className="btn-secondary w-full py-3 text-sm">
+                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                      {copied ? 'Copiado!' : 'Copiar código Pix'}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-red-400">
+                    QR Pix indisponível. Gere novamente ou pague com cartão.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={payBusy}
+                    onClick={() => handleSwitchMethod('pix')}
+                    className="btn-primary w-full py-3 text-sm"
+                  >
+                    {switchingMethod ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+                    Gerar QR Pix novamente
+                  </button>
+                </div>
               )}
-              {sandbox && (
+
+              {sandbox && hasPixQr(charge) && (
                 <div className="space-y-2 pt-2 border-t border-white/10">
                   <p className="text-xs text-amber-300/90">Homologação — nenhum valor real será cobrado.</p>
-                  <button type="button" onClick={handleSimulate} disabled={simulating} className="btn-primary w-full py-3">
+                  <button type="button" onClick={handleSimulate} disabled={simulating || payBusy} className="btn-primary w-full py-3">
                     {simulating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                     Simular pagamento
                   </button>
                 </div>
               )}
+
               {error && <p className="error-msg">{error}</p>}
+
+              <button
+                type="button"
+                disabled={payBusy}
+                onClick={handleCancelPayment}
+                className="w-full py-3 text-sm rounded-xl border border-white/15 text-uf-silver-dim hover:text-uf-silver hover:border-white/30 transition-colors flex items-center justify-center gap-2"
+                data-testid="cancel-payment"
+              >
+                {cancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                Cancelar
+              </button>
             </div>
           )}
 
           {payStep === 'card' && (
             <form onSubmit={handlePayCard} className="uf-glass rounded-2xl p-6 space-y-4" data-testid="onsite-card">
+              <button
+                type="button"
+                disabled={payBusy}
+                onClick={() => handleSwitchMethod('pix')}
+                className="btn-secondary w-full py-3 text-sm"
+                data-testid="switch-to-pix"
+              >
+                {switchingMethod ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+                Pagar com Pix
+              </button>
+
               <h2 className="font-bold text-lg flex items-center gap-2">
                 <CreditCard className="w-5 h-5" /> Pagamento com cartão
               </h2>
@@ -545,7 +696,7 @@ export default function Assinar() {
               </label>
 
               {sandbox && (
-                <button type="button" onClick={handleSimulate} disabled={simulating} className="btn-secondary w-full py-3 text-sm">
+                <button type="button" onClick={handleSimulate} disabled={simulating || payBusy} className="btn-secondary w-full py-3 text-sm">
                   {simulating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Simular pagamento (sandbox)
                 </button>
@@ -553,9 +704,20 @@ export default function Assinar() {
 
               {error && <p className="error-msg">{error}</p>}
 
-              <button type="submit" disabled={payingCard} className="btn-primary w-full py-3.5">
+              <button type="submit" disabled={payingCard || payBusy} className="btn-primary w-full py-3.5">
                 {payingCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
                 Pagar R$ {formatBRL(charge?.valor_cobrado ?? charged)}
+              </button>
+
+              <button
+                type="button"
+                disabled={payBusy}
+                onClick={handleCancelPayment}
+                className="w-full py-3 text-sm rounded-xl border border-white/15 text-uf-silver-dim hover:text-uf-silver hover:border-white/30 transition-colors flex items-center justify-center gap-2"
+                data-testid="cancel-payment"
+              >
+                {cancelling ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                Cancelar
               </button>
             </form>
           )}
