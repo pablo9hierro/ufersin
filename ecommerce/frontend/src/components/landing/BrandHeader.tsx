@@ -4,7 +4,7 @@ import { Heart, History, LogIn, LogOut, Menu, Tag, UserPlus } from 'lucide-react
 import WhatsAppFab from '../WhatsAppFab'
 import CustomerAuthModal from '../CustomerAuthModal'
 import { useCustomerAuth } from '../../store/customerAuth'
-import { brandName } from '../../lib/demoMode'
+import { brandName, storefrontAllowsCoupons } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { persistTenantSlug, resolveTenantSlug } from '../../lib/tenantConfig'
 
@@ -16,6 +16,7 @@ export default function BrandHeader() {
   const navigate = useNavigate()
   const customerAuth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
   const [menuOpen, setMenuOpen] = useState(false)
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null)
 
@@ -60,19 +61,23 @@ export default function BrandHeader() {
                         <p className="sunset-menu-label">Favoritos</p>
                       </li>
                     </ul>
-                    <div className="sunset-menu-separator" />
-                    <ul className="sunset-menu-list">
-                      <li
-                        className="sunset-menu-item"
-                        onClick={() => {
-                          setMenuOpen(false)
-                          navigate('/cliente/cupons')
-                        }}
-                      >
-                        <Tag />
-                        <p className="sunset-menu-label">Cupons</p>
-                      </li>
-                    </ul>
+                    {couponsEnabled && (
+                      <>
+                        <div className="sunset-menu-separator" />
+                        <ul className="sunset-menu-list">
+                          <li
+                            className="sunset-menu-item"
+                            onClick={() => {
+                              setMenuOpen(false)
+                              navigate('/cliente/cupons')
+                            }}
+                          >
+                            <Tag />
+                            <p className="sunset-menu-label">Cupons</p>
+                          </li>
+                        </ul>
+                      </>
+                    )}
                     <div className="sunset-menu-separator" />
                     <ul className="sunset-menu-list">
                       <li

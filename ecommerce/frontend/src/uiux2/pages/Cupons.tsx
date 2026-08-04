@@ -10,6 +10,8 @@ import EmptyState from '../components/EmptyState'
 import CouponSlot from '../../components/coupon/CouponSlot'
 import CouponTicket from '../../components/CouponTicket'
 import CouponHistoryTicket from '../../components/CouponHistoryTicket'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { storefrontAllowsCoupons } from '../../lib/demoMode'
 
 type Tab = 'ativos' | 'inativos' | 'historico'
 // idle: nada acontecendo, slot em loop (quando existe cupom pendente).
@@ -21,6 +23,8 @@ type RevealStage = 'idle' | 'pulling' | 'revealed' | 'claiming'
 
 export default function Uiux2Cupons() {
   const { token } = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
   const [tab, setTab] = useState<Tab>('ativos')
   const [data, setData] = useState<CustomerCoupons | null>(null)
   const [loading, setLoading] = useState(true)
@@ -31,12 +35,12 @@ export default function Uiux2Cupons() {
   const [revealError, setRevealError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!token) return
+    if (!token || !couponsEnabled) return
     couponService.listMine(token).then(setData).finally(() => setLoading(false))
-  }, [token])
+  }, [token, couponsEnabled])
 
   const checkHasClaimable = () => {
-    if (!token) return
+    if (!token || !couponsEnabled) return
     couponService.hasClaimable(token).then(setHasClaimable).catch(() => setHasClaimable(false))
   }
   useEffect(checkHasClaimable, [token])
@@ -119,6 +123,7 @@ export default function Uiux2Cupons() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, data])
 
+  if (!couponsEnabled) return <Navigate to="/" replace />
   if (!token) return <Navigate to="/catalogo" replace />
 
   const items = data

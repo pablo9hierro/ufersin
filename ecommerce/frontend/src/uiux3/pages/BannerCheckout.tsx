@@ -14,6 +14,7 @@ import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, Sh
 import { useBannerCart } from '../../store/bannerCart'
 import { useCustomer } from '../../store/customer'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { storefrontAllowsCoupons } from '../../lib/demoMode'
 import { deliveryPixOnlyError, tenantHasOnlinePix} from '../../lib/tenantConfig'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
@@ -39,6 +40,7 @@ export default function Uiux3BannerCheckout() {
   const bannerCart = useBannerCart()
   const customer = useCustomer()
   const tenantConfig = useTenantConfig()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
 
   const [promotion, setPromotion] = useState<Promotion | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -333,6 +335,7 @@ export default function Uiux3BannerCheckout() {
             )}
           </div>
 
+          {couponsEnabled && (
           <div>
             <label className="text-xs font-semibold u3-dim">Cupom de desconto (se a promoção aceitar)</label>
             {appliedCoupon ? (
@@ -361,6 +364,7 @@ export default function Uiux3BannerCheckout() {
             )}
             {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
           </div>
+          )}
 
           <div className="u3-panel px-4 py-4 space-y-1.5 text-sm">
             <div className="flex justify-between u3-dim">

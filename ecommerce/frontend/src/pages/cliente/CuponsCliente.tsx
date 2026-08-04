@@ -11,6 +11,8 @@ import { ApiError } from '../../lib/apiError'
 import { couponService } from '../../services/couponService'
 import type { ClaimedCoupon, CustomerCoupons } from '../../types'
 import { useCustomerAuth } from '../../store/customerAuth'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { storefrontAllowsCoupons } from '../../lib/demoMode'
 
 type Tab = 'ativos' | 'inativos' | 'historico'
 // idle: botão em loop esperando toque. pulling: acabou de tocar, modal
@@ -22,6 +24,8 @@ type RevealStage = 'idle' | 'pulling' | 'revealed' | 'claiming'
 
 export default function CuponsCliente() {
   const { token } = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
   const [tab, setTab] = useState<Tab>('ativos')
   const [data, setData] = useState<CustomerCoupons | null>(null)
   const [loading, setLoading] = useState(true)
@@ -137,6 +141,7 @@ export default function CuponsCliente() {
       })
   }
 
+  if (!couponsEnabled) return <Navigate to="/" replace />
   if (!token) return <Navigate to="/" replace />
 
   // Os 3 tabs (ativos/inativos/histórico) agora compartilham o mesmo

@@ -16,6 +16,7 @@ import EmptyState from '../components/EmptyState'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
+import { storefrontAllowsCoupons } from '../../lib/demoMode'
 import { deliveryPixOnlyError, resolveTenantSlug, tenantHasOnlinePix } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 import LocationPicker from '../../components/checkout/LocationPicker'
@@ -44,6 +45,7 @@ export default function Uiux4Checkout() {
   const customerAuth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
   const { data: storeStatus } = useStoreStatus()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
 
   const [products, setProducts] = useState<Product[]>([])
   const [productsReady, setProductsReady] = useState(false)
@@ -433,6 +435,7 @@ export default function Uiux4Checkout() {
             )}
           </div>
 
+          {couponsEnabled && (
           <div>
             <label className="text-xs font-semibold u4-dim">Cupom de desconto (opcional)</label>
             {appliedCoupon ? (
@@ -492,6 +495,7 @@ export default function Uiux4Checkout() {
             )}
             {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
           </div>
+          )}
 
           <div className="u4-input px-4 py-4 space-y-1.5 text-sm">
             <div className="flex justify-between u4-dim">

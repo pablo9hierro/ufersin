@@ -15,6 +15,7 @@ import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, Sh
 import { useBannerCart } from '../store/bannerCart'
 import { useCustomer } from '../store/customer'
 import { useTenantConfig } from '../hooks/useTenantConfig'
+import { storefrontAllowsCoupons } from '../lib/demoMode'
 import { deliveryPixOnlyError, tenantHasOnlinePix} from '../lib/tenantConfig'
 import CashAmountInput from '../components/CashAmountInput'
 import { cashCoversTotal } from '../lib/cashMask'
@@ -36,6 +37,7 @@ export default function BannerCheckout() {
   const bannerCart = useBannerCart()
   const customer = useCustomer()
   const tenantConfig = useTenantConfig()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
 
   const [promotion, setPromotion] = useState<Promotion | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -374,6 +376,7 @@ export default function BannerCheckout() {
             )}
           </div>
 
+          {couponsEnabled && (
           <div>
             <label className="label">Cupom de desconto (se a promoção aceitar)</label>
             {appliedCoupon ? (
@@ -407,6 +410,7 @@ export default function BannerCheckout() {
             )}
             {couponError && <p className="error-msg mt-1">{couponError}</p>}
           </div>
+          )}
 
           <div className="border-t border-white/10 pt-4 space-y-1 text-sm">
             <div className="flex justify-between text-son-silver-dim font-medium">

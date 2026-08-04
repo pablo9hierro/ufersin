@@ -128,6 +128,11 @@ export function isEssentialStorefront(tenantPlano?: PlanoCode | null): boolean {
   return storefrontPlano(tenantPlano) === 'essential'
 }
 
+/** Cupons (checkout + /cliente/cupons): Management/Premium. Essential não gera cupons. */
+export function storefrontAllowsCoupons(tenantPlano?: PlanoCode | null): boolean {
+  return !isEssentialStorefront(tenantPlano)
+}
+
 /**
  * Nome da marca na vitrine/admin.
  * - Demo pública → Ufersin

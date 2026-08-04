@@ -19,6 +19,7 @@ import EmptyState from '../components/EmptyState'
 import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
+import { storefrontAllowsCoupons } from '../../lib/demoMode'
 import { deliveryPixOnlyError, resolveTenantSlug, tenantHasOnlinePix } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 import CashAmountInput from '../../components/CashAmountInput'
@@ -44,6 +45,7 @@ export default function Uiux3Checkout() {
   const customerAuth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
   const { data: storeStatus } = useStoreStatus()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
 
   const [products, setProducts] = useState<Product[]>([])
   const [productsReady, setProductsReady] = useState(false)
@@ -473,6 +475,7 @@ export default function Uiux3Checkout() {
             )}
           </div>
 
+          {couponsEnabled && (
           <div>
             <label className="text-xs font-semibold u3-dim">Cupom de desconto (opcional)</label>
             {appliedCoupon && appliedCoupon.code === autoPromoCode ? (
@@ -547,6 +550,7 @@ export default function Uiux3Checkout() {
             )}
             {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
           </div>
+          )}
 
           <div className="u3-panel px-4 py-4 space-y-1.5 text-sm">
             {lines.map((l) => (

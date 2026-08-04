@@ -17,7 +17,7 @@ import { useCart } from '../store/cart'
 import { useCustomer } from '../store/customer'
 import { useCustomerAuth } from '../store/customerAuth'
 import CustomerAuthModal from '../components/CustomerAuthModal'
-import { isDemoModeActive } from '../lib/demoMode'
+import { isDemoModeActive, storefrontAllowsCoupons } from '../lib/demoMode'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import { useStoreStatus } from '../hooks/useStoreStatus'
 import { deliveryPixOnlyError, resolveTenantSlug, tenantHasOnlinePix } from '../lib/tenantConfig'
@@ -49,6 +49,7 @@ export default function Checkout() {
   const customer = useCustomer()
   const customerAuth = useCustomerAuth()
   const tenantConfig = useTenantConfig()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
   const { data: storeStatus } = useStoreStatus()
   const [aceiteCompraNormal, setAceiteCompraNormal] = useState(false)
   const [aceiteMais18, setAceiteMais18] = useState(false)
@@ -621,6 +622,7 @@ export default function Checkout() {
             )}
           </div>
 
+          {couponsEnabled && (
           <div>
             <label className="label">Cupom de desconto (opcional)</label>
             {appliedCoupon && appliedCoupon.code === autoCoupon?.code ? (
@@ -753,6 +755,7 @@ export default function Checkout() {
             )}
             {couponError && <p className="error-msg mt-1">{couponError}</p>}
           </div>
+          )}
 
           <div className="bg-son-black/70 border border-white/10 rounded-2xl pt-4 px-4 pb-4 space-y-1 text-sm">
             {lines.map((l) => {

@@ -10,6 +10,7 @@ import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, Sh
 import { useBannerCart } from '../../store/bannerCart'
 import { useCustomer } from '../../store/customer'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { storefrontAllowsCoupons } from '../../lib/demoMode'
 import { deliveryPixOnlyError, tenantHasOnlinePix} from '../../lib/tenantConfig'
 import LocationPicker from '../../components/checkout/LocationPicker'
 import PickupOnlyNotice from '../../components/checkout/PickupOnlyNotice'
@@ -38,6 +39,7 @@ export default function Uiux2BannerCheckout() {
   const bannerCart = useBannerCart()
   const customer = useCustomer()
   const tenantConfig = useTenantConfig()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
 
   const [promotion, setPromotion] = useState<Promotion | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -319,6 +321,7 @@ export default function Uiux2BannerCheckout() {
             )}
           </div>
 
+          {couponsEnabled && (
           <div>
             <label className="text-xs font-semibold u2-dim">Cupom de desconto (se a promoção aceitar)</label>
             {appliedCoupon ? (
@@ -347,6 +350,7 @@ export default function Uiux2BannerCheckout() {
             )}
             {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
           </div>
+          )}
 
           <div className="u2-surface px-4 py-4 space-y-1.5 text-sm">
             <div className="flex justify-between u2-dim">

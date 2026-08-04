@@ -5,7 +5,7 @@ import { useCart } from '../../store/cart'
 import { useCustomerAuth } from '../../store/customerAuth'
 import CartFab from '../../components/CartFab'
 import AuthModal from './AuthModal'
-import { brandName } from '../../lib/demoMode'
+import { brandName, storefrontAllowsCoupons } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { persistTenantSlug, resolveTenantSlug } from '../../lib/tenantConfig'
 
@@ -18,6 +18,8 @@ import { persistTenantSlug, resolveTenantSlug } from '../../lib/tenantConfig'
 function AccountMenu({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate()
   const auth = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null)
 
   const go = (path: string) => {
@@ -36,11 +38,13 @@ function AccountMenu({ onClose }: { onClose: () => void }) {
                 <Heart className="w-4 h-4 u4-accent" /> Favoritos
               </button>
             </li>
+            {couponsEnabled && (
             <li>
               <button onClick={() => go('/cliente/cupons')} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-medium">
                 <Tag className="w-4 h-4 u4-accent" /> Cupons
               </button>
             </li>
+            )}
             <li>
               <button onClick={() => go('/cliente/historico')} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-medium">
                 <History className="w-4 h-4 u4-accent" /> Histórico de pedidos

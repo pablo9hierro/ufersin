@@ -10,6 +10,7 @@ import type { CouponPreview, DiscountType, PaymentMethod, Product, Promotion, Sh
 import { useBannerCart } from '../../store/bannerCart'
 import { useCustomer } from '../../store/customer'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { storefrontAllowsCoupons } from '../../lib/demoMode'
 import { deliveryPixOnlyError, tenantHasOnlinePix} from '../../lib/tenantConfig'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
@@ -38,6 +39,7 @@ export default function Uiux4BannerCheckout() {
   const bannerCart = useBannerCart()
   const customer = useCustomer()
   const tenantConfig = useTenantConfig()
+  const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
 
   const [promotion, setPromotion] = useState<Promotion | null>(null)
   const [products, setProducts] = useState<Product[]>([])
@@ -308,6 +310,7 @@ export default function Uiux4BannerCheckout() {
             )}
           </div>
 
+          {couponsEnabled && (
           <div>
             <label className="text-xs font-semibold u4-dim">Cupom de desconto (se a promoção aceitar)</label>
             {appliedCoupon ? (
@@ -336,6 +339,7 @@ export default function Uiux4BannerCheckout() {
             )}
             {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
           </div>
+          )}
 
           <div className="u4-input px-4 py-4 space-y-1.5 text-sm">
             <div className="flex justify-between u4-dim">
