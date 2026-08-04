@@ -655,6 +655,53 @@ async fn teardown_store_whatsapp(state: &AppState, slug: &str) -> Result<(), App
     Ok(())
 }
 
+/// Push the lojista's platform Argon2 hash to ecommerce admin for a tenant.
+/// Creates the admin row if missing (same email). Used by Trocar senha and
+/// any future password path so `/loja/admin/login` always matches platform.
+pub async fn sync_ecommerce_admin_password(
+    state: &AppState,
+    slug: &str,
+    admin_email: &str,
+    admin_password_hash: &str,
+    admin_name: Option<&str>,
+) -> Result<(), AppError> {
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Err(AppError::Internal(
+            "ECOMMERCE_INTERNAL_URL/ECOMMERCE_INTERNAL_KEY not configured — não dá pra sincronizar a senha da loja".to_string(),
+        ));
+    }
+    let url = format!(
+        "{}/internal/sync-admin-password",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let mut body = serde_json::json!({
+        "tenant_slug": slug,
+        "admin_email": admin_email,
+        "admin_password_hash": admin_password_hash,
+    });
+    if let Some(name) = admin_name.map(str::trim).filter(|s| !s.is_empty()) {
+        body["admin_name"] = serde_json::json!(name);
+    }
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("sync-admin-password unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        tracing::error!("sync-admin-password failed: {status} {text}");
+        return Err(AppError::Internal(format!(
+            "não foi possível sincronizar a senha do painel da loja (status {status})"
+        )));
+    }
+    Ok(())
+}
+
 /// Sync ecommerce tenant + subscription status without deleting store data.
 /// Maps Resolutoo subscriber status → ecommerce tenant status:
 /// - `ativo` → `ativo`

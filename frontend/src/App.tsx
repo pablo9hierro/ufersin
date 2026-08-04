@@ -8,6 +8,7 @@ import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
 import EsqueciSenha from './pages/EsqueciSenha'
 import RedefinirSenha from './pages/RedefinirSenha'
+import TrocarSenha from './pages/TrocarSenha'
 import VerificarEmail from './pages/VerificarEmail'
 import Planos from './pages/Planos'
 import Assinar from './pages/Assinar'
@@ -39,6 +40,7 @@ export default function App() {
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/esqueci-senha" element={<EsqueciSenha />} />
       <Route path="/redefinir-senha" element={<RedefinirSenha />} />
+      <Route path="/trocar-senha" element={<TrocarSenha />} />
       <Route path="/verificar-email" element={<VerificarEmail />} />
       <Route path="/planos" element={<Planos />} />
       <Route path="/assinar" element={<Assinar />} />

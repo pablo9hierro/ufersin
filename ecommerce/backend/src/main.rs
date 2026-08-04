@@ -391,6 +391,10 @@ async fn main() -> anyhow::Result<()> {
             "/internal/set-tenant-status",
             post(routes::internal::set_tenant_status),
         )
+        .route(
+            "/internal/sync-admin-password",
+            post(routes::internal::sync_admin_password),
+        )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         // Axum's próprio default é 2MB — baixo demais pra banner de campanha

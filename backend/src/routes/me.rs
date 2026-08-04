@@ -3,7 +3,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::auth::AuthSubscriber;
+use crate::auth::{hash_password, AuthSubscriber};
 use crate::coupons;
 use crate::error::AppError;
 use crate::gateway::{self, BillingCycle};
@@ -292,6 +292,76 @@ pub async fn upload_logo(
         return Ok(Json(serde_json::json!({ "url": url })));
     }
     Err(AppError::BadRequest("campo file ausente no upload".to_string()))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MudarSenhaInput {
+    /// Nova senha em texto — hasheada aqui (Argon2) e empurrada pro admin
+    /// da loja. Nunca logada. A sessão Supabase Auth já foi atualizada no
+    /// front; este endpoint só mantém handoff + painel `/loja/admin` em sync.
+    pub senha: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MudarSenhaOutput {
+    pub synced: bool,
+    /// True when the subscriber has no slug yet (loja ainda não provisionada).
+    pub pending_loja: bool,
+}
+
+/// Trocar senha (Meu plano / redefinir): atualiza `subscribers.password_hash`
+/// e sincroniza o admin do ecommerce. Se a loja já existe e o sync falhar,
+/// devolve erro — o front NÃO deve dizer sucesso se o painel da loja não
+/// abrir com a nova senha.
+pub async fn mudar_senha(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<MudarSenhaInput>,
+) -> Result<Json<MudarSenhaOutput>, AppError> {
+    let senha = body.senha.trim();
+    if senha.len() < 8 {
+        return Err(AppError::BadRequest(
+            "a senha precisa ter pelo menos 8 caracteres".to_string(),
+        ));
+    }
+
+    let row: Option<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT email, responsavel_nome, slug FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (email, responsavel_nome, slug) =
+        row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
+
+    let password_hash = hash_password(senha)?;
+    sqlx::query("UPDATE subscribers SET password_hash = $1, updated_at = now() WHERE id = $2")
+        .bind(&password_hash)
+        .bind(&claims.sub)
+        .execute(&state.pool)
+        .await?;
+
+    let Some(slug) = slug.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()) else {
+        // Ainda sem loja — hash fica pronto pro provision no onboarding.
+        return Ok(Json(MudarSenhaOutput {
+            synced: false,
+            pending_loja: true,
+        }));
+    };
+
+    crate::routes::onboarding::sync_ecommerce_admin_password(
+        &state,
+        &slug,
+        email.trim(),
+        &password_hash,
+        Some(responsavel_nome.trim()),
+    )
+    .await?;
+
+    Ok(Json(MudarSenhaOutput {
+        synced: true,
+        pending_loja: false,
+    }))
 }
 
 #[derive(Debug, Deserialize)]

@@ -642,7 +642,7 @@ export default function MeuPlano() {
             Resolutoo
           </Link>
           <div className="flex items-center gap-3">
-            <Link to="/esqueci-senha" className="btn-ghost text-sm hidden sm:inline-flex">
+            <Link to="/trocar-senha" className="btn-ghost text-sm hidden sm:inline-flex">
               Trocar senha
             </Link>
             <button onClick={handleLogout} className="btn-ghost text-sm">

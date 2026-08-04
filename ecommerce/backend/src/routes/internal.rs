@@ -324,3 +324,107 @@ pub async fn set_tenant_status(
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SyncAdminPasswordInput {
+    pub tenant_slug: String,
+    pub admin_email: String,
+    /// Argon2 hash already produced by Resolutoo — plaintext never crosses this hop.
+    pub admin_password_hash: String,
+    #[serde(default)]
+    pub admin_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SyncAdminPasswordOutput {
+    pub created: bool,
+    pub updated: bool,
+}
+
+/// Resolutoo calls this whenever a lojista changes their platform password
+/// (Trocar senha / redefinir senha) so the same credentials open
+/// `/loja/admin/login`. Creates the admin row if provision left it missing.
+pub async fn sync_admin_password(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SyncAdminPasswordInput>,
+) -> Result<Json<SyncAdminPasswordOutput>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+
+    let slug = input.tenant_slug.trim().to_lowercase();
+    let email = input.admin_email.trim();
+    let hash = input.admin_password_hash.trim();
+    if slug.is_empty() || email.is_empty() || hash.is_empty() {
+        return Err(AppError::BadRequest(
+            "tenant_slug, admin_email e admin_password_hash são obrigatórios".to_string(),
+        ));
+    }
+    if !hash.starts_with("$argon2") {
+        return Err(AppError::BadRequest(
+            "admin_password_hash deve ser Argon2".to_string(),
+        ));
+    }
+
+    let tenant: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((tenant_id,)) = tenant else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    let existing: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM admins WHERE tenant_id = $1 AND lower(email) = lower($2)",
+    )
+    .bind(&tenant_id)
+    .bind(email)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if let Some((admin_id,)) = existing {
+        sqlx::query("UPDATE admins SET password_hash = $1 WHERE id = $2")
+            .bind(hash)
+            .bind(&admin_id)
+            .execute(&state.pool)
+            .await?;
+        if let Some(name) = input
+            .admin_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            let _ = sqlx::query("UPDATE admins SET name = $1 WHERE id = $2")
+                .bind(name)
+                .bind(&admin_id)
+                .execute(&state.pool)
+                .await;
+        }
+        return Ok(Json(SyncAdminPasswordOutput {
+            created: false,
+            updated: true,
+        }));
+    }
+
+    let name = input
+        .admin_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Admin");
+    let admin_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO admins (id, tenant_id, email, password_hash, name) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(&admin_id)
+    .bind(&tenant_id)
+    .bind(email)
+    .bind(hash)
+    .bind(name)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(Json(SyncAdminPasswordOutput {
+        created: true,
+        updated: false,
+    }))
+}

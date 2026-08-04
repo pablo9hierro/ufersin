@@ -183,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/me", get(routes::me::me))
         .route("/api/me/plano", post(routes::me::mudar_plano))
+        .route("/api/me/senha", post(routes::me::mudar_senha))
         .route("/api/me/cancelar", post(routes::me::cancelar))
         .route("/api/me/upload-logo", post(routes::me::upload_logo))
         .route(

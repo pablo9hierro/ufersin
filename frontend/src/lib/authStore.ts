@@ -71,6 +71,8 @@ function activeSession(): Session | null {
     }
     if (
       path.startsWith('/meu-plano') ||
+      path.startsWith('/trocar-senha') ||
+      path.startsWith('/redefinir-senha') ||
       path.startsWith('/onboarding') ||
       path.startsWith('/assinar') ||
       path.startsWith('/completar-conta')

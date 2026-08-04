@@ -430,6 +430,12 @@ export const api = {
     fd.append('file', file)
     return request<{ url: string }>('/api/me/upload-logo', { method: 'POST', body: fd })
   },
+  /** Após updateUser no Supabase — sincroniza hash Argon2 + admin da loja. */
+  mudarSenha: (senha: string) =>
+    request<{ synced: boolean; pending_loja: boolean }>('/api/me/senha', {
+      method: 'POST',
+      body: JSON.stringify({ senha }),
+    }),
   mudarPlano: (novo_plano: PlanoCode) =>
     request<{ plano: PlanoCode }>('/api/me/plano', { method: 'POST', body: JSON.stringify({ novo_plano }) }),
   cancelar: (input: CancelarAssinaturaInput) =>
