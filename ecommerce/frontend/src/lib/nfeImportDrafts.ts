@@ -137,6 +137,17 @@ export function isDraftReadyToSave(form: NfeImportForm): string | null {
   if (!Number.isFinite(qty) || qty < 0 || form.quantity.trim() === '') {
     return 'Informe a quantidade em estoque.'
   }
+  const lowStock = Number(form.low_stock_threshold)
+  if (
+    !Number.isFinite(lowStock) ||
+    lowStock < 0 ||
+    form.low_stock_threshold.trim() === ''
+  ) {
+    return 'Informe o alerta de estoque baixo (repor ao chegar em).'
+  }
+  if (!form.category_id.trim()) {
+    return 'Selecione uma categoria.'
+  }
   if (form.cost_price.trim() !== '') {
     const c = Number(form.cost_price)
     if (!Number.isFinite(c) || c < 0) return 'Valor de custo inválido.'

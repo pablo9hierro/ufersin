@@ -113,8 +113,22 @@ describe('nfeImportDrafts helpers', () => {
     const f = emptyNfeForm()
     f.name = 'X'
     f.quantity = '2'
+    f.low_stock_threshold = '5'
+    f.category_id = 'cat1'
     expect(isDraftReadyToSave(f)).toMatch(/preço/i)
     f.price = '19.9'
+    expect(isDraftReadyToSave(f)).toBeNull()
+  })
+
+  it('isDraftReadyToSave exige repor ao chegar em e categoria', () => {
+    const f = emptyNfeForm()
+    f.name = 'X'
+    f.quantity = '2'
+    f.price = '19.9'
+    expect(isDraftReadyToSave(f)).toMatch(/estoque baixo|repor/i)
+    f.low_stock_threshold = '3'
+    expect(isDraftReadyToSave(f)).toMatch(/categoria/i)
+    f.category_id = 'cat1'
     expect(isDraftReadyToSave(f)).toBeNull()
   })
 
@@ -123,6 +137,8 @@ describe('nfeImportDrafts helpers', () => {
     f.name = 'X'
     f.quantity = '2'
     f.price = '10'
+    f.low_stock_threshold = '5'
+    f.category_id = 'cat1'
     f.unit = 'pacote'
     expect(isDraftReadyToSave(f)).toMatch(/pacote/i)
     f.package_qty = '12'

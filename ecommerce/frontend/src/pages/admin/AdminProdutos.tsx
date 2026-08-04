@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Barcode, FileUp, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import BarcodePreview from '../../components/admin/BarcodePreview'
+import CategorySelectField from '../../components/admin/CategorySelectField'
 import PackageUnitFields from '../../components/admin/PackageUnitFields'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
@@ -121,6 +122,15 @@ export default function AdminProdutos() {
   }
 
   const save = async () => {
+    const lowStock = Number(form.low_stock_threshold)
+    if (
+      !Number.isFinite(lowStock) ||
+      lowStock < 0 ||
+      form.low_stock_threshold.trim() === ''
+    ) {
+      setUploadError('Informe o alerta de estoque baixo (repor ao chegar em).')
+      return
+    }
     if (form.unit === 'pacote') {
       const pq = Number(form.package_qty)
       if (!Number.isFinite(pq) || pq <= 0 || form.package_qty.trim() === '') {
@@ -439,11 +449,13 @@ export default function AdminProdutos() {
                   />
                 </div>
                 <div>
-                  <label className="label">Repor ao chegar em</label>
+                  <label className="label">
+                    Repor ao chegar em <span className="text-amber-400">*</span>
+                  </label>
                   <input
-                    className="input-field"
+                    className="input-field border-amber-500/40"
                     type="number"
-                    placeholder="Opcional"
+                    placeholder="Obrigatório"
                     value={form.low_stock_threshold}
                     onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })}
                   />
@@ -451,18 +463,20 @@ export default function AdminProdutos() {
               </div>
               <div>
                 <label className="label">Categoria</label>
-                <select
+                <CategorySelectField
                   className="input-field"
+                  emptyLabel="Sem categoria"
+                  categories={categories}
                   value={form.category_id}
-                  onChange={(e) => setForm({ ...form, category_id: e.target.value })}
-                >
-                  <option value="">Sem categoria</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(category_id) => setForm({ ...form, category_id })}
+                  onCreateCategory={async (name) => {
+                    const created = await adminService.categories.create(name)
+                    setCategories((prev) =>
+                      prev.some((c) => c.id === created.id) ? prev : [...prev, created]
+                    )
+                    return created
+                  }}
+                />
               </div>
               <PackageUnitFields
                 value={{
