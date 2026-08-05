@@ -129,10 +129,14 @@ pub async fn create_pix_charge(
         mask_token_for_log(access_token)
     );
 
+    // Mercado Pago valida o e-mail contra domínio de verdade — ".local" é
+    // pseudo-TLD reservado (RFC 6762, mDNS) e é recusado com "payer.email
+    // must be a valid email" mesmo com formato sintático correto. Usa o
+    // domínio real do produto pra nunca cair nessa rejeição.
     let email = customer_email
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .unwrap_or("cliente@resolutoo.local");
+        .unwrap_or("cliente@resolutoo.com");
     // Mercado Pago valida first_name/last_name como campos separados —
     // mandar só first_name (como antes) é rejeitado em produção.
     let (first_name, last_name) = split_payer_name(customer_name);
