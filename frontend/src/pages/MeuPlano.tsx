@@ -272,14 +272,26 @@ export default function MeuPlano() {
     return () => window.clearTimeout(id)
   }, [loading, tab, hasCredenciais])
 
-  if (!ready || loading) {
+  if (!ready) {
     return (
       <main className="min-h-screen bg-uf-black flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
       </main>
     )
   }
+  // Precisa vir ANTES do check de `loading`: o efeito acima faz `return`
+  // sem nunca chamar `setLoading(false)` quando `!isAuthenticated` (não há
+  // nada pra buscar) -- checar `loading` primeiro deixava a tela presa num
+  // spinner pra sempre em vez de redirecionar pro /login (ex.: revisitar
+  // /meu-plano depois de deslogar).
   if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-uf-black flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+      </main>
+    )
+  }
   if (!me) {
     return (
       <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 text-center">
