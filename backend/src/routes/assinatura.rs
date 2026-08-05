@@ -467,12 +467,17 @@ pub async fn activate_paid_subscriber(
     let novo_onboarding =
         onboarding_after_activate(onboarding_status, subscriber_has_store(slug, tenant_id));
 
+    // "cancelado" incluído: sem isso, lojista que cancelou e assinou de novo
+    // tinha o pagamento aprovado pela Mercado Pago mas o UPDATE não batia
+    // linha nenhuma (status ficava travado em "cancelado" pra sempre, sem
+    // erro nenhum) — /api/me nunca reportava ativo, então o site nunca
+    // redirecionava pra /onboarding ou /meu-plano depois de pagar de novo.
     if let Some(ext) = payment_external_id.map(str::trim).filter(|s| !s.is_empty()) {
         sqlx::query(
             "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, \
              mp_preapproval_id = COALESCE(NULLIF(trim(mp_preapproval_id), ''), $2), \
              updated_at = now() \
-             WHERE id = $3 AND status IN ('pendente', 'sem_assinatura')",
+             WHERE id = $3 AND status IN ('pendente', 'sem_assinatura', 'cancelado')",
         )
         .bind(novo_onboarding)
         .bind(ext)
@@ -482,7 +487,7 @@ pub async fn activate_paid_subscriber(
     } else {
         sqlx::query(
             "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, updated_at = now() \
-             WHERE id = $2 AND status IN ('pendente', 'sem_assinatura')",
+             WHERE id = $2 AND status IN ('pendente', 'sem_assinatura', 'cancelado')",
         )
         .bind(novo_onboarding)
         .bind(id)
@@ -565,7 +570,10 @@ pub async fn sync_pending_subscription_payment(
         )));
     }
 
-    if !matches!(status_atual.as_str(), "pendente" | "sem_assinatura") {
+    // "cancelado" incluído: lojista que cancelou e assinou de novo precisa
+    // poder reativar por aqui — sem isso, o poll via /assinatuas/{id}/status
+    // nunca via o pagamento aprovado pra quem tinha status=cancelado.
+    if !matches!(status_atual.as_str(), "pendente" | "sem_assinatura" | "cancelado") {
         return Ok(Some((status_atual, onboarding_status)));
     }
 
