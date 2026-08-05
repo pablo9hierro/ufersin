@@ -142,6 +142,23 @@ pub async fn tenant_for_order(pool: &PgPool, order_id: &str) -> Result<Tenant, A
     .ok_or_else(|| AppError::NotFound("order not found".to_string()))
 }
 
+/// E-mail cadastrado pelo lojista no onboarding Resolutoo (`organizations.email`).
+/// Usado como `payer.email` do Pix Mercado Pago: essa API (transparente, sem
+/// redirecionar o cliente pro Mercado Pago) nunca envia nada pro endereço —
+/// é só um campo que a Mercado Pago exige em formato de e-mail real pra
+/// aceitar a cobrança (ver `mercadopago::create_pix_charge`). O comprovante
+/// de verdade pro cliente já vai por WhatsApp, então usar o e-mail do
+/// próprio lojista aqui é seguro e evita pedir e-mail do cliente no balcão.
+pub async fn organization_email_for_tenant(pool: &PgPool, tenant_id: &str) -> Result<Option<String>, AppError> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT o.email FROM organizations o JOIN tenants t ON t.organization_id = o.id WHERE t.id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|(email,)| email).filter(|e| !e.trim().is_empty()))
+}
+
 /// Resolves which tenant a given Evolution API instance name belongs to —
 /// used by the webhook handler, which receives events from every tenant's
 /// instance (and every motoboy's) on one shared endpoint and has to figure

@@ -210,13 +210,14 @@ pub async fn create_pix_payment(
     let (pix, provider) = match payment_cfg.online_provider() {
         Some("mercado_pago") => {
             let token = payment_cfg.mp_access_token().unwrap();
+            let org_email = tenant::organization_email_for_tenant(&state.pool, &store.id).await?;
             let pix = mercadopago::create_pix_charge(
                 &state,
                 token,
                 &store.name,
                 order.total,
                 &order.customer_name,
-                None,
+                org_email.as_deref(),
                 &order.id,
             )
             .await?;
