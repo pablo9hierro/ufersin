@@ -346,6 +346,13 @@ const remoteApi = {
               body: JSON.stringify({ name }),
             })
           : rpc<Category>('admin_create_category', { p_token: adminToken(), p_name: name }),
+      update: (id: string, name: string) =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<Category>(`/api/admin/categories/${id}`, {
+              method: 'PUT',
+              body: JSON.stringify({ name }),
+            })
+          : rpc<Category>('admin_update_category', { p_token: adminToken(), p_id: id, p_name: name }),
       delete: (id: string) =>
         isRailwayAdminJwt()
           ? railwayAdmin<void>(`/api/admin/categories/${id}`, { method: 'DELETE' })

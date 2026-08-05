@@ -22,6 +22,20 @@ use crate::whatsapp;
 
 // ---------- Categories ----------
 
+/// Padroniza nome de categoria: primeira letra maiúscula, resto minúsculo
+/// (ex.: "PABLO" / "pablo" / "PaBLo" -> "Pablo"). Junto com o UNIQUE
+/// (tenant_id, name) já existente, isso barra duplicata por variação de
+/// caixa sem precisar de constraint case-insensitive nova — depois de
+/// normalizado, "PABLO" e "pablo" viram o mesmo texto e colidem sozinhos.
+fn normalize_category_name(name: &str) -> String {
+    let trimmed = name.trim();
+    let mut chars = trimmed.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+        None => String::new(),
+    }
+}
+
 pub async fn list_categories(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
@@ -44,22 +58,23 @@ pub async fn create_category(
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("name is required".to_string()));
     }
+    let name = normalize_category_name(&input.name);
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let id = Uuid::new_v4().to_string();
     sqlx::query("INSERT INTO categories (id, tenant_id, name) VALUES ($1, $2, $3)")
         .bind(&id)
         .bind(&claims.tenant_id)
-        .bind(&input.name)
+        .bind(&name)
         .execute(&mut *tx)
         .await
         .map_err(|e| match e {
             sqlx::Error::Database(db) if db.is_unique_violation() => {
-                AppError::BadRequest("category name already exists".to_string())
+                AppError::BadRequest("essa categoria já existe".to_string())
             }
             other => other.into(),
         })?;
     tx.commit().await?;
-    Ok(Json(Category { id, name: input.name }))
+    Ok(Json(Category { id, name }))
 }
 
 pub async fn update_category(
@@ -68,18 +83,28 @@ pub async fn update_category(
     Path(id): Path<String>,
     Json(input): Json<CategoryInput>,
 ) -> Result<Json<Category>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("name is required".to_string()));
+    }
+    let name = normalize_category_name(&input.name);
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let result = sqlx::query("UPDATE categories SET name = $1 WHERE tenant_id = $2 AND id = $3")
-        .bind(&input.name)
+        .bind(&name)
         .bind(&claims.tenant_id)
         .bind(&id)
         .execute(&mut *tx)
-        .await?;
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(db) if db.is_unique_violation() => {
+                AppError::BadRequest("essa categoria já existe".to_string())
+            }
+            other => other.into(),
+        })?;
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("category not found".to_string()));
     }
     tx.commit().await?;
-    Ok(Json(Category { id, name: input.name }))
+    Ok(Json(Category { id, name }))
 }
 
 pub async fn delete_category(
