@@ -19,12 +19,12 @@ if (!supabaseConfigured) {
 // inerte só pra o módulo carregar; nunca usado pra dado real quando
 // !supabaseConfigured (ver USE_LOCAL_DB em api.ts).
 //
-// Schema dedicado do Ufersin dentro do mesmo projeto Supabase compartilhado
-// — isolado dos schemas de outras lojas. O schema `sunset` (legado externo)
-// nunca deve ser tocado por aqui; ver
-// supabase-ufersin/0000_bootstrap_ufersin_schema.sql pra como o schema
-// `ufersin` foi criado. Só mude via VITE_SUPABASE_SCHEMA se precisar
-// apontar deliberadamente pra outro schema.
+// Schema dedicado da loja dentro do mesmo projeto Supabase compartilhado
+// — isolado dos schemas de outras lojas. Renomeado de `ufersin` pra
+// `resolutoo` (ver supabase/resolutoo-migration/0001_bootstrap_resolutoo_schema.sql);
+// os schemas antigos `sunset`/`ufersin` nunca devem ser tocados por aqui.
+// Só mude via VITE_SUPABASE_SCHEMA se precisar apontar deliberadamente pra
+// outro schema.
 //
 // Auth GoTrue DESLIGADA de propósito: staff da loja usa JWT Railway +
 // Zustand (`resolutoo_loja_admin_auth` etc.). Persistência Auth aqui
@@ -43,7 +43,7 @@ export const supabase: SupabaseClient = createClient(
   url || 'https://placeholder.supabase.co',
   anonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder',
   {
-    db: { schema: import.meta.env.VITE_SUPABASE_SCHEMA || 'ufersin' },
+    db: { schema: import.meta.env.VITE_SUPABASE_SCHEMA || 'resolutoo' },
     auth: {
       persistSession: false,
       autoRefreshToken: false,
