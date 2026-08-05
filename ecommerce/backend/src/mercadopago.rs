@@ -63,6 +63,43 @@ fn split_payer_name(name: &str) -> (String, String) {
     }
 }
 
+/// Masked preview for logs — never the full secret (same idea as the
+/// frontend's `maskMpAccessToken`). `len=0` in the log immediately tells
+/// you the stored credential is empty, without needing the real value.
+fn mask_token_for_log(token: &str) -> String {
+    let len = token.chars().count();
+    if len == 0 {
+        return "<empty>".to_string();
+    }
+    let head: String = token.chars().take(8).collect();
+    format!("{head}...(len={len})")
+}
+
+/// Mercado Pago access tokens are always `APP_USR-...` (production) or
+/// `TEST-...` (sandbox), single-line, no surrounding quotes/whitespace.
+/// Catching an obviously-malformed token HERE — instead of only finding
+/// out from Mercado Pago's generic "authorization value not present" once
+/// it's already too late to give the lojista a clear reason — turns a
+/// silent/confusing failure into something actionable immediately.
+fn validate_mp_token_shape(token: &str) -> Result<(), AppError> {
+    if token.is_empty() {
+        return Err(AppError::BadRequest(
+            "Access Token do Mercado Pago está vazio no cadastro da loja — informe o token de novo em Meu plano → Financeiro.".to_string(),
+        ));
+    }
+    if token.chars().any(|c| c.is_whitespace() || c == '"' || c == '\'') {
+        return Err(AppError::BadRequest(
+            "Access Token do Mercado Pago cadastrado parece corrompido (tem espaço ou aspas) — copie o token de novo do painel do Mercado Pago e salve em Meu plano → Financeiro.".to_string(),
+        ));
+    }
+    if !(token.starts_with("APP_USR-") || token.starts_with("TEST-")) {
+        return Err(AppError::BadRequest(
+            "Access Token do Mercado Pago cadastrado não parece válido (deveria começar com \"APP_USR-\" ou \"TEST-\") — confira e salve de novo em Meu plano → Financeiro.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Creates a Pix charge via `POST /v1/payments` with `payment_method_id=pix`.
 pub async fn create_pix_charge(
     state: &AppState,
@@ -73,6 +110,12 @@ pub async fn create_pix_charge(
     customer_email: Option<&str>,
     external_reference: &str,
 ) -> Result<PixResult, AppError> {
+    validate_mp_token_shape(access_token)?;
+    tracing::info!(
+        "mercado pago create pix: token={} order={external_reference}",
+        mask_token_for_log(access_token)
+    );
+
     let email = customer_email
         .map(str::trim)
         .filter(|s| !s.is_empty())
