@@ -125,10 +125,28 @@ pub async fn connection_status(
     Ok(body)
 }
 
+/// Chamadas concorrentes de várias abas/dispositivos na mesma instância
+/// (cada um com seu próprio poll — ver WhatsAppConnection.tsx) rápido
+/// demais faziam o Evolution API entrar num loop de reinicialização de
+/// canal (ChannelStartupService várias vezes por segundo, sem parar,
+/// confirmado em produção). Menor que o refresh de QR do frontend (25s)
+/// pra não atrapalhar o uso normal — só protege contra rajada.
+const CONNECT_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Creates the given instance if it doesn't exist yet (ignored if it already
-/// does) and returns a fresh QR code / pairing code to scan.
+/// does) and returns a fresh QR code / pairing code to scan. Debounced per
+/// instance (ver `CONNECT_COOLDOWN`) — devolve a última resposta em cache
+/// em vez de bater no Evolution API de novo se chamado rápido demais.
 pub async fn connect(state: &AppState, instance: &str) -> Result<serde_json::Value, crate::error::AppError> {
     require_configured(state)?;
+    {
+        let cache = state.whatsapp_connect_cache.lock().await;
+        if let Some((at, cached)) = cache.get(instance) {
+            if at.elapsed() < CONNECT_COOLDOWN {
+                return Ok(cached.clone());
+            }
+        }
+    }
     let base = state.evolution_api_url.trim_end_matches('/');
 
     let create_result = state
@@ -178,7 +196,13 @@ pub async fn connect(state: &AppState, instance: &str) -> Result<serde_json::Val
         .send()
         .await
         .map_err(|e| crate::error::AppError::Internal(format!("evolution api unreachable: {e}")))?;
-    evolution_json(resp).await
+    let payload = evolution_json(resp).await?;
+    state
+        .whatsapp_connect_cache
+        .lock()
+        .await
+        .insert(instance.to_string(), (std::time::Instant::now(), payload.clone()));
+    Ok(payload)
 }
 
 /// Points the given instance's webhook at this backend's own
@@ -214,6 +238,7 @@ async fn set_webhook(state: &AppState, instance: &str) -> Result<(), crate::erro
 /// so it can reconnect later with a new QR code).
 pub async fn logout(state: &AppState, instance: &str) -> Result<(), crate::error::AppError> {
     require_configured(state)?;
+    state.whatsapp_connect_cache.lock().await.remove(instance);
     let url = format!(
         "{}/instance/logout/{instance}",
         state.evolution_api_url.trim_end_matches('/'),

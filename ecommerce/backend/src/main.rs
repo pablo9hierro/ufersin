@@ -201,6 +201,7 @@ async fn main() -> anyhow::Result<()> {
         supabase_url: Arc::new(supabase_url),
         supabase_service_key: Arc::new(supabase_service_key),
         internal_api_key: Arc::new(internal_api_key),
+        whatsapp_connect_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     // CORS_ORIGINS: comma-separated list of allowed frontend origins. Defaults

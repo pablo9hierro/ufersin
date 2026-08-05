@@ -1,5 +1,8 @@
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
+use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -35,4 +38,15 @@ pub struct AppState {
     /// backend) a chamar POST /internal/provision-tenant — nunca chega ao
     /// navegador, é uma chamada backend-a-backend só.
     pub internal_api_key: Arc<String>,
+    /// Cache curto (por instance name) da última resposta de
+    /// `whatsapp::connect` — várias abas/dispositivos abertos na tela
+    /// "Reconecte o WhatsApp" (cada um com seu próprio poll de 4s/25s, ver
+    /// WhatsAppConnection.tsx) podiam somar chamadas concorrentes a
+    /// `POST /instance/create` + `GET /instance/connect` na MESMA instância
+    /// rápido demais pro Evolution API aguentar — confirmado em produção
+    /// causando um loop de reinicialização de canal várias vezes por
+    /// segundo (ChannelStartupService sem parar), até depois de deletar a
+    /// instância manualmente. Isso colapsa qualquer rajada de chamadas pra
+    /// no máximo 1 chamada real por instância a cada WHATSAPP_CONNECT_COOLDOWN.
+    pub whatsapp_connect_cache: Arc<Mutex<HashMap<String, (Instant, serde_json::Value)>>>,
 }
