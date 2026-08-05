@@ -110,7 +110,7 @@ export const supabasePublicApi = {
     },
   },
   estimateShipping: async (lat: number, lng: number) => {
-    const { data, error } = await supabase.rpc('estimate_shipping', { p_lat: lat, p_lng: lng })
+    const { data, error } = await supabase.rpc('estimate_shipping', { p_lat: lat, p_lng: lng, p_tenant_slug: resolveTenantSlug() })
     if (error) throw new ApiError(400, error.message)
     return data as ShippingEstimate
   },
@@ -162,6 +162,7 @@ export const supabasePublicApi = {
         p_customer_birthdate: payload.customer_birthdate?.trim() || null,
         p_coupon_code: payload.coupon_code || null,
         p_promotion_id: payload.promotion_id || null,
+        p_tenant_slug: resolveTenantSlug(),
       })
       if (error) throw new ApiError(400, error.message)
       return data as Order
