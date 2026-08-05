@@ -16,7 +16,7 @@ import { CmsEditProvider, CmsText, usePlatformContent } from '../lib/cms'
 import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlanMap, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
-import { isPaidActive, postPayDestination, resolvePostPayDestination } from '../lib/postPayRedirect'
+import { resolvePostPayDestination } from '../lib/postPayRedirect'
 
 type PayStep = 'form' | 'pix' | 'card' | 'done'
 
@@ -140,28 +140,6 @@ export default function Assinar() {
         /* lojista */
       })
   }, [isAuthenticated, navigate, session?.user?.email])
-
-  // Assinante já ativo (recarregou a página, ou voltou aqui depois de pagar)
-  // não pode ficar preso no checkout — manda direto pro destino certo.
-  // Sem isso, reativar uma assinatura cancelada e recarregar a página
-  // devolvia o lojista pro formulário de pagamento de novo.
-  useEffect(() => {
-    if (!isAuthenticated) return
-    let cancelled = false
-    api
-      .me()
-      .then((me) => {
-        if (cancelled) return
-        if (!isPaidActive(me.status)) return
-        navigate(postPayDestination(me.onboarding_status, me), { replace: true })
-      })
-      .catch(() => {
-        /* segue pro checkout normal se /api/me falhar */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isAuthenticated, navigate])
 
   const planMap = getPlanMap()
   const plano: PlanoCode | null = planoParam && planMap[planoParam] ? planoParam : null

@@ -11,7 +11,7 @@ export function storeAlreadyExists(me: MeResponse): boolean {
   )
 }
 
-export function isPaidActive(status: string | null | undefined): boolean {
+function isPaidActive(status: string | null | undefined): boolean {
   const s = (status ?? '').trim().toLowerCase()
   return s === 'ativo' || s === 'active' || s === 'authorized'
 }
