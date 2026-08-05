@@ -960,7 +960,7 @@ pub async fn notify_coupon_grant(
     let mut tx = tenant::tenant_tx(&state.pool, &admin.tenant_id).await?;
 
     let coupon: Option<(String, String, Option<String>, Option<f64>, i64)> = sqlx::query_as(
-        "SELECT code, kind, discount_type, discount_value, notify_customers FROM sunset.coupons \
+        "SELECT code, kind, discount_type, discount_value, notify_customers FROM coupons \
          WHERE tenant_id = $1 AND id = $2",
     )
     .bind(&admin.tenant_id)
@@ -989,8 +989,8 @@ pub async fn notify_coupon_grant(
 
     let recipients: Vec<(String, Option<String>)> = sqlx::query_as(
         "SELECT DISTINCT g.customer_whatsapp, c.name
-         FROM sunset.coupon_grants g
-         LEFT JOIN sunset.customers c ON c.whatsapp = g.customer_whatsapp AND c.tenant_id = g.tenant_id
+         FROM coupon_grants g
+         LEFT JOIN customers c ON c.whatsapp = g.customer_whatsapp AND c.tenant_id = g.tenant_id
          WHERE g.tenant_id = $1 AND g.coupon_id = $2",
     )
     .bind(&admin.tenant_id)

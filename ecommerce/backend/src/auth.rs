@@ -221,7 +221,7 @@ pub async fn lookup_session_token(
     roles: &[&str],
 ) -> Result<(String, String), AppError> {
     let subject: Option<(String, String)> = sqlx::query_as(
-        "SELECT subject_id, tenant_id FROM sunset.sessions \
+        "SELECT subject_id, tenant_id FROM sessions \
          WHERE token = $1 AND role = ANY($2) AND expires_at > now()",
     )
     .bind(token)
