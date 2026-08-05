@@ -42,9 +42,9 @@ export default function CompletarConta() {
     setLoggingOut(true)
     try {
       await authStore.signOut('lojista')
-      navigate('/login', { replace: true })
     } finally {
       setLoggingOut(false)
+      navigate('/login', { replace: true })
     }
   }
 

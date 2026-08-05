@@ -175,7 +175,16 @@ export default function MeuPlano() {
       }
 
       try {
-        const [m, ct] = await Promise.all([api.me(), api.listPublicContent(), fetchPlans()])
+        // Só `me` é essencial pra esta tela — CMS/planos são complementares
+        // (usados só pro seletor de troca de plano). Buscar em paralelo mas
+        // sem Promise.all: uma falha em conteúdo/planos (ex.: API Railway
+        // ainda sem migração nova) não pode derrubar o hub inteiro atrás de
+        // "database error" quando o /api/me em si funcionou.
+        const [m, ctResult, plansResult] = await Promise.all([
+          api.me(),
+          api.listPublicContent().catch(() => null),
+          fetchPlans().catch(() => null),
+        ])
         if (cancelled) return
         // Hard lock: incomplete onboarding → /onboarding only (no hub half-state).
         if (needsOnboardingLock(m)) {
@@ -183,8 +192,8 @@ export default function MeuPlano() {
           return
         }
         setMe(m)
-        setContent(contentMap(ct))
-        setPlansLoaded(true)
+        if (ctResult) setContent(contentMap(ctResult))
+        if (plansResult) setPlansLoaded(true)
         setNomeLoja(m.loja_nome ?? '')
         setEndereco(m.endereco ?? '')
         setEnderecoNumero(m.endereco_numero ?? '')
@@ -313,8 +322,11 @@ export default function MeuPlano() {
   const publicUrl = storeSlug ? storePublicUrl(storeSlug) : null
 
   const handleLogout = async () => {
-    await authStore.signOut('lojista')
-    navigate('/')
+    try {
+      await authStore.signOut('lojista')
+    } finally {
+      navigate('/')
+    }
   }
 
   const resetCancelForm = () => {

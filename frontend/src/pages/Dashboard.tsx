@@ -212,8 +212,11 @@ export default function Dashboard() {
   }
 
   const handleLogout = async () => {
-    await authStore.signOut('superadmin')
-    navigate('/')
+    try {
+      await authStore.signOut('superadmin')
+    } finally {
+      navigate('/')
+    }
   }
 
   const handleCreateCost = async (e: React.FormEvent) => {

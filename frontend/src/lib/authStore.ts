@@ -102,9 +102,19 @@ export const authStore = {
   isReady: () => ready,
   isAuthenticated: () => lojistaSession != null || superadminSession != null,
   signOut: async (role?: AuthRole) => {
+    // O estado local (session em memória + localStorage) SEMPRE precisa
+    // limpar, mesmo se a chamada de rede/storage do supabase-js falhar
+    // (ex.: exceção de storage em aba anônima/navegador restrito no
+    // celular) — sem o try/catch, uma falha aqui deixava a UI "presa"
+    // logada, porque nem o estado local zerava nem quem chamou signOut()
+    // chegava a navegar pra fora da página.
     if (role) {
-      // scope local: não revoga refresh no servidor (outras abas/apps ok).
-      await clientForRole(role).auth.signOut({ scope: 'local' })
+      try {
+        // scope local: não revoga refresh no servidor (outras abas/apps ok).
+        await clientForRole(role).auth.signOut({ scope: 'local' })
+      } catch {
+        /* segue pra limpar o estado local de qualquer forma */
+      }
       clearPlatformAuthKey(role)
       if (role === 'superadmin') superadminSession = null
       else lojistaSession = null
@@ -112,11 +122,19 @@ export const authStore = {
       return
     }
     if (lojistaSession) {
-      await supabaseLojista.auth.signOut({ scope: 'local' })
+      try {
+        await supabaseLojista.auth.signOut({ scope: 'local' })
+      } catch {
+        /* segue pra limpar o estado local de qualquer forma */
+      }
       clearPlatformAuthKey('lojista')
       lojistaSession = null
     } else if (superadminSession) {
-      await supabaseSuperadmin.auth.signOut({ scope: 'local' })
+      try {
+        await supabaseSuperadmin.auth.signOut({ scope: 'local' })
+      } catch {
+        /* segue pra limpar o estado local de qualquer forma */
+      }
       clearPlatformAuthKey('superadmin')
       superadminSession = null
     }
