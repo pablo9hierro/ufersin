@@ -97,6 +97,19 @@ fn validate_mp_token_shape(token: &str) -> Result<(), AppError> {
             "Access Token do Mercado Pago cadastrado não parece válido (deveria começar com \"APP_USR-\" ou \"TEST-\") — confira e salve de novo em Meu plano → Financeiro.".to_string(),
         ));
     }
+    // Tokens reais da Mercado Pago (produção ou teste) têm bem mais que 60
+    // caracteres (prefixo + client id + client secret + sequência, ex.:
+    // "APP_USR-1234567890123456-012345-<32 chars hex>-123456789"). Um
+    // token bem mais curto que isso quase sempre é cópia incompleta (só
+    // parte do valor foi colada) — confirmado em produção: um lojista com
+    // token de 44 caracteres levava exatamente o "authorization value not
+    // present" genérico da Mercado Pago, sem nenhuma pista de que a causa
+    // era o próprio valor salvo estar cortado.
+    if token.chars().count() < 60 {
+        return Err(AppError::BadRequest(
+            "Access Token do Mercado Pago cadastrado parece incompleto (curto demais pra um token real) — normalmente é cópia parcial do valor. Copie o token INTEIRO do painel do Mercado Pago (Suas integrações → sua aplicação → Credenciais de produção) e salve de novo em Meu plano → Financeiro.".to_string(),
+        ));
+    }
     Ok(())
 }
 

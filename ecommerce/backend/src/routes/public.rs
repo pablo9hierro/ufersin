@@ -634,7 +634,8 @@ async fn create_customer_reset_code(state: &AppState, whatsapp_raw: &str) -> Opt
     }
     let base = state.supabase_url.trim_end_matches('/');
     let url = format!("{base}/rest/v1/rpc/_create_customer_reset_code");
-    let resp = state
+    tracing::info!("customer password reset: requesting code for whatsapp={whatsapp_raw}");
+    let resp = match state
         .http
         .post(&url)
         .header("apikey", state.supabase_service_key.as_str())
@@ -643,18 +644,44 @@ async fn create_customer_reset_code(state: &AppState, whatsapp_raw: &str) -> Opt
         .json(&serde_json::json!({ "p_whatsapp": whatsapp_raw }))
         .send()
         .await
-        .ok()?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("customer password reset: supabase request failed: {e}");
+            return None;
+        }
+    };
 
-    if !resp.status().is_success() {
-        // Cliente sem cadastro (RAISE EXCEPTION) ou Supabase indisponível —
-        // silencioso de propósito, ver docstring do caller.
+    let status = resp.status();
+    if !status.is_success() {
+        // Cliente sem cadastro (RAISE EXCEPTION) é o caso normal/esperado
+        // aqui — mas loga sempre (nunca o whatsapp completo em nível
+        // error, só o status+corpo do Supabase) porque essa mesma rota
+        // também esconderia silenciosamente uma falha real (Content-
+        // Profile errado, GRANT faltando, etc.) sem esse log.
+        let body = resp.text().await.unwrap_or_default();
+        tracing::warn!("customer password reset: supabase rpc returned {status}: {body}");
         return None;
     }
-    let rows: Vec<serde_json::Value> = resp.json().await.ok()?;
-    let row = rows.first()?;
-    let name = row.get("customer_name")?.as_str()?.to_string();
-    let code = row.get("code")?.as_str()?.to_string();
-    Some((name, code))
+    let rows: Vec<serde_json::Value> = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("customer password reset: supabase response parse error: {e}");
+            return None;
+        }
+    };
+    let Some(row) = rows.first() else {
+        tracing::warn!("customer password reset: supabase rpc returned an empty row set");
+        return None;
+    };
+    let name = row.get("customer_name").and_then(|v| v.as_str()).map(str::to_string);
+    let code = row.get("code").and_then(|v| v.as_str()).map(str::to_string);
+    if name.is_none() || code.is_none() {
+        tracing::warn!("customer password reset: supabase rpc row missing customer_name/code: {row}");
+        return None;
+    }
+    tracing::info!("customer password reset: code generated ok");
+    Some((name.unwrap(), code.unwrap()))
 }
 
 // rebuild-marker PDV Pix force 2026-08-01T17:20:00.6543400-03:00
