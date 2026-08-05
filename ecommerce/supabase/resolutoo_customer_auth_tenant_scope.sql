@@ -1,8 +1,8 @@
--- resolutoo.customers ganhou uma coluna tenant_id (text, NOT NULL, FK pra
--- public.tenants.id) fora de qualquer migração rastreada neste repo --
--- provavelmente adicionada direto pelo Table Editor do Supabase quando o
--- resto da plataforma virou multi-tenant. Nenhuma das funções de auth de
--- cliente (customer_register/customer_login/_create_customer_reset_code/
+-- resolutoo.customers ganhou uma coluna tenant_id (text, NOT NULL) fora de
+-- qualquer migração rastreada neste repo -- provavelmente adicionada direto
+-- pelo Table Editor do Supabase quando o resto da plataforma virou
+-- multi-tenant. Nenhuma das funções de auth de cliente
+-- (customer_register/customer_login/_create_customer_reset_code/
 -- customer_verify_reset_code/customer_reset_password) foi atualizada pra
 -- preencher/filtrar por ela -- resultado: TODO cadastro de cliente falhava
 -- com "null value in column tenant_id violates not-null constraint", e as
@@ -14,19 +14,27 @@
 -- diferentes, e login/recuperação de senha de uma loja encontrava conta de
 -- outra loja. Este arquivo escopa todas essas funções por tenant.
 --
+-- Pegadinha adicional encontrada ao aplicar isso: a coluna tenant_id tinha
+-- FK pra `resolutoo.tenants` -- mas essa tabela é lixo/scaffolding vazio
+-- (só 2 linhas: "tenant_resolutoo" e "tenant_jubilados", nada a ver com
+-- lojas reais). A tabela de verdade, que o backend Rust (ecommerce/backend,
+-- role sunset_svc2, search_path "sunset, public") realmente usa pra
+-- resolver slug -> tenant, é `sunset.tenants`. Este arquivo:
+--   1. derruba a FK errada (customers_tenant_id_fkey -> resolutoo.tenants)
+--   2. usa `sunset.tenants` (a tabela real) pra resolver slug -> id
+-- (GRANT USAGE ON SCHEMA sunset + SELECT ON sunset.tenants pra
+-- resolutoo_svc já aplicado separadamente, necessário pra essas funções
+-- conseguirem ler essa tabela cross-schema).
+--
 -- Convenção adotada aqui: funções chamadas direto do navegador (register/
 -- login/verify/reset) recebem p_tenant_slug (o front já tem o slug da URL,
--- ?tenant=xibata) e resolvem o id internamente via public.tenants. A função
+-- ?tenant=xibata) e resolvem o id internamente via sunset.tenants. A função
 -- chamada só pelo backend Rust (_create_customer_reset_code) recebe
 -- p_tenant_id direto, porque o Rust já resolveu isso via tenant::tenant_for_slug
 -- pra mandar a mensagem no WhatsApp da loja certa -- reaproveita em vez de
 -- fazer o Supabase resolver de novo.
 
-DROP FUNCTION IF EXISTS resolutoo.customer_register(text, text, text, text, text);
-DROP FUNCTION IF EXISTS resolutoo.customer_login(text, text);
-DROP FUNCTION IF EXISTS resolutoo._create_customer_reset_code(text);
-DROP FUNCTION IF EXISTS resolutoo.customer_verify_reset_code(text, text);
-DROP FUNCTION IF EXISTS resolutoo.customer_reset_password(text, text, text);
+ALTER TABLE resolutoo.customers DROP CONSTRAINT IF EXISTS customers_tenant_id_fkey;
 
 CREATE OR REPLACE FUNCTION resolutoo.customer_register(
   p_whatsapp text, p_password text, p_name text, p_email text, p_birthdate text, p_tenant_slug text
@@ -58,7 +66,7 @@ BEGIN
     RAISE EXCEPTION 'password must be exactly 4 digits';
   END IF;
 
-  SELECT id INTO v_tenant_id FROM public.tenants WHERE slug = p_tenant_slug;
+  SELECT id INTO v_tenant_id FROM sunset.tenants WHERE slug = p_tenant_slug;
   IF v_tenant_id IS NULL THEN
     RAISE EXCEPTION 'store not found';
   END IF;
@@ -97,7 +105,7 @@ DECLARE
   v_tenant_id text;
   v_token text;
 BEGIN
-  SELECT id INTO v_tenant_id FROM public.tenants WHERE slug = p_tenant_slug;
+  SELECT id INTO v_tenant_id FROM sunset.tenants WHERE slug = p_tenant_slug;
   IF v_tenant_id IS NULL THEN
     RAISE EXCEPTION 'invalid credentials';
   END IF;
@@ -151,7 +159,7 @@ DECLARE
   v_tenant_id text;
   v_reset resolutoo.customer_password_resets%ROWTYPE;
 BEGIN
-  SELECT id INTO v_tenant_id FROM public.tenants WHERE slug = p_tenant_slug;
+  SELECT id INTO v_tenant_id FROM sunset.tenants WHERE slug = p_tenant_slug;
   IF v_tenant_id IS NULL THEN
     RAISE EXCEPTION 'invalid code';
   END IF;
@@ -187,7 +195,7 @@ BEGIN
     RAISE EXCEPTION 'password must be exactly 4 digits';
   END IF;
 
-  SELECT id INTO v_tenant_id FROM public.tenants WHERE slug = p_tenant_slug;
+  SELECT id INTO v_tenant_id FROM sunset.tenants WHERE slug = p_tenant_slug;
   IF v_tenant_id IS NULL THEN
     RAISE EXCEPTION 'invalid code';
   END IF;
