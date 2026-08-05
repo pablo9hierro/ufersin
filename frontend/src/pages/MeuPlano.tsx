@@ -29,6 +29,7 @@ import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlanMap, planDisplayName, priceForCycle } from '../lib/plans'
 import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
+import { needsOnboardingLock } from '../lib/postPayRedirect'
 import AddressField from '../components/AddressField'
 import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
 import StorefrontCmsPreview, { type CartFabStyle } from '../components/StorefrontCmsPreview'
@@ -176,6 +177,11 @@ export default function MeuPlano() {
       try {
         const [m, ct] = await Promise.all([api.me(), api.listPublicContent(), fetchPlans()])
         if (cancelled) return
+        // Hard lock: incomplete onboarding → /onboarding only (no hub half-state).
+        if (needsOnboardingLock(m)) {
+          navigate('/onboarding', { replace: true })
+          return
+        }
         setMe(m)
         setContent(contentMap(ct))
         setPlansLoaded(true)
@@ -291,14 +297,18 @@ export default function MeuPlano() {
     subStatus === 'desconhecido'
   const tabLocked = content['meu_plano.tab_locked'] ?? 'Você ainda não assinou um plano para gerenciar.'
   /**
-   * Any logged merchant with a tenant slug gets Vitrine / Painel CTAs.
-   * Do not gate on hasActiveSub or onboarding_status === provisionado — those
-   * hid the buttons for real stores (e.g. re-subscribe / status edge cases).
+   * Vitrine / Painel only when a tenant slug exists (store provisioned).
+   * Incomplete onboarding is redirected away; belt-and-suspenders CTA if half-state.
    */
   const storeSlug =
     me.slug?.trim() ||
     me.dominio?.match(/[?&]tenant=([^&]+)/i)?.[1]?.trim() ||
     null
+  const storeReady = Boolean(storeSlug && me.tenant_id)
+  const needsStoreOnboarding =
+    !storeSlug &&
+    (me.onboarding_status === 'aguardando_onboarding' ||
+      (normalizeSubscriptionStatus(me.status) === 'ativo' && !me.tenant_id))
   const panelUrl = storeSlug ? storeAdminLoginUrl(storeSlug, me.email) : null
   const publicUrl = storeSlug ? storePublicUrl(storeSlug) : null
 
@@ -616,6 +626,10 @@ export default function MeuPlano() {
 
   const handleSavePreferenciasVenda = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!storeSlug || !me.tenant_id) {
+      setError('Conclua o cadastro da loja (Access Token do Mercado Pago incluso) antes de salvar preferências.')
+      return
+    }
     saveOnboarding({
       vende_mais_18: vendeMais18,
       vender_externamente: venderExternamente,
@@ -689,6 +703,27 @@ export default function MeuPlano() {
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
+            </div>
+          )}
+
+          {needsStoreOnboarding && (
+            <div
+              className="uf-glass rounded-2xl p-5 mb-6 space-y-3 border border-amber-400/25"
+              data-testid="concluir-cadastro-loja"
+            >
+              <h2 className="font-bold text-sm text-uf-silver uppercase tracking-wide">Cadastro da loja incompleto</h2>
+              <p className="text-xs text-uf-silver-dim">
+                Finalize o onboarding (dados da loja + Access Token de produção do Mercado Pago) pra liberar Vitrine,
+                Painel e preferências de venda.
+              </p>
+              <Link
+                to="/onboarding"
+                className="btn-primary text-sm px-4 py-3 inline-flex items-center justify-center gap-2 w-full sm:w-auto"
+                data-testid="cta-concluir-cadastro-loja"
+              >
+                <Store className="w-4 h-4" />
+                Concluir cadastro da loja
+              </Link>
             </div>
           )}
 
@@ -771,7 +806,7 @@ export default function MeuPlano() {
 
           {tab === 'plano' && !needsPlanPicker && (
             <div className="space-y-4">
-              {hasActiveSub && (
+              {hasActiveSub && storeReady && (
                 <form onSubmit={handleSavePreferenciasVenda} className="uf-glass rounded-2xl p-6 space-y-4" data-testid="preferencias-venda">
                   <h2 className="font-bold text-sm text-uf-silver-dim uppercase tracking-wide">Preferências de venda</h2>
                   <p className="text-xs text-uf-silver-dim">

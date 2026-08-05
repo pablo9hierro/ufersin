@@ -32,13 +32,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   // Nota: um 401 aqui não implica sessão Supabase inválida (pode ser só
   // "conta ainda não fez bootstrap") — quem decide deslogar é o Supabase
   // (expiração/refresh falho), não esta camada.
-  if (!res.ok) {
+    if (!res.ok) {
     let message = `Erro ${res.status}`
     try {
       const body = await res.json()
       message = body.error || message
     } catch {
       // sem corpo JSON
+    }
+    // Legacy API strings — never show raw English to the lojista.
+    if (/^database error$/i.test(String(message).trim())) {
+      message =
+        'Não foi possível salvar — conclua o cadastro da loja (Access Token do Mercado Pago) ou tente de novo.'
     }
     throw new ApiError(res.status, message)
   }

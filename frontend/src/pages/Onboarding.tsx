@@ -8,7 +8,7 @@ import StorefrontStylePicker from '../components/StorefrontStylePicker'
 import AddressField from '../components/AddressField'
 import { isValidDocumento, onlyDigits } from '../lib/documento'
 import { planDisplayName } from '../lib/plans'
-import { storeAlreadyExists } from '../lib/postPayRedirect'
+import { needsOnboardingLock, storeAlreadyExists } from '../lib/postPayRedirect'
 import type { StorefrontStyle } from '../lib/storefrontStyles'
 
 const CORES_DEFAULT = '#0f5132'
@@ -139,17 +139,15 @@ export default function Onboarding() {
         setWhatsappHabilitado(pre.whatsappHabilitado)
         setHasCreds(pre.hasCreds)
 
-        const exists = storeAlreadyExists(me)
-
-        // Absolute rule: existing loja that is NOT upgrade-complementary → /meu-plano.
-        if (me.onboarding_status === 'provisionado' || (exists && me.onboarding_status !== 'aguardando_onboarding')) {
+        // Stay on /onboarding until lock clears (provisionado / store ready).
+        if (!needsOnboardingLock(me)) {
           setMode('skip')
           if (!cancelled) navigate('/meu-plano', { replace: true })
           return
         }
 
-        // Upgrade complementary only (BE set aguardando_onboarding + store exists).
-        if (exists && me.onboarding_status === 'aguardando_onboarding') {
+        // Upgrade complementary (BE set aguardando_onboarding + store exists).
+        if (storeAlreadyExists(me) && me.onboarding_status === 'aguardando_onboarding') {
           setMode('complementary')
           return
         }
@@ -231,7 +229,9 @@ export default function Onboarding() {
     if (!endereco.trim()) return setError('Informe o endereço da loja.')
     if (!instagram.trim().replace(/^@/, '')) return setError('Informe o Instagram da loja.')
     if (mpTokenRequired && !credencial.trim()) {
-      return setError('Access Token do Mercado Pago é obrigatório.')
+      return setError(
+        'Access Token de produção do Mercado Pago é obrigatório pra concluir o cadastro da loja.',
+      )
     }
 
     const slug = slugify(nomeLoja) || `loja-${Date.now().toString(36)}`
@@ -425,7 +425,7 @@ export default function Onboarding() {
             <p className="text-[11px] text-uf-silver-dim mt-1">
               {hasCreds
                 ? 'Credencial Mercado Pago já cadastrada (não exibimos o token por segurança).'
-                : 'Obrigatório pra liberar o painel e receber pagamentos na loja via Mercado Pago.'}
+                : 'Obrigatório (Access Token de produção APP_USR-…). Sem ele o onboarding não conclui e a loja não é provisionada.'}
             </p>
           </div>
 

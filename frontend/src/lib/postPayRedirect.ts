@@ -11,29 +11,38 @@ export function storeAlreadyExists(me: MeResponse): boolean {
   )
 }
 
+function isPaidActive(status: string | null | undefined): boolean {
+  const s = (status ?? '').trim().toLowerCase()
+  return s === 'ativo' || s === 'active' || s === 'authorized'
+}
+
 /**
- * Absolute redirect rule after (re)subscribe payment success:
- * - Existing loja (same-plan or returning) → `/meu-plano` (never blank onboarding)
- * - `/onboarding` ONLY for first-time store OR upgrade complementary
- *   (BE sets onboarding_status = aguardando_onboarding only in those cases)
+ * Hard lock: lojista must stay on `/onboarding` until the store is provisioned.
+ * - First-time after pay (`aguardando_onboarding`, no store)
+ * - Complementary upgrade (`aguardando_onboarding` + existing store)
+ * - Safety: paid active without tenant/slug (half-state)
+ *
+ * Provisioned / returning re-subscribe → NOT locked (hub is `/meu-plano`).
+ */
+export function needsOnboardingLock(me: MeResponse): boolean {
+  if (me.onboarding_status === 'aguardando_onboarding') return true
+  if (me.onboarding_status === 'provisionado') return false
+  const hasSlug = Boolean(me.slug?.trim())
+  const hasTenant = Boolean(me.tenant_id)
+  if (isPaidActive(me.status) && !hasSlug && !hasTenant) return true
+  return false
+}
+
+/**
+ * Absolute redirect after pay / post-login:
+ * - Onboarding incomplete → `/onboarding` (locked until provisionado)
+ * - Existing provisioned loja → `/meu-plano`
  */
 export function postPayDestination(onboardingStatus: string, me: MeResponse | null): '/meu-plano' | '/onboarding' {
   if (me) {
-    const exists = storeAlreadyExists(me)
-    if (me.onboarding_status === 'provisionado' || (exists && me.onboarding_status !== 'aguardando_onboarding')) {
-      return '/meu-plano'
-    }
-    // Upgrade complementary: store exists + BE asked for onboarding.
-    if (exists && me.onboarding_status === 'aguardando_onboarding') {
-      return '/onboarding'
-    }
-    // First-time: no store yet.
-    if (!exists && (onboardingStatus === 'aguardando_onboarding' || me.onboarding_status === 'aguardando_onboarding')) {
-      return '/onboarding'
-    }
+    if (needsOnboardingLock(me)) return '/onboarding'
     return '/meu-plano'
   }
-  // No /me — trust payment status only; prefer meu-plano when unsure.
   return onboardingStatus === 'aguardando_onboarding' ? '/onboarding' : '/meu-plano'
 }
 

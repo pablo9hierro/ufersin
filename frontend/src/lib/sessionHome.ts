@@ -1,11 +1,13 @@
 import { api, ApiError, type BillingCycle, type PlanoCode } from './api'
 import { authStore } from './authStore'
 import { isKnownPlatformAdminEmail } from './platformAdmin'
+import { postPayDestination } from './postPayRedirect'
 
 /**
  * Destino pós-login / pós-auth — respeita as duas identidades do Auth:
  * - superadmin (`platform_admins`) → `/dashboard` (nunca plano/onboarding)
- * - lojista (`subscribers`) → `/meu-plano` (ou `/assinar` se veio com ?plano=)
+ * - lojista (`subscribers`) → `/meu-plano` se provisionado; `/onboarding` se incompleto;
+ *   ou `/assinar` se veio com ?plano=
  * - Auth sem subscriber → `/completar-conta`
  *
  * Ordem obrigatória: whoami/superadmin ANTES de qualquer fluxo de loja.
@@ -54,8 +56,9 @@ export async function resolveSessionHome(opts?: {
   }
 
   try {
-    await api.me()
-    return '/meu-plano'
+    const me = await api.me()
+    // Incomplete onboarding → /onboarding lock; provisioned → /meu-plano.
+    return postPayDestination(me.onboarding_status, me)
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) {
       return '/completar-conta'

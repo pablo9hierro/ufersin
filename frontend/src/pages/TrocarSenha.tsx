@@ -7,6 +7,7 @@ import { translateAuthError } from '../lib/authErrors'
 import { ApiError, api } from '../lib/api'
 import { useAuthReady, useLojistaSession } from '../lib/authStore'
 import PasswordField from '../components/PasswordField'
+import { resolveSessionHome } from '../lib/sessionHome'
 
 /** Trocar senha logado (/meu-plano → Trocar senha).
  * 1) Supabase Auth (login Resolutoo)
@@ -49,7 +50,8 @@ export default function TrocarSenha() {
             : 'Senha do Resolutoo atualizada, mas não sincronizou com o painel da loja. Tente de novo.'
         throw new Error(msg)
       }
-      navigate('/meu-plano', { replace: true })
+      const dest = await resolveSessionHome().catch(() => '/meu-plano')
+      navigate(dest, { replace: true })
     } catch (e) {
       setError(
         e instanceof Error

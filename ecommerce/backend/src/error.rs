@@ -26,6 +26,6 @@ impl IntoResponse for AppError {
 impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
         tracing::error!("db error: {e}");
-        AppError::Internal("database error".to_string())
+        AppError::Internal("erro ao acessar o banco — tente de novo".to_string())
     }
 }

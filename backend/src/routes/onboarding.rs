@@ -428,7 +428,10 @@ pub async fn editar_onboarding(
     AuthSubscriber(claims): AuthSubscriber,
     Json(mut body): Json<EditOnboardingInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let row: Option<(Option<String>, String, String, bool, bool)> = sqlx::query_as(
+    // slug/tenant_id are NULL until first-time onboarding provisions the store.
+    // Decode as Option — a non-null String here caused "database error" for
+    // merchants mid-onboarding (ativo + aguardando_onboarding, no slug yet).
+    let row: Option<(Option<String>, String, Option<String>, bool, bool)> = sqlx::query_as(
         "SELECT tenant_id, status, slug, whatsapp_habilitado, \
          COALESCE(NULLIF(trim(plataforma_credenciais->>'token'), ''), NULL) IS NOT NULL \
          FROM subscribers WHERE id = $1",
@@ -436,10 +439,19 @@ pub async fn editar_onboarding(
     .bind(&claims.sub)
     .fetch_optional(&state.pool)
     .await?;
-    let (tenant_id, status, slug, was_whatsapp_on, has_existing_creds) =
+    let (tenant_id, status, slug_opt, was_whatsapp_on, has_existing_creds) =
         row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
-    if tenant_id.is_none() {
-        return Err(AppError::BadRequest("finalize o onboarding inicial antes de editar".to_string()));
+    let slug = slug_opt
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_string();
+    if tenant_id.is_none() || slug.is_empty() {
+        return Err(AppError::BadRequest(
+            "conclua o cadastro da loja em /onboarding (incluindo Access Token do Mercado Pago) antes de editar preferências"
+                .to_string(),
+        ));
     }
     if status != "ativo" {
         return Err(AppError::BadRequest("assinatura não está ativa".to_string()));

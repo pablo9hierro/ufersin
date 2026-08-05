@@ -56,7 +56,7 @@ export default function Landing() {
           const dest = await resolveSessionHome({ email })
           if (!cancelled) navigate(dest, { replace: true })
         } catch {
-          if (!cancelled) navigate('/meu-plano', { replace: true })
+          if (!cancelled) navigate('/onboarding', { replace: true })
         }
       }
     })()

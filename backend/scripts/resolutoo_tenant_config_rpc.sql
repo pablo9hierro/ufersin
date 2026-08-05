@@ -80,7 +80,7 @@ BEGIN
   SET layout_style = p_style, updated_at = now()
   WHERE id = auth.uid()::text
   RETURNING slug, layout_style INTO v_slug, v_style;
-  IF v_slug IS NULL THEN
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'assinante não encontrado';
   END IF;
   RETURN json_build_object('slug', v_slug, 'layout_style', v_style, 'updated', true);
@@ -124,9 +124,10 @@ BEGIN
   WHERE id = auth.uid()::text
   RETURNING slug, apenas_retirada, vende_mais_18, vender_externamente, pagamento_na_retirada, entrega_somente_pix, pagamento_manual
     INTO v_slug, v_apenas, v_mais18, v_ext, v_pag_ret, v_ent_pix, v_pag_man;
-  IF v_slug IS NULL THEN
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'assinante não encontrado';
   END IF;
+  -- slug may still be NULL mid-onboarding; prefs are stored on the subscriber row anyway.
   RETURN json_build_object(
     'slug', v_slug,
     'apenas_retirada', v_apenas,
