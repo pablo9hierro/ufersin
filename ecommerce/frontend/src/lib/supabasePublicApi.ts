@@ -1,6 +1,6 @@
 import { ApiError } from './apiError'
 import { supabase } from './supabaseClient'
-import { getTenantConfig } from './tenantConfig'
+import { getTenantConfig, resolveTenantSlug } from './tenantConfig'
 import type { BadgesLayout, BgFit, BgMode, CarouselStyle, Category, ClaimedCoupon, Coupon, Customer, CustomerAuthResult, CustomerCoupons, DeliveryPosition, LandingBadge, Order, PageDecoration, Product, Promotion, ShippingEstimate, ShippingSettings, StoreHourDay, StoreStatus } from '../types'
 
 function unwrap<T>(result: { data: T | null; error: { message: string } | null }): T {
@@ -227,6 +227,10 @@ export const supabasePublicApi = {
   // precisa da Evolution API, só alcançável pelo backend Rust — ver
   // api.ts's customerAuth.requestPasswordReset).
   customerAuth: {
+    // resolutoo.customers tem tenant_id (loja dona da conta) -- sem isso,
+    // clientes de lojas diferentes com o mesmo whatsapp colidiam entre si.
+    // O front já tem o slug atual (mesmo helper usado pelo resto do app);
+    // a função resolve slug -> tenant_id internamente.
     register: async (payload: { whatsapp: string; password: string; name: string; email: string; birthdate: string }) => {
       const { data, error } = await supabase.rpc('customer_register', {
         p_whatsapp: payload.whatsapp,
@@ -234,12 +238,17 @@ export const supabasePublicApi = {
         p_name: payload.name,
         p_email: payload.email,
         p_birthdate: payload.birthdate,
+        p_tenant_slug: resolveTenantSlug(),
       })
       if (error) throw new ApiError(400, error.message)
       return data as CustomerAuthResult
     },
     login: async (whatsapp: string, password: string) => {
-      const { data, error } = await supabase.rpc('customer_login', { p_whatsapp: whatsapp, p_password: password })
+      const { data, error } = await supabase.rpc('customer_login', {
+        p_whatsapp: whatsapp,
+        p_password: password,
+        p_tenant_slug: resolveTenantSlug(),
+      })
       if (error) throw new ApiError(400, error.message)
       return data as CustomerAuthResult
     },
@@ -249,7 +258,11 @@ export const supabasePublicApi = {
       return data as Customer
     },
     verifyResetCode: async (whatsapp: string, code: string) => {
-      const { error } = await supabase.rpc('customer_verify_reset_code', { p_whatsapp: whatsapp, p_code: code })
+      const { error } = await supabase.rpc('customer_verify_reset_code', {
+        p_whatsapp: whatsapp,
+        p_code: code,
+        p_tenant_slug: resolveTenantSlug(),
+      })
       if (error) throw new ApiError(400, error.message)
     },
     resetPassword: async (whatsapp: string, code: string, newPassword: string) => {
@@ -257,6 +270,7 @@ export const supabasePublicApi = {
         p_whatsapp: whatsapp,
         p_code: code,
         p_new_password: newPassword,
+        p_tenant_slug: resolveTenantSlug(),
       })
       if (error) throw new ApiError(400, error.message)
     },

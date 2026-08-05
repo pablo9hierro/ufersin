@@ -586,6 +586,7 @@ pub async fn simulate_pix_paid(
 #[derive(Debug, Deserialize)]
 pub struct RequestPasswordResetInput {
     pub whatsapp: String,
+    pub tenant: String,
 }
 
 /// Público de propósito — cliente deslogado que esqueceu a senha ainda não
@@ -605,44 +606,53 @@ pub struct RequestPasswordResetInput {
 /// antigo `sunset`/`ufersin`), então TODO pedido de recuperação falhava
 /// silenciosamente (erro engolido por padrão, pra não revelar contas) e
 /// nenhuma mensagem saía nunca.
+///
+/// Segundo bug corrigido: `whatsapp::notify` recebia instance="" fixo, e
+/// `notify()` trata instance vazia como "WhatsApp não configurado" (short-
+/// circuit silencioso, ver whatsapp.rs) — ou seja, mesmo com a RPC
+/// funcionando, NENHUMA mensagem seria enviada, pra loja nenhuma. Agora usa
+/// `store.whatsapp_instance` da própria loja, igual todo o resto do app.
 pub async fn request_customer_password_reset(
     State(state): State<AppState>,
     Json(input): Json<RequestPasswordResetInput>,
 ) -> Result<StatusCode, AppError> {
-    if let Some((name, code)) = create_customer_reset_code(&state, &input.whatsapp).await {
+    let Ok(store) = tenant::tenant_for_slug(&state.pool, &input.tenant).await else {
+        return Ok(StatusCode::NO_CONTENT);
+    };
+    if let Some((name, code)) = create_customer_reset_code(&state, &input.whatsapp, &store.id).await {
         let digits = whatsapp::digits_only(&input.whatsapp);
         let msg = format!(
             "Olá, {name}! Seu código de recuperação de senha é: {code}\n\nVale por 10 minutos."
         );
-        whatsapp::notify(&state, "", &digits, &msg);
+        whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
     }
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Chama `resolutoo._create_customer_reset_code(p_whatsapp)` via PostgREST
-/// no Supabase — essa função é `SECURITY DEFINER` sem GRANT pra
-/// anon/authenticated (só alcançável com a service_role key), daqui,
+/// Chama `resolutoo._create_customer_reset_code(p_whatsapp, p_tenant_id)`
+/// via PostgREST no Supabase — essa função é `SECURITY DEFINER` sem GRANT
+/// pra anon/authenticated (só alcançável com a service_role key), daqui,
 /// nunca do navegador, igual ao padrão já usado em `storage.rs` pra upload
-/// de imagem. `None` em qualquer falha (whatsapp sem cadastro,
+/// de imagem. `None` em qualquer falha (whatsapp sem cadastro nessa loja,
 /// SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY não configurada, Supabase fora
 /// do ar) — nunca propaga erro, pra manter a resposta 204 de sempre e não
 /// revelar quais números têm conta.
-async fn create_customer_reset_code(state: &AppState, whatsapp_raw: &str) -> Option<(String, String)> {
+async fn create_customer_reset_code(state: &AppState, whatsapp_raw: &str, tenant_id: &str) -> Option<(String, String)> {
     if state.supabase_url.is_empty() || state.supabase_service_key.is_empty() {
         tracing::warn!("customer password reset: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not configured");
         return None;
     }
     let base = state.supabase_url.trim_end_matches('/');
     let url = format!("{base}/rest/v1/rpc/_create_customer_reset_code");
-    tracing::info!("customer password reset: requesting code for whatsapp={whatsapp_raw}");
+    tracing::info!("customer password reset: requesting code for whatsapp={whatsapp_raw} tenant={tenant_id}");
     let resp = match state
         .http
         .post(&url)
         .header("apikey", state.supabase_service_key.as_str())
         .header("Authorization", format!("Bearer {}", state.supabase_service_key))
         .header("Content-Profile", "resolutoo")
-        .json(&serde_json::json!({ "p_whatsapp": whatsapp_raw }))
+        .json(&serde_json::json!({ "p_whatsapp": whatsapp_raw, "p_tenant_id": tenant_id }))
         .send()
         .await
     {

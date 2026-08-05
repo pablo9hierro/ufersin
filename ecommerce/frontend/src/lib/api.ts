@@ -321,7 +321,7 @@ const remoteApi = {
     requestPasswordReset: (whatsapp: string) =>
       request<void>('/api/customer/request-password-reset', {
         method: 'POST',
-        body: JSON.stringify({ whatsapp }),
+        body: JSON.stringify({ whatsapp, tenant: resolveTenantSlug() }),
       }),
     toggleFavorite: supabasePublicApi.customerAuth.toggleFavorite,
     listFavorites: supabasePublicApi.customerAuth.listFavorites,
