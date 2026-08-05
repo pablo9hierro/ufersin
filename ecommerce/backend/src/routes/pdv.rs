@@ -7,6 +7,7 @@ use crate::auth::PdvUser;
 use crate::error::AppError;
 use crate::features::{self, Feature};
 use crate::models::{OrderDto, OrderRow, PdvSaleInput, ProductDto, ProductRow};
+use crate::orders_common;
 use crate::orders_common::fetch_order_dto;
 use crate::state::AppState;
 use crate::tenant;
@@ -195,15 +196,15 @@ pub async fn create_sale(
         .bind(quantity)
         .execute(&mut *tx)
         .await?;
+    }
 
-        sqlx::query(
-            "UPDATE products SET quantity = quantity - $1 WHERE tenant_id = $2 AND id = $3",
-        )
-        .bind(quantity)
-        .bind(&claims.tenant_id)
-        .bind(product_id)
-        .execute(&mut *tx)
-        .await?;
+    // Baixa de estoque só quando a venda já nasce paga (dinheiro/cartão —
+    // instantâneo no balcão). Pix com QR fica `payment_status = 'pendente'`
+    // acima: o estoque só sai quando o pagamento for de fato confirmado
+    // (refresh_payment / notify_pdv_sale), nunca na criação da venda —
+    // senão um Pix nunca pago já teria consumido o estoque.
+    if payment_status == "pago" {
+        orders_common::decrement_stock_for_order(&mut *tx, &claims.tenant_id, &order_id).await?;
     }
 
     let dto = fetch_order_dto(&mut tx, &claims.tenant_id, &order_id)

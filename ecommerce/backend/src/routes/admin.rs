@@ -13,7 +13,7 @@ use crate::models::{
     SetStoreManualStatusInput, StatusCount, StoreHourDay, StoreHourInterval, StoreStatusDto,
     TopProduct, UpdateStatusInput,
 };
-use crate::orders_common::row_to_dto;
+use crate::orders_common::{self, row_to_dto};
 use crate::state::AppState;
 use crate::status_flow;
 use crate::storage;
@@ -564,6 +564,9 @@ pub async fn update_order_status(
         .bind(&id)
         .execute(&mut *tx)
         .await?;
+        // Only now — payment just got manually confirmed by the admin
+        // (cash/cartão presencial or Pix pago-na-retirada), never earlier.
+        orders_common::decrement_stock_for_order(&mut *tx, &claims.tenant_id, &id).await?;
     } else {
         sqlx::query(
             "UPDATE orders SET status = $1, updated_at = now()::text WHERE tenant_id = $2 AND id = $3",

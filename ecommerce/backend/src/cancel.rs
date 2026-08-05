@@ -82,6 +82,16 @@ pub async fn apply_cancel(
         return Err(AppError::BadRequest("pedido já está cancelado".to_string()));
     }
 
+    // Estoque só foi decrementado se o pedido chegou a ficar `pago` (ver
+    // orders_common::decrement_stock_for_order, chamado exatamente nesse
+    // momento em cada fluxo de confirmação de pagamento) — um pedido
+    // cancelado ainda `pendente` nunca tocou o estoque, então não há nada
+    // pra devolver. Sempre volta pro catálogo em cancelamento/estorno,
+    // reembolsado ou não (o lojista não vai entregar/já não entregou).
+    if order.payment_status == "pago" {
+        crate::orders_common::restock_order_items(&mut *conn, tenant_id, &order.id).await?;
+    }
+
     let mut refund_status = "not_applicable".to_string();
     let mut refund_id: Option<String> = None;
     let mut payment_status = order.payment_status.clone();

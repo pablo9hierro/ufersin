@@ -63,3 +63,48 @@ pub async fn row_to_dto(
 pub fn short_id(id: &str) -> &str {
     &id[..id.len().min(8)]
 }
+
+/// Decrements stock for every item of this order in one batched UPDATE.
+/// Call this exactly once, at the moment `payment_status` actually
+/// transitions to `'pago'` (never at order creation for a not-yet-paid
+/// order) — every caller must check it's the one making that transition
+/// happen before calling this, so stock is never decremented twice for
+/// the same order.
+pub async fn decrement_stock_for_order<'e, E>(executor: E, tenant_id: &str, order_id: &str) -> Result<(), AppError>
+where
+    E: PgExecutor<'e>,
+{
+    sqlx::query(
+        "UPDATE products p SET quantity = p.quantity - oi.quantity \
+         FROM order_items oi \
+         WHERE p.tenant_id = $1 AND p.id = oi.product_id \
+           AND oi.tenant_id = $1 AND oi.order_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(order_id)
+    .execute(executor)
+    .await?;
+    Ok(())
+}
+
+/// Mirror of `decrement_stock_for_order` — restores stock when a PAID
+/// order is cancelled/refunded. Only call when the order had actually
+/// reached `payment_status = 'pago'` before the cancel (so stock was
+/// actually decremented in the first place — an order cancelled while
+/// still unpaid never touched stock, so there's nothing to restore).
+pub async fn restock_order_items<'e, E>(executor: E, tenant_id: &str, order_id: &str) -> Result<(), AppError>
+where
+    E: PgExecutor<'e>,
+{
+    sqlx::query(
+        "UPDATE products p SET quantity = p.quantity + oi.quantity \
+         FROM order_items oi \
+         WHERE p.tenant_id = $1 AND p.id = oi.product_id \
+           AND oi.tenant_id = $1 AND oi.order_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(order_id)
+    .execute(executor)
+    .await?;
+    Ok(())
+}

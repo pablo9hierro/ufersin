@@ -45,6 +45,24 @@ fn payment_id_string(v: &Option<serde_json::Value>) -> Option<String> {
     }
 }
 
+/// Mercado Pago validates `payer.first_name`/`last_name` as two separate
+/// required fields (confirmed via MP's own official integration plugin
+/// error strings — "Payer firstname required." / "Payer lastname
+/// required.") — a bare single-word name like "Cliente balcão" (the PDV
+/// walk-in default) still needs to produce a non-empty last_name.
+fn split_payer_name(name: &str) -> (String, String) {
+    let trimmed = name.trim();
+    match trimmed.split_once(char::is_whitespace) {
+        Some((first, rest)) if !rest.trim().is_empty() => {
+            (first.chars().take(60).collect(), rest.trim().chars().take(60).collect())
+        }
+        _ => {
+            let base = if trimmed.is_empty() { "Cliente" } else { trimmed };
+            (base.chars().take(60).collect(), base.chars().take(60).collect())
+        }
+    }
+}
+
 /// Creates a Pix charge via `POST /v1/payments` with `payment_method_id=pix`.
 pub async fn create_pix_charge(
     state: &AppState,
@@ -59,6 +77,9 @@ pub async fn create_pix_charge(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or("cliente@resolutoo.local");
+    // Mercado Pago valida first_name/last_name como campos separados —
+    // mandar só first_name (como antes) é rejeitado em produção.
+    let (first_name, last_name) = split_payer_name(customer_name);
 
     let body = json!({
         "transaction_amount": (total * 100.0).round() / 100.0,
@@ -67,7 +88,8 @@ pub async fn create_pix_charge(
         "external_reference": external_reference,
         "payer": {
             "email": email,
-            "first_name": customer_name.chars().take(60).collect::<String>(),
+            "first_name": first_name,
+            "last_name": last_name,
         }
     });
 
@@ -85,7 +107,7 @@ pub async fn create_pix_charge(
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         tracing::error!("mercado pago create pix failed: {status} {text}");
-        return Err(AppError::Internal("failed to create mercado pago pix charge".to_string()));
+        return Err(AppError::BadRequest(friendly_mp_pix_error(&text)));
     }
 
     let parsed: MpPaymentResponse = resp
@@ -119,6 +141,52 @@ pub async fn create_pix_charge(
         qr_code,
         qr_code_base64,
     })
+}
+
+#[derive(Debug, Deserialize)]
+struct MpErrorCause {
+    code: Option<serde_json::Value>,
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MpErrorBody {
+    message: Option<String>,
+    cause: Option<Vec<MpErrorCause>>,
+}
+
+/// Turns a raw Mercado Pago error response into a message the lojista can
+/// actually act on, instead of the generic "failed to create..." this
+/// used to always return regardless of the real reason. Erro 13253 ("sem
+/// chave Pix cadastrada") is the best-documented, most common cause of a
+/// production access_token failing to create a Pix charge while the same
+/// code works fine against a TEST- token — special-cased here because the
+/// raw Mercado Pago message doesn't tell a non-technical lojista what to
+/// actually go do about it.
+fn friendly_mp_pix_error(body: &str) -> String {
+    let Ok(parsed) = serde_json::from_str::<MpErrorBody>(body) else {
+        return "Mercado Pago recusou a cobrança Pix — tente de novo em instantes.".to_string();
+    };
+
+    let code_13253 = parsed.cause.as_ref().is_some_and(|causes| {
+        causes.iter().any(|c| match &c.code {
+            Some(serde_json::Value::Number(n)) => n.as_i64() == Some(13253),
+            Some(serde_json::Value::String(s)) => s == "13253",
+            _ => false,
+        })
+    });
+    if code_13253 {
+        return "Sua conta Mercado Pago ainda não tem uma chave Pix cadastrada — entre no app ou site do Mercado Pago (com a MESMA conta do Access Token cadastrado aqui), vá em \"Suas chaves Pix\" e cadastre uma chave antes de gerar cobranças por QR Code.".to_string();
+    }
+
+    let cause_desc = parsed
+        .cause
+        .as_ref()
+        .and_then(|causes| causes.first())
+        .and_then(|c| c.description.clone());
+    cause_desc
+        .or(parsed.message)
+        .unwrap_or_else(|| "Mercado Pago recusou a cobrança Pix — tente de novo em instantes.".to_string())
 }
 
 /// Full refund via `POST /v1/payments/{id}/refunds` (empty body = full amount).

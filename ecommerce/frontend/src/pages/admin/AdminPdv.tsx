@@ -710,6 +710,7 @@ export default function AdminPdv() {
               {' '}A confirmação chega automaticamente quando o Pix for pago.
             </p>
             <p className="sunset-text font-black text-xl mb-4">{currency(pixOrder.total)}</p>
+            {finalizeError && <p className="error-msg mb-3 text-left">{finalizeError}</p>}
             <div className="bg-white rounded-2xl p-4 inline-block mb-4">
               {pixOrder.pix_copia_cola ? (
                 <QRCodeSVG value={pixOrder.pix_copia_cola} size={350} />

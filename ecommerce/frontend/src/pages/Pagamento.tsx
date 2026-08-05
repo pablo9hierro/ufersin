@@ -8,6 +8,7 @@ import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import { orderService } from '../services/orderService'
+import { ApiError } from '../lib/apiError'
 import type { Order } from '../types'
 
 function currency(v: number) {
@@ -22,6 +23,7 @@ export default function Pagamento() {
   const [order, setOrder] = useState<Order | null>(null)
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [pixError, setPixError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     if (!orderId) return
@@ -46,9 +48,14 @@ export default function Pagamento() {
       if (onlinePix && o.payment_method === 'pix' && o.payment_status !== 'pago' && !o.pix_copia_cola) {
         try {
           o = await orderService.createPixPayment(orderId)
-        } catch {
-          // deixa a tela mostrar "QR indisponível" — o polling de refresh
-          // abaixo tenta de novo mais adiante se o usuário recarregar.
+        } catch (e) {
+          // Sem cobrança criada, o polling de refresh abaixo não tem o
+          // que checar (não existe pix_payment_id ainda) — sem mostrar o
+          // motivo aqui, a tela ficava com "QR indisponível" pra sempre e
+          // sem nenhuma pista de por quê.
+          setPixError(
+            e instanceof ApiError ? e.message : 'Não foi possível gerar o QR Pix. Recarregue a página pra tentar de novo.',
+          )
         }
       }
       setOrder(o)
@@ -116,6 +123,7 @@ export default function Pagamento() {
             <h1 className="text-2xl font-black mt-6 mb-1">Pague com Pix</h1>
             <p className="text-son-silver-dim text-sm mb-6">Escaneie o QR code ou copie o código abaixo.</p>
 
+            {pixError && !order.pix_copia_cola && <p className="error-msg mb-4">{pixError}</p>}
             <div className="bg-white rounded-2xl p-4 inline-block mb-6">
               {order.pix_copia_cola ? (
                 <QRCodeSVG value={order.pix_copia_cola} size={224} />

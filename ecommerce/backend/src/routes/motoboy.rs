@@ -13,7 +13,7 @@ use crate::models::{
     OrderDto, OrderRow, RequestLocationInput, RequestLocationResult, SkippedOrder,
     UpdateStatusInput,
 };
-use crate::orders_common::{fetch_order_dto, fetch_order_row, row_to_dto};
+use crate::orders_common::{self, fetch_order_dto, fetch_order_row, row_to_dto};
 use crate::state::AppState;
 use crate::status_flow;
 use crate::tenant;
@@ -285,6 +285,8 @@ pub async fn update_order_status(
         .bind(&id)
         .execute(&mut *tx)
         .await?;
+        // Only now — payment just got confirmed by the motoboy on delivery.
+        orders_common::decrement_stock_for_order(&mut *tx, &claims.tenant_id, &id).await?;
     } else {
         sqlx::query(
             "UPDATE orders SET status = $1, updated_at = now()::text WHERE tenant_id = $2 AND id = $3",

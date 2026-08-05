@@ -9,7 +9,7 @@ use crate::error::AppError;
 use crate::google_routes::{self, Ponto, RotaResult};
 use crate::mercadopago;
 use crate::models::{Category, CustomerCancelInput, OrderDto, ProductDto, ProductRow};
-use crate::orders_common::{fetch_items, fetch_order_dto, fetch_order_row, row_to_dto, short_id};
+use crate::orders_common::{self, fetch_items, fetch_order_dto, fetch_order_row, row_to_dto, short_id};
 use crate::state::AppState;
 use crate::tenant;
 use crate::whatsapp;
@@ -310,6 +310,7 @@ pub async fn notify_pdv_sale(
             .bind(&input.order_id)
             .execute(&mut *tx)
             .await?;
+            orders_common::decrement_stock_for_order(&mut *tx, &store.id, &input.order_id).await?;
         }
         tx.commit().await?;
         return Ok(StatusCode::NO_CONTENT);
@@ -324,6 +325,7 @@ pub async fn notify_pdv_sale(
         .bind(&input.order_id)
         .execute(&mut *tx)
         .await?;
+        orders_common::decrement_stock_for_order(&mut *tx, &store.id, &input.order_id).await?;
     }
 
     let items = fetch_items(&mut *tx, &store.id, &order.id).await?;
@@ -458,6 +460,10 @@ pub async fn refresh_payment(
             .bind(&id)
             .execute(&mut *tx)
             .await?;
+        // Only now (payment actually confirmed by the gateway) — never at
+        // order/charge creation, or an unpaid Pix would already have
+        // consumed stock.
+        orders_common::decrement_stock_for_order(&mut *tx, &store.id, &id).await?;
 
         let digits = whatsapp::digits_only(&order.customer_whatsapp);
         if !digits.is_empty() {
@@ -559,6 +565,7 @@ pub async fn simulate_pix_paid(
             .bind(&id)
             .execute(&mut *tx)
             .await?;
+        orders_common::decrement_stock_for_order(&mut *tx, &store.id, &id).await?;
 
         let digits = whatsapp::digits_only(&order.customer_whatsapp);
         let msg = format!(
@@ -581,37 +588,27 @@ pub struct RequestPasswordResetInput {
 }
 
 /// Público de propósito — cliente deslogado que esqueceu a senha ainda não
-/// tem nenhum token. Gera o código de 3 dígitos direto no banco
-/// (sunset._create_customer_reset_code — sem GRANT pra anon/authenticated,
-/// só alcançável por SQL direto, que é como o Rust fala com o Postgres) e
-/// manda por WhatsApp. Sempre responde 204, mesmo se o whatsapp não tiver
-/// cadastro (a função RAISE EXCEPTION nesse caso; vira Err aqui, ignorado
-/// de propósito) — não revela quais números têm conta.
+/// tem nenhum token. Gera o código de 3 dígitos via RPC no Supabase (schema
+/// `resolutoo` — mesma base de `customer_register`/`customer_login`/
+/// `customer_verify_reset_code`/`customer_reset_password`, ver
+/// ecommerce/frontend/src/lib/supabasePublicApi.ts) e manda por WhatsApp
+/// (só o backend Rust alcança a Evolution API, por isso esse passo não é
+/// uma RPC pura chamada direto do navegador como as outras). Sempre
+/// responde 204, mesmo se o whatsapp não tiver cadastro (a função RAISE
+/// EXCEPTION nesse caso — tratado como silêncio de propósito) — não revela
+/// quais números têm conta.
 ///
-/// NOTE (Fase 1B pendente): essa RPC ainda não existe nas migrations locais
-/// (só em supabase/*.sql) e hoje não recebe qual tenant — um whatsapp só é
-/// suficiente pra achar "o" cliente enquanto existe um único tenant. Quando
-/// essa RPC for portada, ela precisa passar a receber tenant_id também
-/// (mesmo problema do login: sem roteamento por domínio ainda, precisa vir
-/// de algum lugar explícito no request).
+/// Bug corrigido: essa rota chamava `sunset._create_customer_reset_code`
+/// via `state.pool` (o Postgres do Railway) — mas essa função nunca
+/// existiu ali, só no Supabase (schema `resolutoo`, renomeado a partir do
+/// antigo `sunset`/`ufersin`), então TODO pedido de recuperação falhava
+/// silenciosamente (erro engolido por padrão, pra não revelar contas) e
+/// nenhuma mensagem saía nunca.
 pub async fn request_customer_password_reset(
     State(state): State<AppState>,
     Json(input): Json<RequestPasswordResetInput>,
 ) -> Result<StatusCode, AppError> {
-    let row: Option<(String, String, String)> = sqlx::query_as(
-        "SELECT customer_id, customer_name, code FROM sunset._create_customer_reset_code($1)",
-    )
-    .bind(&input.whatsapp)
-    .fetch_optional(&state.pool)
-    .await
-    .unwrap_or(None);
-
-    if let Some((_customer_id, name, code)) = row {
-        // TODO Fase 1B: sem tenant_id vindo da RPC ainda (ver nota acima),
-        // não há como resolver a instância/nome da loja aqui — quando a RPC
-        // for portada e passar a devolver tenant_id junto, troque isso por
-        // tenant::load_tenant(&state.pool, &tenant_id) como nos outros
-        // handlers deste arquivo.
+    if let Some((name, code)) = create_customer_reset_code(&state, &input.whatsapp).await {
         let digits = whatsapp::digits_only(&input.whatsapp);
         let msg = format!(
             "Olá, {name}! Seu código de recuperação de senha é: {code}\n\nVale por 10 minutos."
@@ -620,6 +617,44 @@ pub async fn request_customer_password_reset(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Chama `resolutoo._create_customer_reset_code(p_whatsapp)` via PostgREST
+/// no Supabase — essa função é `SECURITY DEFINER` sem GRANT pra
+/// anon/authenticated (só alcançável com a service_role key), daqui,
+/// nunca do navegador, igual ao padrão já usado em `storage.rs` pra upload
+/// de imagem. `None` em qualquer falha (whatsapp sem cadastro,
+/// SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY não configurada, Supabase fora
+/// do ar) — nunca propaga erro, pra manter a resposta 204 de sempre e não
+/// revelar quais números têm conta.
+async fn create_customer_reset_code(state: &AppState, whatsapp_raw: &str) -> Option<(String, String)> {
+    if state.supabase_url.is_empty() || state.supabase_service_key.is_empty() {
+        tracing::warn!("customer password reset: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not configured");
+        return None;
+    }
+    let base = state.supabase_url.trim_end_matches('/');
+    let url = format!("{base}/rest/v1/rpc/_create_customer_reset_code");
+    let resp = state
+        .http
+        .post(&url)
+        .header("apikey", state.supabase_service_key.as_str())
+        .header("Authorization", format!("Bearer {}", state.supabase_service_key))
+        .header("Content-Profile", "resolutoo")
+        .json(&serde_json::json!({ "p_whatsapp": whatsapp_raw }))
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        // Cliente sem cadastro (RAISE EXCEPTION) ou Supabase indisponível —
+        // silencioso de propósito, ver docstring do caller.
+        return None;
+    }
+    let rows: Vec<serde_json::Value> = resp.json().await.ok()?;
+    let row = rows.first()?;
+    let name = row.get("customer_name")?.as_str()?.to_string();
+    let code = row.get("code")?.as_str()?.to_string();
+    Some((name, code))
 }
 
 // rebuild-marker PDV Pix force 2026-08-01T17:20:00.6543400-03:00
