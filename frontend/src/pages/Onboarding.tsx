@@ -361,31 +361,18 @@ export default function Onboarding() {
 
           <div>
             <label className="label">CNPJ ou CPF *</label>
-            <div className="flex gap-2 mb-2">
-              {(['cnpj', 'cpf'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => {
-                    setTipoDocumento(t)
-                    if (!documento) setDocumento('')
-                  }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold uppercase transition-all ${
-                    tipoDocumento === t ? 'bg-uf-blue text-white' : 'bg-white/5 text-uf-silver-dim'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-              <span className="text-[11px] text-uf-silver-dim self-center">Sem CNPJ? Use seu CPF.</span>
-            </div>
-            <input
-              className="input-field"
-              value={documento}
-              onChange={(e) => setDocumento(formatDocumento(tipoDocumento, e.target.value))}
-              placeholder={tipoDocumento === 'cnpj' ? '00.000.000/0000-00' : '000.000.000-00'}
-              inputMode="numeric"
-            />
+            {documento ? (
+              <div className="input-field !border-emerald-500/70 flex items-center justify-between gap-2">
+                <span className="text-sm">{documento}</span>
+                <span className="text-[10px] text-uf-silver-dim uppercase shrink-0 flex items-center gap-1">
+                  <CreditCard className="w-3 h-3" /> {tipoDocumento} · Mercado Pago
+                </span>
+              </div>
+            ) : (
+              <div className="input-field text-uf-silver-dim text-xs">
+                Preenchido automaticamente ao conectar sua conta Mercado Pago (mais abaixo).
+              </div>
+            )}
           </div>
 
           <AddressField

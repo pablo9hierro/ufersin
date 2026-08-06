@@ -131,6 +131,51 @@ struct TokenResponse {
     live_mode: Option<bool>,
 }
 
+#[derive(Debug, Deserialize)]
+struct MpUserIdentification {
+    number: Option<String>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MpUserResponse {
+    identification: Option<MpUserIdentification>,
+}
+
+/// Busca CPF/CNPJ direto da conta Mercado Pago conectada — nunca pedimos
+/// esse dado por input manual quando a MP já entrega (ver `identification`
+/// em `GET /users/:user_id`, confirmado contra a API real: mesmo objeto
+/// `{number, type}` usado nos endpoints de pagador). Best-effort: qualquer
+/// falha aqui não derruba a conexão OAuth, só deixa o documento como estava.
+async fn fetch_mp_identification(
+    http: &reqwest::Client,
+    access_token: &str,
+    user_id: &str,
+) -> Option<(String, String)> {
+    let resp = http
+        .get(format!("https://api.mercadopago.com/users/{user_id}"))
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body: MpUserResponse = resp.json().await.ok()?;
+    let ident = body.identification?;
+    let number: String = ident.number?.chars().filter(|c| c.is_ascii_digit()).collect();
+    let tipo = match ident.kind?.to_uppercase().as_str() {
+        "CPF" => "cpf",
+        "CNPJ" => "cnpj",
+        _ => return None,
+    };
+    if number.is_empty() {
+        return None;
+    }
+    Some((number, tipo.to_string()))
+}
+
 fn frontend_redirect(cfg: &MercadoPagoOAuthConfig, status: &str) -> Redirect {
     let base = cfg.frontend_url.as_deref().unwrap_or("http://localhost:5174").trim_end_matches('/');
     Redirect::to(&format!("{base}/mercadopago/callback?status={status}"))
@@ -224,15 +269,33 @@ pub async fn oauth_callback(State(state): State<AppState>, Query(q): Query<OAuth
         "source": "oauth",
     });
 
+    let user_id_str = token.user_id.as_ref().and_then(|v| match v {
+        serde_json::Value::String(s) => Some(s.clone()),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    });
+    let identification = match &user_id_str {
+        Some(uid) => fetch_mp_identification(&state.http, &token.access_token, uid).await,
+        None => None,
+    };
+    let (mp_documento, mp_tipo_documento) = match identification {
+        Some((num, tipo)) => (Some(num), Some(tipo)),
+        None => (None, None),
+    };
+
     let sync_row: Option<(Option<String>,)> = sqlx::query_as(
         "UPDATE subscribers SET \
            forma_pagamento = 'plataforma', plataforma_pagamento = 'mercado_pago', \
-           plataforma_credenciais = $1, updated_at = now() \
+           plataforma_credenciais = $1, \
+           documento = COALESCE($3, documento), tipo_documento = COALESCE($4, tipo_documento), \
+           updated_at = now() \
          WHERE id = $2 \
          RETURNING slug",
     )
     .bind(&plataforma_credenciais)
     .bind(&subscriber_id)
+    .bind(&mp_documento)
+    .bind(&mp_tipo_documento)
     .fetch_optional(&state.pool)
     .await
     .unwrap_or(None);
