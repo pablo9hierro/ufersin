@@ -1,9 +1,10 @@
-﻿import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   AlertTriangle,
   AtSign,
+  CheckCircle2,
   CreditCard,
   ExternalLink,
   LayoutDashboard,
@@ -22,7 +23,6 @@ import {
   ApiError,
   type BillingCycle,
   type CancelReasonCode,
-  type FormaPagamento,
   type MeResponse,
 } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
@@ -143,10 +143,10 @@ export default function MeuPlano() {
   const [entregaSomentePix, setEntregaSomentePix] = useState(false)
   const [pagamentoManual, setPagamentoManual] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
-  const [credencial, setCredencial] = useState('')
   const [hasCredenciais, setHasCredenciais] = useState(false)
   const [credencialMask, setCredencialMask] = useState<string | null>(null)
-  const credencialInputRef = useRef<HTMLInputElement>(null)
+  const [connectingMp, setConnectingMp] = useState(false)
+  const [disconnectingMp, setDisconnectingMp] = useState(false)
 
   const [cancelStep, setCancelStep] = useState<'reasons' | 'confirm' | null>(null)
   const [cancelReasons, setCancelReasons] = useState<CancelReasonCode[]>([])
@@ -264,13 +264,6 @@ export default function MeuPlano() {
       cancelled = true
     }
   }, [isAuthenticated, navigate, session?.user?.email])
-
-  // Strong focus on Mercado Pago token when missing (same UX as onboarding credential field).
-  useEffect(() => {
-    if (loading || tab !== 'financeiro' || hasCredenciais) return
-    const id = window.setTimeout(() => credencialInputRef.current?.focus(), 80)
-    return () => window.clearTimeout(id)
-  }, [loading, tab, hasCredenciais])
 
   if (!ready) {
     return (
@@ -526,7 +519,6 @@ export default function MeuPlano() {
       }
       setMe((prev) => (prev ? { ...prev, ...mapFieldsToMe(prev, fields) } : prev))
       setSaved(true)
-      setCredencial('')
       if (
         fields.plataforma_credenciais &&
         typeof fields.plataforma_credenciais.token === 'string' &&
@@ -617,21 +609,30 @@ export default function MeuPlano() {
     })
   }
 
-  const handleSaveFinanceiro = (e: React.FormEvent) => {
-    e.preventDefault()
-    const token = credencial.trim()
-    // Online PIX only with a registered Mercado Pago token (new or already saved).
-    const ativarPlataforma = !!token || hasCredenciais
-    if (!ativarPlataforma) {
-      setError('Informe o Access Token do Mercado Pago pra ativar cobrança online.')
-      return
+  const handleConnectMp = async () => {
+    setError(null)
+    setConnectingMp(true)
+    try {
+      const { authorize_url } = await api.mercadoPagoOAuthStart()
+      window.location.href = authorize_url
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível conectar o Mercado Pago.')
+      setConnectingMp(false)
     }
-    const formaPagamento: FormaPagamento = 'plataforma'
-    saveOnboarding({
-      forma_pagamento: formaPagamento,
-      plataforma_pagamento: 'mercado_pago',
-      plataforma_credenciais: token ? { token } : undefined,
-    })
+  }
+
+  const handleDisconnectMp = async () => {
+    setError(null)
+    setDisconnectingMp(true)
+    try {
+      await api.mercadoPagoOAuthDisconnect()
+      setHasCredenciais(false)
+      setCredencialMask(null)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível desconectar o Mercado Pago.')
+    } finally {
+      setDisconnectingMp(false)
+    }
   }
 
   const handleSaveRedes = (e: React.FormEvent) => {
@@ -855,6 +856,22 @@ export default function MeuPlano() {
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"
+                      checked={entregaSomentePix}
+                      onChange={(e) => setEntregaSomentePix(e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                      data-testid="pref-entrega-somente-pix"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">
+                        Entrega apenas para compras com pagamento prévio
+                      </span>
+                      Pedidos com endereço de entrega só podem ser pagos com Pix ou cartão no checkout —
+                      dinheiro fica disponível só pra retirada na loja ou vendas no PDV.
+                    </span>
+                  </label>
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
                       checked={vendeMais18}
                       onChange={(e) => setVendeMais18(e.target.checked)}
                       className="w-4 h-4 mt-0.5"
@@ -862,9 +879,9 @@ export default function MeuPlano() {
                     />
                     <span className="text-xs text-uf-silver-dim">
                       <span className="block text-uf-silver font-semibold mb-0.5">
-                        Minha loja vende produtos para maiores de 18 anos
+                        Vendo produtos para maiores de 18 anos
                       </span>
-                      Se marcado, o checkout do cliente exige data de nascimento e consentimento 18+.
+                      O cliente só compra logado — cadastro passa a exigir data de nascimento e consentimento de compra +18.
                     </span>
                   </label>
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
@@ -877,56 +894,9 @@ export default function MeuPlano() {
                     />
                     <span className="text-xs text-uf-silver-dim">
                       <span className="block text-uf-silver font-semibold mb-0.5">
-                        Aceitar apenas compras com retirada na loja
+                        Não ofereço serviço de entrega — retirada obrigatória na loja
                       </span>
-                      Clientes da vitrine só podem comprar com retirada — sem entrega, frete ou motoboy.
-                    </span>
-                  </label>
-                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={pagamentoNaRetirada}
-                      onChange={(e) => setPagamentoNaRetirada(e.target.checked)}
-                      className="w-4 h-4 mt-0.5"
-                      data-testid="pref-pagamento-na-retirada"
-                    />
-                    <span className="text-xs text-uf-silver-dim">
-                      <span className="block text-uf-silver font-semibold mb-0.5">
-                        Pagamento só no ato da retirada
-                      </span>
-                      Pagamento de pedidos para retirada só é processado no ato da retirada na loja —
-                      o checkout confirma o pedido sem cobrar Pix online.
-                    </span>
-                  </label>
-                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={entregaSomentePix}
-                      onChange={(e) => setEntregaSomentePix(e.target.checked)}
-                      className="w-4 h-4 mt-0.5"
-                      data-testid="pref-entrega-somente-pix"
-                    />
-                    <span className="text-xs text-uf-silver-dim">
-                      <span className="block text-uf-silver font-semibold mb-0.5">
-                        Só aceito pedidos de entrega pagos com Pix no checkout
-                      </span>
-                      Entrega só com Pix já pago online. Cartão e dinheiro ficam só para retirada na loja.
-                    </span>
-                  </label>
-                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={pagamentoManual}
-                      onChange={(e) => setPagamentoManual(e.target.checked)}
-                      className="w-4 h-4 mt-0.5"
-                      data-testid="pref-pagamento-manual"
-                    />
-                    <span className="text-xs text-uf-silver-dim">
-                      <span className="block text-uf-silver font-semibold mb-0.5">
-                        Ativar modo pagamento manual
-                      </span>
-                      PDV, retirada, entrega, vendedor e checkout usam confirmação manual (sem QR Pix).
-                      Desmarque pra voltar ao Pix online quando houver credenciais de plataforma.
+                      A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.
                     </span>
                   </label>
                   <button type="submit" disabled={saving} className="btn-primary w-full py-3" data-testid="salvar-preferencias">
@@ -1269,39 +1239,49 @@ export default function MeuPlano() {
             <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{tabLocked}</p>
           )}
           {tab === 'financeiro' && hasActiveSub && (
-            <form onSubmit={handleSaveFinanceiro} className="uf-glass rounded-2xl p-6 space-y-4">
+            <div className="uf-glass rounded-2xl p-6 space-y-4">
               <p className="text-xs text-uf-silver-dim">
                 {content['meu_plano.financeiro_hint'] ??
-                  'Cadastre o Access Token de produção do Mercado Pago pra cobrança Pix online na loja.'}
+                  'Conecte sua conta Mercado Pago pra receber pagamentos automaticamente na loja.'}
               </p>
-              <div>
-                <label className="label flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4" /> Mercado Pago: (chave api produção)
-                </label>
-                <input
-                  ref={credencialInputRef}
-                  className={`input-field input-field--credential${!hasCredenciais ? ' input-field--credential-missing' : ''}`}
-                  value={credencial}
-                  onChange={(e) => setCredencial(e.target.value)}
-                  placeholder={
-                    hasCredenciais
-                      ? credencialMask || 'APP_USR-••••••••••••'
-                      : 'Access Token de produção (APP_USR-…)'
-                  }
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <p className="text-[11px] text-uf-silver-dim mt-1">
-                  {hasCredenciais
-                    ? 'Deixe em branco pra manter o token atual. Credencial cadastrada — Pix online e confirmação automática ativos.'
-                    : 'Sem Access Token, o site não gera cobrança Pix online.'}
-                </p>
-              </div>
-              <button type="submit" disabled={saving} className="btn-primary w-full py-3">
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Salvar financeiro
-              </button>
-            </form>
+              {hasCredenciais ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-uf-silver flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Mercado Pago conectado.
+                    {credencialMask ? <span className="text-uf-silver-dim">({credencialMask})</span> : null}
+                  </span>
+                  <div className="flex items-center gap-3 flex-none">
+                    <button
+                      type="button"
+                      onClick={handleConnectMp}
+                      disabled={connectingMp || disconnectingMp}
+                      className="text-xs text-uf-silver-dim hover:text-uf-silver underline"
+                    >
+                      Reconectar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDisconnectMp}
+                      disabled={connectingMp || disconnectingMp}
+                      className="text-xs text-red-400/80 hover:text-red-400 underline flex items-center gap-1"
+                    >
+                      {disconnectingMp ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                      Desconectar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleConnectMp}
+                  disabled={connectingMp}
+                  className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+                >
+                  {connectingMp ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                  Conectar Mercado Pago
+                </button>
+              )}
+            </div>
           )}
 
           {tab === 'redes' && !hasActiveSub && (

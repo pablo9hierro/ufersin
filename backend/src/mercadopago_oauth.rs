@@ -224,7 +224,7 @@ pub async fn oauth_callback(State(state): State<AppState>, Query(q): Query<OAuth
         "source": "oauth",
     });
 
-    let sync_row: Option<(String,)> = sqlx::query_as(
+    let sync_row: Option<(Option<String>,)> = sqlx::query_as(
         "UPDATE subscribers SET \
            forma_pagamento = 'plataforma', plataforma_pagamento = 'mercado_pago', \
            plataforma_credenciais = $1, updated_at = now() \
@@ -237,7 +237,7 @@ pub async fn oauth_callback(State(state): State<AppState>, Query(q): Query<OAuth
     .await
     .unwrap_or(None);
 
-    if let Some((slug,)) = sync_row {
+    if let Some((Some(slug),)) = sync_row {
         if !slug.trim().is_empty() {
             if let Err(e) = crate::routes::onboarding::sync_store_payment_credentials(
                 &state,
@@ -264,7 +264,7 @@ pub async fn oauth_disconnect(
     State(state): State<AppState>,
     AuthSubscriber(claims): AuthSubscriber,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
-    let row: Option<(String,)> = sqlx::query_as(
+    let row: Option<(Option<String>,)> = sqlx::query_as(
         "UPDATE subscribers SET \
            forma_pagamento = 'manual', plataforma_pagamento = NULL, \
            plataforma_credenciais = NULL, updated_at = now() \
@@ -275,7 +275,7 @@ pub async fn oauth_disconnect(
     .fetch_optional(&state.pool)
     .await?;
 
-    if let Some((slug,)) = row {
+    if let Some((Some(slug),)) = row {
         if !slug.trim().is_empty() {
             if let Err(e) = crate::routes::onboarding::sync_store_payment_credentials(
                 &state, &slug, "manual", None, None,
