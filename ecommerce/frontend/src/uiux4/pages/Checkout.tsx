@@ -48,6 +48,18 @@ export default function Uiux4Checkout() {
   const { data: storeStatus } = useStoreStatus()
   const couponsEnabled = storefrontAllowsCoupons(tenantConfig?.plano)
 
+  // Cliente logado já informou nome/whatsapp/nascimento no cadastro — não
+  // repete a pergunta no checkout.
+  useEffect(() => {
+    if (!customerAuth.customer) return
+    customer.set({
+      name: customerAuth.customer.name,
+      whatsapp: formatPhone(customerAuth.customer.whatsapp.replace(/^55/, '')),
+      birthdate: customerAuth.customer.birthdate || customer.birthdate,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerAuth.customer])
+
   const [products, setProducts] = useState<Product[]>([])
   const [productsReady, setProductsReady] = useState(false)
   const [pickupAtStore, setPickupAtStore] = useState(false)
@@ -334,19 +346,32 @@ export default function Uiux4Checkout() {
       <div className="px-4 sm:px-8 pt-5 pb-20 max-w-xl mx-auto">
         <h1 className="text-lg font-black mb-4">Finalizar pedido</h1>
         <div className="u4-panel p-4 sm:p-6 space-y-5">
-          <div>
-            <label className="text-xs font-semibold u4-dim">Seu nome *</label>
-            <input className={inputClass} value={customer.name} onChange={(e) => customer.set({ name: e.target.value })} placeholder="Nome completo" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold u4-dim">WhatsApp *</label>
-            <input className={inputClass} value={customer.whatsapp} onChange={(e) => customer.set({ whatsapp: formatPhone(e.target.value) })} type="tel" inputMode="numeric" placeholder="(83) 99999-9999" maxLength={15} />
-          </div>
-          {tenantConfig?.vende_mais_18 && (
-            <div>
-              <label className="text-xs font-semibold u4-dim">Data de nascimento *</label>
-              <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
+          {customerAuth.customer ? (
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="truncate">
+                {customerAuth.customer.name} · {customer.whatsapp}
+              </span>
+              <button type="button" onClick={() => customerAuth.logout()} className="text-xs u4-dim underline shrink-0">
+                Trocar conta
+              </button>
             </div>
+          ) : (
+            <>
+              <div>
+                <label className="text-xs font-semibold u4-dim">Seu nome *</label>
+                <input className={inputClass} value={customer.name} onChange={(e) => customer.set({ name: e.target.value })} placeholder="Nome completo" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold u4-dim">WhatsApp *</label>
+                <input className={inputClass} value={customer.whatsapp} onChange={(e) => customer.set({ whatsapp: formatPhone(e.target.value) })} type="tel" inputMode="numeric" placeholder="(83) 99999-9999" maxLength={15} />
+              </div>
+              {tenantConfig?.vende_mais_18 && (
+                <div>
+                  <label className="text-xs font-semibold u4-dim">Data de nascimento *</label>
+                  <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
+                </div>
+              )}
+            </>
           )}
 
           {apenasRetirada ? (

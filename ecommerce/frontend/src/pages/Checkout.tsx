@@ -72,6 +72,20 @@ export default function Checkout() {
   // tenta finalizar de novo sozinho.
   const [showAuthModal, setShowAuthModal] = useState(false)
 
+  // Cliente logado já informou nome/whatsapp/nascimento no cadastro — não
+  // repete a pergunta no checkout. Sincroniza o rascunho com a conta assim
+  // que loga (ou se a página já abre com sessão ativa) pra esses campos
+  // saírem preenchidos por baixo dos panos, mesmo escondidos da UI.
+  useEffect(() => {
+    if (!customerAuth.customer) return
+    customer.set({
+      name: customerAuth.customer.name,
+      whatsapp: formatPhone(customerAuth.customer.whatsapp.replace(/^55/, '')),
+      birthdate: customerAuth.customer.birthdate || customer.birthdate,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerAuth.customer])
+
   // Checkout de promoção: veio de um clique no banner da landing, com o(s)
   // produto(s) e desconto já definidos pelo admin — ignora o carrinho normal
   // enquanto essa promoção estiver carregada. Na prática esse fluxo tá morto
@@ -455,47 +469,69 @@ export default function Checkout() {
         )}
 
         <div className="bg-son-black/75 backdrop-blur-md border border-white/10 rounded-3xl p-4 sm:p-6 space-y-5">
-          <div>
-            <label className="label">Seu nome *</label>
-            <div className="sunset-input-icon-wrap">
-              <input
-                className="input-field sunset-checkout-input pr-11"
-                value={customer.name}
-                onChange={(e) => customer.set({ name: e.target.value })}
-                placeholder="Nome completo"
-              />
-              <span className="sunset-input-icon">
-                <User />
+          {customerAuth.customer ? (
+            // Logado: nome/whatsapp/nascimento já vieram do cadastro — não
+            // repete a pergunta, só mostra quem está comprando.
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="flex items-center gap-2 text-son-silver min-w-0">
+                <User className="w-4 h-4 shrink-0 text-son-silver-dim" />
+                <span className="truncate">
+                  {customerAuth.customer.name} · {customer.whatsapp}
+                </span>
               </span>
+              <button
+                type="button"
+                onClick={() => customerAuth.logout()}
+                className="text-xs text-son-silver-dim hover:text-white underline shrink-0"
+              >
+                Trocar conta
+              </button>
             </div>
-          </div>
+          ) : (
+            <>
+              <div>
+                <label className="label">Seu nome *</label>
+                <div className="sunset-input-icon-wrap">
+                  <input
+                    className="input-field sunset-checkout-input pr-11"
+                    value={customer.name}
+                    onChange={(e) => customer.set({ name: e.target.value })}
+                    placeholder="Nome completo"
+                  />
+                  <span className="sunset-input-icon">
+                    <User />
+                  </span>
+                </div>
+              </div>
 
-          <div>
-            <label className="label">WhatsApp *</label>
-            <div className="sunset-input-icon-wrap">
-              <input
-                className="input-field sunset-checkout-input pr-11"
-                value={customer.whatsapp}
-                onChange={(e) => customer.set({ whatsapp: formatPhone(e.target.value) })}
-                type="tel"
-                inputMode="numeric"
-                placeholder="(83) 99999-9999"
-                maxLength={15}
-              />
-              <span className="sunset-input-icon">
-                <Phone />
-              </span>
-            </div>
-          </div>
+              <div>
+                <label className="label">WhatsApp *</label>
+                <div className="sunset-input-icon-wrap">
+                  <input
+                    className="input-field sunset-checkout-input pr-11"
+                    value={customer.whatsapp}
+                    onChange={(e) => customer.set({ whatsapp: formatPhone(e.target.value) })}
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="(83) 99999-9999"
+                    maxLength={15}
+                  />
+                  <span className="sunset-input-icon">
+                    <Phone />
+                  </span>
+                </div>
+              </div>
 
-          {tenantConfig?.vende_mais_18 && (
-            <div>
-              <label className="label">Data de nascimento *</label>
-              <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
-              <p className="text-xs text-son-silver-dim mt-1">
-                Obrigatório — esta loja vende produtos para maiores de 18 anos.
-              </p>
-            </div>
+              {tenantConfig?.vende_mais_18 && (
+                <div>
+                  <label className="label">Data de nascimento *</label>
+                  <BirthdateInput value={customer.birthdate} onChange={(birthdate) => customer.set({ birthdate })} />
+                  <p className="text-xs text-son-silver-dim mt-1">
+                    Obrigatório — esta loja vende produtos para maiores de 18 anos.
+                  </p>
+                </div>
+              )}
+            </>
           )}
 
                     {apenasRetirada ? (
