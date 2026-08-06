@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { AtSign, CheckCircle2, CreditCard, Loader2, Palette, Rocket, Store } from 'lucide-react'
+import { AtSign, CheckCircle2, CreditCard, Loader2, Palette, Rocket, Store, Upload } from 'lucide-react'
 import { api, ApiError, type MeResponse, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
@@ -10,6 +10,7 @@ import { isValidDocumento, onlyDigits } from '../lib/documento'
 import { planDisplayName } from '../lib/plans'
 import { needsOnboardingLock, storeAlreadyExists } from '../lib/postPayRedirect'
 import type { StorefrontStyle } from '../lib/storefrontStyles'
+import { storePublicUrl } from '../lib/ecommerceUrl'
 
 const CORES_DEFAULT = '#0f5132'
 /** Full = first-time; complementary = upgrade (prefill + delta); skip = already provisioned. */
@@ -48,6 +49,9 @@ function applyMePrefill(me: MeResponse): {
   endereco: string
   enderecoNumero: string
   instagram: string
+  facebook: string
+  logoUrl: string
+  landingHeroImageUrl: string
   venderExternamente: boolean
   vendeMais18: boolean
   apenasRetirada: boolean
@@ -68,6 +72,9 @@ function applyMePrefill(me: MeResponse): {
     endereco: me.endereco?.trim() || '',
     enderecoNumero: me.endereco_numero?.trim() || '',
     instagram: (me.instagram || '').replace(/^@/, ''),
+    facebook: (me.facebook || '').replace(/^@/, ''),
+    logoUrl: me.logo_url || '',
+    landingHeroImageUrl: me.landing_hero_image_url || '',
     venderExternamente: me.vender_externamente !== false,
     vendeMais18: Boolean(me.vende_mais_18),
     apenasRetirada: Boolean(me.apenas_retirada),
@@ -87,6 +94,7 @@ export default function Onboarding() {
   const [mode, setMode] = useState<OnboardingMode>('loading')
   const [planLabel, setPlanLabel] = useState<string | null>(null)
   const [hasCreds, setHasCreds] = useState(false)
+  const [storeSlug, setStoreSlug] = useState<string | null>(null)
   const [connectingMp, setConnectingMp] = useState(false)
   const [disconnectingMp, setDisconnectingMp] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -97,6 +105,11 @@ export default function Onboarding() {
   const [endereco, setEndereco] = useState('')
   const [enderecoNumero, setEnderecoNumero] = useState('')
   const [instagram, setInstagram] = useState('')
+  const [facebook, setFacebook] = useState('')
+  const [logoUrl, setLogoUrl] = useState('')
+  const [landingHeroImageUrl, setLandingHeroImageUrl] = useState('')
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [uploadingHero, setUploadingHero] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
@@ -128,6 +141,9 @@ export default function Onboarding() {
         setEndereco(pre.endereco)
         setEnderecoNumero(pre.enderecoNumero)
         setInstagram(pre.instagram)
+        setFacebook(pre.facebook)
+        setLogoUrl(pre.logoUrl)
+        setLandingHeroImageUrl(pre.landingHeroImageUrl)
         setVenderExternamente(pre.venderExternamente)
         setVendeMais18(pre.vendeMais18)
         setApenasRetirada(pre.apenasRetirada)
@@ -135,6 +151,7 @@ export default function Onboarding() {
         setEntregaSomentePix(pre.entregaSomentePix)
         setLayoutStyle(pre.layoutStyle)
         setHasCreds(pre.hasCreds)
+        setStoreSlug(me.slug?.trim() || null)
 
         // Stay on /onboarding until lock clears (provisionado / store ready).
         if (!needsOnboardingLock(me)) {
@@ -215,6 +232,34 @@ export default function Onboarding() {
     }
   }
 
+  const handleLogoUpload = async (file: File | null) => {
+    if (!file) return
+    setError(null)
+    setUploadingLogo(true)
+    try {
+      const { url } = await api.uploadLogo(file)
+      setLogoUrl(url)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível enviar a logo.')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  const handleHeroUpload = async (file: File | null) => {
+    if (!file) return
+    setError(null)
+    setUploadingHero(true)
+    try {
+      const { url } = await api.uploadLogo(file)
+      setLandingHeroImageUrl(url)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível enviar a imagem do hero.')
+    } finally {
+      setUploadingHero(false)
+    }
+  }
+
   const handleKeepCurrent = async () => {
     setError(null)
     if (mpTokenRequired) {
@@ -223,7 +268,11 @@ export default function Onboarding() {
     }
     setLoading(true)
     try {
-      await api.editarOnboarding({})
+      await api.editarOnboarding({
+        facebook: facebook.trim().replace(/^@/, ''),
+        logo_url: logoUrl.trim(),
+        landing_hero_image_url: landingHeroImageUrl.trim(),
+      })
       finishOk()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível concluir.')
@@ -241,7 +290,6 @@ export default function Onboarding() {
       return setError(`${tipoDocumento.toUpperCase()} inválido — confira os dígitos.`)
     }
     if (!endereco.trim()) return setError('Informe o endereço da loja.')
-    if (!instagram.trim().replace(/^@/, '')) return setError('Informe o Instagram da loja.')
     if (mpTokenRequired) {
       return setError('Conecte sua conta Mercado Pago pra concluir o cadastro.')
     }
@@ -257,6 +305,9 @@ export default function Onboarding() {
           documento: onlyDigits(documento),
           tipo_documento: tipoDocumento,
           instagram: instagram.trim().replace(/^@/, ''),
+          facebook: facebook.trim().replace(/^@/, ''),
+          logo_url: logoUrl.trim(),
+          landing_hero_image_url: landingHeroImageUrl.trim(),
           vender_externamente: venderExternamente,
           vende_mais_18: vendeMais18,
           apenas_retirada: apenasRetirada,
@@ -272,11 +323,13 @@ export default function Onboarding() {
           whatsapp: '',
           endereco: endereco.trim(),
           endereco_numero: enderecoNumero.trim() || undefined,
+          logo_url: logoUrl.trim() || undefined,
           cor_principal: CORES_DEFAULT,
           slug,
           documento: onlyDigits(documento),
           tipo_documento: tipoDocumento,
           instagram: instagram.trim().replace(/^@/, ''),
+          facebook: facebook.trim().replace(/^@/, ''),
           vender_externamente: venderExternamente,
           vende_mais_18: vendeMais18,
           apenas_retirada: apenasRetirada,
@@ -285,6 +338,11 @@ export default function Onboarding() {
           whatsapp_habilitado: true,
           layout_style: venderExternamente ? layoutStyle : 'ufersin',
         })
+        // OnboardingInput (criação inicial) não tem landing_hero_image_url —
+        // só editar_onboarding aceita, e só depois do tenant provisionado.
+        if (landingHeroImageUrl.trim()) {
+          await api.editarOnboarding({ landing_hero_image_url: landingHeroImageUrl.trim() })
+        }
       }
       finishOk()
     } catch (err) {
@@ -384,7 +442,7 @@ export default function Onboarding() {
 
           <div>
             <label className="label flex items-center gap-1.5">
-              <AtSign className="w-3.5 h-3.5" /> Rede social — Instagram *
+              <AtSign className="w-3.5 h-3.5" /> Rede social — Instagram (opcional)
             </label>
             <div className="flex items-center gap-1 input-field !py-0 !px-3">
               <span className="text-uf-silver-dim text-sm">@</span>
@@ -395,6 +453,99 @@ export default function Onboarding() {
                 placeholder="sua_loja"
                 autoComplete="off"
               />
+            </div>
+          </div>
+
+          <div>
+            <label className="label flex items-center gap-1.5">
+              <AtSign className="w-3.5 h-3.5" /> Rede social — Facebook (opcional)
+            </label>
+            <div className="flex items-center gap-1 input-field !py-0 !px-3">
+              <span className="text-uf-silver-dim text-sm">@</span>
+              <input
+                className="flex-1 bg-transparent outline-none py-2.5 text-sm"
+                value={facebook.replace(/^@/, '')}
+                onChange={(e) => setFacebook(e.target.value.replace(/^@/, ''))}
+                placeholder="sua_loja"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Logo (opcional)</label>
+            <div className="flex items-center gap-3">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo" className="w-14 h-14 rounded-xl object-cover border border-white/10" />
+              ) : (
+                <div className="w-14 h-14 rounded-xl border border-dashed border-white/20 flex items-center justify-center text-[10px] text-uf-silver-dim">
+                  sem logo
+                </div>
+              )}
+              <label className="btn-secondary text-xs px-3 py-2 cursor-pointer inline-flex items-center gap-1.5">
+                {uploadingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                {logoUrl ? 'Trocar imagem' : 'Enviar imagem'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingLogo}
+                  onChange={(e) => handleLogoUpload(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              {logoUrl && (
+                <button
+                  type="button"
+                  onClick={() => setLogoUrl('')}
+                  disabled={uploadingLogo}
+                  className="btn-ghost text-xs px-3 py-1.5 !text-red-300"
+                >
+                  Remover
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Imagem do hero (opcional)</label>
+            <p className="text-[11px] text-uf-silver-dim mb-2 leading-snug">
+              No plano Essential, esta imagem retangular aparece acima do título na landing.
+            </p>
+            <div className="flex items-start gap-3">
+              {landingHeroImageUrl ? (
+                <img
+                  src={landingHeroImageUrl}
+                  alt="Hero"
+                  className="w-28 h-16 rounded-xl object-cover border border-white/10"
+                />
+              ) : (
+                <div className="w-28 h-16 rounded-xl border border-dashed border-white/20 flex items-center justify-center text-[10px] text-uf-silver-dim text-center px-1">
+                  sem imagem
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <label className="btn-secondary text-xs px-3 py-2 cursor-pointer inline-flex items-center gap-1.5">
+                  {uploadingHero ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {landingHeroImageUrl ? 'Trocar imagem' : 'Enviar imagem'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingHero}
+                    onChange={(e) => handleHeroUpload(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                {landingHeroImageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setLandingHeroImageUrl('')}
+                    disabled={uploadingHero}
+                    className="btn-ghost text-xs px-3 py-1.5 !text-red-300"
+                  >
+                    Remover
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -507,8 +658,7 @@ export default function Onboarding() {
               <StorefrontStylePicker
                 value={layoutStyle}
                 onChange={setLayoutStyle}
-                lojaNome={nomeLoja}
-                corPrincipal={CORES_DEFAULT}
+                publicUrl={storeSlug ? storePublicUrl(storeSlug) : null}
               />
             </div>
           )}

@@ -269,6 +269,7 @@ export interface OnboardingInput {
   documento: string
   tipo_documento: TipoDocumento
   instagram?: string
+  facebook?: string
   vender_externamente: boolean
   vende_mais_18?: boolean
   apenas_retirada?: boolean
