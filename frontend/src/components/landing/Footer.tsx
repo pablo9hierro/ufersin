@@ -1,6 +1,10 @@
 ﻿import { Link } from 'react-router-dom'
+import { useCms } from '../../lib/cms'
 
 export default function Footer() {
+  const cms = useCms()
+  const instagram = (cms?.get('contato.instagram') || '').trim().replace(/^@/, '')
+
   return (
     <footer className="border-t border-white/5 py-10 px-5">
       <div className="uf-container flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -17,6 +21,16 @@ export default function Footer() {
           <a href="#faq" className="hover:text-uf-silver transition-colors">
             FAQ
           </a>
+          {instagram && (
+            <a
+              href={`https://instagram.com/${instagram}`}
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-uf-silver transition-colors"
+            >
+              @{instagram}
+            </a>
+          )}
           <Link to="/login" className="hover:text-uf-silver transition-colors">
             Entrar
           </Link>

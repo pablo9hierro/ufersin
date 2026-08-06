@@ -6,6 +6,7 @@ import {
   POLITICAS_BY_SLUG,
   type PoliticaSlug,
 } from '../content/politicas'
+import { CONTENT_DEFAULTS, usePlatformContent } from '../lib/cms'
 
 const NAV: { slug: PoliticaSlug; label: string }[] = [
   { slug: 'compra', label: 'Compra (cliente)' },
@@ -16,11 +17,13 @@ const NAV: { slug: PoliticaSlug; label: string }[] = [
 
 export default function PoliticasPrivacidade() {
   const { slug = '' } = useParams<{ slug: string }>()
+  const { content } = usePlatformContent()
   if (!isPoliticaSlug(slug)) {
     return <Navigate to={POLITICA_PATHS.compra} replace />
   }
 
   const doc = POLITICAS_BY_SLUG[slug]
+  const email = content['contato.email'] || CONTENT_DEFAULTS['contato.email']
 
   return (
     <main className="min-h-screen bg-uf-black text-uf-silver px-5 py-12 relative">
@@ -86,8 +89,8 @@ export default function PoliticasPrivacidade() {
 
           <p className="mt-10 text-xs text-uf-silver-dim">
             Dúvidas sobre a plataforma:{' '}
-            <a href="mailto:contato@resolutoo.com" className="text-uf-blue hover:underline">
-              contato@resolutoo.com
+            <a href={`mailto:${email}`} className="text-uf-blue hover:underline">
+              {email}
             </a>
             . Questões de conta Mercado Pago da loja: suporte Mercado Pago.
           </p>

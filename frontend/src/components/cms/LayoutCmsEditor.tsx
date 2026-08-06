@@ -32,6 +32,12 @@ interface LayoutCmsEditorProps {
   error: string | null
 }
 
+const CONTACT_FIELDS: { key: string; label: string; placeholder: string }[] = [
+  { key: 'contato.whatsapp', label: 'WhatsApp da Resolutoo', placeholder: '5583999999999 (só números, com DDI+DDD)' },
+  { key: 'contato.email', label: 'E-mail da Resolutoo', placeholder: 'contato@resolutoo.com' },
+  { key: 'contato.instagram', label: 'Instagram da Resolutoo', placeholder: '@resolutoo' },
+]
+
 export default function LayoutCmsEditor({
   content,
   onContentChange,
@@ -50,6 +56,7 @@ export default function LayoutCmsEditor({
   const [scale, setScale] = useState(0.5)
   const [contentHeight, setContentHeight] = useState(820)
   const [planNames, setPlanNames] = useState<Record<string, string>>({})
+  const [contactDrafts, setContactDrafts] = useState<Record<string, string>>({})
   const frameRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -175,6 +182,32 @@ export default function LayoutCmsEditor({
             </p>
           </div>
         )}
+      </section>
+
+      <section className="uf-glass rounded-2xl p-5">
+        <div className="mb-4">
+          <h2 className="font-bold text-sm">Contato & redes sociais</h2>
+          <p className="text-xs text-uf-silver-dim mt-1">
+            Usado em toda a Resolutoo (landing, políticas, login) — troque aqui e reflete em todo lugar.
+          </p>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-3">
+          {CONTACT_FIELDS.map((f) => (
+            <div key={f.key}>
+              <label className="label text-xs">{f.label}</label>
+              <input
+                className="input-field w-full text-sm"
+                value={contactDrafts[f.key] ?? content[f.key] ?? ''}
+                placeholder={f.placeholder}
+                onChange={(e) => setContactDrafts((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                onBlur={() => {
+                  const v = contactDrafts[f.key]
+                  if (v !== undefined && v !== (content[f.key] ?? '')) void onSaveContent(f.key, v)
+                }}
+              />
+            </div>
+          ))}
+        </div>
       </section>
 
       <div className="flex flex-wrap gap-1 border-b border-white/10 pb-px">

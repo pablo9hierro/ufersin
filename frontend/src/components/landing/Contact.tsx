@@ -1,11 +1,12 @@
 ﻿import { motion } from 'framer-motion'
 import { Mail, MessageCircle } from 'lucide-react'
-
-// TODO: substituir pelo WhatsApp/e-mail reais da Resolutoo antes de publicar.
-const WHATSAPP = import.meta.env.VITE_CONTACT_WHATSAPP || '5500000000000'
-const EMAIL = import.meta.env.VITE_CONTACT_EMAIL || 'contato@resolutoo.com'
+import { CONTENT_DEFAULTS, useCms } from '../../lib/cms'
 
 export default function Contact() {
+  const cms = useCms()
+  const WHATSAPP = cms?.get('contato.whatsapp') || CONTENT_DEFAULTS['contato.whatsapp']
+  const EMAIL = cms?.get('contato.email') || CONTENT_DEFAULTS['contato.email']
+
   return (
     <section id="contato" className="uf-section">
       <div className="uf-container max-w-3xl">

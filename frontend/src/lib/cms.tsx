@@ -24,6 +24,9 @@ export const CONTENT_DEFAULTS: Record<string, string> = {
     'Você vai acessar as páginas reais que vem com cada plano — vitrine, painel admin e área do motoboy — com dados de demonstração, exatamente como o assinante recebe.',
   'assinar.title': 'Escolha o ciclo e como pagar.',
   'assinar.sub': 'Preço cobrado vem do banco — cupons aplicam no servidor.',
+  'contato.whatsapp': '5500000000000',
+  'contato.email': 'contato@resolutoo.com',
+  'contato.instagram': '',
 }
 
 export type CmsTabId = 'landing' | 'demo' | 'assinar'
