@@ -473,44 +473,48 @@ export default function Onboarding() {
             </span>
           </label>
 
-          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={entregaSomentePix}
-              onChange={(e) => setEntregaSomentePix(e.target.checked)}
-              className="w-4 h-4 mt-0.5"
-            />
-            <span className="text-xs text-uf-silver-dim">
-              <span className="block text-uf-silver font-semibold mb-0.5">Entrega apenas para compras com pagamento prévio</span>
-              Pedidos com endereço de entrega só podem ser pagos com Pix ou cartão no checkout — dinheiro fica disponível só pra retirada na loja ou vendas no PDV.
-            </span>
-          </label>
+          {venderExternamente && (
+            <>
+              <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={entregaSomentePix}
+                  onChange={(e) => setEntregaSomentePix(e.target.checked)}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span className="text-xs text-uf-silver-dim">
+                  <span className="block text-uf-silver font-semibold mb-0.5">Entrega apenas para compras com pagamento prévio</span>
+                  Pedidos com endereço de entrega só podem ser pagos com Pix ou cartão no checkout — dinheiro fica disponível só pra retirada na loja ou vendas no PDV.
+                </span>
+              </label>
 
-          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={vendeMais18}
-              onChange={(e) => setVendeMais18(e.target.checked)}
-              className="w-4 h-4 mt-0.5"
-            />
-            <span className="text-xs text-uf-silver-dim">
-              <span className="block text-uf-silver font-semibold mb-0.5">Vendo produtos para maiores de 18 anos</span>
-              O cliente só compra logado — cadastro passa a exigir data de nascimento e consentimento de compra +18.
-            </span>
-          </label>
+              <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={vendeMais18}
+                  onChange={(e) => setVendeMais18(e.target.checked)}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span className="text-xs text-uf-silver-dim">
+                  <span className="block text-uf-silver font-semibold mb-0.5">Vendo produtos para maiores de 18 anos</span>
+                  O cliente só compra logado — cadastro passa a exigir data de nascimento e consentimento de compra +18.
+                </span>
+              </label>
 
-          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={apenasRetirada}
-              onChange={(e) => setApenasRetirada(e.target.checked)}
-              className="w-4 h-4 mt-0.5"
-            />
-            <span className="text-xs text-uf-silver-dim">
-              <span className="block text-uf-silver font-semibold mb-0.5">Não ofereço serviço de entrega — retirada obrigatória na loja</span>
-              A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.
-            </span>
-          </label>
+              <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={apenasRetirada}
+                  onChange={(e) => setApenasRetirada(e.target.checked)}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span className="text-xs text-uf-silver-dim">
+                  <span className="block text-uf-silver font-semibold mb-0.5">Não ofereço serviço de entrega — retirada obrigatória na loja</span>
+                  A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.
+                </span>
+              </label>
+            </>
+          )}
 
           {venderExternamente && (
             <div className="uf-glass rounded-2xl px-4 py-4 space-y-3 border border-white/10">

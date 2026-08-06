@@ -853,6 +853,8 @@ export default function MeuPlano() {
                       libera Pedidos e Frete no painel quando ativo.
                     </span>
                   </label>
+                  {venderExternamente && (
+                  <>
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"
@@ -899,6 +901,8 @@ export default function MeuPlano() {
                       A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.
                     </span>
                   </label>
+                  </>
+                  )}
                   <button type="submit" disabled={saving} className="btn-primary w-full py-3" data-testid="salvar-preferencias">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                     Salvar preferências

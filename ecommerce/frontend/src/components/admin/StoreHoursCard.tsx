@@ -185,11 +185,16 @@ export default function StoreHoursCard({
     )
 
   const saveHours = async () => {
-    setSavingHours(true)
     setHoursError(null)
     setHoursSaved(false)
     setHoursHint(null)
     const payload = normalizeHours(hours)
+    // Loja não pode ficar sem nenhum dia aberto — pelo menos 1, no máximo os 7.
+    if (!payload.some((h) => h.is_open)) {
+      setHoursError('Marque pelo menos 1 dia de funcionamento — a loja não pode ficar fechada todos os dias.')
+      return
+    }
+    setSavingHours(true)
     try {
       await adminService.storeStatus.setHours(payload)
       setHours(payload)
