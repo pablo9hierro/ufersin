@@ -460,16 +460,16 @@ export default function Onboarding() {
             <label className="label flex items-center gap-1.5">
               <AtSign className="w-3.5 h-3.5" /> Rede social — Facebook (opcional)
             </label>
-            <div className="flex items-center gap-1 input-field !py-0 !px-3">
-              <span className="text-uf-silver-dim text-sm">@</span>
-              <input
-                className="flex-1 bg-transparent outline-none py-2.5 text-sm"
-                value={facebook.replace(/^@/, '')}
-                onChange={(e) => setFacebook(e.target.value.replace(/^@/, ''))}
-                placeholder="sua_loja"
-                autoComplete="off"
-              />
-            </div>
+            <input
+              className="input-field text-sm"
+              value={facebook}
+              onChange={(e) => setFacebook(e.target.value)}
+              placeholder="facebook.com/usuarioNome ou usuarioNome"
+              autoComplete="off"
+            />
+            <p className="text-[11px] text-uf-silver-dim mt-1">
+              Cole o link do perfil/página ou só o nome de usuário — o cliente é levado direto pro Facebook da loja.
+            </p>
           </div>
 
           <div>
