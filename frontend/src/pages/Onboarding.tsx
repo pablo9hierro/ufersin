@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { AtSign, CheckCircle2, CreditCard, Loader2, MessageCircle, Palette, Rocket, Store } from 'lucide-react'
+import { AtSign, CheckCircle2, CreditCard, Loader2, Palette, Rocket, Store } from 'lucide-react'
 import { api, ApiError, type MeResponse, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import StorefrontStylePicker from '../components/StorefrontStylePicker'
@@ -54,7 +54,6 @@ function applyMePrefill(me: MeResponse): {
   pagamentoNaRetirada: boolean
   entregaSomentePix: boolean
   layoutStyle: StorefrontStyle
-  whatsappHabilitado: boolean
   hasCreds: boolean
 } {
   const tipo = (me.tipo_documento === 'cpf' ? 'cpf' : 'cnpj') as TipoDocumento
@@ -75,7 +74,6 @@ function applyMePrefill(me: MeResponse): {
     pagamentoNaRetirada: Boolean(me.pagamento_na_retirada),
     entregaSomentePix: Boolean(me.entrega_somente_pix),
     layoutStyle: layout,
-    whatsappHabilitado: me.whatsapp_habilitado !== false,
     hasCreds: Boolean(me.has_plataforma_credenciais),
   }
 }
@@ -105,7 +103,6 @@ export default function Onboarding() {
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
   const [entregaSomentePix, setEntregaSomentePix] = useState(false)
   const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
-  const [whatsappHabilitado, setWhatsappHabilitado] = useState(true)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -137,7 +134,6 @@ export default function Onboarding() {
         setPagamentoNaRetirada(pre.pagamentoNaRetirada)
         setEntregaSomentePix(pre.entregaSomentePix)
         setLayoutStyle(pre.layoutStyle)
-        setWhatsappHabilitado(pre.whatsappHabilitado)
         setHasCreds(pre.hasCreds)
 
         // Stay on /onboarding until lock clears (provisionado / store ready).
@@ -266,7 +262,7 @@ export default function Onboarding() {
           apenas_retirada: apenasRetirada,
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
-          whatsapp_habilitado: whatsappHabilitado,
+          whatsapp_habilitado: true,
           layout_style: venderExternamente ? layoutStyle : 'ufersin',
         })
       } else {
@@ -286,7 +282,7 @@ export default function Onboarding() {
           apenas_retirada: apenasRetirada,
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
-          whatsapp_habilitado: whatsappHabilitado,
+          whatsapp_habilitado: true,
           layout_style: venderExternamente ? layoutStyle : 'ufersin',
         })
       }
@@ -529,21 +525,6 @@ export default function Onboarding() {
               />
             </div>
           )}
-
-          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={whatsappHabilitado}
-              onChange={(e) => setWhatsappHabilitado(e.target.checked)}
-              className="w-4 h-4 mt-0.5"
-            />
-            <span className="text-xs text-uf-silver-dim">
-              <MessageCircle className="w-3.5 h-3.5 inline mr-1" />
-              <span className="text-uf-silver font-semibold">Quer usar WhatsApp pra mensageria</span>
-              <br />
-              A conexão por QR fica no primeiro acesso ao painel da loja (ou em Configurações).
-            </span>
-          </label>
 
           {error && <p className="error-msg">{error}</p>}
 
