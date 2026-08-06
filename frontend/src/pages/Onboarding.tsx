@@ -1,16 +1,14 @@
 ﻿import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { AtSign, CheckCircle2, CreditCard, Loader2, Palette, Rocket, Store, Upload } from 'lucide-react'
+import { AtSign, CheckCircle2, CreditCard, Loader2, Rocket, Store, Upload } from 'lucide-react'
 import { api, ApiError, type MeResponse, type TipoDocumento } from '../lib/api'
 import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
-import StorefrontStylePicker from '../components/StorefrontStylePicker'
 import AddressField from '../components/AddressField'
 import { isValidDocumento, onlyDigits } from '../lib/documento'
 import { planDisplayName } from '../lib/plans'
 import { needsOnboardingLock, storeAlreadyExists } from '../lib/postPayRedirect'
 import type { StorefrontStyle } from '../lib/storefrontStyles'
-import { storePublicUrl } from '../lib/ecommerceUrl'
 
 const CORES_DEFAULT = '#0f5132'
 /** Full = first-time; complementary = upgrade (prefill + delta); skip = already provisioned. */
@@ -94,7 +92,6 @@ export default function Onboarding() {
   const [mode, setMode] = useState<OnboardingMode>('loading')
   const [planLabel, setPlanLabel] = useState<string | null>(null)
   const [hasCreds, setHasCreds] = useState(false)
-  const [storeSlug, setStoreSlug] = useState<string | null>(null)
   const [connectingMp, setConnectingMp] = useState(false)
   const [disconnectingMp, setDisconnectingMp] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -151,7 +148,6 @@ export default function Onboarding() {
         setEntregaSomentePix(pre.entregaSomentePix)
         setLayoutStyle(pre.layoutStyle)
         setHasCreds(pre.hasCreds)
-        setStoreSlug(me.slug?.trim() || null)
 
         // Stay on /onboarding until lock clears (provisionado / store ready).
         if (!needsOnboardingLock(me)) {
@@ -464,12 +460,9 @@ export default function Onboarding() {
               className="input-field text-sm"
               value={facebook}
               onChange={(e) => setFacebook(e.target.value)}
-              placeholder="facebook.com/usuarioNome ou usuarioNome"
+              placeholder="usuarioNome"
               autoComplete="off"
             />
-            <p className="text-[11px] text-uf-silver-dim mt-1">
-              Cole o link do perfil/página ou só o nome de usuário — o cliente é levado direto pro Facebook da loja.
-            </p>
           </div>
 
           <div>
@@ -650,18 +643,6 @@ export default function Onboarding() {
             </>
           )}
 
-          {venderExternamente && (
-            <div className="uf-glass rounded-2xl px-4 py-4 space-y-3 border border-white/10">
-              <p className="label mb-1 flex items-center gap-1.5">
-                <Palette className="w-3.5 h-3.5" /> Layout da vitrine
-              </p>
-              <StorefrontStylePicker
-                value={layoutStyle}
-                onChange={setLayoutStyle}
-                publicUrl={storeSlug ? storePublicUrl(storeSlug) : null}
-              />
-            </div>
-          )}
 
           {error && <p className="error-msg">{error}</p>}
 
