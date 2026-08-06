@@ -134,6 +134,7 @@ export default function MeuPlano() {
   const [landingHeroImageUrl, setLandingHeroImageUrl] = useState('')
   const [cartFabStyle, setCartFabStyle] = useState<CartFabStyle>('sacola')
   const [cartFabAnimate, setCartFabAnimate] = useState(false)
+  const [previewReloadKey, setPreviewReloadKey] = useState(0)
   const [whatsapp, setWhatsapp] = useState('')
   const [instagram, setInstagram] = useState('')
   const [facebook, setFacebook] = useState('')
@@ -519,6 +520,7 @@ export default function MeuPlano() {
       }
       setMe((prev) => (prev ? { ...prev, ...mapFieldsToMe(prev, fields) } : prev))
       setSaved(true)
+      setPreviewReloadKey((k) => k + 1)
       if (
         fields.plataforma_credenciais &&
         typeof fields.plataforma_credenciais.token === 'string' &&
@@ -1212,9 +1214,6 @@ export default function MeuPlano() {
               </div>
               <StorefrontCmsPreview
                 values={{
-                  lojaNome: nomeLoja,
-                  endereco: [endereco, enderecoNumero].filter(Boolean).join(', '),
-                  logoUrl,
                   corPrincipal,
                   layoutStyle,
                   landingHeadline,
@@ -1231,6 +1230,8 @@ export default function MeuPlano() {
                   if (patch.cartFabStyle != null) setCartFabStyle(patch.cartFabStyle)
                   if (patch.cartFabAnimate != null) setCartFabAnimate(patch.cartFabAnimate)
                 }}
+                publicUrl={publicUrl}
+                reloadToken={previewReloadKey}
               />
               <button type="submit" disabled={saving} className="btn-primary w-full py-3">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
