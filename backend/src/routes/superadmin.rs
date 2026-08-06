@@ -1,6 +1,6 @@
 //! Painel do dono da Resolutoo — exige `platform_admins`.
 
-use axum::{extract::Path, extract::State, Json};
+use axum::{extract::Path, extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthSuperadmin;
@@ -361,20 +361,19 @@ pub async fn create_coupon(
         return Err(AppError::BadRequest("código vazio".to_string()));
     }
 
-    // Vitalício: desconto enquanto o assinante permanecer no plano do resgate.
-    // Sem janela (duration_days) e sem teto de resgates (max_redemptions).
-    // Timed: exige dias + máximo de usos.
-    let (duration_days, max_redemptions) = if body.duration_kind == "lifetime_current_plan" {
-        (None, None)
+    // Vitalício: desconto enquanto o assinante permanecer no plano do resgate,
+    // sem janela (duration_days). Timed: exige dias. Em ambos os casos,
+    // max_redemptions é opcional (teto de quantos assinantes podem resgatar
+    // o cupom) — não é mais exclusivo do tipo "timed".
+    let duration_days = if body.duration_kind == "lifetime_current_plan" {
+        None
     } else {
         let days = body.duration_days.filter(|d| *d > 0).ok_or_else(|| {
             AppError::BadRequest("cupom por tempo limitado exige duration_days > 0".to_string())
         })?;
-        let max = body.max_redemptions.filter(|m| *m > 0).ok_or_else(|| {
-            AppError::BadRequest("cupom por tempo limitado exige max_redemptions > 0".to_string())
-        })?;
-        (Some(days), Some(max))
+        Some(days)
     };
+    let max_redemptions = body.max_redemptions.filter(|m| *m > 0);
 
     let id = uuid::Uuid::new_v4().to_string();
     sqlx::query(
@@ -400,6 +399,75 @@ pub async fn create_coupon(
         "duration_days": duration_days,
         "max_redemptions": max_redemptions,
     })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateCouponInput {
+    pub discount_type: String,
+    pub discount_value: f64,
+    pub duration_kind: String,
+    pub duration_days: Option<i32>,
+    pub max_redemptions: Option<i32>,
+    pub notes: Option<String>,
+    pub active: bool,
+}
+
+pub async fn update_coupon(
+    State(state): State<AppState>,
+    AuthSuperadmin(_): AuthSuperadmin,
+    Path(id): Path<String>,
+    Json(body): Json<UpdateCouponInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !matches!(body.discount_type.as_str(), "fixed" | "percent") {
+        return Err(AppError::BadRequest("discount_type inválido".to_string()));
+    }
+    if !matches!(body.duration_kind.as_str(), "timed" | "lifetime_current_plan") {
+        return Err(AppError::BadRequest("duration_kind inválido".to_string()));
+    }
+    let duration_days = if body.duration_kind == "lifetime_current_plan" {
+        None
+    } else {
+        let days = body.duration_days.filter(|d| *d > 0).ok_or_else(|| {
+            AppError::BadRequest("cupom por tempo limitado exige duration_days > 0".to_string())
+        })?;
+        Some(days)
+    };
+    let max_redemptions = body.max_redemptions.filter(|m| *m > 0);
+
+    let result = sqlx::query(
+        "UPDATE platform_coupons SET discount_type = $1, discount_value = $2, duration_kind = $3, \
+         duration_days = $4, max_redemptions = $5, notes = $6, active = $7, updated_at = now() \
+         WHERE id = $8",
+    )
+    .bind(&body.discount_type)
+    .bind(body.discount_value)
+    .bind(&body.duration_kind)
+    .bind(duration_days)
+    .bind(max_redemptions)
+    .bind(body.notes.unwrap_or_default())
+    .bind(body.active)
+    .bind(&id)
+    .execute(&state.pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("cupom não encontrado".to_string()));
+    }
+    Ok(Json(serde_json::json!({ "id": id })))
+}
+
+pub async fn delete_coupon(
+    State(state): State<AppState>,
+    AuthSuperadmin(_): AuthSuperadmin,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let result = sqlx::query("DELETE FROM platform_coupons WHERE id = $1")
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("cupom não encontrado".to_string()));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Quem sou eu no painel — front usa pra redirecionar login.

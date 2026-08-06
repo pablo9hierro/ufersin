@@ -5,6 +5,7 @@ mod error;
 mod gateway;
 mod jwks;
 mod mercadopago;
+mod mercadopago_oauth;
 mod pandadoc;
 mod plans;
 mod routes;
@@ -96,6 +97,14 @@ async fn main() -> anyhow::Result<()> {
     let pandadoc = pandadoc::PandadocConfig::from_env();
     tracing::info!("{}", pandadoc::status(&pandadoc).message);
 
+    let mercadopago_oauth = mercadopago_oauth::MercadoPagoOAuthConfig::from_env();
+    if !mercadopago_oauth.enabled() {
+        tracing::warn!(
+            "MERCADOPAGO_OAUTH_CLIENT_ID/CLIENT_SECRET/REDIRECT_URI não configurados — \
+             'Conectar Mercado Pago' vai falhar até isso ser setado"
+        );
+    }
+
     let supabase_service_key = env_trimmed("SUPABASE_SERVICE_ROLE_KEY");
     if supabase_service_key.is_empty() {
         tracing::warn!("SUPABASE_SERVICE_ROLE_KEY not set — upload de logo em /api/me/upload-logo vai falhar");
@@ -149,6 +158,7 @@ async fn main() -> anyhow::Result<()> {
         supabase_service_key,
         payment_mode,
         public_api_url: Arc::new(public_api_url),
+        mercadopago_oauth,
     };
 
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
@@ -190,6 +200,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/onboarding",
             post(routes::onboarding::onboarding).put(routes::onboarding::editar_onboarding),
         )
+        .route("/api/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start))
+        .route("/api/mercadopago/oauth/callback", get(mercadopago_oauth::oauth_callback))
         .route("/api/public/tenant-config/{slug}", get(routes::onboarding::tenant_config))
         .route("/api/public/contratos/catalog", get(routes::contratos::catalog))
         .route(
@@ -232,6 +244,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/superadmin/coupons",
             get(routes::superadmin::list_coupons).post(routes::superadmin::create_coupon),
+        )
+        .route(
+            "/api/superadmin/coupons/{id}",
+            put(routes::superadmin::update_coupon).delete(routes::superadmin::delete_coupon),
         )
         .layer(cors)
         .layer(TraceLayer::new_for_http())

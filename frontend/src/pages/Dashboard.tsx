@@ -3,15 +3,19 @@ import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react
 import { motion } from 'framer-motion'
 import {
   BarChart3,
+  Check,
   ChevronDown,
   ChevronRight,
   LayoutTemplate,
   Loader2,
   LogOut,
+  Pencil,
   Percent,
   Plus,
   Store,
   Tag,
+  Trash2,
+  X,
 } from 'lucide-react'
 import {
   api,
@@ -88,6 +92,16 @@ export default function Dashboard() {
     duration_days: '30',
     max_redemptions: '',
     notes: '',
+  })
+  const [editingCouponId, setEditingCouponId] = useState<string | null>(null)
+  const [editCouponForm, setEditCouponForm] = useState({
+    discount_type: 'percent' as 'fixed' | 'percent',
+    discount_value: '10',
+    duration_kind: 'lifetime_current_plan' as 'timed' | 'lifetime_current_plan',
+    duration_days: '30',
+    max_redemptions: '',
+    notes: '',
+    active: true,
   })
 
   // Legacy `/dashboard?tab=lojas|layout|cupons|relatorios` → real paths
@@ -366,13 +380,14 @@ export default function Dashboard() {
     setError(null)
     const isTimed = couponForm.duration_kind === 'timed'
     const days = parseInt(couponForm.duration_days, 10)
-    const maxUses = parseInt(couponForm.max_redemptions, 10)
+    const maxUsesRaw = couponForm.max_redemptions.trim()
+    const maxUses = maxUsesRaw ? parseInt(maxUsesRaw, 10) : null
     if (isTimed && (!Number.isFinite(days) || days <= 0)) {
       setError('Informe a duração em dias para cupom por tempo limitado.')
       return
     }
-    if (isTimed && (!Number.isFinite(maxUses) || maxUses <= 0)) {
-      setError('Informe o máximo de resgates para cupom por tempo limitado.')
+    if (maxUsesRaw && (!Number.isFinite(maxUses) || (maxUses ?? 0) <= 0)) {
+      setError('Máx. resgates deve ser um número positivo.')
       return
     }
     setBusy(true)
@@ -382,9 +397,10 @@ export default function Dashboard() {
         discount_type: couponForm.discount_type,
         discount_value: parseFloat(couponForm.discount_value.replace(',', '.')),
         duration_kind: couponForm.duration_kind,
-        // Vitalício: sem janela e sem teto — API força null também.
+        // Vitalício: sem janela — API força null também. Máx. resgates vale
+        // pra qualquer tipo de cupom agora, é sempre opcional.
         duration_days: isTimed ? days : null,
-        max_redemptions: isTimed ? maxUses : null,
+        max_redemptions: maxUses,
         notes: couponForm.notes || undefined,
       })
       setCouponForm({
@@ -399,6 +415,72 @@ export default function Dashboard() {
       await loadCupons()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Erro ao criar cupom.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const startEditCoupon = (c: SuperadminCoupon) => {
+    setError(null)
+    setEditingCouponId(c.id)
+    setEditCouponForm({
+      discount_type: c.discount_type as 'fixed' | 'percent',
+      discount_value: String(c.discount_value),
+      duration_kind: c.duration_kind as 'timed' | 'lifetime_current_plan',
+      duration_days: c.duration_days != null ? String(c.duration_days) : '30',
+      max_redemptions: c.max_redemptions != null ? String(c.max_redemptions) : '',
+      notes: c.notes ?? '',
+      active: c.active,
+    })
+  }
+
+  const cancelEditCoupon = () => {
+    setEditingCouponId(null)
+  }
+
+  const handleUpdateCoupon = async (id: string) => {
+    setError(null)
+    const isTimed = editCouponForm.duration_kind === 'timed'
+    const days = parseInt(editCouponForm.duration_days, 10)
+    const maxUsesRaw = editCouponForm.max_redemptions.trim()
+    const maxUses = maxUsesRaw ? parseInt(maxUsesRaw, 10) : null
+    if (isTimed && (!Number.isFinite(days) || days <= 0)) {
+      setError('Informe a duração em dias para cupom por tempo limitado.')
+      return
+    }
+    if (maxUsesRaw && (!Number.isFinite(maxUses) || (maxUses ?? 0) <= 0)) {
+      setError('Máx. resgates deve ser um número positivo.')
+      return
+    }
+    setBusy(true)
+    try {
+      await api.superadminUpdateCoupon(id, {
+        discount_type: editCouponForm.discount_type,
+        discount_value: parseFloat(editCouponForm.discount_value.replace(',', '.')),
+        duration_kind: editCouponForm.duration_kind,
+        duration_days: isTimed ? days : null,
+        max_redemptions: maxUses,
+        notes: editCouponForm.notes || undefined,
+        active: editCouponForm.active,
+      })
+      setEditingCouponId(null)
+      await loadCupons()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao atualizar cupom.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDeleteCoupon = async (c: SuperadminCoupon) => {
+    if (!window.confirm(`Excluir o cupom "${c.code}"? Essa ação não pode ser desfeita.`)) return
+    setError(null)
+    setBusy(true)
+    try {
+      await api.superadminDeleteCoupon(c.id)
+      await loadCupons()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao excluir cupom.')
     } finally {
       setBusy(false)
     }
@@ -582,16 +664,113 @@ export default function Dashboard() {
                       c.duration_kind === 'lifetime_current_plan'
                         ? 'Vitalício no plano atual'
                         : `Tempo limitado${c.duration_days != null ? ` (${c.duration_days}d)` : ''}`
-                    const usesLabel =
-                      c.duration_kind === 'lifetime_current_plan'
-                        ? `${c.redemptions} usos (ilimitado)`
-                        : `${c.redemptions}${c.max_redemptions != null ? `/${c.max_redemptions}` : ''} usos`
+                    const usesLabel = `${c.redemptions}${c.max_redemptions != null ? `/${c.max_redemptions}` : ''} usos`
+                    if (editingCouponId === c.id) {
+                      return (
+                        <li key={c.id} className="rounded-xl border border-uf-blue/40 bg-white/[0.03] p-3 space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              className="input-field"
+                              value={editCouponForm.discount_type}
+                              onChange={(e) =>
+                                setEditCouponForm((f) => ({ ...f, discount_type: e.target.value as 'fixed' | 'percent' }))
+                              }
+                            >
+                              <option value="percent">Percentual</option>
+                              <option value="fixed">Valor fixo</option>
+                            </select>
+                            <input
+                              className="input-field"
+                              value={editCouponForm.discount_value}
+                              onChange={(e) => setEditCouponForm((f) => ({ ...f, discount_value: e.target.value }))}
+                              inputMode="decimal"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              className="input-field"
+                              value={editCouponForm.duration_kind}
+                              onChange={(e) =>
+                                setEditCouponForm((f) => ({ ...f, duration_kind: e.target.value as 'timed' | 'lifetime_current_plan' }))
+                              }
+                            >
+                              <option value="lifetime_current_plan">Vitalício no plano atual</option>
+                              <option value="timed">Por tempo limitado</option>
+                            </select>
+                            {editCouponForm.duration_kind === 'timed' && (
+                              <input
+                                className="input-field"
+                                placeholder="Dias de validade"
+                                value={editCouponForm.duration_days}
+                                onChange={(e) => setEditCouponForm((f) => ({ ...f, duration_days: e.target.value }))}
+                                inputMode="numeric"
+                              />
+                            )}
+                          </div>
+                          <input
+                            className="input-field"
+                            placeholder="Máx. resgates (opcional, vale pra qualquer tipo)"
+                            value={editCouponForm.max_redemptions}
+                            onChange={(e) => setEditCouponForm((f) => ({ ...f, max_redemptions: e.target.value }))}
+                            inputMode="numeric"
+                          />
+                          <label className="flex items-center gap-2 text-xs text-uf-silver-dim">
+                            <input
+                              type="checkbox"
+                              checked={editCouponForm.active}
+                              onChange={(e) => setEditCouponForm((f) => ({ ...f, active: e.target.checked }))}
+                            />
+                            Ativo
+                          </label>
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              type="button"
+                              onClick={cancelEditCoupon}
+                              className="p-1.5 rounded-lg text-uf-silver-dim hover:text-uf-silver hover:bg-white/5"
+                              aria-label="Cancelar"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleUpdateCoupon(c.id)}
+                              className="p-1.5 rounded-lg text-uf-blue hover:bg-uf-blue/15"
+                              aria-label="Salvar"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </li>
+                      )
+                    }
                     return (
-                      <li key={c.id} className="flex flex-wrap justify-between gap-2 text-sm py-2 border-b border-white/5">
-                        <span className="font-mono font-semibold">{c.code}</span>
-                        <span className="text-uf-silver-dim">
-                          {c.discount_type === 'percent' ? `${c.discount_value}%` : `R$ ${formatBRL(c.discount_value)}`} · {kindLabel} ·{' '}
-                          {usesLabel}
+                      <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-2 border-b border-white/5">
+                        <span className="font-mono font-semibold">
+                          {c.code}
+                          {!c.active && <span className="ml-2 text-[10px] uppercase text-uf-silver-dim">inativo</span>}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-uf-silver-dim">
+                            {c.discount_type === 'percent' ? `${c.discount_value}%` : `R$ ${formatBRL(c.discount_value)}`} · {kindLabel} ·{' '}
+                            {usesLabel}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => startEditCoupon(c)}
+                            className="p-1 rounded text-uf-silver-dim hover:text-uf-silver hover:bg-white/5"
+                            aria-label={`Editar cupom ${c.code}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCoupon(c)}
+                            className="p-1 rounded text-uf-silver-dim hover:text-red-400 hover:bg-red-500/10"
+                            aria-label={`Excluir cupom ${c.code}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </span>
                       </li>
                     )
@@ -707,40 +886,37 @@ export default function Dashboard() {
                   </fieldset>
                   {couponForm.duration_kind === 'lifetime_current_plan' ? (
                     <p className="text-[11px] text-uf-silver-dim">
-                      Desconto enquanto o lojista permanecer no plano do resgate. Sem prazo e sem limite de resgates.
+                      Desconto enquanto o lojista permanecer no plano do resgate. Sem prazo definido.
                     </p>
                   ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="label" htmlFor="coupon-duration-days">
-                          Dias de validade
-                        </label>
-                        <input
-                          id="coupon-duration-days"
-                          className="input-field"
-                          placeholder="30"
-                          value={couponForm.duration_days}
-                          onChange={(e) => setCouponForm((f) => ({ ...f, duration_days: e.target.value }))}
-                          inputMode="numeric"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="label" htmlFor="coupon-max-redemptions">
-                          Máx. resgates
-                        </label>
-                        <input
-                          id="coupon-max-redemptions"
-                          className="input-field"
-                          placeholder="100"
-                          value={couponForm.max_redemptions}
-                          onChange={(e) => setCouponForm((f) => ({ ...f, max_redemptions: e.target.value }))}
-                          inputMode="numeric"
-                          required
-                        />
-                      </div>
+                    <div>
+                      <label className="label" htmlFor="coupon-duration-days">
+                        Dias de validade
+                      </label>
+                      <input
+                        id="coupon-duration-days"
+                        className="input-field"
+                        placeholder="30"
+                        value={couponForm.duration_days}
+                        onChange={(e) => setCouponForm((f) => ({ ...f, duration_days: e.target.value }))}
+                        inputMode="numeric"
+                        required
+                      />
                     </div>
                   )}
+                  <div>
+                    <label className="label" htmlFor="coupon-max-redemptions">
+                      Máx. resgates (opcional)
+                    </label>
+                    <input
+                      id="coupon-max-redemptions"
+                      className="input-field"
+                      placeholder="Deixe em branco para ilimitado"
+                      value={couponForm.max_redemptions}
+                      onChange={(e) => setCouponForm((f) => ({ ...f, max_redemptions: e.target.value }))}
+                      inputMode="numeric"
+                    />
+                  </div>
                   {error && section === 'cupons' && <p className="text-sm text-red-400">{error}</p>}
                   <button type="submit" disabled={busy} className="btn-primary w-full py-2.5 text-sm">
                     Criar cupom

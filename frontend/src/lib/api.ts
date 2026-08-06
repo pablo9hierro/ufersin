@@ -276,7 +276,7 @@ export interface OnboardingInput {
   entrega_somente_pix?: boolean
   pagamento_manual?: boolean
   whatsapp_habilitado: boolean
-  forma_pagamento: FormaPagamento
+  forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
   plataforma_credenciais?: Record<string, string>
   layout_style?: 'ufersin' | 'burgerbite' | 'burgerhouse'
@@ -428,6 +428,20 @@ export const api = {
     max_redemptions?: number | null
     notes?: string
   }) => request<{ id: string; code: string }>('/api/superadmin/coupons', { method: 'POST', body: JSON.stringify(body) }),
+  superadminUpdateCoupon: (
+    id: string,
+    body: {
+      discount_type: 'fixed' | 'percent'
+      discount_value: number
+      duration_kind: 'timed' | 'lifetime_current_plan'
+      duration_days?: number | null
+      max_redemptions?: number | null
+      notes?: string
+      active: boolean
+    },
+  ) => request<{ id: string }>(`/api/superadmin/coupons/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  superadminDeleteCoupon: (id: string) =>
+    request<void>(`/api/superadmin/coupons/${id}`, { method: 'DELETE' }),
 
   me: () => request<MeResponse>('/api/me'),
   uploadLogo: (file: File) => {
@@ -449,6 +463,8 @@ export const api = {
   onboarding: (input: OnboardingInput) => request<OnboardingOutput>('/api/onboarding', { method: 'POST', body: JSON.stringify(input) }),
   editarOnboarding: (input: EditOnboardingInput) =>
     request<{ updated: boolean }>('/api/onboarding', { method: 'PUT', body: JSON.stringify(input) }),
+  mercadoPagoOAuthStart: () =>
+    request<{ authorize_url: string }>('/api/mercadopago/oauth/start', { method: 'POST' }),
 
   getPandadocStatus: () => request<PandadocStatus>('/api/public/contratos/pandadoc/status'),
   contratosCatalog: () => request<ContractCatalogItem[]>('/api/public/contratos/catalog'),
