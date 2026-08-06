@@ -602,7 +602,7 @@ pub async fn editar_onboarding(
     Ok(Json(serde_json::json!({ "updated": true })))
 }
 
-async fn sync_store_payment_credentials(
+pub(crate) async fn sync_store_payment_credentials(
     state: &AppState,
     slug: &str,
     forma_pagamento: &str,

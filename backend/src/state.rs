@@ -2,6 +2,7 @@ use sqlx::PgPool;
 use std::sync::Arc;
 
 use crate::jwks::JwksVerifier;
+use crate::mercadopago_oauth::MercadoPagoOAuthConfig;
 use crate::pandadoc::PandadocConfig;
 
 #[derive(Clone)]
@@ -45,4 +46,7 @@ pub struct AppState {
     /// `notification_url` so Pix/card approvals activate without the browser
     /// staying open. From `PUBLIC_API_URL` or `https://{RAILWAY_PUBLIC_DOMAIN}`.
     pub public_api_url: Arc<String>,
+    /// Conexão OAuth da conta Mercado Pago do lojista (ver mercadopago_oauth.rs)
+    /// — substitui colar Access Token manual em Onboarding/Meu Plano.
+    pub mercadopago_oauth: MercadoPagoOAuthConfig,
 }

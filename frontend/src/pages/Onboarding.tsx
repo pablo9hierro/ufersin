@@ -89,6 +89,7 @@ export default function Onboarding() {
   const [mode, setMode] = useState<OnboardingMode>('loading')
   const [planLabel, setPlanLabel] = useState<string | null>(null)
   const [hasCreds, setHasCreds] = useState(false)
+  const [connectingMp, setConnectingMp] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [nomeLoja, setNomeLoja] = useState('')
@@ -97,7 +98,6 @@ export default function Onboarding() {
   const [endereco, setEndereco] = useState('')
   const [enderecoNumero, setEnderecoNumero] = useState('')
   const [instagram, setInstagram] = useState('')
-  const [credencial, setCredencial] = useState('')
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
@@ -193,23 +193,27 @@ export default function Onboarding() {
     setTimeout(() => navigate('/meu-plano'), 1800)
   }
 
+  const handleConnectMp = async () => {
+    setError(null)
+    setConnectingMp(true)
+    try {
+      const { authorize_url } = await api.mercadoPagoOAuthStart()
+      window.location.href = authorize_url
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível conectar o Mercado Pago.')
+      setConnectingMp(false)
+    }
+  }
+
   const handleKeepCurrent = async () => {
     setError(null)
-    if (mpTokenRequired && !credencial.trim()) {
-      setError('Informe o Access Token do Mercado Pago pra continuar.')
+    if (mpTokenRequired) {
+      setError('Conecte sua conta Mercado Pago pra continuar.')
       return
     }
     setLoading(true)
     try {
-      if (credencial.trim()) {
-        await api.editarOnboarding({
-          forma_pagamento: 'plataforma',
-          plataforma_pagamento: 'mercado_pago',
-          plataforma_credenciais: { token: credencial.trim() },
-        })
-      } else {
-        await api.editarOnboarding({})
-      }
+      await api.editarOnboarding({})
       finishOk()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível concluir.')
@@ -228,10 +232,8 @@ export default function Onboarding() {
     }
     if (!endereco.trim()) return setError('Informe o endereço da loja.')
     if (!instagram.trim().replace(/^@/, '')) return setError('Informe o Instagram da loja.')
-    if (mpTokenRequired && !credencial.trim()) {
-      return setError(
-        'Access Token de produção do Mercado Pago é obrigatório pra concluir o cadastro da loja.',
-      )
+    if (mpTokenRequired) {
+      return setError('Conecte sua conta Mercado Pago pra concluir o cadastro.')
     }
 
     const slug = slugify(nomeLoja) || `loja-${Date.now().toString(36)}`
@@ -251,9 +253,6 @@ export default function Onboarding() {
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
           whatsapp_habilitado: whatsappHabilitado,
-          forma_pagamento: 'plataforma',
-          plataforma_pagamento: 'mercado_pago',
-          plataforma_credenciais: credencial.trim() ? { token: credencial.trim() } : undefined,
           layout_style: venderExternamente ? layoutStyle : 'ufersin',
         })
       } else {
@@ -274,9 +273,6 @@ export default function Onboarding() {
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
           whatsapp_habilitado: whatsappHabilitado,
-          forma_pagamento: 'plataforma',
-          plataforma_pagamento: 'mercado_pago',
-          plataforma_credenciais: { token: credencial.trim() },
           layout_style: venderExternamente ? layoutStyle : 'ufersin',
         })
       }
@@ -405,28 +401,38 @@ export default function Onboarding() {
             </div>
           </div>
 
-          <div>
-            <label className="label flex items-center gap-1.5">
-              <CreditCard className="w-3.5 h-3.5" /> Mercado Pago: (chave api produção)
-            </label>
-            <input
-              className="input-field input-field--credential"
-              value={credencial}
-              onChange={(e) => setCredencial(e.target.value)}
-              placeholder={
-                hasCreds
-                  ? 'Token já salvo — deixe em branco pra manter'
-                  : 'Access Token de produção (APP_USR-…)'
-              }
-              required={mpTokenRequired}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <p className="text-[11px] text-uf-silver-dim mt-1">
-              {hasCreds
-                ? 'Credencial Mercado Pago já cadastrada (não exibimos o token por segurança).'
-                : 'Obrigatório (Access Token de produção APP_USR-…). Sem ele o onboarding não conclui e a loja não é provisionada.'}
-            </p>
+          <div className="uf-glass rounded-xl p-4">
+            {hasCreds ? (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-uf-silver flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Mercado Pago conectado.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleConnectMp}
+                  disabled={connectingMp}
+                  className="text-xs text-uf-silver-dim hover:text-uf-silver underline"
+                >
+                  Reconectar
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="label flex items-center gap-1.5 mb-1">
+                  <CreditCard className="w-3.5 h-3.5" /> Conecte sua conta Mercado Pago
+                </p>
+                <p className="text-[11px] text-uf-silver-dim mb-3">Receba pagamentos automaticamente na sua loja.</p>
+                <button
+                  type="button"
+                  onClick={handleConnectMp}
+                  disabled={connectingMp}
+                  className="btn-primary w-full py-2.5 text-sm flex items-center justify-center gap-2"
+                >
+                  {connectingMp ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Conectar Mercado Pago
+                </button>
+              </>
+            )}
           </div>
 
           <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">

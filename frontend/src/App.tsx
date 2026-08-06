@@ -6,6 +6,7 @@ import DemoExperience from './pages/DemoExperience'
 import Cadastro from './pages/Cadastro'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
+import MercadoPagoCallback from './pages/MercadoPagoCallback'
 import EsqueciSenha from './pages/EsqueciSenha'
 import RedefinirSenha from './pages/RedefinirSenha'
 import TrocarSenha from './pages/TrocarSenha'
@@ -38,6 +39,7 @@ export default function App() {
       <Route path="/cadastro" element={<Cadastro />} />
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/mercadopago/callback" element={<MercadoPagoCallback />} />
       <Route path="/esqueci-senha" element={<EsqueciSenha />} />
       <Route path="/redefinir-senha" element={<RedefinirSenha />} />
       <Route path="/trocar-senha" element={<TrocarSenha />} />
