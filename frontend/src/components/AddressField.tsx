@@ -21,6 +21,10 @@ export default function AddressField({ endereco, numero, onEnderecoChange, onNum
   const [mapOpen, setMapOpen] = useState(false)
   const [gpsLoading, setGpsLoading] = useState(false)
   const [mapInitial, setMapInitial] = useState<{ lat: number; lng: number; label?: string } | null>(null)
+  // Só considera o endereço realmente preenchido quando veio de uma
+  // sugestão clicada ou de um pin no mapa que achou um lugar de verdade —
+  // texto livre digitado (sem escolher nada) não conta como válido.
+  const [validated, setValidated] = useState(() => !!endereco)
   const seq = useRef(0)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -65,6 +69,7 @@ export default function AddressField({ endereco, numero, onEnderecoChange, onNum
     setQuery(r.titulo)
     setOpen(false)
     setResults([])
+    setValidated(true)
   }
 
   const openMapFromGps = async () => {
@@ -86,7 +91,15 @@ export default function AddressField({ endereco, numero, onEnderecoChange, onNum
       <label className="label">Endereço *</label>
       <div className="flex gap-2 items-start">
         <div className="relative flex-1 min-w-0" ref={wrapRef}>
-          <div className="flex items-center gap-2 input-field !py-0 !px-3">
+          <div
+            className={`flex items-center gap-2 input-field !py-0 !px-3 transition-colors ${
+              validated
+                ? '!border-emerald-500/70'
+                : query.trim()
+                  ? '!border-red-500/70'
+                  : ''
+            }`}
+          >
             <Search className="w-4 h-4 text-uf-silver-dim flex-none" />
             <input
               className="flex-1 min-w-0 bg-transparent outline-none py-2.5 text-sm"
@@ -95,6 +108,7 @@ export default function AddressField({ endereco, numero, onEnderecoChange, onNum
                 setQuery(e.target.value)
                 onEnderecoChange(e.target.value)
                 setOpen(true)
+                setValidated(false)
               }}
               onFocus={() => results.length > 0 && setOpen(true)}
               placeholder="Buscar rua, bairro, cidade…"
@@ -107,6 +121,7 @@ export default function AddressField({ endereco, numero, onEnderecoChange, onNum
                   setQuery('')
                   onEnderecoChange('')
                   setResults([])
+                  setValidated(false)
                 }}
                 className="text-uf-silver-dim hover:text-uf-silver"
                 aria-label="Limpar"
@@ -165,6 +180,9 @@ export default function AddressField({ endereco, numero, onEnderecoChange, onNum
             onEnderecoChange(r.label)
             setQuery(r.label)
             setMapOpen(false)
+            // "Local no mapa" é o fallback de enderecoDe() quando o pin caiu
+            // num ponto sem endereço reconhecido — não conta como válido.
+            setValidated(r.label.trim() !== '' && r.label !== 'Local no mapa')
           }}
         />
       )}
