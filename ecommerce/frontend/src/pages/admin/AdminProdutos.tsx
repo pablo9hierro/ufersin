@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Barcode, FileUp, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
+import { AlertTriangle, Barcode, Check, FileUp, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import BarcodePreview from '../../components/admin/BarcodePreview'
 import CategorySelectField from '../../components/admin/CategorySelectField'
@@ -63,6 +63,9 @@ export default function AdminProdutos() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [newCategory, setNewCategory] = useState('')
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [editingCategoryName, setEditingCategoryName] = useState('')
+  const [categoryError, setCategoryError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -181,9 +184,39 @@ export default function AdminProdutos() {
 
   const addCategory = async () => {
     if (!newCategory.trim()) return
-    await adminService.categories.create(newCategory.trim())
-    setNewCategory('')
-    load()
+    setCategoryError(null)
+    try {
+      await adminService.categories.create(newCategory.trim())
+      setNewCategory('')
+      load()
+    } catch (err) {
+      setCategoryError(err instanceof ApiError ? err.message : 'Não foi possível criar a categoria.')
+    }
+  }
+
+  const startEditCategory = (c: Category) => {
+    setCategoryError(null)
+    setEditingCategoryId(c.id)
+    setEditingCategoryName(c.name)
+  }
+
+  const saveEditCategory = async () => {
+    if (!editingCategoryId || !editingCategoryName.trim()) return
+    setCategoryError(null)
+    try {
+      await adminService.categories.update(editingCategoryId, editingCategoryName.trim())
+      setEditingCategoryId(null)
+      load()
+    } catch (err) {
+      setCategoryError(err instanceof ApiError ? err.message : 'Não foi possível renomear a categoria.')
+    }
+  }
+
+  const removeCategory = (c: Category) => {
+    askConfirm(`Excluir a categoria "${c.name}"? Os produtos dela ficam sem categoria.`, async () => {
+      await adminService.categories.delete(c.id)
+      load()
+    })
   }
 
   const openStockDialog = (p: Product) => {
@@ -297,12 +330,40 @@ export default function AdminProdutos() {
           <Card className="p-4 mb-6">
             <p className="label mb-2">Categorias</p>
             <div className="flex flex-wrap gap-2 mb-3">
-              {categories.map((c) => (
-                <span key={c.id} className="px-3 py-1.5 rounded-xl bg-son-surface-light text-sm text-son-silver">
-                  {c.name}
-                </span>
-              ))}
+              {categories.map((c) =>
+                editingCategoryId === c.id ? (
+                  <span key={c.id} className="flex items-center gap-1 px-2 py-1 rounded-xl bg-son-surface-light">
+                    <input
+                      autoFocus
+                      className="input-field !py-1 !px-2 text-sm w-32"
+                      value={editingCategoryName}
+                      onChange={(e) => setEditingCategoryName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && saveEditCategory()}
+                    />
+                    <button onClick={saveEditCategory} className="text-emerald-400 hover:text-emerald-300 p-1" aria-label="Salvar">
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => setEditingCategoryId(null)} className="text-son-silver-dim hover:text-son-silver p-1" aria-label="Cancelar">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ) : (
+                  <span
+                    key={c.id}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-son-surface-light text-sm text-son-silver"
+                  >
+                    {c.name}
+                    <button onClick={() => startEditCategory(c)} className="text-son-silver-dim hover:text-son-silver" aria-label={`Editar ${c.name}`}>
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <button onClick={() => removeCategory(c)} className="text-son-silver-dim hover:text-red-400" aria-label={`Excluir ${c.name}`}>
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </span>
+                ),
+              )}
             </div>
+            {categoryError && <p className="error-msg mb-2">{categoryError}</p>}
             <div className="flex gap-2">
               <input
                 className="input-field"

@@ -9,6 +9,7 @@ import PageTransition from '../components/layout/PageTransition'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import { orderService } from '../services/orderService'
 import { ApiError } from '../lib/apiError'
+import { useCustomerAuth } from '../store/customerAuth'
 import type { Order } from '../types'
 
 function currency(v: number) {
@@ -20,6 +21,7 @@ export default function Pagamento() {
   const navigate = useNavigate()
   const tenantConfig = useTenantConfig()
   const onlinePix = tenantHasOnlinePix(tenantConfig)
+  const customerEmail = useCustomerAuth((s) => s.customer?.email ?? undefined)
   const [order, setOrder] = useState<Order | null>(null)
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -47,7 +49,7 @@ export default function Pagamento() {
       // Pix sem cobrança ainda, gera de verdade agora.
       if (onlinePix && o.payment_method === 'pix' && o.payment_status !== 'pago' && !o.pix_copia_cola) {
         try {
-          o = await orderService.createPixPayment(orderId)
+          o = await orderService.createPixPayment(orderId, false, customerEmail)
         } catch (e) {
           // Sem cobrança criada, o polling de refresh abaixo não tem o
           // que checar (não existe pix_payment_id ainda) — sem mostrar o
@@ -61,7 +63,7 @@ export default function Pagamento() {
       setOrder(o)
       setLoading(false)
     })
-  }, [orderId, onlinePix, tenantConfig, navigate])
+  }, [orderId, onlinePix, tenantConfig, navigate, customerEmail])
 
   useEffect(() => {
     if (!order || order.payment_status === 'pago') return

@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from '../lib/tenantRouter'
-import { Loader2, Lock, X } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Lock, X } from 'lucide-react'
 import BirthdateInput from './checkout/BirthdateInput'
 import Logo from './ui/Logo'
 import { ApiError } from '../lib/apiError'
 import { authService } from '../services/authService'
-import { useCustomer } from '../store/customer'
 import { useCustomerAuth } from '../store/customerAuth'
+import { useTenantConfig } from '../hooks/useTenantConfig'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -17,10 +17,10 @@ function formatPhone(value: string) {
 }
 
 // Toggle login/criar conta, aberto sempre que uma ação exige cliente
-// logado (finalizar checkout, "Acompanhar meu pedido"). "Criar conta" já
-// nasce preenchido com nome/whatsapp/nascimento do rascunho de checkout
-// (store/customer.ts) — editável, só poupa redigitar o que já foi
-// escrito ali; e-mail não vem de lá (checkout não pede) e é digitado do zero.
+// logado (finalizar checkout, "Acompanhar meu pedido"). Todos os campos
+// nascem vazios (só placeholder) — nada vem pré-preenchido do rascunho de
+// checkout, pra evitar erro de digitação passar despercebido e pra não
+// vazar rascunho de outra sessão no mesmo aparelho.
 export default function CustomerAuthModal({
   onClose,
   onSuccess,
@@ -31,24 +31,36 @@ export default function CustomerAuthModal({
   initialMode?: 'login' | 'register'
 }) {
   const navigate = useNavigate()
-  const draft = useCustomer()
   const auth = useCustomerAuth()
+  const tenantConfig = useTenantConfig()
+  const requiresBirthdate = !!tenantConfig?.vende_mais_18
   const [mode, setMode] = useState<'login' | 'register'>(initialMode)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // WhatsApp já cadastrado detectado no "Criar conta" — mostra CTA de
+  // recuperar senha em vez de só um erro genérico (a pessoa provavelmente
+  // já tem conta e esqueceu, tentar cadastrar de novo não ajuda ela).
+  const [duplicateWhatsapp, setDuplicateWhatsapp] = useState(false)
 
-  const [loginWhatsapp, setLoginWhatsapp] = useState(draft.whatsapp || '')
+  // Nome/whatsapp/nascimento NÃO vêm pré-preenchidos do rascunho de checkout
+  // — só placeholder. Preencher automaticamente escondia erros de digitação
+  // (a pessoa nem olhava o campo) e um rascunho de outra sessão/pessoa no
+  // mesmo aparelho vazava pro cadastro.
+  const [loginWhatsapp, setLoginWhatsapp] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
+  const [showLoginPassword, setShowLoginPassword] = useState(false)
 
-  const [regName, setRegName] = useState(draft.name || '')
-  const [regWhatsapp, setRegWhatsapp] = useState(draft.whatsapp || '')
+  const [regName, setRegName] = useState('')
+  const [regWhatsapp, setRegWhatsapp] = useState('')
   const [regEmail, setRegEmail] = useState('')
-  const [regBirthdate, setRegBirthdate] = useState(draft.birthdate || '')
+  const [regBirthdate, setRegBirthdate] = useState('')
   const [regPassword, setRegPassword] = useState('')
+  const [showRegPassword, setShowRegPassword] = useState(false)
 
   const switchMode = (next: 'login' | 'register') => {
     setMode(next)
     setError(null)
+    setDuplicateWhatsapp(false)
   }
 
   const handleLogin = async () => {
@@ -58,8 +70,8 @@ export default function CustomerAuthModal({
       setError('Informe um WhatsApp válido.')
       return
     }
-    if (!/^\d{4}$/.test(loginPassword)) {
-      setError('A senha tem 4 dígitos.')
+    if (!/^\d{6}$/.test(loginPassword)) {
+      setError('A senha tem 6 dígitos.')
       return
     }
     setLoading(true)
@@ -76,6 +88,7 @@ export default function CustomerAuthModal({
 
   const handleRegister = async () => {
     setError(null)
+    setDuplicateWhatsapp(false)
     if (!regName.trim()) {
       setError('Informe seu nome.')
       return
@@ -89,12 +102,12 @@ export default function CustomerAuthModal({
       setError('Informe um e-mail válido.')
       return
     }
-    if (!regBirthdate) {
+    if (requiresBirthdate && !regBirthdate) {
       setError('Informe sua data de nascimento.')
       return
     }
-    if (!/^\d{4}$/.test(regPassword)) {
-      setError('A senha tem 4 dígitos.')
+    if (!/^\d{6}$/.test(regPassword)) {
+      setError('A senha tem 6 dígitos.')
       return
     }
     setLoading(true)
@@ -104,12 +117,18 @@ export default function CustomerAuthModal({
         password: regPassword,
         name: regName,
         email: regEmail,
-        birthdate: regBirthdate,
+        birthdate: requiresBirthdate ? regBirthdate : regBirthdate || '',
       })
       auth.login(result.token, result.customer)
       onSuccess()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Não foi possível criar sua conta.')
+      const message = err instanceof ApiError ? err.message : 'Não foi possível criar sua conta.'
+      if (message.toLowerCase().includes('already registered')) {
+        setDuplicateWhatsapp(true)
+        setError('Esse WhatsApp já tem uma conta. Faça login ou recupere sua senha.')
+      } else {
+        setError(message)
+      }
     } finally {
       setLoading(false)
     }
@@ -169,16 +188,26 @@ export default function CustomerAuthModal({
               />
             </div>
             <div>
-              <label className="label">Senha (4 dígitos)</label>
-              <input
-                className="input-field"
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="••••"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              />
+              <label className="label">Senha (6 dígitos)</label>
+              <div className="relative">
+                <input
+                  className="input-field pr-10"
+                  type={showLoginPassword ? 'text' : 'password'}
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="••••••"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword((s) => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-son-silver-dim hover:text-white"
+                  aria-label={showLoginPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             <button type="button" onClick={() => navigate('/recuperar-senha')} className="text-xs text-son-silver-dim hover:text-white">
               Esqueci minha senha
@@ -208,23 +237,59 @@ export default function CustomerAuthModal({
               <label className="label">E-mail</label>
               <input className="input-field" type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} />
             </div>
+            {requiresBirthdate && (
+              <div>
+                <label className="label">Data de nascimento *</label>
+                <BirthdateInput value={regBirthdate} onChange={setRegBirthdate} />
+                <p className="text-xs text-son-silver-dim mt-1">
+                  Obrigatório — esta loja vende produtos para maiores de 18 anos.
+                </p>
+              </div>
+            )}
             <div>
-              <label className="label">Data de nascimento</label>
-              <BirthdateInput value={regBirthdate} onChange={setRegBirthdate} />
-            </div>
-            <div>
-              <label className="label">Senha (4 dígitos)</label>
-              <input
-                className="input-field"
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="••••"
-                value={regPassword}
-                onChange={(e) => setRegPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              />
+              <label className="label">Senha (6 dígitos)</label>
+              <div className="relative">
+                <input
+                  className="input-field pr-10"
+                  type={showRegPassword ? 'text' : 'password'}
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="••••••"
+                  value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowRegPassword((s) => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-son-silver-dim hover:text-white"
+                  aria-label={showRegPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             {error && <p className="error-msg">{error}</p>}
+            {duplicateWhatsapp && (
+              <div className="flex gap-3 justify-center text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginWhatsapp(regWhatsapp)
+                    switchMode('login')
+                  }}
+                  className="text-son-silver-dim hover:text-white underline"
+                >
+                  Fazer login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/recuperar-senha')}
+                  className="text-son-silver-dim hover:text-white underline"
+                >
+                  Recuperar senha
+                </button>
+              </div>
+            )}
             <button type="button" onClick={handleRegister} disabled={loading} className="btn-primary w-full mt-2">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Criar conta
             </button>

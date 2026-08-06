@@ -167,6 +167,12 @@ pub struct CreatePixQuery {
     /// gera um QR novo — usado pelo PDV ("Gerar nova cobrança").
     #[serde(default)]
     pub force: Option<String>,
+    /// E-mail de login do cliente (se estiver autenticado) — usado como
+    /// payer.email na cobrança Mercado Pago em vez do e-mail da loja, já
+    /// que login de cliente agora exige e-mail. Cai pro e-mail da loja se
+    /// ausente (checkout de convidado, sem conta).
+    #[serde(default)]
+    pub customer_email: Option<String>,
 }
 
 fn force_flag(q: &CreatePixQuery) -> bool {
@@ -210,14 +216,17 @@ pub async fn create_pix_payment(
     let (pix, provider) = match payment_cfg.online_provider() {
         Some("mercado_pago") => {
             let token = payment_cfg.mp_access_token().unwrap();
-            let org_email = tenant::organization_email_for_tenant(&state.pool, &store.id).await?;
+            let payer_email = match q.customer_email.as_deref().map(str::trim) {
+                Some(email) if email.contains('@') => Some(email.to_string()),
+                _ => tenant::organization_email_for_tenant(&state.pool, &store.id).await?,
+            };
             let pix = mercadopago::create_pix_charge(
                 &state,
                 token,
                 &store.name,
                 order.total,
                 &order.customer_name,
-                org_email.as_deref(),
+                payer_email.as_deref(),
                 &order.id,
             )
             .await?;

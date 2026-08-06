@@ -164,8 +164,16 @@ const tenantAwarePublicCatalog = {
 
 /** Pix no motor Railway (`/api/orders/{id}/…`). Path relativo `/api/pix-*`
  * na Vercel quebrava em `/loja` embutido (POST no host pai → 405). */
-async function callRailwayPixApi(orderId: string, action: 'create-pix-payment' | 'refresh-payment' | 'simulate-pix-paid', force = false): Promise<Order> {
-  const qs = force ? '?force=1' : ''
+async function callRailwayPixApi(
+  orderId: string,
+  action: 'create-pix-payment' | 'refresh-payment' | 'simulate-pix-paid',
+  force = false,
+  customerEmail?: string,
+): Promise<Order> {
+  const params = new URLSearchParams()
+  if (force) params.set('force', '1')
+  if (customerEmail) params.set('customer_email', customerEmail)
+  const qs = params.toString() ? `?${params.toString()}` : ''
   return request<Order>(`/api/orders/${orderId}/${action}${qs}`, { method: 'POST' })
 }
 
@@ -260,8 +268,10 @@ const remoteApi = {
     get: supabasePublicApi.orders.get,
     track: supabasePublicApi.orders.track,
     // Pix no ecommerce-api (Railway). `force` gera nova cobrança (PDV).
-    createPixPayment: (id: string, force = false) =>
-      callRailwayPixApi(id, 'create-pix-payment', force),
+    // `customerEmail` (do cliente logado) vira payer.email no Mercado Pago
+    // em vez do e-mail da loja — cai pro e-mail da loja se ausente (convidado).
+    createPixPayment: (id: string, force = false, customerEmail?: string) =>
+      callRailwayPixApi(id, 'create-pix-payment', force, customerEmail),
     refreshPayment: (id: string) => callRailwayPixApi(id, 'refresh-payment'),
     simulatePixPaid: (id: string) => callRailwayPixApi(id, 'simulate-pix-paid'),
     /** Cancelamento pelo cliente (/consultar) — ownership via WhatsApp. */
@@ -346,6 +356,13 @@ const remoteApi = {
               body: JSON.stringify({ name }),
             })
           : rpc<Category>('admin_create_category', { p_token: adminToken(), p_name: name }),
+      update: (id: string, name: string) =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<Category>(`/api/admin/categories/${id}`, {
+              method: 'PUT',
+              body: JSON.stringify({ name }),
+            })
+          : rpc<Category>('admin_update_category', { p_token: adminToken(), p_id: id, p_name: name }),
       delete: (id: string) =>
         isRailwayAdminJwt()
           ? railwayAdmin<void>(`/api/admin/categories/${id}`, { method: 'DELETE' })

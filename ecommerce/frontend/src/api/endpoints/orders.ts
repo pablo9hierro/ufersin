@@ -31,8 +31,12 @@ export const ordersEndpoint = {
     return data ? validate(DeliveryPositionSchema, data, 'trackDeliveryPosition') : null
   },
   // Pix no ecommerce-api (Railway). `force` regenera QR (PDV).
-  createPixPayment: async (id: string, force = false) =>
-    validate(OrderSchema, await api.orders.createPixPayment(id, force), 'orders.createPixPayment'),
+  createPixPayment: async (id: string, force = false, customerEmail?: string) =>
+    validate(
+      OrderSchema,
+      await api.orders.createPixPayment(id, force, customerEmail),
+      'orders.createPixPayment',
+    ),
   refreshPayment: async (id: string) => validate(OrderSchema, await api.orders.refreshPayment(id), 'orders.refreshPayment'),
   simulatePixPaid: async (id: string) => validate(OrderSchema, await api.orders.simulatePixPaid(id), 'orders.simulatePixPaid'),
   cancel: async (id: string, whatsapp: string) =>

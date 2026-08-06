@@ -9,7 +9,8 @@ export const orderService = {
   get: ordersEndpoint.get,
   track: ordersEndpoint.track,
   trackDeliveryPosition: ordersEndpoint.trackDeliveryPosition,
-  createPixPayment: (id: string, force = false) => ordersEndpoint.createPixPayment(id, force),
+  createPixPayment: (id: string, force = false, customerEmail?: string) =>
+    ordersEndpoint.createPixPayment(id, force, customerEmail),
   refreshPayment: ordersEndpoint.refreshPayment,
   simulatePixPaid: ordersEndpoint.simulatePixPaid,
   cancel: ordersEndpoint.cancel,

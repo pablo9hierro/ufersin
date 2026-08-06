@@ -5,6 +5,7 @@ import { Check, Copy, Loader2, PartyPopper } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { orderService } from '../../services/orderService'
+import { useCustomerAuth } from '../../store/customerAuth'
 import type { Order } from '../../types'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
@@ -18,6 +19,7 @@ export default function Uiux2Pagamento() {
   const navigate = useNavigate()
   const tenantConfig = useTenantConfig()
   const onlinePix = tenantHasOnlinePix(tenantConfig)
+  const customerEmail = useCustomerAuth((s) => s.customer?.email ?? undefined)
   const [order, setOrder] = useState<Order | null>(null)
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -41,7 +43,7 @@ export default function Uiux2Pagamento() {
     orderService.get(orderId).then(async (o) => {
       if (onlinePix && o.payment_method === 'pix' && o.payment_status !== 'pago' && !o.pix_copia_cola) {
         try {
-          o = await orderService.createPixPayment(orderId)
+          o = await orderService.createPixPayment(orderId, false, customerEmail)
         } catch {
           // deixa a tela mostrar "QR indisponível"
         }
@@ -49,7 +51,7 @@ export default function Uiux2Pagamento() {
       setOrder(o)
       setLoading(false)
     })
-  }, [orderId, onlinePix, tenantConfig, navigate])
+  }, [orderId, onlinePix, tenantConfig, navigate, customerEmail])
 
   useEffect(() => {
     if (!order || order.payment_status === 'pago') return

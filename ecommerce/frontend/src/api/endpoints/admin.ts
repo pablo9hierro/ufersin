@@ -55,6 +55,7 @@ export const adminEndpoint = {
   categories: {
     list: async () => validateList(CategorySchema, await api.admin.categories.list(), 'admin.categories.list'),
     create: async (name: string) => validate(CategorySchema, await api.admin.categories.create(name), 'admin.categories.create'),
+    update: async (id: string, name: string) => validate(CategorySchema, await api.admin.categories.update(id, name), 'admin.categories.update'),
     delete: async (id: string) => api.admin.categories.delete(id),
   },
   products: {

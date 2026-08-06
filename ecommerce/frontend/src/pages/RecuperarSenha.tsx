@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from '../lib/tenantRouter'
-import { Loader2, Lock } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Lock } from 'lucide-react'
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import Logo from '../components/ui/Logo'
@@ -28,6 +28,7 @@ export default function RecuperarSenha() {
 
   const [whatsapp, setWhatsapp] = useState('')
   const [code, setCode] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
 
@@ -70,8 +71,8 @@ export default function RecuperarSenha() {
 
   const resetPassword = async () => {
     setError(null)
-    if (!/^\d{4}$/.test(password)) {
-      setError('A senha tem 4 dígitos.')
+    if (!/^\d{6}$/.test(password)) {
+      setError('A senha tem 6 dígitos.')
       return
     }
     if (password !== passwordConfirm) {
@@ -147,29 +148,39 @@ export default function RecuperarSenha() {
 
           {step === 'password' && (
             <div className="space-y-3">
-              <p className="text-sm text-son-silver-dim">Escolha sua nova senha de 4 dígitos.</p>
+              <p className="text-sm text-son-silver-dim">Escolha sua nova senha de 6 dígitos.</p>
               <div>
-                <label className="label">Nova senha (4 dígitos)</label>
-                <input
-                  className="input-field"
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                />
+                <label className="label">Nova senha (6 dígitos)</label>
+                <div className="relative">
+                  <input
+                    className="input-field pr-10"
+                    type={showPassword ? 'text' : 'password'}
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-son-silver-dim hover:text-white"
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="label">Confirmar senha</label>
                 <input
                   className="input-field"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   inputMode="numeric"
-                  maxLength={4}
-                  placeholder="••••"
+                  maxLength={6}
+                  placeholder="••••••"
                   value={passwordConfirm}
-                  onChange={(e) => setPasswordConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  onChange={(e) => setPasswordConfirm(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 />
               </div>
               {error && <p className="error-msg">{error}</p>}

@@ -878,14 +878,37 @@ async function adminListCategories(): Promise<Category[]> {
   return listCategoriesPublic()
 }
 
+/** Primeira letra maiúscula, resto minúsculo -- mesma regra do backend Rust
+ * (admin.rs::normalize_category_name), pra "PABLO"/"pablo" virarem a mesma
+ * categoria em vez de duplicar. */
+function normalizeCategoryName(name: string): string {
+  const t = name.trim()
+  return t ? t[0].toUpperCase() + t.slice(1).toLowerCase() : ''
+}
+
 async function createCategory(name: string): Promise<Category> {
-  if (!name.trim()) throw new ApiError(400, 'name is required')
+  const normalized = normalizeCategoryName(name)
+  if (!normalized) throw new ApiError(400, 'name is required')
   const db = loadDb()
-  if (db.categories.some((c) => c.name.toLowerCase() === name.trim().toLowerCase())) {
-    throw new ApiError(400, 'category name already exists')
+  if (db.categories.some((c) => c.name.toLowerCase() === normalized.toLowerCase())) {
+    throw new ApiError(400, 'essa categoria já existe')
   }
-  const category = { id: uid(), name: name.trim() }
+  const category = { id: uid(), name: normalized }
   db.categories.push(category)
+  saveDb(db)
+  return category
+}
+
+async function updateCategory(id: string, name: string): Promise<Category> {
+  const normalized = normalizeCategoryName(name)
+  if (!normalized) throw new ApiError(400, 'name is required')
+  const db = loadDb()
+  const category = db.categories.find((c) => c.id === id)
+  if (!category) throw new ApiError(404, 'category not found')
+  if (db.categories.some((c) => c.id !== id && c.name.toLowerCase() === normalized.toLowerCase())) {
+    throw new ApiError(400, 'essa categoria já existe')
+  }
+  category.name = normalized
   saveDb(db)
   return category
 }
@@ -2871,7 +2894,7 @@ export const localApi = {
     relatorio: vendedorRelatorio,
   },
   admin: {
-    categories: { list: adminListCategories, create: createCategory, delete: deleteCategory },
+    categories: { list: adminListCategories, create: createCategory, update: updateCategory, delete: deleteCategory },
     products: {
       list: adminListProducts,
       create: createProduct,
