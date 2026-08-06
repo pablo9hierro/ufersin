@@ -18,9 +18,9 @@ const DIM_CLASS: Record<LayoutVariant, string> = {
 }
 
 const TRIGGER_CLASS: Record<LayoutVariant, string> = {
-  u2: 'flex items-center justify-center gap-1.5 hover:opacity-80 transition-opacity u2-oncanvas-dim',
-  u3: 'flex items-center justify-center gap-1.5 hover:opacity-80 transition-opacity u3-dim',
-  u4: 'flex items-center gap-1.5 hover:opacity-80 transition-opacity u4-dim',
+  u2: 'inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-full border border-white/15 hover:border-white/30 hover:bg-white/5 transition-colors u2-oncanvas-dim',
+  u3: 'inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-full border border-white/15 hover:border-white/30 hover:bg-white/5 transition-colors u3-dim',
+  u4: 'inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-white/15 hover:border-white/30 hover:bg-white/5 transition-colors u4-dim',
 }
 
 export default function StoreHoursToggle({

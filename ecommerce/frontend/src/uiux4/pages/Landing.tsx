@@ -60,7 +60,7 @@ export default function Uiux4Landing() {
           <p className="u4-dim max-w-xs mb-6 text-sm">{sub}</p>
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/catalogo')} className="u4-btn-primary px-6 py-3 text-sm">
-              Ver cardápio
+              Ver produtos
             </button>
             <button onClick={() => (customerAuth.token ? navigate('/consultar') : setShowAuthModal(true))} className="u4-btn-secondary px-6 py-3 text-sm">
               Acompanhar entrega
@@ -84,9 +84,14 @@ export default function Uiux4Landing() {
             ))}
           </div>
 
-          <div className="flex flex-col gap-3 text-sm u4-dim">
+          <div className="flex flex-wrap items-center justify-center gap-2.5 text-sm u4-dim">
             {tenantMapsHref(tenantConfig) && (
-              <a href={tenantMapsHref(tenantConfig)!} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+              <a
+                href={tenantMapsHref(tenantConfig)!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-white/15 hover:border-white/30 hover:bg-white/5 transition-colors"
+              >
                 <MapPin className="w-4 h-4 shrink-0" /> {tenantFullAddress(tenantConfig)}
               </a>
             )}

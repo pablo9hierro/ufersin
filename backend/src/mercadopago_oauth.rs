@@ -6,12 +6,31 @@
 
 use axum::extract::{Query, State};
 use axum::response::Redirect;
+use base64::Engine;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::auth::AuthSubscriber;
 use crate::error::AppError;
 use crate::state::AppState;
+
+/// PKCE (RFC 7636) — a aplicação Mercado Pago do lojista pode exigir isso
+/// no painel; sem mandar `code_challenge`/`code_verifier`, a autorização
+/// falha (tela genérica de erro da própria Mercado Pago). `code_verifier`:
+/// duas UUIDv4 sem hífen (64 chars, alfanumérico — dentro do charset e do
+/// tamanho 43–128 exigidos pela RFC). `code_challenge` = base64url(sem
+/// padding) do SHA-256 do verifier, method "S256".
+fn generate_pkce_pair() -> (String, String) {
+    let verifier = format!(
+        "{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    );
+    let digest = Sha256::digest(verifier.as_bytes());
+    let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest);
+    (verifier, challenge)
+}
 
 const AUTHORIZE_URL: &str = "https://auth.mercadopago.com.br/authorization";
 const TOKEN_URL: &str = "https://api.mercadopago.com/oauth/token";
@@ -74,17 +93,22 @@ pub async fn oauth_start(
         .await?;
 
     let oauth_state = Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO mercadopago_oauth_states (state, subscriber_id) VALUES ($1, $2)")
-        .bind(&oauth_state)
-        .bind(&claims.sub)
-        .execute(&state.pool)
-        .await?;
+    let (code_verifier, code_challenge) = generate_pkce_pair();
+    sqlx::query(
+        "INSERT INTO mercadopago_oauth_states (state, subscriber_id, code_verifier) VALUES ($1, $2, $3)",
+    )
+    .bind(&oauth_state)
+    .bind(&claims.sub)
+    .bind(&code_verifier)
+    .execute(&state.pool)
+    .await?;
 
     let authorize_url = format!(
-        "{AUTHORIZE_URL}?client_id={}&response_type=code&platform_id=mp&redirect_uri={}&state={}",
+        "{AUTHORIZE_URL}?client_id={}&response_type=code&platform_id=mp&redirect_uri={}&state={}&code_challenge={}&code_challenge_method=S256",
         urlencoding::encode(cfg.client_id.as_deref().unwrap_or_default()),
         urlencoding::encode(cfg.redirect_uri.as_deref().unwrap_or_default()),
         urlencoding::encode(&oauth_state),
+        urlencoding::encode(&code_challenge),
     );
 
     Ok(axum::Json(OAuthStartOutput { authorize_url }))
@@ -118,17 +142,20 @@ fn frontend_redirect(cfg: &MercadoPagoOAuthConfig, status: &str) -> Redirect {
 pub async fn oauth_callback(State(state): State<AppState>, Query(q): Query<OAuthCallbackQuery>) -> Redirect {
     let cfg = &state.mercadopago_oauth;
 
-    if q.error.is_some() {
+    if let Some(mp_error) = q.error {
+        tracing::warn!("mercadopago oauth callback: mercado pago retornou error={mp_error}");
         return frontend_redirect(cfg, "cancelled");
     }
+    let (has_code, has_state) = (q.code.is_some(), q.state.is_some());
     let (Some(code), Some(oauth_state)) = (q.code, q.state) else {
+        tracing::warn!("mercadopago oauth callback: code/state ausentes na query (code={has_code}, state={has_state})");
         return frontend_redirect(cfg, "error");
     };
 
-    let subscriber_id: Option<(String,)> = sqlx::query_as(
+    let row: Option<(String, String)> = sqlx::query_as(
         "DELETE FROM mercadopago_oauth_states \
          WHERE state = $1 AND created_at > now() - ($2 || ' minutes')::interval \
-         RETURNING subscriber_id",
+         RETURNING subscriber_id, code_verifier",
     )
     .bind(&oauth_state)
     .bind(STATE_TTL_MINUTES.to_string())
@@ -136,7 +163,7 @@ pub async fn oauth_callback(State(state): State<AppState>, Query(q): Query<OAuth
     .await
     .unwrap_or(None);
 
-    let Some((subscriber_id,)) = subscriber_id else {
+    let Some((subscriber_id, code_verifier)) = row else {
         tracing::warn!("mercadopago oauth callback: state inválido ou expirado");
         return frontend_redirect(cfg, "error");
     };
@@ -156,6 +183,7 @@ pub async fn oauth_callback(State(state): State<AppState>, Query(q): Query<OAuth
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": redirect_uri,
+            "code_verifier": code_verifier,
         }))
         .send()
         .await
@@ -226,4 +254,38 @@ pub async fn oauth_callback(State(state): State<AppState>, Query(q): Query<OAuth
     }
 
     frontend_redirect(cfg, "success")
+}
+
+/// Autenticado — desconecta a conta Mercado Pago do lojista (limpa
+/// credenciais + volta `forma_pagamento` pra 'manual', mesmo estado de
+/// quem nunca conectou). Sincroniza com o ecommerce/backend igual ao
+/// connect, pra loja parar de aceitar Pix/cartão via plataforma na hora.
+pub async fn oauth_disconnect(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "UPDATE subscribers SET \
+           forma_pagamento = 'manual', plataforma_pagamento = NULL, \
+           plataforma_credenciais = NULL, updated_at = now() \
+         WHERE id = $1 \
+         RETURNING slug",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if let Some((slug,)) = row {
+        if !slug.trim().is_empty() {
+            if let Err(e) = crate::routes::onboarding::sync_store_payment_credentials(
+                &state, &slug, "manual", None, None,
+            )
+            .await
+            {
+                tracing::warn!("sync-payment-credentials after oauth disconnect failed: {e:?}");
+            }
+        }
+    }
+
+    Ok(axum::Json(serde_json::json!({ "disconnected": true })))
 }

@@ -2312,6 +2312,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "axum",
+ "base64",
  "chrono",
  "dotenvy",
  "hex",

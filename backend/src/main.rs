@@ -202,6 +202,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start))
         .route("/api/mercadopago/oauth/callback", get(mercadopago_oauth::oauth_callback))
+        .route("/api/mercadopago/oauth/disconnect", post(mercadopago_oauth::oauth_disconnect))
         .route("/api/public/tenant-config/{slug}", get(routes::onboarding::tenant_config))
         .route("/api/public/contratos/catalog", get(routes::contratos::catalog))
         .route(

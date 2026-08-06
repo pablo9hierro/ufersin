@@ -118,8 +118,11 @@ export default function Uiux2Checkout() {
     if (apenasRetirada) setPickupAtStore(true)
   }, [apenasRetirada])
 
+  // "Entrega só com pagamento prévio" — pix e cartão continuam liberados,
+  // só dinheiro fica de fora (não dá pra confirmar entrega sem receber
+  // antes). Pickup sempre libera as 3 formas normalmente.
   useEffect(() => {
-    if (entregaSomentePix && !pickup && paymentMethod !== 'pix') setPaymentMethod('pix')
+    if (entregaSomentePix && !pickup && paymentMethod === 'dinheiro') setPaymentMethod('pix')
   }, [entregaSomentePix, pickup, paymentMethod])
 
   // Se o cliente já tinha escolhido um endereço numa visita anterior,
@@ -476,7 +479,7 @@ export default function Uiux2Checkout() {
             )}
             {entregaSomentePix && !pickup && (
               <p className="text-xs u2-dim mt-1 mb-2">
-                Entrega só com Pix pago no checkout. Cartão e dinheiro são só para retirada na loja.
+                Entrega só com pagamento feito antes (Pix ou cartão) — dinheiro fica só pra retirada na loja.
               </p>
             )}
             <div className="grid grid-cols-3 gap-2 mt-1">
@@ -486,14 +489,27 @@ export default function Uiux2Checkout() {
                   { value: 'cartao', label: 'Cartão', icon: CreditCard },
                   { value: 'dinheiro', label: 'Dinheiro', icon: Wallet },
                 ] as const
-              )
-                .filter(({ value }) => !(entregaSomentePix && !pickup && value !== 'pix'))
-                .map(({ value, label, icon: Icon }) => (
-                <button key={value} type="button" onClick={() => { setPaymentMethod(value); if (value !== 'dinheiro') setCashCents(0) }} className={paymentMethod === value ? 'u2-btn-primary flex flex-col items-center gap-1.5 py-3 text-sm' : 'u2-btn-secondary flex flex-col items-center gap-1.5 py-3 text-sm'}>
-                  <Icon className="w-4 h-4" />
-                  {label}
-                </button>
-              ))}
+              ).map(({ value, label, icon: Icon }) => {
+                const blocked = value === 'dinheiro' && entregaSomentePix && !pickup
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={blocked}
+                    onClick={() => { setPaymentMethod(value); if (value !== 'dinheiro') setCashCents(0) }}
+                    className={
+                      blocked
+                        ? 'u2-btn-secondary flex flex-col items-center gap-1.5 py-3 text-sm opacity-30 cursor-not-allowed'
+                        : paymentMethod === value
+                          ? 'u2-btn-primary flex flex-col items-center gap-1.5 py-3 text-sm'
+                          : 'u2-btn-secondary flex flex-col items-center gap-1.5 py-3 text-sm'
+                    }
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </button>
+                )
+              })}
             </div>
             {paymentMethod === 'dinheiro' && (
               <CashAmountInput

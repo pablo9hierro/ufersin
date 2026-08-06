@@ -90,6 +90,7 @@ export default function Onboarding() {
   const [planLabel, setPlanLabel] = useState<string | null>(null)
   const [hasCreds, setHasCreds] = useState(false)
   const [connectingMp, setConnectingMp] = useState(false)
+  const [disconnectingMp, setDisconnectingMp] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [nomeLoja, setNomeLoja] = useState('')
@@ -202,6 +203,19 @@ export default function Onboarding() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível conectar o Mercado Pago.')
       setConnectingMp(false)
+    }
+  }
+
+  const handleDisconnectMp = async () => {
+    setError(null)
+    setDisconnectingMp(true)
+    try {
+      await api.mercadoPagoOAuthDisconnect()
+      setHasCreds(false)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível desconectar o Mercado Pago.')
+    } finally {
+      setDisconnectingMp(false)
     }
   }
 
@@ -407,14 +421,25 @@ export default function Onboarding() {
                 <span className="text-sm text-uf-silver flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Mercado Pago conectado.
                 </span>
-                <button
-                  type="button"
-                  onClick={handleConnectMp}
-                  disabled={connectingMp}
-                  className="text-xs text-uf-silver-dim hover:text-uf-silver underline"
-                >
-                  Reconectar
-                </button>
+                <div className="flex items-center gap-3 flex-none">
+                  <button
+                    type="button"
+                    onClick={handleConnectMp}
+                    disabled={connectingMp || disconnectingMp}
+                    className="text-xs text-uf-silver-dim hover:text-uf-silver underline"
+                  >
+                    Reconectar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDisconnectMp}
+                    disabled={connectingMp || disconnectingMp}
+                    className="text-xs text-red-400/80 hover:text-red-400 underline flex items-center gap-1"
+                  >
+                    {disconnectingMp ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                    Desconectar
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -451,13 +476,26 @@ export default function Onboarding() {
           <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
             <input
               type="checkbox"
+              checked={entregaSomentePix}
+              onChange={(e) => setEntregaSomentePix(e.target.checked)}
+              className="w-4 h-4 mt-0.5"
+            />
+            <span className="text-xs text-uf-silver-dim">
+              <span className="block text-uf-silver font-semibold mb-0.5">Entrega apenas para compras com pagamento prévio</span>
+              Pedidos com endereço de entrega só podem ser pagos com Pix ou cartão no checkout — dinheiro fica disponível só pra retirada na loja ou vendas no PDV.
+            </span>
+          </label>
+
+          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
               checked={vendeMais18}
               onChange={(e) => setVendeMais18(e.target.checked)}
               className="w-4 h-4 mt-0.5"
             />
             <span className="text-xs text-uf-silver-dim">
-              <span className="block text-uf-silver font-semibold mb-0.5">Minha loja vende produtos para maiores de 18 anos</span>
-              Se marcado, o checkout do cliente exige consentimento de compra normal + 18+.
+              <span className="block text-uf-silver font-semibold mb-0.5">Vendo produtos para maiores de 18 anos</span>
+              O cliente só compra logado — cadastro passa a exigir data de nascimento e consentimento de compra +18.
             </span>
           </label>
 
@@ -469,34 +507,8 @@ export default function Onboarding() {
               className="w-4 h-4 mt-0.5"
             />
             <span className="text-xs text-uf-silver-dim">
-              <span className="block text-uf-silver font-semibold mb-0.5">Aceitar apenas compras com retirada na loja</span>
-              Clientes da vitrine só podem comprar com retirada — sem entrega, frete ou motoboy.
-            </span>
-          </label>
-
-          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={pagamentoNaRetirada}
-              onChange={(e) => setPagamentoNaRetirada(e.target.checked)}
-              className="w-4 h-4 mt-0.5"
-            />
-            <span className="text-xs text-uf-silver-dim">
-              <span className="block text-uf-silver font-semibold mb-0.5">Pagamento só no ato da retirada</span>
-              Pagamento de pedidos para retirada só é processado no ato da retirada na loja.
-            </span>
-          </label>
-
-          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={entregaSomentePix}
-              onChange={(e) => setEntregaSomentePix(e.target.checked)}
-              className="w-4 h-4 mt-0.5"
-            />
-            <span className="text-xs text-uf-silver-dim">
-              <span className="block text-uf-silver font-semibold mb-0.5">Só aceito pedidos de entrega pagos com Pix no checkout</span>
-              Entrega só com Pix já pago online. Cartão e dinheiro ficam só para retirada na loja.
+              <span className="block text-uf-silver font-semibold mb-0.5">Não ofereço serviço de entrega — retirada obrigatória na loja</span>
+              A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.
             </span>
           </label>
 

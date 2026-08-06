@@ -160,6 +160,16 @@ const tenantAwarePublicCatalog = {
       )
     },
   },
+  storeStatus: {
+    // Mesmo motivo do catálogo: sem isso a vitrine lia horário via Supabase
+    // (schema `resolutoo`, legado) enquanto o admin salva no Railway — dois
+    // bancos diferentes, então a vitrine nunca via os horários salvos.
+    get: async () => {
+      const base = railwayPublicCatalogBase()
+      if (!base) return supabasePublicApi.storeStatus.get()
+      return request<StoreStatus>(`${base}/store-status`)
+    },
+  },
 }
 
 /** Pix no motor Railway (`/api/orders/{id}/…`). Path relativo `/api/pix-*`
@@ -255,7 +265,7 @@ const remoteApi = {
   products: tenantAwarePublicCatalog.products,
   shippingSettings: supabasePublicApi.shippingSettings,
   siteSettings: supabasePublicApi.siteSettings,
-  storeStatus: supabasePublicApi.storeStatus,
+  storeStatus: tenantAwarePublicCatalog.storeStatus,
   estimateShipping: supabasePublicApi.estimateShipping,
   trackDeliveryPosition: supabasePublicApi.trackDeliveryPosition,
   // Carrossel da landing (promoções ativas) + cupom digitado no checkout.

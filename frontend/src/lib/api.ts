@@ -475,6 +475,8 @@ export const api = {
     request<{ updated: boolean }>('/api/onboarding', { method: 'PUT', body: JSON.stringify(input) }),
   mercadoPagoOAuthStart: () =>
     request<{ authorize_url: string }>('/api/mercadopago/oauth/start', { method: 'POST' }),
+  mercadoPagoOAuthDisconnect: () =>
+    request<{ disconnected: boolean }>('/api/mercadopago/oauth/disconnect', { method: 'POST' }),
 
   getPandadocStatus: () => request<PandadocStatus>('/api/public/contratos/pandadoc/status'),
   contratosCatalog: () => request<ContractCatalogItem[]>('/api/public/contratos/catalog'),

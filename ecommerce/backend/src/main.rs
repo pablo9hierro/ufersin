@@ -247,6 +247,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::public::public_product_sales_counts),
         )
         .route(
+            "/api/public/catalog/{slug}/store-status",
+            get(routes::public::get_public_store_status),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )

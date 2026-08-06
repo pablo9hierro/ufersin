@@ -59,7 +59,7 @@ export default function Uiux3Landing() {
           <p className="u3-dim mb-7 max-w-sm mx-auto">{sub}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm sm:max-w-none mx-auto">
             <button onClick={() => navigate('/catalogo')} className="u3-pill-primary px-6 py-3 flex items-center justify-center gap-2">
-              <ShoppingBag className="w-4 h-4" /> Ver cardápio
+              <ShoppingBag className="w-4 h-4" /> Ver produtos
             </button>
             <button onClick={() => (customerAuth.token ? navigate('/consultar') : setShowAuthModal(true))} className="u3-pill-secondary px-6 py-3 flex items-center justify-center gap-2">
               Acompanhar entrega

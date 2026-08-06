@@ -8,7 +8,10 @@ use crate::cancel;
 use crate::error::AppError;
 use crate::google_routes::{self, Ponto, RotaResult};
 use crate::mercadopago;
-use crate::models::{Category, CustomerCancelInput, OrderDto, ProductDto, ProductRow};
+use crate::models::{
+    Category, CustomerCancelInput, OrderDto, ProductDto, ProductRow, StoreHourDay,
+    StoreHourInterval, StoreStatusDto,
+};
 use crate::orders_common::{self, fetch_items, fetch_order_dto, fetch_order_row, row_to_dto, short_id};
 use crate::state::AppState;
 use crate::tenant;
@@ -103,6 +106,55 @@ pub async fn list_public_categories(
             .await?;
     tx.commit().await?;
     Ok(Json(rows))
+}
+
+/// Horário/status da loja pra vitrine pública — antes o front lia isso via
+/// Supabase direto (`supabasePublicApi.storeStatus`), que aponta pro schema
+/// `resolutoo` legado. O admin salva horário aqui no backend Rust (mesmo
+/// banco `loja.store_hours` do CRUD), então a vitrine sempre via "Horários
+/// ainda não configurados" mesmo com o lojista tendo salvado — schemas
+/// diferentes, dados diferentes. Essa rota lê da MESMA fonte que o admin
+/// escreve.
+pub async fn get_public_store_status(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<StoreStatusDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+
+    let rows: Vec<(i16, bool, serde_json::Value)> = sqlx::query_as(
+        "SELECT day_of_week, is_open, intervals FROM store_hours \
+         WHERE tenant_id = $1 ORDER BY day_of_week",
+    )
+    .bind(&store.id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let hours: Vec<StoreHourDay> = rows
+        .into_iter()
+        .map(|(day_of_week, is_open, intervals)| {
+            let intervals: Vec<StoreHourInterval> =
+                serde_json::from_value(intervals).unwrap_or_default();
+            StoreHourDay { day_of_week, is_open, intervals }
+        })
+        .collect();
+
+    let status: (bool, Option<String>) = sqlx::query_as(
+        "SELECT manually_closed, manual_closed_reason FROM store_status WHERE tenant_id = $1",
+    )
+    .bind(&store.id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .unwrap_or((false, None));
+
+    tx.commit().await?;
+
+    Ok(Json(StoreStatusDto {
+        hours,
+        manually_closed: status.0,
+        manual_closed_reason: status.1,
+        onboarding_hours_done: true,
+    }))
 }
 
 /// Contagem de vendas por produto (ordenação "mais vendidos" no catálogo).
