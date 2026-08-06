@@ -388,7 +388,17 @@ export const api = {
     }),
 
   /** Gate do /dashboard — 403 se autenticado mas não é dono da plataforma. */
-  superadminWhoami: () => request<SuperadminWhoami>('/api/superadmin/whoami'),
+  // `tokenOverride`: CompletarConta.tsx chama isso logo após um login/cadastro
+  // de LOJISTA pra checar "essa conta é secretamente admin?" — getTokenForPath
+  // só manda o token da sessão superadmin pra rotas /api/superadmin (de
+  // propósito, nunca mistura roles), então sem override o request sairia sem
+  // Authorization nenhum (401 "missing authorization header" em vez do 403
+  // esperado pra quem não é admin).
+  superadminWhoami: (tokenOverride?: string) =>
+    request<SuperadminWhoami>(
+      '/api/superadmin/whoami',
+      tokenOverride ? { headers: { Authorization: `Bearer ${tokenOverride}` } } : undefined,
+    ),
   superadminOverview: () => request<SuperadminOverview>('/api/superadmin/overview'),
   superadminStores: () => request<SuperadminStore[]>('/api/superadmin/stores'),
   superadminApplyStoreCoupon: (id: string, code: string) =>

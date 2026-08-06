@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import EnvironmentBanner from './components/EnvironmentBanner'
 import Landing from './pages/Landing'
 import Demo from './pages/Demo'
 import DemoPlano from './pages/DemoPlano'
@@ -22,7 +23,9 @@ import PoliticasPrivacidade from './pages/PoliticasPrivacidade'
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <EnvironmentBanner />
+      <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/demo" element={<Demo />} />
       {/* Experiências mock — URL canônica na barra de endereço Resolutoo */}
@@ -58,6 +61,7 @@ export default function App() {
       <Route path="/obrigado" element={<Obrigado />} />
       <Route path="/politicas-de-privacidade/:slug" element={<PoliticasPrivacidade />} />
       <Route path="/politicas-de-privacidade" element={<PoliticasPrivacidade />} />
-    </Routes>
+      </Routes>
+    </>
   )
 }

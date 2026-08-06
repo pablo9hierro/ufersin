@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, type ComponentType, type LazyExoticComponent
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import CustomerPageDecorations from './components/CustomerPageDecorations'
+import EnvironmentBanner from './components/EnvironmentBanner'
 import DemoEntrar from './pages/DemoEntrar'
 import { isDemoModeActive } from './lib/demoMode'
 import { persistTenantSlug, resolveTenantSlug, withTenantSearch } from './lib/tenantConfig'
@@ -235,6 +236,7 @@ export default function App() {
   const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || undefined
   return (
     <BrowserRouter basename={basename}>
+      <EnvironmentBanner />
       <TenantBootstrap />
       <DemoBrandScope />
       <CustomerPageDecorations />

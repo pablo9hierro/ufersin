@@ -64,7 +64,7 @@ export default function CompletarConta() {
     setCheckingAdmin(true)
     setAdminCheckError(null)
     api
-      .superadminWhoami()
+      .superadminWhoami(session?.access_token ?? undefined)
       .then(() => {
         if (!cancelled) navigate('/dashboard', { replace: true })
       })
