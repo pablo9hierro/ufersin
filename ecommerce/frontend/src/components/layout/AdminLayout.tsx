@@ -31,6 +31,7 @@ import {
   stashLojaOfflineMessage,
 } from '../../lib/tenantConfig'
 import { adminService } from '../../services/adminService'
+import { platformOrigin } from '../../lib/platformUrl'
 import { subscribeWhatsAppGateChange } from '../../lib/whatsappGateEvents'
 import {
   WA_GATE_CONFIRM_STREAK,
@@ -100,6 +101,11 @@ export default function AdminLayout() {
   const tenantPlano = tenantConfig?.plano
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
   const whatsappRequired = tenantConfig?.whatsapp_habilitado === true
+  // Cobrança manual (store-wide) deixou de existir — toda loja precisa de
+  // um gateway conectado (Mercado Pago ou Abacate Pay). Dinheiro continua
+  // valendo por pedido (PDV/retirada), isso aqui é só sobre ter Pix/cartão
+  // online disponíveis.
+  const paymentGatewayConnected = tenantConfig?.forma_pagamento === 'plataforma'
   const tenantReady = tenantConfig != null
   const lojaOffline = !demo && tenantReady && tenantConfig?.ativa === false
 
@@ -349,6 +355,36 @@ export default function AdminLayout() {
           persistGate(false, true)
         }}
       />
+    )
+  }
+
+  if (!demo && tenantReady && !paymentGatewayConnected) {
+    return (
+      <div className="min-h-screen bg-son-black text-white flex flex-col items-center">
+        <header className="w-full px-5 py-8 sm:py-10 border-b border-white/5 bg-son-surface">
+          <div className="max-w-lg mx-auto text-center space-y-2">
+            <p className="text-xs text-son-silver-dim uppercase tracking-wide">Mercado Pago desconectado</p>
+            <h1 className="text-xl sm:text-2xl font-black leading-snug">Conecte o Mercado Pago da loja para continuar</h1>
+            <p className="text-sm text-son-silver-dim">O painel fica bloqueado enquanto não houver um gateway de pagamento conectado.</p>
+          </div>
+        </header>
+        <main className="flex-1 w-full flex flex-col items-center justify-center px-5 py-10">
+          <div className="bg-son-surface border border-white/10 rounded-2xl p-6 max-w-sm w-full text-center space-y-4">
+            <Wallet className="w-8 h-8 mx-auto text-son-pink" />
+            <p className="text-son-silver-dim text-sm">
+              A conexão é feita no painel da assinatura, fora dessa loja. Depois de conectar, volte aqui e recarregue a página.
+            </p>
+            <a
+              href={`${platformOrigin()}/meu-plano/financeiro`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary w-full py-2.5 text-sm inline-flex items-center justify-center gap-2"
+            >
+              Conectar Mercado Pago
+            </a>
+          </div>
+        </main>
+      </div>
     )
   }
 
