@@ -282,12 +282,12 @@ export default function Onboarding() {
     setError(null)
 
     if (!nomeLoja.trim()) return setError('Informe o nome da empresa.')
-    if (!isValidDocumento(tipoDocumento, documento)) {
-      return setError(`${tipoDocumento.toUpperCase()} inválido — confira os dígitos.`)
-    }
     if (!endereco.trim()) return setError('Informe o endereço da loja.')
     if (mpTokenRequired) {
       return setError('Conecte sua conta Mercado Pago pra concluir o cadastro.')
+    }
+    if (!isValidDocumento(tipoDocumento, documento)) {
+      return setError('Não conseguimos capturar seu CPF/CNPJ do Mercado Pago — desconecte e reconecte sua conta.')
     }
 
     const slug = slugify(nomeLoja) || `loja-${Date.now().toString(36)}`
@@ -411,22 +411,6 @@ export default function Onboarding() {
               onChange={(e) => setNomeLoja(e.target.value)}
               placeholder="Ex: Minha Loja"
             />
-          </div>
-
-          <div>
-            <label className="label">CNPJ ou CPF *</label>
-            {documento ? (
-              <div className="input-field !border-emerald-500/70 flex items-center justify-between gap-2">
-                <span className="text-sm">{documento}</span>
-                <span className="text-[10px] text-uf-silver-dim uppercase shrink-0 flex items-center gap-1">
-                  <CreditCard className="w-3 h-3" /> {tipoDocumento} · Mercado Pago
-                </span>
-              </div>
-            ) : (
-              <div className="input-field text-uf-silver-dim text-xs">
-                Preenchido automaticamente ao conectar sua conta Mercado Pago (mais abaixo).
-              </div>
-            )}
           </div>
 
           <AddressField
