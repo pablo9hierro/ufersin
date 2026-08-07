@@ -118,13 +118,13 @@ pub async fn onboarding(
         ));
     }
 
-    let row: Option<(String, String, String, Option<String>, Option<String>, Option<String>, String)> = sqlx::query_as(
-        "SELECT loja_nome, responsavel_nome, email, password_hash, tenant_id, plan_code, status FROM subscribers WHERE id = $1",
+    let row: Option<(String, String, String, Option<String>, Option<String>, Option<String>, String, Option<serde_json::Value>)> = sqlx::query_as(
+        "SELECT loja_nome, responsavel_nome, email, password_hash, tenant_id, plan_code, status, plataforma_credenciais FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
     .fetch_optional(&state.pool)
     .await?;
-    let (loja_nome_atual, responsavel_nome, email, password_hash, tenant_id_atual, plan_code, status) =
+    let (loja_nome_atual, responsavel_nome, email, password_hash, tenant_id_atual, plan_code, status, plataforma_credenciais_atual) =
         row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
     let Some(password_hash) = password_hash else {
         return Err(AppError::Internal("assinante sem senha cadastrada — cadastro incompleto".to_string()));
@@ -150,7 +150,7 @@ pub async fn onboarding(
     if body.endereco.trim().is_empty() {
         return Err(AppError::BadRequest("endereço é obrigatório".to_string()));
     }
-    validate_essential_fields(&body)?;
+    validate_essential_fields(&body, plataforma_credenciais_atual.as_ref())?;
     if !matches!(body.layout_style.as_str(), "ufersin" | "burgerbite" | "burgerhouse") {
         return Err(AppError::BadRequest(
             "layout_style deve ser ufersin, burgerbite ou burgerhouse".to_string(),
@@ -317,7 +317,14 @@ fn valid_cnpj(raw: &str) -> bool {
     d1 == cnpj[12..13].parse().unwrap_or(99) && d2 == cnpj[13..14].parse().unwrap_or(99)
 }
 
-fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
+/// `plataforma_credenciais_atual`: valor JÁ SALVO no banco (gravado pelo
+/// callback OAuth — ver mercadopago_oauth.rs), nunca o do corpo da
+/// requisição. Desde que o Access Token passou a vir só via OAuth, o
+/// navegador nunca tem (nem deveria ter) o token pra mandar de volta aqui.
+fn validate_essential_fields(
+    body: &OnboardingInput,
+    plataforma_credenciais_atual: Option<&serde_json::Value>,
+) -> Result<(), AppError> {
     if body.documento.trim().is_empty() {
         return Err(AppError::BadRequest("CNPJ ou CPF é obrigatório".to_string()));
     }
@@ -346,9 +353,7 @@ fn validate_essential_fields(body: &OnboardingInput) -> Result<(), AppError> {
             "pagamentos da loja usam apenas Mercado Pago".to_string(),
         ));
     }
-    let token_ok = body
-        .plataforma_credenciais
-        .as_ref()
+    let token_ok = plataforma_credenciais_atual
         .and_then(|v| v.get("token"))
         .and_then(|t| t.as_str())
         .map(|s| !s.trim().is_empty())
