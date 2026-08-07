@@ -333,6 +333,13 @@ export default function Onboarding() {
           entrega_somente_pix: entregaSomentePix,
           whatsapp_habilitado: true,
           layout_style: venderExternamente ? layoutStyle : 'ufersin',
+          // O backend valida forma_pagamento no próprio corpo do cadastro
+          // inicial (não só o que o callback OAuth já gravou no banco) —
+          // sem mandar isso aqui, POST /api/onboarding sempre rejeitava
+          // com "informe o Access Token do Mercado Pago", mesmo já
+          // conectado (mpTokenRequired garante isso antes de chegar aqui).
+          forma_pagamento: 'plataforma',
+          plataforma_pagamento: 'mercado_pago',
         })
         // OnboardingInput (criação inicial) não tem landing_hero_image_url —
         // só editar_onboarding aceita, e só depois do tenant provisionado.

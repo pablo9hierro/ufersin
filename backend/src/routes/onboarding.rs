@@ -221,7 +221,9 @@ pub async fn onboarding(
         "UPDATE subscribers SET tenant_id = $1, slug = $2, categoria = $3, endereco = $4, logo_url = $5, \
          cor_principal = $6, banner_url = $7, loja_nome = $8, whatsapp = $9, onboarding_status = 'provisionado', \
          documento = $11, tipo_documento = $12, vender_externamente = $13, whatsapp_habilitado = $14, \
-         forma_pagamento = $15, plataforma_pagamento = $16, plataforma_credenciais = $17, \
+         forma_pagamento = COALESCE($15, forma_pagamento), \
+         plataforma_pagamento = COALESCE($16, plataforma_pagamento), \
+         plataforma_credenciais = COALESCE($17, plataforma_credenciais), \
          layout_style = $18, instagram = $19, endereco_numero = $20, vende_mais_18 = $21, \
          facebook = $22, apenas_retirada = $23, pagamento_na_retirada = $24, \
          entrega_somente_pix = $25, pagamento_manual = $26, updated_at = now() \
