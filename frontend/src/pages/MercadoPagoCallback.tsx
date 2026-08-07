@@ -9,13 +9,17 @@ export default function MercadoPagoCallback() {
   const navigate = useNavigate()
   const ran = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  // flow=platform é a conta Mercado Pago DA RESOLUTOO (recebe assinaturas,
+  // conectada em /dashboard) — nunca confundir com a do lojista (default).
+  const isPlatform = new URLSearchParams(window.location.search).get('flow') === 'platform'
+  const backTo = isPlatform ? '/dashboard' : '/onboarding'
 
   useEffect(() => {
     if (ran.current) return
     ran.current = true
     const status = new URLSearchParams(window.location.search).get('status')
     if (status === 'success') {
-      navigate('/onboarding', { replace: true })
+      navigate(backTo, { replace: true })
       return
     }
     if (status === 'cancelled') {
@@ -31,7 +35,7 @@ export default function MercadoPagoCallback() {
         <div>
           <XCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
           <p className="text-uf-silver-dim mb-4">{error}</p>
-          <a href="/onboarding" className="btn-primary text-sm px-4 py-2 inline-flex">
+          <a href={backTo} className="btn-primary text-sm px-4 py-2 inline-flex">
             Voltar
           </a>
         </div>

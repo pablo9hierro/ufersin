@@ -50,6 +50,41 @@ pub async fn overview(
     }))
 }
 
+#[derive(Debug, Serialize)]
+pub struct PlatformMercadoPagoStatus {
+    pub connected: bool,
+    pub connection_status: Option<String>,
+}
+
+/// Status da conta Mercado Pago DA RESOLUTOO (recebe as assinaturas dos
+/// lojistas) — nunca a conta de um lojista específico, ver
+/// mercadopago_oauth.rs.
+pub async fn mercadopago_status(
+    State(state): State<AppState>,
+    AuthSuperadmin(_): AuthSuperadmin,
+) -> Result<Json<PlatformMercadoPagoStatus>, AppError> {
+    let row: Option<(Option<serde_json::Value>,)> =
+        sqlx::query_as("SELECT credenciais FROM platform_payment_credentials WHERE id = 'default'")
+            .fetch_optional(&state.pool)
+            .await?;
+    let credenciais = row.and_then(|(c,)| c);
+    let has_token = credenciais
+        .as_ref()
+        .and_then(|c| c.get("token"))
+        .and_then(|t| t.as_str())
+        .map(|t| !t.trim().is_empty())
+        .unwrap_or(false);
+    let connection_status = credenciais
+        .as_ref()
+        .and_then(|c| c.get("connection_status"))
+        .and_then(|s| s.as_str())
+        .map(|s| s.to_string());
+    Ok(Json(PlatformMercadoPagoStatus {
+        connected: has_token,
+        connection_status,
+    }))
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct StoreRow {
     pub id: String,

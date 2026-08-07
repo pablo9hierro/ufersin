@@ -4,8 +4,10 @@ import { motion } from 'framer-motion'
 import {
   BarChart3,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
+  CreditCard,
   LayoutTemplate,
   Loader2,
   LogOut,
@@ -33,13 +35,14 @@ import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, invalidatePlansCache } from '../lib/plans'
 import LayoutCmsEditor, { defaultPlansSeed } from '../components/cms/LayoutCmsEditor'
 
-type Section = 'relatorios' | 'lojas' | 'layout' | 'cupons'
+type Section = 'relatorios' | 'lojas' | 'layout' | 'cupons' | 'financeiro'
 
 const NAV: { id: Section; label: string; icon: typeof BarChart3; path: string }[] = [
   { id: 'relatorios', label: 'Relatórios', icon: BarChart3, path: '/dashboard' },
   { id: 'lojas', label: 'Lojas', icon: Store, path: '/lojas' },
   { id: 'layout', label: 'Layout', icon: LayoutTemplate, path: '/layout' },
   { id: 'cupons', label: 'Cupons', icon: Tag, path: '/cupons' },
+  { id: 'financeiro', label: 'Financeiro', icon: CreditCard, path: '/financeiro' },
 ]
 
 const PATH_TO_SECTION: Record<string, Section> = {
@@ -47,6 +50,7 @@ const PATH_TO_SECTION: Record<string, Section> = {
   '/lojas': 'lojas',
   '/layout': 'layout',
   '/cupons': 'cupons',
+  '/financeiro': 'financeiro',
 }
 
 const SECTION_PATH: Record<Section, string> = {
@@ -54,6 +58,7 @@ const SECTION_PATH: Record<Section, string> = {
   lojas: '/lojas',
   layout: '/layout',
   cupons: '/cupons',
+  financeiro: '/financeiro',
 }
 
 export default function Dashboard() {
@@ -73,6 +78,13 @@ export default function Dashboard() {
   const [costs, setCosts] = useState<SuperadminCost[]>([])
   const [newCostLabel, setNewCostLabel] = useState('')
   const [newCostAmount, setNewCostAmount] = useState('')
+
+  // Conta Mercado Pago DA RESOLUTOO (recebe as assinaturas dos lojistas) —
+  // nunca a conta MP de um lojista individual (essa fica em /onboarding e
+  // /meu-plano/financeiro, separada de propósito).
+  const [mpConnected, setMpConnected] = useState(false)
+  const [mpConnecting, setMpConnecting] = useState(false)
+  const [mpDisconnecting, setMpDisconnecting] = useState(false)
 
   const [stores, setStores] = useState<SuperadminStore[]>([])
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
@@ -177,9 +189,39 @@ export default function Dashboard() {
     await fetchPlans()
   }, [])
 
+  const loadFinanceiro = useCallback(async () => {
+    const status = await api.superadminMercadoPagoStatus()
+    setMpConnected(status.connected)
+  }, [])
+
   const loadCupons = useCallback(async () => {
     setCoupons(await api.superadminCoupons())
   }, [])
+
+  const handleConnectMp = async () => {
+    setError(null)
+    setMpConnecting(true)
+    try {
+      const { authorize_url } = await api.superadminMercadoPagoOAuthStart()
+      window.location.href = authorize_url
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível conectar o Mercado Pago.')
+      setMpConnecting(false)
+    }
+  }
+
+  const handleDisconnectMp = async () => {
+    setError(null)
+    setMpDisconnecting(true)
+    try {
+      await api.superadminMercadoPagoOAuthDisconnect()
+      setMpConnected(false)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível desconectar o Mercado Pago.')
+    } finally {
+      setMpDisconnecting(false)
+    }
+  }
 
   useEffect(() => {
     if (guard !== 'ok') return
@@ -191,9 +233,11 @@ export default function Dashboard() {
           ? loadLojas
           : section === 'layout'
             ? loadLayout
-            : loadCupons
+            : section === 'financeiro'
+              ? loadFinanceiro
+              : loadCupons
     load().catch((e) => setError(e instanceof ApiError ? e.message : 'Erro ao carregar dados.'))
-  }, [guard, section, loadRelatorios, loadLojas, loadLayout, loadCupons])
+  }, [guard, section, loadRelatorios, loadLojas, loadLayout, loadFinanceiro, loadCupons])
 
   if (!ready) {
     return (
@@ -651,6 +695,63 @@ export default function Dashboard() {
                 busy={busy}
                 error={error}
               />
+            </motion.div>
+          )}
+
+          {section === 'financeiro' && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              <section className="uf-glass rounded-2xl p-5">
+                <h2 className="font-bold text-sm mb-1">Mercado Pago da Resolutoo</h2>
+                <p className="text-xs text-uf-silver-dim mb-4">
+                  Conta que RECEBE as assinaturas pagas pelos lojistas — nunca a conta Mercado Pago de uma loja
+                  específica (essa cada lojista conecta na conta dele, em Onboarding/Meu Plano).
+                </p>
+                {mpConnected ? (
+                  <div className="flex items-center justify-between gap-3 uf-glass rounded-xl p-4 border border-white/10">
+                    <span className="text-sm text-uf-silver flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Mercado Pago conectado.
+                    </span>
+                    <div className="flex items-center gap-3 flex-none">
+                      <button
+                        type="button"
+                        onClick={handleConnectMp}
+                        disabled={mpConnecting || mpDisconnecting}
+                        className="text-xs text-uf-silver-dim hover:text-uf-silver underline"
+                      >
+                        Reconectar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDisconnectMp}
+                        disabled={mpConnecting || mpDisconnecting}
+                        className="text-xs text-red-400/80 hover:text-red-400 underline flex items-center gap-1"
+                      >
+                        {mpDisconnecting ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                        Desconectar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="uf-glass rounded-xl p-4 border border-white/10">
+                    <p className="label flex items-center gap-1.5 mb-1">
+                      <CreditCard className="w-3.5 h-3.5" /> Conecte a conta Mercado Pago da Resolutoo
+                    </p>
+                    <p className="text-[11px] text-uf-silver-dim mb-3">
+                      Sem isso, novas cobranças de assinatura ficam em modo mock (sem cobrança de verdade).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleConnectMp}
+                      disabled={mpConnecting}
+                      className="btn-primary text-sm px-4 py-2 inline-flex items-center gap-2"
+                    >
+                      {mpConnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                      Conectar Mercado Pago
+                    </button>
+                  </div>
+                )}
+                {error && <p className="error-msg mt-3">{error}</p>}
+              </section>
             </motion.div>
           )}
 

@@ -45,15 +45,12 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    let mp_token = std::env::var("MP_ACCESS_TOKEN")
+    // Fallback legado — token colado direto no .env. Preferência real é a
+    // conta OAuth da plataforma (`platform_payment_credentials`, ver abaixo,
+    // carregada depois da migração criar a tabela).
+    let mp_token_env = std::env::var("MP_ACCESS_TOKEN")
         .ok()
         .filter(|s| !s.trim().is_empty());
-    if mp_token.is_none() {
-        tracing::warn!(
-            "MP_ACCESS_TOKEN não configurado — rodando em modo MOCK (sem cobrança de verdade). \
-             Precisa de uma conta Mercado Pago com o produto de Assinaturas aprovado pra sair do mock."
-        );
-    }
 
     let abacatepay_token = std::env::var("ABACATEPAY_API_KEY")
         .ok()
@@ -90,6 +87,24 @@ async fn main() -> anyhow::Result<()> {
     let pool = PgPoolOptions::new().max_connections(5).connect_with(connect_options).await?;
 
     sqlx::migrate!("./migrations").run(&pool).await?;
+
+    // Conta Mercado Pago DA PLATAFORMA (recebe assinaturas) — se já foi
+    // conectada via OAuth (superadmin), prefere ela sobre MP_ACCESS_TOKEN.
+    let db_mp_token: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT credenciais->>'token' FROM platform_payment_credentials WHERE id = 'default'",
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .flatten();
+    let mp_token = db_mp_token.or(mp_token_env);
+    if mp_token.is_none() {
+        tracing::warn!(
+            "Nenhuma conta Mercado Pago da plataforma conectada (nem OAuth nem MP_ACCESS_TOKEN) — \
+             cobrança de assinatura rodando em modo MOCK (sem cobrança de verdade)."
+        );
+    }
 
     let http = reqwest::Client::new();
     let supabase_jwks = jwks::JwksVerifier::new(&supabase_url, http.clone());
@@ -147,7 +162,7 @@ async fn main() -> anyhow::Result<()> {
         pool,
         http,
         supabase_jwks: Arc::new(supabase_jwks),
-        mp_token: Arc::new(mp_token),
+        mp_token: Arc::new(tokio::sync::RwLock::new(mp_token)),
         abacatepay_token: Arc::new(abacatepay_token),
         valor_padrao,
         back_url: Arc::new(back_url),
@@ -203,6 +218,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start))
         .route("/api/mercadopago/oauth/callback", get(mercadopago_oauth::oauth_callback))
         .route("/api/mercadopago/oauth/disconnect", post(mercadopago_oauth::oauth_disconnect))
+        .route("/api/superadmin/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start_platform))
+        .route("/api/superadmin/mercadopago/oauth/disconnect", post(mercadopago_oauth::oauth_disconnect_platform))
         .route("/api/public/tenant-config/{slug}", get(routes::onboarding::tenant_config))
         .route("/api/public/contratos/catalog", get(routes::contratos::catalog))
         .route(
@@ -230,6 +247,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/public/coupons/preview", post(routes::plans::coupon_preview))
         .route("/api/superadmin/whoami", get(routes::superadmin::whoami))
         .route("/api/superadmin/overview", get(routes::superadmin::overview))
+        .route("/api/superadmin/mercadopago/status", get(routes::superadmin::mercadopago_status))
         .route("/api/superadmin/stores", get(routes::superadmin::list_stores))
         .route(
             "/api/superadmin/stores/{id}/coupon",

@@ -81,7 +81,7 @@ pub fn payment_mode_sandbox(state: &AppState) -> bool {
 /// `mercadopago` — even if a leftover AbacatePay `abc_dev_` key is set
 /// (that used to mis-tag live Pix as `gateway=abacatepay`).
 pub fn resolve_gateway_kind(state: &AppState) -> &'static str {
-    let has_mp = state.mp_token.as_ref().as_ref().is_some();
+    let has_mp = state.mp_token_sync().is_some();
     let has_ab = state.abacatepay_token.as_ref().as_ref().is_some();
 
     if matches!(state.payment_mode.as_str(), "production" | "prod") && has_mp {

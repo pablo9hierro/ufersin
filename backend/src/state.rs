@@ -13,9 +13,14 @@ pub struct AppState {
     /// contra o JWKS público do projeto (chave assimétrica, ver jwks.rs) —
     /// nunca emite token nenhum daqui (ver auth.rs::AuthSubscriber).
     pub supabase_jwks: Arc<JwksVerifier>,
-    /// None = modo mock (sem cobrança de verdade, só pra testar o fluxo
-    /// sem uma conta Mercado Pago com o produto de assinaturas aprovado).
-    pub mp_token: Arc<Option<String>>,
+    /// Token da conta Mercado Pago DA PLATAFORMA (recebe as assinaturas dos
+    /// lojistas — nunca a conta de um lojista). None = modo mock (sem
+    /// cobrança de verdade). RwLock porque conectar/desconectar via OAuth
+    /// (superadmin, ver mercadopago_oauth.rs) atualiza isso em memória na
+    /// hora, sem precisar reiniciar o backend — carregado no boot a partir
+    /// de `platform_payment_credentials` (ou de `MP_ACCESS_TOKEN` como
+    /// fallback legado, ver main.rs).
+    pub mp_token: Arc<tokio::sync::RwLock<Option<String>>>,
     /// None = camada AbacatePay em modo mock — ver gateway.rs/
     /// abacatepay_gateway.rs. Usado como fallback quando `MP_ACCESS_TOKEN`
     /// não está setado; com MP configurado, novas assinaturas Resolutoo
@@ -49,4 +54,14 @@ pub struct AppState {
     /// Conexão OAuth da conta Mercado Pago do lojista (ver mercadopago_oauth.rs)
     /// — substitui colar Access Token manual em Onboarding/Meu Plano.
     pub mercadopago_oauth: MercadoPagoOAuthConfig,
+}
+
+impl AppState {
+    /// Leitura não-bloqueante de `mp_token`, pra uso em funções síncronas
+    /// (`sandbox_mode`, `resolve_gateway_kind`). Só existe escrita durante
+    /// connect/disconnect via OAuth (ação rara de admin) — na prática o
+    /// lock nunca está ocupado, então `try_read` sempre acha valor.
+    pub fn mp_token_sync(&self) -> Option<String> {
+        self.mp_token.try_read().ok().and_then(|g| g.clone())
+    }
 }

@@ -401,6 +401,13 @@ export const api = {
       tokenOverride ? { headers: { Authorization: `Bearer ${tokenOverride}` } } : undefined,
     ),
   superadminOverview: () => request<SuperadminOverview>('/api/superadmin/overview'),
+  /** Conta Mercado Pago DA RESOLUTOO (recebe as assinaturas dos lojistas) — nunca a de um lojista. */
+  superadminMercadoPagoStatus: () =>
+    request<{ connected: boolean; connection_status: string | null }>('/api/superadmin/mercadopago/status'),
+  superadminMercadoPagoOAuthStart: () =>
+    request<{ authorize_url: string }>('/api/superadmin/mercadopago/oauth/start', { method: 'POST' }),
+  superadminMercadoPagoOAuthDisconnect: () =>
+    request<{ disconnected: boolean }>('/api/superadmin/mercadopago/oauth/disconnect', { method: 'POST' }),
   superadminStores: () => request<SuperadminStore[]>('/api/superadmin/stores'),
   superadminApplyStoreCoupon: (id: string, code: string) =>
     request<{ ok: boolean; code: string; valor_mensal: number }>(`/api/superadmin/stores/${id}/coupon`, {

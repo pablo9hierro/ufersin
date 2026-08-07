@@ -53,6 +53,7 @@ export default function App() {
       <Route path="/lojas" element={<Dashboard />} />
       <Route path="/layout" element={<Dashboard />} />
       <Route path="/cupons" element={<Dashboard />} />
+      <Route path="/financeiro" element={<Dashboard />} />
       <Route path="/relatorios" element={<Navigate to="/dashboard" replace />} />
       <Route path="/completar-conta" element={<CompletarConta />} />
       <Route path="/onboarding" element={<Onboarding />} />

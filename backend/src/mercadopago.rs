@@ -82,7 +82,7 @@ pub fn sandbox_mode(state: &AppState) -> bool {
     match state.payment_mode.as_str() {
         "sandbox" | "test" | "homolog" | "homologacao" => true,
         "production" | "prod" => false,
-        _ => match state.mp_token.as_ref().as_ref() {
+        _ => match state.mp_token_sync() {
             None => true,
             Some(t) => t.trim().starts_with("TEST-"),
         },
@@ -183,19 +183,19 @@ pub async fn create_onsite_pix(
     external_reference: &str,
 ) -> Result<GatewayCharge, AppError> {
     let sandbox = sandbox_mode(state);
-    let Some(token) = state.mp_token.as_ref().as_ref() else {
+    let Some(token) = state.mp_token.read().await.clone() else {
         return Ok(mock_pix_charge(reason, true));
     };
 
     // PAYMENT_MODE=sandbox with a production APP_USR token must not hit live Pix.
-    if sandbox && !mp_token_is_test(token) {
+    if sandbox && !mp_token_is_test(&token) {
         tracing::info!(
             "sandbox mode with non-TEST MP token — mock Pix QR (skip live Payments API)"
         );
         return Ok(mock_pix_charge(reason, true));
     }
 
-    match create_mp_pix_payment(state, token, reason, payer_email, amount_reais, external_reference)
+    match create_mp_pix_payment(state, &token, reason, payer_email, amount_reais, external_reference)
         .await
     {
         Ok(c) => {
@@ -381,14 +381,15 @@ pub async fn pay_onsite_card(
 
     let token = state
         .mp_token
-        .as_ref()
-        .as_ref()
+        .read()
+        .await
+        .clone()
         .ok_or_else(|| AppError::BadRequest("Mercado Pago não configurado".to_string()))?;
 
     let payment_token = if let Some(t) = card_token.map(str::trim).filter(|s| !s.is_empty()) {
         t.to_string()
     } else {
-        create_card_token(state, token, &digits, card_holder, exp_month, exp_year, cvv).await?
+        create_card_token(state, &token, &digits, card_holder, exp_month, exp_year, cvv).await?
     };
 
     let mut body = json!({
@@ -537,13 +538,14 @@ pub async fn fetch_payment_snapshot(
 ) -> Result<MpPaymentSnapshot, AppError> {
     let token = state
         .mp_token
-        .as_ref()
-        .as_ref()
+        .read()
+        .await
+        .clone()
         .ok_or_else(|| AppError::Internal("MP_ACCESS_TOKEN not set".to_string()))?;
     let resp = state
         .http
         .get(format!("https://api.mercadopago.com/v1/payments/{payment_id}"))
-        .bearer_auth(token)
+        .bearer_auth(&token)
         .send()
         .await
         .map_err(|e| AppError::Internal(format!("mp payment fetch failed: {e}")))?;
@@ -597,13 +599,13 @@ pub async fn get_onsite_payment_status(state: &AppState, stored_id: &str) -> Res
         .or_else(|| stored_id.strip_prefix(PAY_ID_PREFIX));
 
     if let Some(pay_id) = payment_id {
-        let Some(token) = state.mp_token.as_ref().as_ref() else {
+        let Some(token) = state.mp_token.read().await.clone() else {
             return Ok("pending".to_string());
         };
         let resp = state
             .http
             .get(format!("https://api.mercadopago.com/v1/payments/{pay_id}"))
-            .bearer_auth(token)
+            .bearer_auth(&token)
             .send()
             .await
             .map_err(|e| AppError::Internal(format!("mp payment status failed: {e}")))?;
@@ -632,12 +634,13 @@ pub async fn create_subscription(
     external_reference: &str,
 ) -> Result<SubscriptionResult, AppError> {
     let back_url = completion_back_url(state, external_reference);
+    let mp_token = state.mp_token.read().await.clone();
 
-    match state.mp_token.as_ref() {
+    match mp_token {
         Some(token) => {
             match create_via_preapproval(
                 state,
-                token,
+                &token,
                 reason,
                 payer_email,
                 amount_reais,
@@ -654,7 +657,7 @@ pub async fn create_subscription(
                     );
                     create_via_plan(
                         state,
-                        token,
+                        &token,
                         reason,
                         amount_reais,
                         cycle,
@@ -819,9 +822,8 @@ pub async fn get_subscription_status(state: &AppState, stored_id: &str) -> Resul
 }
 
 async fn get_preapproval_status(state: &AppState, stored_id: &str) -> Result<String, AppError> {
-    let token = state
-        .mp_token
-        .as_ref()
+    let token_owned = state.mp_token.read().await.clone();
+    let token = token_owned
         .as_ref()
         .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
 
@@ -877,7 +879,8 @@ pub async fn cancel_subscription(state: &AppState, stored_id: &str) -> Result<()
         .strip_prefix(PIX_ID_PREFIX)
         .or_else(|| stored_id.strip_prefix(PAY_ID_PREFIX))
     {
-        let Some(token) = state.mp_token.as_ref().as_ref() else {
+        let token_owned = state.mp_token.read().await.clone();
+        let Some(token) = token_owned.as_ref() else {
             return Ok(());
         };
         let url = format!("https://api.mercadopago.com/v1/payments/{pay_id}");
@@ -899,9 +902,8 @@ pub async fn cancel_subscription(state: &AppState, stored_id: &str) -> Result<()
         return Ok(());
     }
 
-    let token = state
-        .mp_token
-        .as_ref()
+    let token_owned = state.mp_token.read().await.clone();
+    let token = token_owned
         .as_ref()
         .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
 
@@ -971,9 +973,8 @@ pub async fn update_subscription_amount(
     {
         return Ok(());
     }
-    let token = state
-        .mp_token
-        .as_ref()
+    let token_owned = state.mp_token.read().await.clone();
+    let token = token_owned
         .as_ref()
         .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
 
@@ -1036,9 +1037,8 @@ pub async fn refund_latest_subscription_payment(
         return refund_payment_id(state, pay_id).await.map(Some);
     }
 
-    let token = state
-        .mp_token
-        .as_ref()
+    let token_owned = state.mp_token.read().await.clone();
+    let token = token_owned
         .as_ref()
         .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
 
@@ -1105,9 +1105,8 @@ pub async fn refund_latest_subscription_payment(
 }
 
 async fn refund_payment_id(state: &AppState, payment_id: &str) -> Result<String, AppError> {
-    let token = state
-        .mp_token
-        .as_ref()
+    let token_owned = state.mp_token.read().await.clone();
+    let token = token_owned
         .as_ref()
         .ok_or_else(|| AppError::Internal("mercado pago not configured".to_string()))?;
     let refund_url = format!("https://api.mercadopago.com/v1/payments/{payment_id}/refunds");
