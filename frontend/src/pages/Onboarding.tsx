@@ -1,9 +1,9 @@
 ﻿import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { AtSign, CheckCircle2, CreditCard, Loader2, Rocket, Store, Upload } from 'lucide-react'
+import { AtSign, CheckCircle2, CreditCard, Loader2, LogOut, Rocket, Store, Upload } from 'lucide-react'
 import { api, ApiError, type MeResponse, type TipoDocumento } from '../lib/api'
-import { useAuthReady, useIsAuthenticated } from '../lib/authStore'
+import { authStore, useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import AddressField from '../components/AddressField'
 import { isValidDocumento, onlyDigits } from '../lib/documento'
 import { planDisplayName } from '../lib/plans'
@@ -198,6 +198,14 @@ export default function Onboarding() {
   const mpTokenRequired = !hasCreds
   const returning = complementary || Boolean(nomeLoja || documento || endereco)
 
+  const handleLogout = async () => {
+    try {
+      await authStore.signOut('lojista')
+    } finally {
+      navigate('/')
+    }
+  }
+
   const finishOk = () => {
     setDone(true)
     setTimeout(() => navigate('/meu-plano'), 1800)
@@ -380,6 +388,13 @@ export default function Onboarding() {
         transition={{ duration: 0.5 }}
         className="mx-auto relative z-10 max-w-2xl"
       >
+        <div className="flex justify-end mb-2">
+          <button type="button" onClick={handleLogout} className="btn-ghost text-sm">
+            <LogOut className="w-4 h-4" />
+            Sair
+          </button>
+        </div>
+
         <div className="text-center mb-8">
           <span className="uf-eyebrow mb-4">{complementary ? 'Upgrade' : 'Onboarding'}</span>
           <h1 className="text-2xl sm:text-3xl font-black mt-4">
