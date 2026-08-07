@@ -1,10 +1,17 @@
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::Json;
-use serde_json::Value;
+use std::collections::HashMap;
 
+use axum::extract::{Query, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::Json;
+use hmac::{Hmac, Mac};
+use serde_json::Value;
+use sha2::Sha256;
+
+use crate::mercadopago_link;
+use crate::orders_common;
 use crate::state::AppState;
 use crate::tenant;
+use crate::whatsapp;
 
 /// Receives incoming-message events from every Evolution API instance
 /// (every tenant's store + every motoboy — whatsapp::set_webhook points
@@ -148,4 +155,173 @@ fn phone_variants(digits: &str) -> Vec<String> {
         variants.push(format!("{prefix}9{rest}"));
     }
     variants
+}
+
+// ---------------------------------------------------------------------
+// Mercado Pago — confirmação de pagamento (Pix/link/cartão da LOJA, nunca
+// a conta da plataforma que cobra assinatura — essa fica em outro sistema
+// inteiro, ufersin/backend).
+// ---------------------------------------------------------------------
+
+/// Valida `x-signature` (formato `ts=...,v1=...`) contra o manifest
+/// `id:{data_id};request-id:{x-request-id};ts:{ts};`, HMAC-SHA256 com o
+/// secret da aplicação Mercado Pago (um só pra toda a Resolutoo — não é
+/// por tenant). Sem secret configurado, ou assinatura ausente/malformada,
+/// deixa passar (best-effort): a defesa de verdade é `fetch_payment_details`
+/// logo depois, que NUNCA confia em nada do corpo — sempre rebusca o
+/// pagamento na API usando o token do tenant já resolvido por outro
+/// caminho (mp_user_id), então um webhook forjado não move dinheiro nenhum
+/// mesmo que a assinatura passe despercebida.
+fn signature_looks_valid(secret: &str, headers: &HeaderMap, data_id: &str, request_id: &str) -> bool {
+    let Some(sig_header) = headers.get("x-signature").and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    let mut ts = None;
+    let mut v1 = None;
+    for part in sig_header.split(',') {
+        let mut kv = part.splitn(2, '=');
+        match (kv.next().map(str::trim), kv.next().map(str::trim)) {
+            (Some("ts"), Some(v)) => ts = Some(v),
+            (Some("v1"), Some(v)) => v1 = Some(v),
+            _ => {}
+        }
+    }
+    let (Some(ts), Some(v1)) = (ts, v1) else {
+        return false;
+    };
+    let manifest = format!("id:{};request-id:{};ts:{};", data_id.to_lowercase(), request_id, ts);
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret.as_bytes()) else {
+        return false;
+    };
+    mac.update(manifest.as_bytes());
+    let expected = hex::encode(mac.finalize().into_bytes());
+    expected.eq_ignore_ascii_case(v1)
+}
+
+/// Notifica pagamento aprovado (Pix, link de pagamento ou cartão
+/// tokenizado). Só campo compartilhado: `type=payment`/`data.id` aponta
+/// pro pagamento na Mercado Pago; SEMPRE rebusca na API antes de gravar
+/// qualquer coisa — o corpo do webhook em si nunca é fonte de verdade.
+/// Sempre 200 (nunca deixa a Mercado Pago retry-storm por um evento que a
+/// gente decidiu ignorar).
+pub async fn mercadopago_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+    Json(payload): Json<Value>,
+) -> StatusCode {
+    if let Err(e) = handle_mercadopago(&state, &headers, &query, &payload).await {
+        tracing::warn!("mercadopago webhook handling failed: {e:?}");
+    }
+    StatusCode::OK
+}
+
+async fn handle_mercadopago(
+    state: &AppState,
+    headers: &HeaderMap,
+    query: &HashMap<String, String>,
+    payload: &Value,
+) -> anyhow::Result<()> {
+    let event_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    if event_type != "payment" {
+        return Ok(());
+    }
+
+    let payment_id = payload
+        .get("data")
+        .and_then(|d| d.get("id"))
+        .and_then(|v| v.as_str().map(str::to_string).or_else(|| v.as_i64().map(|n| n.to_string())))
+        .or_else(|| query.get("data.id").cloned())
+        .ok_or_else(|| anyhow::anyhow!("mercadopago webhook missing data.id"))?;
+
+    let mp_user_id = payload
+        .get("user_id")
+        .and_then(|v| v.as_str().map(str::to_string).or_else(|| v.as_i64().map(|n| n.to_string())))
+        .ok_or_else(|| anyhow::anyhow!("mercadopago webhook missing user_id"))?;
+
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    if let Some(secret) = state.mercadopago_webhook_secret.as_ref() {
+        if !signature_looks_valid(secret, headers, &payment_id, &request_id) {
+            tracing::warn!(
+                "mercadopago webhook: assinatura ausente/invalida (payment_id={payment_id}) — \
+                 seguindo mesmo assim, fetch_payment_details rebusca antes de confiar em algo"
+            );
+        }
+    }
+
+    let Some((tenant_id, token)) = tenant::tenant_by_mp_user_id(&state.pool, &mp_user_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?
+    else {
+        tracing::info!("mercadopago webhook: nenhum tenant com mp_user_id={mp_user_id}, ignorando");
+        return Ok(());
+    };
+    if token.trim().is_empty() {
+        return Ok(());
+    }
+
+    let details = mercadopago_link::fetch_payment_details(state, &token, &payment_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let Some(order_id) = details.external_reference else {
+        tracing::info!("mercadopago webhook: pagamento {payment_id} sem external_reference, ignorando");
+        return Ok(());
+    };
+    if !details.status.eq_ignore_ascii_case("approved") {
+        return Ok(());
+    }
+
+    let mut tx = tenant::tenant_tx(&state.pool, &tenant_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let Some(order) = orders_common::fetch_order_row(&mut *tx, &tenant_id, &order_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?
+    else {
+        return Ok(());
+    };
+    // Idempotente — Pix já confirma por polling (refresh_payment) e o
+    // webhook pode chegar depois (ou mais de uma vez); nunca decrementa
+    // estoque/notifica duas vezes pro mesmo pedido.
+    if order.payment_status == "pago" {
+        return Ok(());
+    }
+
+    sqlx::query("UPDATE orders SET payment_status = 'pago', updated_at = now()::text WHERE tenant_id = $1 AND id = $2")
+        .bind(&tenant_id)
+        .bind(&order_id)
+        .execute(&mut *tx)
+        .await?;
+    orders_common::decrement_stock_for_order(&mut *tx, &tenant_id, &order_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    tx.commit().await?;
+
+    let tenant_row = tenant::load_tenant(&state.pool, &tenant_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let digits = whatsapp::digits_only(&order.customer_whatsapp);
+    if !digits.is_empty() {
+        let msg = if order.delivery_type == "balcao" {
+            let total_str = format!("{:.2}", order.total).replace('.', ",");
+            format!(
+                "Pagamento confirmado na {}! Total: R$ {total_str}. Obrigado pela compra! 🌇",
+                tenant_row.name
+            )
+        } else {
+            format!(
+                "Recebemos seu pagamento! Seu pedido #{} já está sendo preparado. 🌇",
+                orders_common::short_id(&order.id)
+            )
+        };
+        whatsapp::notify(state, &tenant_row.whatsapp_instance, &digits, &msg);
+    }
+
+    tracing::info!("mercadopago webhook: pedido {order_id} confirmado pago (payment_id={payment_id})");
+    Ok(())
 }

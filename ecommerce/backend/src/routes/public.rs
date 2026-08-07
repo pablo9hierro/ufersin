@@ -8,6 +8,7 @@ use crate::cancel;
 use crate::error::AppError;
 use crate::google_routes::{self, Ponto, RotaResult};
 use crate::mercadopago;
+use crate::mercadopago_link;
 use crate::models::{
     Category, CustomerCancelInput, OrderDto, ProductDto, ProductRow, StoreHourDay,
     StoreHourInterval, StoreStatusDto,
@@ -314,6 +315,164 @@ pub async fn create_pix_payment(
     .bind(&id)
     .execute(&mut *tx)
     .await?;
+
+    let dto = fetch_order_dto(&mut tx, &store.id, &id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("order not found".to_string()))?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+fn mp_access_token_or_err(
+    payment_cfg: &tenant::TenantPayment,
+) -> Result<&str, AppError> {
+    payment_cfg.mp_access_token().ok_or_else(|| {
+        AppError::BadRequest(
+            "Esta loja não tem Mercado Pago conectado — pagamento com cartão indisponível.".to_string(),
+        )
+    })
+}
+
+/// Cria o link de pagamento (Checkout Pro) pra um pedido `payment_method =
+/// 'cartao'` com `card_payment_mode = 'link'` — o lojista (checkout público
+/// ou PDV) manda essa URL pro cliente completar no celular DELE.
+pub async fn create_card_link(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<OrderDto>, AppError> {
+    let store = tenant::tenant_for_order(&state.pool, &id).await?;
+    let payment_cfg = tenant::load_tenant_payment(&state.pool, &store.id).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let Some(order) = fetch_order_row(&mut *tx, &store.id, &id).await? else {
+        return Err(AppError::NotFound("order not found".to_string()));
+    };
+    if order.payment_method != "cartao" {
+        return Err(AppError::BadRequest("order is not a card payment".to_string()));
+    }
+    if order.payment_status == "pago" {
+        let dto = row_to_dto(&mut tx, &store.id, order).await?;
+        tx.commit().await?;
+        return Ok(Json(dto));
+    }
+
+    let token = mp_access_token_or_err(&payment_cfg)?;
+    let back_url = format!(
+        "{}/consultar?order={}",
+        state.frontend_public_url.trim_end_matches('/'),
+        order.id
+    );
+    let notification_url = if state.backend_public_url.is_empty() {
+        None
+    } else {
+        Some(format!("{}/api/webhooks/mercadopago", state.backend_public_url.trim_end_matches('/')))
+    };
+    let link = mercadopago_link::create_payment_link(
+        &state,
+        token,
+        &store.name,
+        order.total,
+        &order.id,
+        &back_url,
+        notification_url.as_deref(),
+    )
+    .await?;
+
+    sqlx::query(
+        "UPDATE orders SET card_payment_mode = 'link', card_payment_link_url = $1, updated_at = now()::text \
+         WHERE tenant_id = $2 AND id = $3",
+    )
+    .bind(&link.init_point)
+    .bind(&store.id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+
+    let dto = fetch_order_dto(&mut tx, &store.id, &id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("order not found".to_string()))?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateCardPaymentInput {
+    pub card_token: String,
+    pub payment_method_id: String,
+    #[serde(default = "default_installments")]
+    pub installments: i32,
+    #[serde(default)]
+    pub payer_email: Option<String>,
+}
+fn default_installments() -> i32 {
+    1
+}
+
+/// Checkout Transparente — cliente já tokenizou o cartão no navegador (SDK
+/// oficial da Mercado Pago); aqui só cobra com o token resultante. PAN/CVV
+/// crus nunca passam por este servidor.
+pub async fn create_card_payment(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<CreateCardPaymentInput>,
+) -> Result<Json<OrderDto>, AppError> {
+    let store = tenant::tenant_for_order(&state.pool, &id).await?;
+    let payment_cfg = tenant::load_tenant_payment(&state.pool, &store.id).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let Some(order) = fetch_order_row(&mut *tx, &store.id, &id).await? else {
+        return Err(AppError::NotFound("order not found".to_string()));
+    };
+    if order.payment_method != "cartao" {
+        return Err(AppError::BadRequest("order is not a card payment".to_string()));
+    }
+    if order.payment_status == "pago" {
+        let dto = row_to_dto(&mut tx, &store.id, order).await?;
+        tx.commit().await?;
+        return Ok(Json(dto));
+    }
+
+    let token = mp_access_token_or_err(&payment_cfg)?;
+    let payer_email = match input.payer_email.as_deref().map(str::trim) {
+        Some(email) if email.contains('@') => email.to_string(),
+        _ => tenant::organization_email_for_tenant(&state.pool, &store.id)
+            .await?
+            .unwrap_or_else(|| "cliente@resolutoo.com".to_string()),
+    };
+    let charge = mercadopago_link::create_card_payment(
+        &state,
+        token,
+        &store.name,
+        order.total,
+        &input.card_token,
+        &input.payment_method_id,
+        input.installments,
+        &payer_email,
+        &order.id,
+    )
+    .await?;
+
+    let approved = charge.status.eq_ignore_ascii_case("approved");
+    sqlx::query(
+        "UPDATE orders SET card_payment_mode = 'transparente', card_payment_charge_id = $1, \
+         payment_status = CASE WHEN $2 THEN 'pago' ELSE payment_status END, updated_at = now()::text \
+         WHERE tenant_id = $3 AND id = $4",
+    )
+    .bind(&charge.payment_id)
+    .bind(approved)
+    .bind(&store.id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+
+    if approved {
+        orders_common::decrement_stock_for_order(&mut *tx, &store.id, &id).await?;
+    } else if !matches!(charge.status.as_str(), "in_process" | "pending") {
+        tx.commit().await?;
+        let detail = charge.status_detail.unwrap_or_default();
+        return Err(AppError::BadRequest(format!(
+            "Cartão recusado pela Mercado Pago ({}). Confira os dados ou tente outro cartão.",
+            if detail.is_empty() { charge.status } else { detail }
+        )));
+    }
 
     let dto = fetch_order_dto(&mut tx, &store.id, &id)
         .await?

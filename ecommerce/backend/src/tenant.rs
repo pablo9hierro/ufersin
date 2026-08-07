@@ -94,6 +94,24 @@ pub async fn ensure_tenant_active(pool: &PgPool, tenant_id: &str) -> Result<(), 
     Ok(())
 }
 
+/// Resolve qual tenant é dono de uma conta Mercado Pago pelo `user_id` da
+/// própria Mercado Pago (vem no corpo do webhook) — é como o webhook
+/// compartilhado (uma URL só, todo tenant) descobre de qual loja é o
+/// pagamento, sem precisar de nada além do que a Mercado Pago já manda.
+/// Nunca confundir com o `user_id` da conta da PLATAFORMA (assinaturas) —
+/// essa fica só em `ufersin/backend`, este backend nem tem acesso a ela.
+pub async fn tenant_by_mp_user_id(pool: &PgPool, mp_user_id: &str) -> Result<Option<(String, String)>, AppError> {
+    let row: Option<(String, String)> = sqlx::query_as(
+        "SELECT id, plataforma_credenciais->>'token' AS token FROM tenants \
+         WHERE forma_pagamento = 'plataforma' AND plataforma_pagamento = 'mercado_pago' \
+           AND plataforma_credenciais->>'user_id' = $1",
+    )
+    .bind(mp_user_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
 pub async fn load_tenant_payment(pool: &PgPool, tenant_id: &str) -> Result<TenantPayment, AppError> {
     sqlx::query_as(
         "SELECT forma_pagamento, plataforma_pagamento, plataforma_credenciais \

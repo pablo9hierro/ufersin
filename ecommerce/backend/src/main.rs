@@ -5,6 +5,7 @@ mod error;
 mod features;
 mod google_routes;
 mod mercadopago;
+mod mercadopago_link;
 mod models;
 mod orders_common;
 mod routes;
@@ -187,6 +188,16 @@ async fn main() -> anyhow::Result<()> {
 
     let http = reqwest::Client::new();
 
+    let mercadopago_webhook_secret = std::env::var("MERCADOPAGO_WEBHOOK_SECRET")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    if mercadopago_webhook_secret.is_none() {
+        tracing::warn!(
+            "MERCADOPAGO_WEBHOOK_SECRET não configurado — webhook do Mercado Pago vai aceitar sem \
+             validar assinatura (ainda assim sempre rebusca o pagamento na API antes de gravar)"
+        );
+    }
+
     let state = AppState {
         pool,
         jwt_secret: Arc::new(jwt_secret),
@@ -201,6 +212,7 @@ async fn main() -> anyhow::Result<()> {
         supabase_service_key: Arc::new(supabase_service_key),
         internal_api_key: Arc::new(internal_api_key),
         whatsapp_connect_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        mercadopago_webhook_secret: Arc::new(mercadopago_webhook_secret),
     };
 
     // CORS_ORIGINS: comma-separated list of allowed frontend origins. Defaults
@@ -257,6 +269,14 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/orders/{id}/refresh-payment",
             post(routes::public::refresh_payment),
+        )
+        .route(
+            "/api/orders/{id}/card-link",
+            post(routes::public::create_card_link),
+        )
+        .route(
+            "/api/orders/{id}/card-payment",
+            post(routes::public::create_card_payment),
         )
         .route(
             "/api/orders/{id}/simulate-pix-paid",
@@ -381,6 +401,7 @@ async fn main() -> anyhow::Result<()> {
         // Público de propósito: é a Evolution API chamando, não um usuário
         // logado. Fica fora do CORS layer não importar (não é um browser).
         .route("/api/webhooks/evolution", post(routes::webhooks::evolution_webhook))
+        .route("/api/webhooks/mercadopago", post(routes::webhooks::mercadopago_webhook))
         // Backend-a-backend só (plataforma Rodoletas -> este motor),
         // protegido por INTERNAL_API_KEY em vez de JWT de usuário — ver
         // routes/internal.rs.

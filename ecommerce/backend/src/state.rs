@@ -49,4 +49,10 @@ pub struct AppState {
     /// instância manualmente. Isso colapsa qualquer rajada de chamadas pra
     /// no máximo 1 chamada real por instância a cada WHATSAPP_CONNECT_COOLDOWN.
     pub whatsapp_connect_cache: Arc<Mutex<HashMap<String, (Instant, serde_json::Value)>>>,
+    /// Secret da aplicação Mercado Pago (painel → Webhooks → "Assinatura
+    /// secreta") — valida `x-signature` no webhook. Uma única aplicação MP
+    /// pra toda a Resolutoo, não é por tenant. None = webhook aceita sem
+    /// validar assinatura (ainda assim sempre rebusca o pagamento na API da
+    /// MP antes de gravar qualquer coisa — nunca confia só no corpo).
+    pub mercadopago_webhook_secret: Arc<Option<String>>,
 }
