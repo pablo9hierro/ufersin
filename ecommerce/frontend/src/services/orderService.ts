@@ -13,6 +13,8 @@ export const orderService = {
     ordersEndpoint.createPixPayment(id, force, customerEmail),
   refreshPayment: ordersEndpoint.refreshPayment,
   simulatePixPaid: ordersEndpoint.simulatePixPaid,
+  createCardLink: ordersEndpoint.createCardLink,
+  createCardPayment: ordersEndpoint.createCardPayment,
   cancel: ordersEndpoint.cancel,
   notifyCreated: ordersEndpoint.notifyCreated,
   listMine: ordersEndpoint.listMine,

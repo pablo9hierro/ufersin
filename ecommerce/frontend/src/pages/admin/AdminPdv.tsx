@@ -25,6 +25,7 @@ import { pdvService } from '../../services/pdvService'
 import type { Order, PaymentMethod, Product } from '../../types'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal, formatCashMask, formatTrocoLabel, computeTroco } from '../../lib/cashMask'
+import CardPaymentDialog from '../../components/checkout/CardPaymentDialog'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -79,6 +80,11 @@ export default function AdminPdv() {
 
   const [confirmCashOpen, setConfirmCashOpen] = useState(false)
   const [cashCents, setCashCents] = useState(0)
+  // Cartão de verdade via Mercado Pago (mesma conta do Pix): escolhe a
+  // forma ANTES de existir venda (a venda já nasce pendente pra link/
+  // transparente) — NFC continua nascendo paga na hora, igual sempre foi.
+  const [cardChoiceOpen, setCardChoiceOpen] = useState(false)
+  const [cardDialog, setCardDialog] = useState<{ order: Order; step: 'link' | 'transparente' } | null>(null)
   const [pixOrder, setPixOrder] = useState<Order | null>(null)
   const [pixPaidFlash, setPixPaidFlash] = useState(false)
   const [regeneratingPix, setRegeneratingPix] = useState(false)
@@ -325,7 +331,15 @@ export default function AdminPdv() {
       return
     }
 
-    // Dinheiro / cartão / Pix sem QR: diálogo de confirmação de recebimento.
+    // Cartão de verdade (conta MP conectada): pergunta NFC/link/transparente
+    // antes de criar a venda — sem MP conectado, cai no fluxo antigo abaixo
+    // (confirmação manual, igual dinheiro).
+    if (paymentMethod === 'cartao' && plataformaPix) {
+      setCardChoiceOpen(true)
+      return
+    }
+
+    // Dinheiro / cartão sem MP / Pix sem QR: diálogo de confirmação de recebimento.
     if (paymentMethod === 'dinheiro') setCashCents(0)
     setConfirmCashOpen(true)
   }
@@ -342,6 +356,38 @@ export default function AdminPdv() {
       setConfirmCashOpen(false)
     } catch (e) {
       setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
+  // NFC = maquininha física do lojista, fora do nosso sistema — mesma
+  // venda "nasce paga" de sempre, só que agora atrás de uma escolha
+  // explícita em vez de cair direto no cartão como único caminho.
+  const handleCardNfc = async () => {
+    setCardChoiceOpen(false)
+    setFinalizing(true)
+    setFinalizeError(null)
+    try {
+      await commitSalePaid()
+    } catch (e) {
+      setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
+  // Link/transparente: a venda nasce pendente (backend só marca 'pago' de
+  // verdade depois que o cliente completar o pagamento online).
+  const handleCardOnline = async (mode: 'link' | 'transparente') => {
+    setCardChoiceOpen(false)
+    setFinalizing(true)
+    setFinalizeError(null)
+    try {
+      const order = await pdvService.createSale({ ...buildSalePayload(), card_payment_mode: mode })
+      setCardDialog({ order, step: mode })
+    } catch (e) {
+      setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível iniciar a venda.')
     } finally {
       setFinalizing(false)
     }
@@ -687,6 +733,67 @@ export default function AdminPdv() {
             </div>
           </div>
         </div>
+      )}
+
+      {cardChoiceOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => !finalizing && setCardChoiceOpen(false)}
+        >
+          <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-white mb-2">Como o cliente vai pagar?</h3>
+            <p className="text-sm text-son-silver-dim mb-4">
+              Total <span className="sunset-text font-bold">{currency(cartTotal)}</span>
+            </p>
+            {finalizeError && <p className="error-msg mb-3">{finalizeError}</p>}
+            <div className="space-y-2">
+              <button type="button" disabled={finalizing} onClick={handleCardNfc} className="btn-primary w-full">
+                {finalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Aproximar / inserir na maquininha
+              </button>
+              <button
+                type="button"
+                disabled={finalizing}
+                onClick={() => handleCardOnline('link')}
+                className="btn-secondary w-full"
+              >
+                Link de pagamento
+              </button>
+              <button
+                type="button"
+                disabled={finalizing}
+                onClick={() => handleCardOnline('transparente')}
+                className="btn-secondary w-full"
+              >
+                Conectar cartão do cliente aqui
+              </button>
+              <button
+                type="button"
+                disabled={finalizing}
+                onClick={() => setCardChoiceOpen(false)}
+                className="text-xs text-son-silver-dim underline w-full text-center pt-1"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cardDialog && (
+        <CardPaymentDialog
+          orderId={cardDialog.order.id}
+          amount={cardDialog.order.total}
+          mode="pdv"
+          initialStep={cardDialog.step}
+          customerWhatsapp={cardDialog.order.customer_whatsapp}
+          onClose={() => setCardDialog(null)}
+          onSuccess={(updated) => {
+            setCardDialog(null)
+            pdvService.notifySale(updated.id).catch(() => {})
+            resetFormAfterSale(updated.total)
+          }}
+        />
       )}
 
       {pixOrder && (

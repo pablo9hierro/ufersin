@@ -170,6 +170,15 @@ const tenantAwarePublicCatalog = {
       return request<StoreStatus>(`${base}/store-status`)
     },
   },
+  mpPublicKey: {
+    /** Public key da conta MP da loja — nunca o access_token. Sem slug
+     * (demo/legado) não tem cartão tokenizado disponível. */
+    get: async () => {
+      const base = railwayPublicCatalogBase()
+      if (!base) return { public_key: null as string | null }
+      return request<{ public_key: string | null }>(`${base}/mp-public-key`)
+    },
+  },
 }
 
 /** Pix no motor Railway (`/api/orders/{id}/…`). Path relativo `/api/pix-*`
@@ -266,6 +275,7 @@ const remoteApi = {
   shippingSettings: supabasePublicApi.shippingSettings,
   siteSettings: supabasePublicApi.siteSettings,
   storeStatus: tenantAwarePublicCatalog.storeStatus,
+  mpPublicKey: tenantAwarePublicCatalog.mpPublicKey,
   estimateShipping: supabasePublicApi.estimateShipping,
   trackDeliveryPosition: supabasePublicApi.trackDeliveryPosition,
   // Carrossel da landing (promoções ativas) + cupom digitado no checkout.
@@ -284,6 +294,12 @@ const remoteApi = {
       callRailwayPixApi(id, 'create-pix-payment', force, customerEmail),
     refreshPayment: (id: string) => callRailwayPixApi(id, 'refresh-payment'),
     simulatePixPaid: (id: string) => callRailwayPixApi(id, 'simulate-pix-paid'),
+    // Cartão via Mercado Pago (mesmo token por tenant que o Pix já usa).
+    createCardLink: (id: string) => request<Order>(`/api/orders/${id}/card-link`, { method: 'POST' }),
+    createCardPayment: (
+      id: string,
+      input: { card_token: string; payment_method_id: string; installments?: number; payer_email?: string },
+    ) => request<Order>(`/api/orders/${id}/card-payment`, { method: 'POST', body: JSON.stringify(input) }),
     /** Cancelamento pelo cliente (/consultar) — ownership via WhatsApp. */
     cancel: (id: string, whatsapp: string) =>
       request<Order>(`/api/orders/${id}/cancel`, {
@@ -1290,6 +1306,7 @@ const remoteApi = {
       customer_whatsapp?: string
       discount_type?: 'percent' | 'fixed'
       discount_value?: number
+      card_payment_mode?: 'nfc' | 'link' | 'transparente'
     }) =>
       isRailwayAdminJwt()
         ? railwayAdmin<Order>('/api/pdv/sales', {
@@ -1301,6 +1318,7 @@ const remoteApi = {
               customer_whatsapp: payload.customer_whatsapp || null,
               discount_type: payload.discount_type ?? null,
               discount_value: payload.discount_value ?? null,
+              card_payment_mode: payload.card_payment_mode ?? null,
             }),
           })
         : rpc<Order>('pdv_create_sale', {

@@ -39,6 +39,12 @@ export const ordersEndpoint = {
     ),
   refreshPayment: async (id: string) => validate(OrderSchema, await api.orders.refreshPayment(id), 'orders.refreshPayment'),
   simulatePixPaid: async (id: string) => validate(OrderSchema, await api.orders.simulatePixPaid(id), 'orders.simulatePixPaid'),
+  createCardLink: async (id: string) =>
+    validate(OrderSchema, await api.orders.createCardLink(id), 'orders.createCardLink'),
+  createCardPayment: async (
+    id: string,
+    input: { card_token: string; payment_method_id: string; installments?: number; payer_email?: string },
+  ) => validate(OrderSchema, await api.orders.createCardPayment(id, input), 'orders.createCardPayment'),
   cancel: async (id: string, whatsapp: string) =>
     validate(OrderSchema, await api.orders.cancel(id, whatsapp), 'orders.cancel'),
   notifyCreated: async (orderId: string) => api.orders.notifyCreated(orderId),

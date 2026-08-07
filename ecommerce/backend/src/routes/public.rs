@@ -158,6 +158,32 @@ pub async fn get_public_store_status(
     }))
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct PublicMpKeyDto {
+    pub public_key: Option<String>,
+}
+
+/// Public key da conta Mercado Pago DA LOJA — nunca o access_token (esse é
+/// segredo, fica só no servidor). A public key é feita pra ir pro navegador:
+/// o SDK oficial da Mercado Pago (Checkout Transparente) usa ela pra
+/// tokenizar o cartão ali mesmo, sem o PAN passar pelo nosso backend.
+pub async fn get_public_mp_key(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<PublicMpKeyDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let payment_cfg = tenant::load_tenant_payment(&state.pool, &store.id).await?;
+    let public_key = payment_cfg
+        .plataforma_credenciais
+        .as_ref()
+        .and_then(|c| c.get("public_key"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    Ok(Json(PublicMpKeyDto { public_key }))
+}
+
 /// Contagem de vendas por produto (ordenação "mais vendidos" no catálogo).
 pub async fn public_product_sales_counts(
     State(state): State<AppState>,

@@ -313,7 +313,7 @@ export default function Uiux4Checkout() {
       })
       clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantHasOnlinePix(tenantConfig) && !payAtPickup) navigate(`/pagamento/${order.id}`)
+      if ((paymentMethod === 'pix' || paymentMethod === 'cartao') && tenantHasOnlinePix(tenantConfig) && !payAtPickup) navigate(`/pagamento/${order.id}`)
       else navigate(`/consultar?order=${order.id}`)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível enviar seu pedido. Tente novamente.')

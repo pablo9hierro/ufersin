@@ -436,7 +436,7 @@ export default function Checkout() {
       // carrinho quando o pedido realmente veio dele.
       if (!promotion)       clear()
       orderService.notifyCreated(order.id).catch(() => {})
-      if (paymentMethod === 'pix' && tenantHasOnlinePix(tenantConfig) && !payAtPickup) {
+      if ((paymentMethod === 'pix' || paymentMethod === 'cartao') && tenantHasOnlinePix(tenantConfig) && !payAtPickup) {
         navigate(`/pagamento/${order.id}`)
       } else {
         navigate(`/consultar?order=${order.id}`)

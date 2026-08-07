@@ -263,6 +263,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::public::get_public_store_status),
         )
         .route(
+            "/api/public/catalog/{slug}/mp-public-key",
+            get(routes::public::get_public_mp_key),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )

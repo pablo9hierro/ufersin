@@ -14,6 +14,8 @@ export const pdvEndpoint = {
     customer_whatsapp?: string
     discount_type?: 'percent' | 'fixed'
     discount_value?: number
+    /** Só pra payment_method='cartao': omitido/'nfc' = nasce pago (de sempre); 'link'/'transparente' = nasce pendente. */
+    card_payment_mode?: 'nfc' | 'link' | 'transparente'
   }) => validate(OrderSchema, await api.pdv.createSale(payload), 'pdv.createSale'),
   notifySale: async (orderId: string) => api.pdv.notifySale(orderId),
   notifyPixCharge: async (orderId: string) => api.pdv.notifyPixCharge(orderId),

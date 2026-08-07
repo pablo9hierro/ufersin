@@ -564,6 +564,28 @@ async function refreshPayment(id: string): Promise<Order> {
   return getOrder(id)
 }
 
+// Demo não tem conta Mercado Pago de verdade pra tokenizar/gerar link —
+// simula o "melhor caso" (cartão sempre aprovado na hora) só pra deixar o
+// fluxo visitável, igual o resto da demo faz pra Pix.
+async function createCardLink(id: string): Promise<Order> {
+  return getOrder(id)
+}
+
+async function createCardPayment(
+  id: string,
+  _input: { card_token: string; payment_method_id: string; installments?: number; payer_email?: string },
+): Promise<Order> {
+  const db = loadDb()
+  const order = db.orders.find((o) => o.id === id)
+  if (!order) throw new ApiError(404, 'order not found')
+  if (order.payment_status !== 'pago') {
+    order.payment_status = 'pago'
+    order.updated_at = nowIso()
+    saveDb(db)
+  }
+  return getOrder(id)
+}
+
 async function simulatePixPaid(id: string): Promise<Order> {
   const db = loadDb()
   const order = db.orders.find((o) => o.id === id)
@@ -2855,6 +2877,7 @@ export const localApi = {
   shippingSettings: { get: getShippingSettings },
   siteSettings: { get: getSiteSettings },
   storeStatus: { get: getStoreStatus },
+  mpPublicKey: { get: async () => ({ public_key: null as string | null }) },
   estimateShipping,
   trackDeliveryPosition: trackDeliveryPositionLocal,
   promotions: { listActive: listActivePromotions, get: getPromotionPublic },
@@ -2867,6 +2890,8 @@ export const localApi = {
     createPixPayment,
     refreshPayment,
     simulatePixPaid,
+    createCardLink,
+    createCardPayment,
     cancel: customerCancelOrder,
     notifyCreated: async () => {},
   },

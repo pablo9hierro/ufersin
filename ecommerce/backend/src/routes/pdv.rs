@@ -151,20 +151,25 @@ pub async fn create_sale(
     }
 
     let order_id = Uuid::new_v4().to_string();
-    // Pix no balcão com QR fica pendente até o caixa confirmar (ou o
-    // gateway marcar pago). Dinheiro/cartão já nascem pagos.
-    let payment_status = if input.payment_method == "pix" {
+    // Pix no balcão com QR e cartão via link/transparente ficam pendentes
+    // até o pagamento online de fato confirmar. Dinheiro e cartão NFC
+    // (maquininha física do lojista, ou omitido = comportamento de sempre)
+    // já nascem pagos.
+    let card_link_or_transparente =
+        input.payment_method == "cartao" && matches!(input.card_payment_mode.as_deref(), Some("link" | "transparente"));
+    let payment_status = if input.payment_method == "pix" || card_link_or_transparente {
         "pendente"
     } else {
         "pago"
     };
+    let card_payment_mode = if input.payment_method == "cartao" { input.card_payment_mode.as_deref() } else { None };
     sqlx::query(
         "INSERT INTO orders (\
             id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
             payment_method, payment_status, status, shipping_price, total, discount_amount, \
-            sold_by_role, sold_by_id\
+            sold_by_role, sold_by_id, card_payment_mode\
          ) VALUES (\
-            $1, $2, $3, $4, $5, 'balcao', $6, $7, 'concluido', 0, $8, $9, $10, $11\
+            $1, $2, $3, $4, $5, 'balcao', $6, $7, 'concluido', 0, $8, $9, $10, $11, $12\
          )",
     )
     .bind(&order_id)
@@ -178,6 +183,7 @@ pub async fn create_sale(
     .bind(discount)
     .bind(&claims.role)
     .bind(&claims.sub)
+    .bind(card_payment_mode)
     .execute(&mut *tx)
     .await?;
 

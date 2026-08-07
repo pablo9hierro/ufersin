@@ -285,6 +285,13 @@ pub struct PdvSaleInput {
     pub customer_whatsapp: Option<String>,
     pub discount_type: Option<String>,
     pub discount_value: Option<f64>,
+    /// Só quando `payment_method = 'cartao'` E o lojista escolheu "Link de
+    /// pagamento"/"Conectar cartão aqui" (não NFC) — nesses dois casos a
+    /// venda nasce pendente (mesmo espírito do Pix com QR), só vira 'pago'
+    /// depois que o cliente completar. Omitido (ou `nfc`) preserva o
+    /// comportamento de sempre: cartão nasce pago na hora.
+    #[serde(default)]
+    pub card_payment_mode: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

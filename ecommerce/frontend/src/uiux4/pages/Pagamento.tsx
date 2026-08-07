@@ -9,6 +9,7 @@ import { useCustomerAuth } from '../../store/customerAuth'
 import type { Order } from '../../types'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
+import CardPaymentDialog from '../../components/checkout/CardPaymentDialog'
 
 // Tela de Pix -- gera a cobrança na primeira visita (se ainda não
 // existir), mostra QR/código copia-e-cola, faz polling do status a cada
@@ -18,7 +19,9 @@ export default function Uiux4Pagamento() {
   const { orderId } = useParams<{ orderId: string }>()
   const navigate = useNavigate()
   const tenantConfig = useTenantConfig()
-  const onlinePix = tenantHasOnlinePix(tenantConfig)
+  // Nome ficou de quando só existia Pix online, mas a checagem já é
+  // genérica — mesma conta Mercado Pago serve Pix e cartão.
+  const onlineGateway = tenantHasOnlinePix(tenantConfig)
   const customerEmail = useCustomerAuth((s) => s.customer?.email ?? undefined)
   const [order, setOrder] = useState<Order | null>(null)
   const [copied, setCopied] = useState(false)
@@ -36,12 +39,12 @@ export default function Uiux4Pagamento() {
 
   useEffect(() => {
     if (!orderId) return
-    if (tenantConfig && !onlinePix) {
-      navigate(`/consultar?order=${orderId}`, { replace: true })
-      return
-    }
     orderService.get(orderId).then(async (o) => {
-      if (onlinePix && o.payment_method === 'pix' && o.payment_status !== 'pago' && !o.pix_copia_cola) {
+      if (!onlineGateway || (o.payment_method !== 'pix' && o.payment_method !== 'cartao')) {
+        navigate(`/consultar?order=${orderId}`, { replace: true })
+        return
+      }
+      if (o.payment_method === 'pix' && o.payment_status !== 'pago' && !o.pix_copia_cola) {
         try {
           o = await orderService.createPixPayment(orderId, false, customerEmail)
         } catch {
@@ -51,10 +54,11 @@ export default function Uiux4Pagamento() {
       setOrder(o)
       setLoading(false)
     })
-  }, [orderId, onlinePix, tenantConfig, navigate, customerEmail])
+  }, [orderId, onlineGateway, navigate, customerEmail])
 
   useEffect(() => {
     if (!order || order.payment_status === 'pago') return
+    if (order.payment_method === 'cartao') return
     const interval = setInterval(refresh, 4000)
     return () => clearInterval(interval)
   }, [order, refresh])
@@ -108,6 +112,14 @@ export default function Uiux4Pagamento() {
               Acompanhar pedido
             </Link>
           </div>
+        ) : order.payment_method === 'cartao' ? (
+          <CardPaymentDialog
+            orderId={order.id}
+            amount={order.total}
+            mode="checkout"
+            onClose={() => navigate(`/consultar?order=${order.id}`)}
+            onSuccess={(updated) => setOrder(updated)}
+          />
         ) : (
           <>
             <h1 className="text-xl font-black mt-4 mb-1">Pague com Pix</h1>
