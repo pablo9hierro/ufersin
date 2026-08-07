@@ -10,6 +10,47 @@ import { planDisplayName } from '../lib/plans'
 import { needsOnboardingLock, storeAlreadyExists } from '../lib/postPayRedirect'
 import type { StorefrontStyle } from '../lib/storefrontStyles'
 
+// Endereço digitado/selecionado no onboarding se perdia toda vez que o
+// lojista saía pra conectar o Mercado Pago (redirect de página inteira) e
+// voltava — nada tinha sido salvo no servidor ainda. Guarda um rascunho
+// local, restaurado com prioridade sobre o que veio do servidor (que
+// nesse momento ainda não tem o endereço de jeito nenhum).
+const ADDRESS_DRAFT_KEY = 'resolutoo_onboarding_endereco_draft'
+
+function saveAddressDraft(endereco: string, numero: string) {
+  try {
+    if (!endereco.trim()) {
+      localStorage.removeItem(ADDRESS_DRAFT_KEY)
+      return
+    }
+    localStorage.setItem(ADDRESS_DRAFT_KEY, JSON.stringify({ endereco, numero }))
+  } catch {
+    /* localStorage indisponível — segue sem persistir */
+  }
+}
+
+function loadAddressDraft(): { endereco: string; numero: string } | null {
+  try {
+    const raw = localStorage.getItem(ADDRESS_DRAFT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (typeof parsed?.endereco === 'string') {
+      return { endereco: parsed.endereco, numero: typeof parsed.numero === 'string' ? parsed.numero : '' }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function clearAddressDraft() {
+  try {
+    localStorage.removeItem(ADDRESS_DRAFT_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 const CORES_DEFAULT = '#0f5132'
 /** Full = first-time; complementary = upgrade (prefill + delta); skip = already provisioned. */
 type OnboardingMode = 'loading' | 'full' | 'complementary' | 'skip'
@@ -119,6 +160,12 @@ export default function Onboarding() {
   const [done, setDone] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
 
+  // Salva a cada mudança — sobrevive ao redirect de página inteira pra
+  // conectar o Mercado Pago (nada foi salvo no servidor até esse ponto).
+  useEffect(() => {
+    saveAddressDraft(endereco, enderecoNumero)
+  }, [endereco, enderecoNumero])
+
   useEffect(() => {
     if (!ready || !isAuthenticated) return
     let cancelled = false
@@ -135,8 +182,11 @@ export default function Onboarding() {
         setNomeLoja(pre.nomeLoja)
         setTipoDocumento(pre.tipoDocumento)
         setDocumento(pre.documento)
-        setEndereco(pre.endereco)
-        setEnderecoNumero(pre.enderecoNumero)
+        // Rascunho local (endereço digitado antes de sair pra conectar o
+        // Mercado Pago) tem prioridade — o servidor ainda não tem esse dado.
+        const draft = loadAddressDraft()
+        setEndereco(draft?.endereco || pre.endereco)
+        setEnderecoNumero(draft?.numero || pre.enderecoNumero)
         setInstagram(pre.instagram)
         setFacebook(pre.facebook)
         setLogoUrl(pre.logoUrl)
@@ -199,14 +249,15 @@ export default function Onboarding() {
   const returning = complementary || Boolean(nomeLoja || documento || endereco)
 
   const handleLogout = async () => {
-    try {
-      await authStore.signOut('lojista')
-    } finally {
-      navigate('/')
-    }
+    // Não navega na mão — Landing.tsx redireciona usuário logado de volta
+    // pra /onboarding, e signOut() ainda não tinha propagado a tempo (corrida),
+    // então "sair" só te devolvia pra mesma tela. O próprio isAuthenticated
+    // reativo aqui embaixo já joga pra /login assim que a sessão cair.
+    await authStore.signOut('lojista')
   }
 
   const finishOk = () => {
+    clearAddressDraft()
     setDone(true)
     setTimeout(() => navigate('/meu-plano'), 1800)
   }

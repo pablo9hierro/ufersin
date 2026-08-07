@@ -11,6 +11,7 @@ import { useTenantColor } from './store/tenantColor'
 import { deriveAccentTrio } from './lib/colorHarmony'
 import { useLayoutStyle, type LayoutStyle } from './store/layoutStyle'
 import { useTenantConfig } from './hooks/useTenantConfig'
+import { useCart } from './store/cart'
 import DemoPaletteSwitcher from './components/theme/DemoPaletteSwitcher'
 import './uiux2/theme.css'
 import './uiux3/theme.css'
@@ -107,6 +108,14 @@ function TenantBootstrap() {
       { replace: true },
     )
   }, [params, isStaff, navigate, location.pathname, location.search, location.hash])
+
+  // Carrinho é global no localStorage — sem isso, item de uma loja
+  // "vazava" pro carrinho de outra loja visitada na mesma aba/navegador.
+  useEffect(() => {
+    if (isStaff || isDemoModeActive()) return
+    const slug = resolveTenantSlug()
+    if (slug) useCart.getState().syncTenant(slug)
+  }, [isStaff, params, location.pathname])
 
   return null
 }
