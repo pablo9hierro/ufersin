@@ -1,14 +1,16 @@
 import type { MeResponse } from './api'
 import { api } from './api'
 
-/** True when this account already has a registered loja (re-subscribe / returning). */
+/** True when this account already has a registered loja (re-subscribe / returning).
+ * NUNCA usar `documento` aqui — desde que o CPF/CNPJ passou a vir sozinho da
+ * conta Mercado Pago conectada (ver mercadopago_oauth.rs), ele já fica
+ * preenchido DURANTE o primeiro cadastro (antes da loja existir de
+ * verdade), então deixou de ser sinal confiável de "já passou por
+ * onboarding antes" — usava isso e jogava lojista novo pro modo
+ * "complementar" (edição via PUT), que o backend rejeita por não ter
+ * tenant_id/slug ainda (só POST /api/onboarding provisiona pela primeira vez). */
 export function storeAlreadyExists(me: MeResponse): boolean {
-  return Boolean(
-    me.tenant_id ||
-      me.slug ||
-      me.onboarding_status === 'provisionado' ||
-      (me.documento && String(me.documento).trim()),
-  )
+  return Boolean(me.tenant_id || me.slug || me.onboarding_status === 'provisionado')
 }
 
 export function isPaidActive(status: string | null | undefined): boolean {

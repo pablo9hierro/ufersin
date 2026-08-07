@@ -133,11 +133,12 @@ export default function AddressField({ endereco, numero, onEnderecoChange, onNum
               type="button"
               onClick={openMapFromGps}
               disabled={gpsLoading}
-              className="text-uf-blue hover:text-uf-silver flex-none p-1"
-              title="Usar minha localização"
-              aria-label="Geolocalização"
+              className="text-uf-blue hover:text-uf-silver flex-none p-1 flex items-center gap-1 whitespace-nowrap"
+              title="Usar minha localização atual"
+              aria-label="Usar minha localização atual"
             >
               {gpsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LocateFixed className="w-4 h-4" />}
+              <span className="text-[11px] font-medium hidden sm:inline">Usar minha localização atual</span>
             </button>
           </div>
           {open && (searching || results.length > 0) && (
