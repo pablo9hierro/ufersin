@@ -105,7 +105,14 @@ export default function AdminLayout() {
   // um gateway conectado (Mercado Pago ou Abacate Pay). Dinheiro continua
   // valendo por pedido (PDV/retirada), isso aqui é só sobre ter Pix/cartão
   // online disponíveis.
-  const paymentGatewayConnected = tenantConfig?.forma_pagamento === 'plataforma'
+  // Mercado Pago especificamente exige ter vindo do fluxo OAuth novo — uma
+  // conexão do modelo antigo (Access Token colado à mão, antes desta
+  // feature) tem forma_pagamento='plataforma' mas não é mais aceita como
+  // "conectado": o lojista precisa reconectar pra loja voltar a funcionar.
+  // Abacate Pay não passou por essa migração, continua como sempre foi.
+  const paymentGatewayConnected =
+    tenantConfig?.forma_pagamento === 'plataforma' &&
+    (tenantConfig?.plataforma_pagamento !== 'mercado_pago' || tenantConfig?.plataforma_oauth === true)
   const tenantReady = tenantConfig != null
   const lojaOffline = !demo && tenantReady && tenantConfig?.ativa === false
 

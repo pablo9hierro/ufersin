@@ -35,6 +35,7 @@ AS $$
     'whatsapp', regexp_replace(coalesce(whatsapp, ''), '[^0-9]', '', 'g'),
     'forma_pagamento', forma_pagamento,
     'plataforma_pagamento', plataforma_pagamento,
+    'plataforma_oauth', coalesce(plataforma_credenciais->>'source' = 'oauth', false),
     'layout_style', coalesce(nullif(layout_style, ''), 'ufersin'),
     'cor_principal', cor_principal,
     'instagram', instagram,

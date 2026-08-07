@@ -799,6 +799,12 @@ pub struct TenantConfigResponse {
     pub whatsapp: String,
     pub forma_pagamento: String,
     pub plataforma_pagamento: Option<String>,
+    /// True só quando a conexão veio do fluxo OAuth novo — uma conexão do
+    /// modelo antigo (Access Token colado manualmente, antes desta feature)
+    /// tem `forma_pagamento = 'plataforma'` mas isso aqui fica false, pra
+    /// o painel do lojista (AdminLayout.tsx) saber que precisa reconectar
+    /// de verdade antes de liberar o painel.
+    pub plataforma_oauth: bool,
     pub layout_style: String,
     pub cor_principal: Option<String>,
     /// Checkout deve exigir consentimento mais18 além da compra normal.
@@ -833,6 +839,7 @@ struct TenantConfigRow {
     whatsapp: String,
     forma_pagamento: String,
     plataforma_pagamento: Option<String>,
+    plataforma_oauth: bool,
     layout_style: String,
     cor_principal: Option<String>,
     vende_mais_18: bool,
@@ -866,6 +873,7 @@ pub async fn tenant_config(
     let row: Option<TenantConfigRow> = sqlx::query_as(
         "SELECT loja_nome, plan_code, vender_externamente, whatsapp_habilitado, whatsapp, \
          forma_pagamento, plataforma_pagamento, \
+         COALESCE(plataforma_credenciais->>'source' = 'oauth', false) as plataforma_oauth, \
          COALESCE(layout_style, 'ufersin') as layout_style, cor_principal, \
          COALESCE(vende_mais_18, false) as vende_mais_18, \
          COALESCE(apenas_retirada, false) as apenas_retirada, \
@@ -894,6 +902,7 @@ pub async fn tenant_config(
         whatsapp,
         forma_pagamento: row.forma_pagamento,
         plataforma_pagamento: row.plataforma_pagamento,
+        plataforma_oauth: row.plataforma_oauth,
         layout_style: match row.layout_style.as_str() {
             "burgerbite" | "burgerhouse" | "ufersin" => row.layout_style,
             _ => "ufersin".to_string(),

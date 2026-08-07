@@ -24,6 +24,10 @@ export interface TenantConfig {
   whatsapp: string
   forma_pagamento: 'manual' | 'plataforma'
   plataforma_pagamento: 'mercado_pago' | 'abacate_pay' | null
+  /** False para conexão do modelo antigo (Access Token colado à mão) — só
+   * true quando veio do fluxo OAuth novo. AdminLayout.tsx usa isso pra
+   * decidir se o gate de "Mercado Pago desconectado" fica bloqueando. */
+  plataforma_oauth: boolean
   layout_style: 'ufersin' | 'burgerbite' | 'burgerhouse'
   cor_principal: string | null
   /** Checkout exige consentimento 18+ além da compra normal. */
@@ -104,6 +108,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   whatsapp: '',
   forma_pagamento: 'manual',
   plataforma_pagamento: null,
+  plataforma_oauth: false,
   layout_style: 'ufersin',
   cor_principal: null,
   vende_mais_18: false,
