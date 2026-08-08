@@ -331,7 +331,11 @@ export default function MeuPlano() {
     try {
       await authStore.signOut('lojista')
     } finally {
-      navigate('/')
+      // Reload completo (não navigate client-side) — no navegador mobile,
+      // a troca de rota "por dentro" podia deixar a página anterior
+      // renderizada por trás do cache de navegação, dando a impressão de
+      // que o "Sair" não fez nada e voltava pro /meu-plano.
+      window.location.href = '/'
     }
   }
 
