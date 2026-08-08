@@ -12,6 +12,7 @@ import {
   CrmSegmentSchema,
   FinanceiroSummarySchema,
   FinanceiroTimeseriesPointSchema,
+  IngredientSchema,
   LucroSummarySchema,
   MotoboyPendingSchema,
   MotoboySchema,
@@ -36,6 +37,8 @@ import {
   type PromotionType,
   type SmokeSettings,
   type StoreHourDay,
+  type FormulatedProductPayload,
+  type IngredientPayload,
 } from '../../types'
 
 // Módulo Admin — único ponto do app autorizado a chamar `api.admin.*`.
@@ -64,6 +67,24 @@ export const adminEndpoint = {
     update: async (id: string, payload: Partial<ProductSchema0>) => validate(ProductSchema, await api.admin.products.update(id, payload), 'admin.products.update'),
     delete: async (id: string) => api.admin.products.delete(id),
     uploadImage: async (file: File) => validate(UploadResultSchema, await api.admin.products.uploadImage(file), 'admin.products.uploadImage'),
+    // ERP Formulação — estoque/custo do produto são SEMPRE calculados a
+    // partir da formulação; stockEntry rejeita (400) se o produto for ERP.
+    stockEntry: async (id: string, quantity: number) =>
+      validate(ProductSchema, await api.admin.products.stockEntry(id, quantity), 'admin.products.stockEntry'),
+    createFormulation: async (payload: FormulatedProductPayload) =>
+      validate(ProductSchema, await api.admin.products.createFormulation(payload), 'admin.products.createFormulation'),
+    updateFormulation: async (id: string, payload: FormulatedProductPayload) =>
+      validate(ProductSchema, await api.admin.products.updateFormulation(id, payload), 'admin.products.updateFormulation'),
+  },
+  ingredients: {
+    list: async () => validateList(IngredientSchema, await api.admin.ingredients.list(), 'admin.ingredients.list'),
+    create: async (payload: IngredientPayload) =>
+      validate(IngredientSchema, await api.admin.ingredients.create(payload), 'admin.ingredients.create'),
+    update: async (id: string, payload: IngredientPayload) =>
+      validate(IngredientSchema, await api.admin.ingredients.update(id, payload), 'admin.ingredients.update'),
+    delete: async (id: string) => api.admin.ingredients.delete(id),
+    stockEntry: async (id: string, quantity: number) =>
+      validate(IngredientSchema, await api.admin.ingredients.stockEntry(id, quantity), 'admin.ingredients.stockEntry'),
   },
   motoboys: {
     list: async () => validateList(MotoboySchema, await api.admin.motoboys.list(), 'admin.motoboys.list'),

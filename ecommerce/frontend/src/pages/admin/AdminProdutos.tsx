@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Barcode, Check, FileUp, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
+import { AlertTriangle, Barcode, Check, FileUp, FlaskConical, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import BarcodePreview from '../../components/admin/BarcodePreview'
 import CategorySelectField from '../../components/admin/CategorySelectField'
 import PackageUnitFields from '../../components/admin/PackageUnitFields'
+import StockEntryDialog from '../../components/admin/StockEntryDialog'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
@@ -79,6 +80,10 @@ export default function AdminProdutos() {
   const [stockValue, setStockValue] = useState('')
   const [stockSaving, setStockSaving] = useState(false)
   const [xmlPending, setXmlPending] = useState(0)
+  // "Informar aumento de estoque" — soma ao estoque atual (nunca
+  // sobrescreve), diferente do dialog "Atualizar estoque" acima. Só pra
+  // produto manual (`origin_type !== 'erp_formulation'`).
+  const [stockEntryProduct, setStockEntryProduct] = useState<Product | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -271,6 +276,9 @@ export default function AdminProdutos() {
               <FileUp className="w-4 h-4" />
               {xmlPending > 0 ? `Importar XML (${xmlPending})` : 'Importar XML'}
             </Link>
+            <Link to="/admin/produtos/erp-formulacao" className="btn-secondary text-sm py-2 px-4">
+              <FlaskConical className="w-4 h-4" /> ERP Formulação
+            </Link>
             <button onClick={openNew} className="btn-primary text-sm py-2 px-4">
               <Plus className="w-4 h-4" /> Novo produto
             </button>
@@ -397,6 +405,11 @@ export default function AdminProdutos() {
                   <button onClick={() => openEdit(p)} className="btn-secondary flex-1 text-sm py-2">
                     <Pencil className="w-3.5 h-3.5" /> Editar
                   </button>
+                  {p.origin_type !== 'erp_formulation' && (
+                    <button onClick={() => setStockEntryProduct(p)} className="btn-secondary text-sm py-2 px-3" title="Informar aumento de estoque">
+                      <Wallet className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button onClick={() => remove(p.id)} className="btn-secondary text-sm py-2 px-3 hover:text-son-pink">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -464,7 +477,9 @@ export default function AdminProdutos() {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="label">Nome</label>
+                <label className="label">
+                  Nome <span className="text-amber-400">*</span>
+                </label>
                 <input className="input-field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </div>
               <div>
@@ -478,7 +493,9 @@ export default function AdminProdutos() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Preço</label>
+                  <label className="label">
+                    Preço <span className="text-amber-400">*</span>
+                  </label>
                   <input
                     className="input-field"
                     type="number"
@@ -488,7 +505,9 @@ export default function AdminProdutos() {
                   />
                 </div>
                 <div>
-                  <label className="label">Estoque</label>
+                  <label className="label">
+                    Estoque <span className="text-amber-400">*</span>
+                  </label>
                   <input
                     className="input-field"
                     type="number"
@@ -499,12 +518,13 @@ export default function AdminProdutos() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="label">Valor de custo</label>
+                  <label className="label">
+                    Valor de custo <span className="text-amber-400">*</span>
+                  </label>
                   <input
                     className="input-field"
                     type="number"
                     step="0.01"
-                    placeholder="Opcional"
                     value={form.cost_price}
                     onChange={(e) => setForm({ ...form, cost_price: e.target.value })}
                   />
@@ -523,7 +543,9 @@ export default function AdminProdutos() {
                 </div>
               </div>
               <div>
-                <label className="label">Categoria</label>
+                <label className="label">
+                  Categoria <span className="text-amber-400">*</span>
+                </label>
                 <CategorySelectField
                   className="input-field"
                   emptyLabel="Sem categoria"
@@ -644,6 +666,19 @@ export default function AdminProdutos() {
             </div>
           </div>
         </div>
+      )}
+
+      {stockEntryProduct && (
+        <StockEntryDialog
+          title={stockEntryProduct.name}
+          subtitle={`Estoque atual: ${stockEntryProduct.quantity}`}
+          onClose={() => setStockEntryProduct(null)}
+          onConfirm={async (quantity) => {
+            await adminService.products.stockEntry(stockEntryProduct.id, quantity)
+            setStockEntryProduct(null)
+            load()
+          }}
+        />
       )}
 
       {confirmDialogElement}

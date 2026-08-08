@@ -3,6 +3,7 @@ mod auth;
 mod cancel;
 mod error;
 mod features;
+mod formulation;
 mod google_routes;
 mod mercadopago;
 mod mercadopago_link;
@@ -186,7 +187,15 @@ async fn main() -> anyhow::Result<()> {
     seed::seed_if_empty(&pool).await?;
     seed::seed_demo_tenant(&pool).await?;
 
-    let http = reqwest::Client::new();
+    // Sem timeout, uma chamada travada (Mercado Pago, Evolution API, Google
+    // Routes) prendia a requisição pra sempre — inclusive segurando uma
+    // transação Postgres aberta o tempo todo nos handlers que chamam a MP
+    // dentro de `tx` (create_card_link/create_card_payment). Client único
+    // reaproveitado em todo o `state.http`.
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .expect("failed to build reqwest client");
 
     let mercadopago_webhook_secret = std::env::var("MERCADOPAGO_WEBHOOK_SECRET")
         .ok()
@@ -300,6 +309,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/pdv/notify-pix-charge",
             post(routes::public::notify_pdv_pix_charge),
         )
+        .route(
+            "/api/pdv/notify-card-charge",
+            post(routes::public::notify_pdv_card_charge),
+        )
         .route("/api/pdv/products", get(routes::pdv::list_products))
         .route("/api/pdv/sales", post(routes::pdv::create_sale))
         .route("/api/pdv/relatorio", get(routes::pdv::relatorio))
@@ -334,6 +347,30 @@ async fn main() -> anyhow::Result<()> {
                 .delete(routes::admin::delete_product),
         )
         .route("/api/admin/products/upload-image", post(routes::admin::upload_product_image))
+        .route(
+            "/api/admin/products/{id}/stock-entry",
+            post(routes::admin::product_stock_entry),
+        )
+        .route(
+            "/api/admin/products/erp-formulation",
+            post(routes::admin::create_formulated_product),
+        )
+        .route(
+            "/api/admin/products/{id}/erp-formulation",
+            put(routes::admin::update_formulated_product),
+        )
+        .route(
+            "/api/admin/ingredients",
+            get(routes::admin::list_ingredients).post(routes::admin::create_ingredient),
+        )
+        .route(
+            "/api/admin/ingredients/{id}",
+            put(routes::admin::update_ingredient).delete(routes::admin::delete_ingredient),
+        )
+        .route(
+            "/api/admin/ingredients/{id}/stock-entry",
+            post(routes::admin::ingredient_stock_entry),
+        )
         .route(
             "/api/admin/motoboys",
             get(routes::admin::list_motoboys).post(routes::admin::create_motoboy),

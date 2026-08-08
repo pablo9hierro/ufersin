@@ -1,4 +1,4 @@
-import { tenantHasOnlinePix } from '../../lib/tenantConfig'
+import { tenantHasOnlinePix, withTenantSearch } from '../../lib/tenantConfig'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import type { IScannerControls } from '@zxing/browser'
@@ -21,11 +21,12 @@ import { ApiError } from '../../lib/apiError'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { filterPdvProducts, findProductByBarcode, pdvCartTotals } from '../../lib/pdvHelpers'
 import { orderService } from '../../services/orderService'
+import { adminService } from '../../services/adminService'
 import { pdvService } from '../../services/pdvService'
 import type { Order, PaymentMethod, Product } from '../../types'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal, formatCashMask, formatTrocoLabel, computeTroco } from '../../lib/cashMask'
-import CardPaymentDialog from '../../components/checkout/CardPaymentDialog'
+import { PRODUCTION_CHECKOUT_ORIGIN } from '../../components/checkout/CardPaymentDialog'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -76,15 +77,33 @@ export default function AdminPdv() {
   const [discountValue, setDiscountValue] = useState('')
   const [finalizing, setFinalizing] = useState(false)
   const [finalizeError, setFinalizeError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<number | null>(null)
+  const [success, setSuccess] = useState<{ total: number; paid: boolean } | null>(null)
 
   const [confirmCashOpen, setConfirmCashOpen] = useState(false)
   const [cashCents, setCashCents] = useState(0)
-  // Cartão de verdade via Mercado Pago (mesma conta do Pix): escolhe a
-  // forma ANTES de existir venda (a venda já nasce pendente pra link/
-  // transparente) — NFC continua nascendo paga na hora, igual sempre foi.
-  const [cardChoiceOpen, setCardChoiceOpen] = useState(false)
-  const [cardDialog, setCardDialog] = useState<{ order: Order; step: 'link' | 'transparente' } | null>(null)
+  // "Cartão" e "Link de cobrança" são dois botões SEPARADOS em "Forma de
+  // pagamento" (não um sub-menu depois de escolher cartão) — `cardFlow`
+  // distingue os dois por baixo dos panos, já que os dois usam
+  // payment_method='cartao' no backend.
+  const [cardFlow, setCardFlow] = useState<'manual' | 'link'>('manual')
+  const [nfcConfirmOpen, setNfcConfirmOpen] = useState(false)
+  // Crédito/débito + parcelas — só faz sentido pra "Cartão" (maquininha
+  // física, o lojista registra o que aconteceu por lá). "Link de cobrança"
+  // deixa o próprio cliente escolher isso na página da Mercado Pago.
+  const [cardType, setCardType] = useState<'' | 'credito' | 'debito'>('')
+  const [cardInstallments, setCardInstallments] = useState(1)
+  // "Link de cobrança": captura WhatsApp do cliente + deixa escolher 1 ou 2
+  // formas (link de pagamento hospedado pela MP e/ou nosso checkout com
+  // campo de cartão) antes de mandar — só cria a venda (pendente) quando
+  // "Enviar cobrança" é clicado de verdade.
+  const [linkChargeOpen, setLinkChargeOpen] = useState(false)
+  const [linkChargeOrder, setLinkChargeOrder] = useState<Order | null>(null)
+  const [linkChargeWhatsapp, setLinkChargeWhatsapp] = useState('')
+  const [wantLink, setWantLink] = useState(true)
+  const [wantCheckout, setWantCheckout] = useState(false)
+  const [linkChargeSending, setLinkChargeSending] = useState(false)
+  const [linkChargeError, setLinkChargeError] = useState<string | null>(null)
+  const [linkChargeSent, setLinkChargeSent] = useState(false)
   const [pixOrder, setPixOrder] = useState<Order | null>(null)
   const [pixPaidFlash, setPixPaidFlash] = useState(false)
   const [regeneratingPix, setRegeneratingPix] = useState(false)
@@ -262,15 +281,23 @@ export default function AdminPdv() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scannerOpen])
 
-  const resetFormAfterSale = (total: number) => {
-    setSuccess(total)
+  // `paid = false` pra Pix com QR e cartão link/checkout — a venda foi
+  // CRIADA mas ainda está `payment_status = 'pendente'` (o cliente ainda
+  // não pagou nada); mostrar "finalizada com sucesso" nesse caso era
+  // enganoso — dava a impressão de baixa confirmada sem confirmação real
+  // de pagamento nenhuma.
+  const resetFormAfterSale = (total: number, paid = true) => {
+    setSuccess({ total, paid })
     setCart({})
     setCustomerName('')
     setCustomerWhatsapp('')
     setPaymentMethod('dinheiro')
+    setCardFlow('manual')
     setSkipQrcode(!plataformaPix)
     setDiscountType('percent')
     setDiscountValue('')
+    setCardType('')
+    setCardInstallments(1)
     pdvService.listProducts().then((p) => setProducts(p.filter((x) => x.active !== false)))
     setTimeout(() => setSuccess(null), 4000)
   }
@@ -282,6 +309,8 @@ export default function AdminPdv() {
     customer_whatsapp: customerWhatsapp.replace(/\D/g, '') ? `55${customerWhatsapp.replace(/\D/g, '')}` : undefined,
     discount_type: discountAmount > 0 ? discountType : undefined,
     discount_value: discountAmount > 0 ? Number(discountValue) || 0 : undefined,
+    card_type: paymentMethod === 'cartao' ? cardType || undefined : undefined,
+    card_installments: paymentMethod === 'cartao' && cardType === 'credito' ? cardInstallments : undefined,
   })
 
   /** Dinheiro / cartão / Pix sem QR: baixa imediata + WhatsApp "obrigado". */
@@ -315,14 +344,14 @@ export default function AdminPdv() {
           )
           // Ainda mostra o modal pra confirmar baixa mesmo sem QR.
           setPixOrder(order)
-          resetFormAfterSale(cartTotal)
+          resetFormAfterSale(cartTotal, false)
           return
         }
         setPixOrder(withPix)
         if (withPix.customer_whatsapp?.replace(/\D/g, '')) {
           pdvService.notifyPixCharge(withPix.id).catch(() => {})
         }
-        resetFormAfterSale(cartTotal)
+        resetFormAfterSale(cartTotal, false)
       } catch (e) {
         setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
       } finally {
@@ -331,11 +360,30 @@ export default function AdminPdv() {
       return
     }
 
-    // Cartão de verdade (conta MP conectada): pergunta NFC/link/transparente
-    // antes de criar a venda — sem MP conectado, cai no fluxo antigo abaixo
-    // (confirmação manual, igual dinheiro).
-    if (paymentMethod === 'cartao' && plataformaPix) {
-      setCardChoiceOpen(true)
+    // "Cartão" com MP conectado = maquininha física, confirmação manual
+    // (mesmo espírito de sempre, só que o lojista já disse crédito/débito
+    // antes). Sem MP conectado cai no fluxo antigo abaixo (confirmação
+    // igual dinheiro) — "Link de cobrança" nem aparece nesse caso.
+    if (paymentMethod === 'cartao' && plataformaPix && cardFlow === 'manual') {
+      if (!cardType) {
+        setFinalizeError('Escolha se é crédito ou débito antes de finalizar.')
+        return
+      }
+      setNfcConfirmOpen(true)
+      return
+    }
+
+    // "Link de cobrança": abre o diálogo de capturar WhatsApp + escolher
+    // link de pagamento e/ou checkout — a venda só nasce quando "Enviar
+    // cobrança" for clicado de verdade lá dentro.
+    if (paymentMethod === 'cartao' && plataformaPix && cardFlow === 'link') {
+      setLinkChargeWhatsapp(formatPhone(customerWhatsapp))
+      setWantLink(true)
+      setWantCheckout(false)
+      setLinkChargeError(null)
+      setLinkChargeSent(false)
+      setLinkChargeOrder(null)
+      setLinkChargeOpen(true)
       return
     }
 
@@ -361,15 +409,15 @@ export default function AdminPdv() {
     }
   }
 
-  // NFC = maquininha física do lojista, fora do nosso sistema — mesma
-  // venda "nasce paga" de sempre, só que agora atrás de uma escolha
-  // explícita em vez de cair direto no cartão como único caminho.
-  const handleCardNfc = async () => {
-    setCardChoiceOpen(false)
+  // NFC = maquininha física do lojista, fora do nosso sistema — a venda só
+  // nasce (e "nasce paga") depois que o lojista confirmar de verdade que o
+  // pagamento passou na maquininha — nunca na hora de abrir o diálogo.
+  const confirmNfcReceived = async () => {
     setFinalizing(true)
     setFinalizeError(null)
     try {
       await commitSalePaid()
+      setNfcConfirmOpen(false)
     } catch (e) {
       setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível finalizar a venda.')
     } finally {
@@ -377,19 +425,73 @@ export default function AdminPdv() {
     }
   }
 
-  // Link/transparente: a venda nasce pendente (backend só marca 'pago' de
-  // verdade depois que o cliente completar o pagamento online).
-  const handleCardOnline = async (mode: 'link' | 'transparente') => {
-    setCardChoiceOpen(false)
-    setFinalizing(true)
-    setFinalizeError(null)
+  const cancelNfcConfirm = () => {
+    setNfcConfirmOpen(false)
+  }
+
+  // "Enviar cobrança": cria a venda (pendente) na PRIMEIRA tentativa só —
+  // se o lojista mudar as opções e mandar de novo, reaproveita a mesma
+  // venda em vez de duplicar. Gera cada link marcado (link de pagamento
+  // hospedado pela MP e/ou nosso checkout transparente) e manda os dois
+  // pro WhatsApp do cliente numa sequência só (resumo → cada link).
+  const sendLinkCharge = async () => {
+    const digits = linkChargeWhatsapp.replace(/\D/g, '')
+    if (digits.length < 10) {
+      setLinkChargeError('Informe um WhatsApp válido.')
+      return
+    }
+    if (!wantLink && !wantCheckout) {
+      setLinkChargeError('Escolha pelo menos uma forma de cobrança.')
+      return
+    }
+    setLinkChargeError(null)
+    setLinkChargeSending(true)
     try {
-      const order = await pdvService.createSale({ ...buildSalePayload(), card_payment_mode: mode })
-      setCardDialog({ order, step: mode })
+      let order = linkChargeOrder
+      if (!order) {
+        order = await pdvService.createSale({
+          ...buildSalePayload(),
+          card_payment_mode: wantLink ? 'link' : 'transparente',
+        })
+        setLinkChargeOrder(order)
+        resetFormAfterSale(order.total, false)
+      }
+      let linkUrl: string | undefined
+      if (wantLink) {
+        const withLink = await orderService.createCardLink(order.id)
+        linkUrl = withLink.card_payment_link_url ?? undefined
+        if (!linkUrl) throw new ApiError(502, 'Não foi possível gerar o link de cobrança.')
+      }
+      const checkoutUrl = wantCheckout
+        ? `${PRODUCTION_CHECKOUT_ORIGIN}/pagamento/${order.id}${withTenantSearch()}`
+        : undefined
+      await pdvService.notifyCardCharge(order.id, `55${digits}`, linkUrl, checkoutUrl)
+      setLinkChargeSent(true)
     } catch (e) {
-      setFinalizeError(e instanceof ApiError ? e.message : 'Não foi possível iniciar a venda.')
+      setLinkChargeError(e instanceof ApiError ? e.message : 'Não foi possível enviar a cobrança.')
     } finally {
-      setFinalizing(false)
+      setLinkChargeSending(false)
+    }
+  }
+
+  // Fecha o diálogo — se já existe uma venda pendente criada (WhatsApp foi
+  // digitado e "Enviar cobrança" já tentou pelo menos uma vez), cancela ela
+  // de verdade em vez de deixar uma venda fantasma presa no PDV/Pedidos.
+  const cancelLinkCharge = async () => {
+    if (!linkChargeOrder) {
+      setLinkChargeOpen(false)
+      return
+    }
+    setLinkChargeSending(true)
+    setLinkChargeError(null)
+    try {
+      await adminService.orders.cancel(linkChargeOrder.id, 'Outro', 'Cobrança com cartão não concluída no PDV')
+      setLinkChargeOpen(false)
+      setLinkChargeOrder(null)
+    } catch (e) {
+      setLinkChargeError(e instanceof ApiError ? e.message : 'Não foi possível cancelar a venda.')
+    } finally {
+      setLinkChargeSending(false)
     }
   }
 
@@ -435,7 +537,9 @@ export default function AdminPdv() {
       {success !== null && !pixOrder && (
         <div className="mb-6 flex items-center gap-2 bg-emerald-500/15 text-emerald-400 rounded-2xl px-4 py-3 text-sm font-medium">
           <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-          Venda de {currency(success)} finalizada com sucesso!
+          {success.paid
+            ? `Venda de ${currency(success.total)} finalizada com sucesso!`
+            : `Cobrança de ${currency(success.total)} enviada — aguardando pagamento do cliente.`}
         </div>
       )}
       {pixPaidFlash && (
@@ -628,14 +732,17 @@ export default function AdminPdv() {
 
           <div className="mb-3">
             <label className="label">Forma de pagamento</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className={`grid gap-2 ${plataformaPix ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {(['dinheiro', 'pix', 'cartao'] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setPaymentMethod(value)}
+                  onClick={() => {
+                    setPaymentMethod(value)
+                    if (value === 'cartao') setCardFlow('manual')
+                  }}
                   className={`py-2.5 rounded-2xl border text-sm font-medium transition-all capitalize ${
-                    paymentMethod === value
+                    paymentMethod === value && !(value === 'cartao' && cardFlow === 'link')
                       ? 'sunset-bg text-white border-transparent'
                       : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
                   }`}
@@ -643,8 +750,62 @@ export default function AdminPdv() {
                   {value}
                 </button>
               ))}
+              {plataformaPix && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod('cartao')
+                    setCardFlow('link')
+                  }}
+                  className={`py-2.5 rounded-2xl border text-sm font-medium transition-all ${
+                    paymentMethod === 'cartao' && cardFlow === 'link'
+                      ? 'sunset-bg text-white border-transparent'
+                      : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
+                  }`}
+                >
+                  Link de cobrança
+                </button>
+              )}
             </div>
           </div>
+
+          {paymentMethod === 'cartao' && cardFlow === 'manual' && plataformaPix && (
+            <div className="mb-4 rounded-2xl border border-white/10 bg-son-surface px-3 py-3 space-y-2">
+              <label className="label mb-0">Crédito ou débito?</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['credito', 'debito'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setCardType(value)}
+                    className={`py-2 rounded-xl border text-sm font-medium transition-all capitalize ${
+                      cardType === value
+                        ? 'sunset-bg text-white border-transparent'
+                        : 'bg-son-surface-light border-white/10 text-son-silver hover:border-son-pink/30'
+                    }`}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+              {cardType === 'credito' && (
+                <div>
+                  <label className="label">Em quantas vezes?</label>
+                  <select
+                    className="input-field"
+                    value={cardInstallments}
+                    onChange={(e) => setCardInstallments(Number(e.target.value))}
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>
+                        {n}x{n === 1 ? ' à vista' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
 
           {paymentMethod === 'pix' && (
             <label
@@ -735,42 +896,116 @@ export default function AdminPdv() {
         </div>
       )}
 
-      {cardChoiceOpen && (
+      {linkChargeOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => !finalizing && setCardChoiceOpen(false)}
+          onClick={() => !linkChargeSending && cancelLinkCharge()}
         >
           <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-white mb-2">Como o cliente vai pagar?</h3>
+            <h3 className="font-bold text-white mb-2">Cobrança com cartão</h3>
             <p className="text-sm text-son-silver-dim mb-4">
               Total <span className="sunset-text font-bold">{currency(cartTotal)}</span>
             </p>
+            {linkChargeError && <p className="error-msg mb-3">{linkChargeError}</p>}
+            {linkChargeSent ? (
+              <div className="space-y-3 text-center py-2">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto text-son-silver-dim" />
+                <p className="text-sm text-white">Aguardando o cliente pagar…</p>
+                <p className="text-xs text-son-silver-dim">Assim que confirmar, a venda atualiza sozinha.</p>
+                <button
+                  type="button"
+                  disabled={linkChargeSending}
+                  onClick={cancelLinkCharge}
+                  className="w-full text-xs text-red-400 underline pt-1"
+                >
+                  Cancelar venda
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="label">WhatsApp do cliente</label>
+                  <input
+                    className="input-field"
+                    inputMode="numeric"
+                    placeholder="(83) 99999-9999"
+                    value={linkChargeWhatsapp}
+                    onChange={(e) => setLinkChargeWhatsapp(formatPhone(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2.5 rounded-2xl border border-white/10 bg-son-surface px-3 py-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={wantLink}
+                      onChange={(e) => setWantLink(e.target.checked)}
+                      className="mt-0.5 w-4 h-4"
+                    />
+                    <span className="text-sm text-white">
+                      Link de cobrança
+                      <span className="block text-xs text-son-silver-dim font-normal">
+                        Pix, cartão ou boleto — página da Mercado Pago
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2.5 rounded-2xl border border-white/10 bg-son-surface px-3 py-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={wantCheckout}
+                      onChange={(e) => setWantCheckout(e.target.checked)}
+                      className="mt-0.5 w-4 h-4"
+                    />
+                    <span className="text-sm text-white">
+                      Link checkout
+                      <span className="block text-xs text-son-silver-dim font-normal">
+                        Inserir dados do cartão — nossa própria página
+                      </span>
+                    </span>
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  disabled={linkChargeSending}
+                  onClick={sendLinkCharge}
+                  className="btn-primary w-full"
+                >
+                  {linkChargeSending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Enviar cobrança
+                </button>
+                <button
+                  type="button"
+                  disabled={linkChargeSending}
+                  onClick={cancelLinkCharge}
+                  className="text-xs text-son-silver-dim underline w-full text-center pt-1"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {nfcConfirmOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => !finalizing && cancelNfcConfirm()}
+        >
+          <div className="glass rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-white mb-2">Pagamento na maquininha</h3>
+            <p className="text-sm text-son-silver-dim mb-4">
+              Passe o cartão na maquininha. Total <span className="sunset-text font-bold">{currency(cartTotal)}</span>
+            </p>
             {finalizeError && <p className="error-msg mb-3">{finalizeError}</p>}
             <div className="space-y-2">
-              <button type="button" disabled={finalizing} onClick={handleCardNfc} className="btn-primary w-full">
+              <button type="button" disabled={finalizing} onClick={confirmNfcReceived} className="btn-primary w-full">
                 {finalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                Aproximar / inserir na maquininha
+                Pagamento confirmado na maquininha
               </button>
               <button
                 type="button"
                 disabled={finalizing}
-                onClick={() => handleCardOnline('link')}
-                className="btn-secondary w-full"
-              >
-                Link de pagamento
-              </button>
-              <button
-                type="button"
-                disabled={finalizing}
-                onClick={() => handleCardOnline('transparente')}
-                className="btn-secondary w-full"
-              >
-                Conectar cartão do cliente aqui
-              </button>
-              <button
-                type="button"
-                disabled={finalizing}
-                onClick={() => setCardChoiceOpen(false)}
+                onClick={cancelNfcConfirm}
                 className="text-xs text-son-silver-dim underline w-full text-center pt-1"
               >
                 Cancelar
@@ -778,22 +1013,6 @@ export default function AdminPdv() {
             </div>
           </div>
         </div>
-      )}
-
-      {cardDialog && (
-        <CardPaymentDialog
-          orderId={cardDialog.order.id}
-          amount={cardDialog.order.total}
-          mode="pdv"
-          initialStep={cardDialog.step}
-          customerWhatsapp={cardDialog.order.customer_whatsapp}
-          onClose={() => setCardDialog(null)}
-          onSuccess={(updated) => {
-            setCardDialog(null)
-            pdvService.notifySale(updated.id).catch(() => {})
-            resetFormAfterSale(updated.total)
-          }}
-        />
       )}
 
       {pixOrder && (

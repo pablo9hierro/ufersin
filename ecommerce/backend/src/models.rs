@@ -31,6 +31,10 @@ pub struct ProductRow {
     pub cost_price: Option<f64>,
     pub low_stock_threshold: Option<i64>,
     pub barcode: Option<String>,
+    /// "manual" | "erp_formulation" — ver `formulation.rs`. Nunca vem do
+    /// cliente em create/update normal; só é setado por
+    /// `create_formulated_product`/mudado nunca depois.
+    pub origin_type: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,6 +51,7 @@ pub struct ProductDto {
     pub cost_price: Option<f64>,
     pub low_stock_threshold: Option<i64>,
     pub barcode: Option<String>,
+    pub origin_type: String,
 }
 
 impl From<ProductRow> for ProductDto {
@@ -64,6 +69,7 @@ impl From<ProductRow> for ProductDto {
             cost_price: r.cost_price,
             low_stock_threshold: r.low_stock_threshold,
             barcode: r.barcode,
+            origin_type: r.origin_type,
         }
     }
 }
@@ -84,6 +90,54 @@ pub struct ProductInput {
     pub low_stock_threshold: Option<i64>,
     #[serde(default)]
     pub barcode: Option<String>,
+}
+
+// ---------- ERP Formulação (insumos / ficha técnica) ----------
+
+#[derive(Debug, sqlx::FromRow, Serialize)]
+pub struct Ingredient {
+    pub id: String,
+    pub name: String,
+    /// "g" | "kg" | "ml" | "l" | "un"
+    pub unit: String,
+    pub quantity: f64,
+    /// Custo por 1 `unit`.
+    pub cost_price: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IngredientInput {
+    pub name: String,
+    pub unit: String,
+    #[serde(default)]
+    pub quantity: f64,
+    #[serde(default)]
+    pub cost_price: f64,
+}
+
+/// Corpo de `POST /api/admin/ingredients/{id}/stock-entry` e
+/// `POST /api/admin/products/{id}/stock-entry` — sempre um valor POSITIVO
+/// somado ao estoque atual (nunca um valor absoluto que sobrescreve).
+#[derive(Debug, Deserialize)]
+pub struct StockEntryInput {
+    pub quantity: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FormulationLineInput {
+    pub ingredient_id: String,
+    pub quantity: f64,
+    pub unit: String,
+}
+
+/// Corpo de criar/editar um produto ERP — os campos comerciais são os
+/// mesmos de `ProductInput` (nome/preço/categoria/imagem/etc; `quantity`
+/// dele é ignorado, sempre recalculado a partir da formulação).
+#[derive(Debug, Deserialize)]
+pub struct FormulatedProductInput {
+    #[serde(flatten)]
+    pub product: ProductInput,
+    pub formulation: Vec<FormulationLineInput>,
 }
 
 // ---------- Motoboys ----------
@@ -167,6 +221,21 @@ pub struct OrderRow {
     pub refund_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    // `SELECT * FROM orders` traz essas colunas desde a Fase 2 (link de
+    // pagamento/checkout transparente) e a migration 0015 (crédito/débito),
+    // mas nunca foram adicionadas aqui nem em `OrderDto` — sqlx::FromRow só
+    // ignora colunas extras silenciosamente (não dá erro), então isso nunca
+    // quebrou a query, só fazia esses campos sumirem antes de chegar no
+    // frontend. Era a causa real do "link de pagamento fica carregando pra
+    // sempre": o backend criava o link, salvava no banco, mas a resposta
+    // JSON nunca incluía a URL — o frontend recebia `card_payment_link_url:
+    // undefined` e o spinner nunca saía do lugar (sem erro nenhum pra
+    // mostrar, porque a requisição tecnicamente deu certo).
+    pub card_payment_mode: Option<String>,
+    pub card_payment_link_url: Option<String>,
+    pub card_payment_charge_id: Option<String>,
+    pub card_type: Option<String>,
+    pub card_installments: Option<i64>,
 }
 
 #[derive(Debug, sqlx::FromRow, Serialize, Clone)]
@@ -187,6 +256,11 @@ pub struct OrderDto {
     pub delivery_type: String,
     pub neighborhood: Option<String>,
     pub address: Option<String>,
+    // Mesmo gap do `card_payment_link_url`: `OrderRow` já tinha esse campo
+    // (compilador até avisava "field never read"), mas nunca foi
+    // encaminhado pro DTO — o ponto de referência que o cliente preenche no
+    // checkout nunca chegava no admin.
+    pub reference_point: Option<String>,
     pub payment_method: String,
     pub payment_status: String,
     pub status: String,
@@ -211,6 +285,11 @@ pub struct OrderDto {
     pub refund_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub card_payment_mode: Option<String>,
+    pub card_payment_link_url: Option<String>,
+    pub card_payment_charge_id: Option<String>,
+    pub card_type: Option<String>,
+    pub card_installments: Option<i64>,
     pub items: Vec<OrderItemDto>,
 }
 
@@ -233,6 +312,7 @@ impl OrderDto {
             delivery_type: row.delivery_type,
             neighborhood: row.neighborhood,
             address: row.address,
+            reference_point: row.reference_point,
             payment_method: row.payment_method,
             payment_status: row.payment_status,
             status: row.status,
@@ -257,6 +337,11 @@ impl OrderDto {
             refund_id: row.refund_id,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            card_payment_mode: row.card_payment_mode,
+            card_payment_link_url: row.card_payment_link_url,
+            card_payment_charge_id: row.card_payment_charge_id,
+            card_type: row.card_type,
+            card_installments: row.card_installments,
             items,
         }
     }
@@ -292,6 +377,14 @@ pub struct PdvSaleInput {
     /// comportamento de sempre: cartão nasce pago na hora.
     #[serde(default)]
     pub card_payment_mode: Option<String>,
+    /// "credito" | "debito" — escolhido no PDV antes de abrir a cobrança.
+    /// Só registro (a Mercado Pago decide o processamento de verdade em
+    /// link/transparente; NFC é confirmado na maquininha física do lojista).
+    #[serde(default)]
+    pub card_type: Option<String>,
+    /// Só relevante quando `card_type = "credito"`.
+    #[serde(default)]
+    pub card_installments: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

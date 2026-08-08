@@ -182,6 +182,7 @@ export default function CustomerAuthModal({
               <input
                 className="input-field"
                 inputMode="numeric"
+                autoComplete="off"
                 placeholder="(83) 99999-9999"
                 value={loginWhatsapp}
                 onChange={(e) => setLoginWhatsapp(formatPhone(e.target.value))}
@@ -228,6 +229,7 @@ export default function CustomerAuthModal({
               <input
                 className="input-field"
                 inputMode="numeric"
+                autoComplete="off"
                 placeholder="(83) 99999-9999"
                 value={regWhatsapp}
                 onChange={(e) => setRegWhatsapp(formatPhone(e.target.value))}

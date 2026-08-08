@@ -181,6 +181,8 @@ pub async fn create_card_payment(
 struct MpPaymentDetailsResponse {
     status: Option<String>,
     external_reference: Option<String>,
+    payment_type_id: Option<String>,
+    payment_method_id: Option<String>,
 }
 
 pub struct PaymentDetails {
@@ -188,6 +190,25 @@ pub struct PaymentDetails {
     /// `order.id` — sempre foi isso que este código já manda como
     /// `external_reference` em toda cobrança (Pix, link, cartão).
     pub external_reference: Option<String>,
+    /// Método REAL usado pelo cliente pra pagar ("pix" | "cartao"), já
+    /// traduzido do vocabulário da Mercado Pago pro nosso — `None` quando
+    /// não dá pra mapear com confiança (não sobrescreve nada nesse caso).
+    /// Existe porque o "Link de pagamento" (Checkout Pro) deixa o cliente
+    /// escolher QUALQUER forma na hora — uma venda criada como "cartão" no
+    /// PDV pode acabar sendo paga via Pix lá dentro, e o pedido precisa
+    /// refletir o que realmente aconteceu, não a intenção original.
+    pub payment_method: Option<&'static str>,
+}
+
+fn map_payment_method(payment_type_id: Option<&str>, payment_method_id: Option<&str>) -> Option<&'static str> {
+    if payment_method_id == Some("pix") {
+        return Some("pix");
+    }
+    match payment_type_id {
+        Some("credit_card") | Some("debit_card") => Some("cartao"),
+        Some("bank_transfer") if payment_method_id.is_some_and(|m| m.contains("pix")) => Some("pix"),
+        _ => None,
+    }
 }
 
 /// `GET /v1/payments/:id` — usado pelo webhook pra rebuscar o pagamento
@@ -219,8 +240,10 @@ pub async fn fetch_payment_details(
         .await
         .map_err(|e| AppError::Internal(format!("mercado pago payment parse error: {e}")))?;
 
+    let payment_method = map_payment_method(parsed.payment_type_id.as_deref(), parsed.payment_method_id.as_deref());
     Ok(PaymentDetails {
         status: parsed.status.unwrap_or_else(|| "pending".to_string()),
         external_reference: parsed.external_reference,
+        payment_method,
     })
 }

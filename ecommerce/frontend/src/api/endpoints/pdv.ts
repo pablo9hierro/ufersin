@@ -19,5 +19,7 @@ export const pdvEndpoint = {
   }) => validate(OrderSchema, await api.pdv.createSale(payload), 'pdv.createSale'),
   notifySale: async (orderId: string) => api.pdv.notifySale(orderId),
   notifyPixCharge: async (orderId: string) => api.pdv.notifyPixCharge(orderId),
+  notifyCardCharge: async (orderId: string, whatsapp: string, linkUrl?: string, checkoutUrl?: string) =>
+    api.pdv.notifyCardCharge(orderId, whatsapp, linkUrl, checkoutUrl),
   relatorio: async () => validate(VendedorRelatorioSchema, await api.pdv.relatorio(), 'pdv.relatorio'),
 }

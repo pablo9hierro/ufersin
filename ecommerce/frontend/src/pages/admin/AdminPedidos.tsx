@@ -1,7 +1,7 @@
 import { tenantHasOnlinePix, tenantUsesManualPayment } from '../../lib/tenantConfig'
 import { useEffect, useMemo, useState } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
-import { Copy, GripVertical, Loader2, Package, QrCode, X } from 'lucide-react'
+import { Copy, GripVertical, Loader2, MapPin, Package, QrCode, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { StatusBadge } from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
@@ -147,7 +147,22 @@ function OrderCard({
           </span>
           <span className="sunset-text font-bold">{currency(order.total)}</span>
         </div>
-        {order.reference_point && (
+        {order.delivery_type === 'entrega' && order.customer_lat != null && order.customer_lng != null && (
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${order.customer_lat},${order.customer_lng}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-son-pink hover:underline flex-shrink-0"
+            >
+              <MapPin className="w-3.5 h-3.5" /> Abrir no Google Maps
+            </a>
+            {order.reference_point && (
+              <p className="text-xs text-son-silver-dim italic text-right">{order.reference_point}</p>
+            )}
+          </div>
+        )}
+        {order.delivery_type === 'entrega' && (order.customer_lat == null || order.customer_lng == null) && order.reference_point && (
           <p className="text-xs text-son-silver-dim italic mb-2">{order.reference_point}</p>
         )}
         {order.status === 'cancelado' && (

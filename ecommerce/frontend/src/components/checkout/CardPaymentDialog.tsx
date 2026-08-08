@@ -2,11 +2,39 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { CheckCircle2, Copy, ExternalLink, Loader2, Smartphone, X } from 'lucide-react'
 import { cardPaymentService } from '../../services/cardPaymentService'
+import { pdvService } from '../../services/pdvService'
 import { MP_CARD_FORM_IDS, useCardTokenization } from '../../hooks/useCardTokenization'
 import type { Order } from '../../types'
 import { ApiError } from '../../lib/api'
+import { withTenantSearch } from '../../lib/tenantConfig'
 
-type Step = 'choose' | 'link' | 'transparente' | 'nfc'
+type Step = 'choose' | 'link' | 'transparente' | 'nfc' | 'auto-sent'
+
+// Mesma máscara usada no resto do app (AdminPdv.tsx, AuthModal.tsx etc) —
+// só o número nacional (DDD+número), nunca o "55" (esse é sempre implícito,
+// adicionado só na hora de mandar pro backend).
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 11)
+  if (digits.length <= 2) return `(${digits}`
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
+}
+
+/** `order.customer_whatsapp` já vem gravado com "55" na frente — tira pra
+ * exibir só o número nacional no campo (o "55" é sempre implícito aqui). */
+function stripCountryCode(digits: string): string {
+  return digits.length > 11 && digits.startsWith('55') ? digits.slice(2) : digits
+}
+
+// O link de checkout transparente mandado pro WhatsApp do CLIENTE precisa
+// ser um link de VERDADE, aberto no celular DELE — nunca `localhost`, nem
+// quando o lojista está testando com o Resolutoo rodando local (o celular
+// do cliente não tem como alcançar o localhost do computador do lojista).
+// Mesmo padrão de `/loja` embutido sob resolutoo.com usado em produção
+// (ver ecommerce/frontend/vite.config.ts `VITE_BASE_PATH` e
+// .github/workflows/deploy-vercel.yml) — força esse domínio SEMPRE nesse
+// link específico, independente de onde o admin está rodando agora.
+export const PRODUCTION_CHECKOUT_ORIGIN = 'https://resolutoo.com/loja'
 
 /** Cartão de verdade via Mercado Pago — 3 formas, sempre a mesma conta do
  * tenant que já processa Pix. Um componente só, reaproveitado nos 4 skins
@@ -28,6 +56,9 @@ export default function CardPaymentDialog({
   onClose,
   onSuccess,
   onConfirmNfc,
+  onCancelOrder,
+  autoSendWhatsapp,
+  onChangePaymentMethod,
   surfaceClassName = 'bg-neutral-900 border border-white/10',
   accentClassName = 'bg-white text-black',
   textClassName = 'text-white',
@@ -49,6 +80,21 @@ export default function CardPaymentDialog({
    * marcar o pedido como pago (reaproveita o mesmo mecanismo já usado pra
    * confirmar pagamento em dinheiro no PDV). Só usado quando `mode="pdv"`. */
   onConfirmNfc?: () => Promise<void>
+  /** Só usado quando `mode="pdv"` e já existe uma venda pendente criada
+   * (steps 'link'/'transparente') — desiste da cobrança online cancelando
+   * a venda de verdade (repõe estoque), em vez de só fechar o diálogo e
+   * deixar uma venda pendente fantasma presa no PDV. */
+  onCancelOrder?: () => Promise<void>
+  /** Loja com "entrega só com pagamento já feito" — cartão em pedido de
+   * entrega não deixa o cliente escolher link/transparente na tela: manda
+   * as duas cobranças direto pro WhatsApp DELE (já logado, já tem
+   * WhatsApp cadastrado) e mostra "aguardando pagamento" com "gerar nova
+   * cobrança"/"cancelar"/"alterar forma de pagamento". Só usado quando
+   * `mode="checkout"`. */
+  autoSendWhatsapp?: string
+  /** "Alterar método de pagamento" na tela de aguardando — só existe
+   * junto de `autoSendWhatsapp`. */
+  onChangePaymentMethod?: () => void
   surfaceClassName?: string
   accentClassName?: string
   textClassName?: string
@@ -65,6 +111,40 @@ export default function CardPaymentDialog({
   const [holderName, setHolderName] = useState('')
   const [holderDoc, setHolderDoc] = useState('')
   const [holderEmail, setHolderEmail] = useState('')
+  // PDV manda o link pro WhatsApp do CLIENTE — nunca abre/copia no
+  // dispositivo do lojista. Pré-preenchido com o whatsapp já digitado na
+  // venda, mas editável (nem toda venda de balcão tem isso preenchido).
+  const [waInput, setWaInput] = useState(
+    formatPhone(stripCountryCode((customerWhatsapp ?? '').replace(/\D/g, ''))),
+  )
+  const [waSent, setWaSent] = useState(false)
+  const [autoSending, setAutoSending] = useState(false)
+
+  const sendAutoCharge = async () => {
+    if (!autoSendWhatsapp) return
+    setError(null)
+    setAutoSending(true)
+    try {
+      const withLink = await cardPaymentService.createLink(orderId)
+      const link = withLink.card_payment_link_url
+      if (!link) throw new ApiError(502, 'Não foi possível gerar o link de cobrança.')
+      const checkoutUrl = `${PRODUCTION_CHECKOUT_ORIGIN}/pagamento/${orderId}${withTenantSearch()}`
+      await pdvService.notifyCardCharge(orderId, autoSendWhatsapp, link, checkoutUrl)
+      setStep('auto-sent')
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível enviar a cobrança pro seu WhatsApp.')
+    } finally {
+      setAutoSending(false)
+    }
+  }
+
+  // Loja com "entrega só com pagamento já feito" + cartão: nunca mostra a
+  // escolha link/transparente pro cliente — manda as duas cobranças pro
+  // WhatsApp dele automaticamente assim que o diálogo abre.
+  useEffect(() => {
+    if (autoSendWhatsapp) void sendAutoCharge()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -81,16 +161,33 @@ export default function CardPaymentDialog({
     }
   }, [])
 
+  // No PDV é o CLIENTE quem digita o cartão dele, nunca o lojista — então
+  // "Conectar seu cartão aqui" no PDV também vira um link mandado pro
+  // celular do cliente (a página /pagamento/:orderId já sabe renderizar o
+  // formulário de cartão tokenizado quando abre lá, em mode="checkout").
+  // Só no checkout público (mode="checkout") o step 'transparente' abre o
+  // formulário embutido de verdade, porque aí é o próprio cliente na tela.
+  const pdvTransparenteAsLink = mode === 'pdv' && step === 'transparente'
+  const showLinkUi = step === 'link' || pdvTransparenteAsLink
+
+  // Só ativa o SDK/hook quando o formulário embutido (MP_CARD_FORM_IDS)
+  // realmente vai pro DOM — no PDV o passo 'transparente' NUNCA renderiza
+  // esses elementos (vira link, ver showLinkUi acima). Passar a publicKey
+  // mesmo assim fazia o SDK tentar montar iframes em ids inexistentes e
+  // estourar uma exceção não tratada assim que o script (carregado async)
+  // terminava — derrubando a árvore inteira do React (tela em branco).
   const { ready: formReady, loadError: sdkError, tokenize } = useCardTokenization(
-    step === 'transparente' ? publicKey : null,
+    step === 'transparente' && !pdvTransparenteAsLink ? publicKey : null,
     amount,
   )
 
-  // PDV já decidiu o modo antes de abrir (initialStep) — gera o link na
+  // PDV já decidiu o modo antes de abrir (initialStep) — gera o link/URL na
   // hora, sem esperar clique num botão "escolher" que nem chega a aparecer.
   useEffect(() => {
     if (initialStep === 'link' && !linkUrl) {
       void handlePickLink()
+    } else if (initialStep === 'transparente' && mode === 'pdv' && !linkUrl) {
+      setLinkUrl(`${PRODUCTION_CHECKOUT_ORIGIN}/pagamento/${orderId}${withTenantSearch()}`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -120,11 +217,27 @@ export default function CardPaymentDialog({
     }
   }
 
-  const handleWhatsappShare = () => {
-    if (!linkUrl || !customerWhatsapp) return
-    const digits = customerWhatsapp.replace(/\D/g, '')
-    const text = encodeURIComponent(`Aqui está o link pra pagar seu pedido no cartão: ${linkUrl}`)
-    window.open(`https://api.whatsapp.com/send/?phone=${digits}&text=${text}`, '_blank', 'noreferrer')
+  const handleWhatsappShare = async () => {
+    if (!linkUrl) return
+    // `waInput` só guarda o número NACIONAL (o "55" é sempre implícito,
+    // aplicado só aqui na hora de mandar) — ver `formatPhone`/`stripCountryCode`
+    // acima. Prefixar "55" sem checar isso foi o bug que gerava número
+    // duplicado (5555839...) e a Evolution API rejeitava com 400.
+    const national = waInput.replace(/\D/g, '')
+    if (national.length < 10) return
+    setError(null)
+    setBusy(true)
+    try {
+      // Manda pela instância Evolution API da PRÓPRIA loja (mesmo mecanismo
+      // que já manda "obrigado pela compra"/Pix) — nunca abre WhatsApp no
+      // aparelho do lojista pra ele mesmo clicar "enviar" (era o bug).
+      await pdvService.notifyCardCharge(orderId, `55${national}`, linkUrl)
+      setWaSent(true)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível enviar o link pelo WhatsApp da loja.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleTransparenteSubmit = async () => {
@@ -170,7 +283,13 @@ export default function CardPaymentDialog({
 
         {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
 
-        {step === 'choose' && (
+        {autoSendWhatsapp && step === 'choose' && (
+          <div className="py-6 flex justify-center">
+            <Loader2 className={`w-6 h-6 animate-spin ${dimTextClassName}`} />
+          </div>
+        )}
+
+        {!autoSendWhatsapp && step === 'choose' && (
           <div className="space-y-2.5">
             {mode === 'pdv' && (
               <button
@@ -234,53 +353,148 @@ export default function CardPaymentDialog({
           </div>
         )}
 
-        {step === 'link' && (
+        {step === 'auto-sent' && (
+          <div className="space-y-4 text-center py-2">
+            <Loader2 className={`w-8 h-8 mx-auto animate-spin ${dimTextClassName}`} />
+            <p className={`text-sm ${textClassName}`}>Aguardando pagamento…</p>
+            <p className={`text-xs ${dimTextClassName}`}>
+              Mandamos o link de cobrança e o checkout pro seu WhatsApp. Assim que você pagar, o pedido atualiza sozinho.
+            </p>
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                disabled={autoSending}
+                onClick={sendAutoCharge}
+                className={`w-full rounded-xl px-4 py-3 text-sm font-semibold border border-white/15 ${textClassName} disabled:opacity-60`}
+              >
+                {autoSending ? <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> : null}
+                Gerar nova cobrança (enviar novamente)
+              </button>
+              {onChangePaymentMethod && (
+                <button
+                  type="button"
+                  disabled={autoSending}
+                  onClick={onChangePaymentMethod}
+                  className={`w-full rounded-xl px-4 py-3 text-sm font-semibold border border-white/15 ${textClassName} disabled:opacity-60`}
+                >
+                  Alterar método de pagamento
+                </button>
+              )}
+              {onCancelOrder && (
+                <button
+                  type="button"
+                  disabled={autoSending}
+                  onClick={async () => {
+                    setAutoSending(true)
+                    setError(null)
+                    try {
+                      await onCancelOrder()
+                      onClose()
+                    } catch (e) {
+                      setError(e instanceof ApiError ? e.message : 'Não foi possível cancelar o pedido.')
+                    } finally {
+                      setAutoSending(false)
+                    }
+                  }}
+                  className="w-full text-xs text-red-400 underline pt-1"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showLinkUi && (
           <div className="space-y-3">
             {linkUrl ? (
               <>
-                <p className={`text-xs ${dimTextClassName}`}>
-                  {mode === 'pdv'
-                    ? 'Manda esse link pro celular do cliente completar — nunca no seu dispositivo.'
-                    : 'Abra o link abaixo pra pagar com cartão.'}
-                </p>
-                <div className={`text-xs break-all rounded-lg px-3 py-2 ${inputClassName}`}>{linkUrl}</div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className={`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold border border-white/15 ${textClassName} inline-flex items-center justify-center gap-1.5`}
-                  >
-                    <Copy className="w-3.5 h-3.5" /> {copied ? 'Copiado!' : 'Copiar'}
-                  </button>
-                  <a
-                    href={linkUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold inline-flex items-center justify-center gap-1.5 ${accentClassName}`}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" /> Abrir
-                  </a>
-                </div>
-                {mode === 'pdv' && customerWhatsapp && (
-                  <button
-                    type="button"
-                    onClick={handleWhatsappShare}
-                    className={`w-full rounded-xl px-3 py-2.5 text-xs font-semibold border border-white/15 ${textClassName}`}
-                  >
-                    Mandar por WhatsApp
-                  </button>
+                {mode === 'pdv' ? (
+                  waSent ? (
+                    <>
+                      <div className="flex flex-col items-center gap-2 py-2 text-center">
+                        <Loader2 className={`w-6 h-6 animate-spin ${dimTextClassName}`} />
+                        <p className={`text-sm ${textClassName}`}>Aguardando o cliente pagar…</p>
+                        <p className={`text-[11px] ${dimTextClassName}`}>
+                          Assim que o pagamento for confirmado, a venda atualiza sozinha.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setWaSent(false)}
+                        className={`w-full text-center text-xs ${dimTextClassName} hover:underline`}
+                      >
+                        Mandar de novo / trocar número
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className={`text-xs ${dimTextClassName}`}>
+                        Manda esse link pro celular do cliente completar — nunca abra ou copie ele aqui no seu dispositivo.
+                      </p>
+                      <div>
+                        <label className={`text-xs font-semibold ${dimTextClassName}`}>WhatsApp do cliente</label>
+                        <input
+                          className={`w-full h-10 mt-1 ${inputClassName}`}
+                          inputMode="numeric"
+                          placeholder="(83) 99999-9999"
+                          value={waInput}
+                          onChange={(e) => setWaInput(formatPhone(e.target.value))}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy || waInput.replace(/\D/g, '').length < 10}
+                        onClick={() => void handleWhatsappShare()}
+                        className={`w-full rounded-xl px-3 py-2.5 text-sm font-semibold ${accentClassName} disabled:opacity-60`}
+                      >
+                        {busy ? <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> : null}
+                        Mandar por WhatsApp
+                      </button>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <p className={`text-xs ${dimTextClassName}`}>Abra o link abaixo pra pagar com cartão.</p>
+                    <div className={`text-xs break-all rounded-lg px-3 py-2 ${inputClassName}`}>{linkUrl}</div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCopyLink}
+                        className={`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold border border-white/15 ${textClassName} inline-flex items-center justify-center gap-1.5`}
+                      >
+                        <Copy className="w-3.5 h-3.5" /> {copied ? 'Copiado!' : 'Copiar'}
+                      </button>
+                      <a
+                        href={linkUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold inline-flex items-center justify-center gap-1.5 ${accentClassName}`}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> Abrir
+                      </a>
+                    </div>
+                    <p className={`text-[11px] ${dimTextClassName}`}>
+                      Assim que o pagamento for confirmado, o pedido atualiza sozinho.
+                    </p>
+                  </>
                 )}
-                <p className={`text-[11px] ${dimTextClassName}`}>
-                  Assim que o pagamento for confirmado, o pedido atualiza sozinho.
-                </p>
               </>
+            ) : error ? (
+              <button
+                type="button"
+                onClick={() => void handlePickLink()}
+                className={`w-full rounded-xl px-4 py-3 text-sm font-semibold ${accentClassName}`}
+              >
+                Tentar de novo
+              </button>
             ) : (
               <Loader2 className={`w-5 h-5 animate-spin mx-auto ${dimTextClassName}`} />
             )}
           </div>
         )}
 
-        {step === 'transparente' && (
+        {step === 'transparente' && !pdvTransparenteAsLink && (
           <div className="space-y-3">
             {sdkError && <p className="text-xs text-red-400">{sdkError}</p>}
             <form
@@ -336,17 +550,38 @@ export default function CardPaymentDialog({
           </div>
         )}
 
-        {step !== 'choose' && (
+        {mode === 'pdv' && onCancelOrder && (step === 'link' || step === 'transparente') ? (
           <button
             type="button"
-            onClick={() => {
-              setStep('choose')
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
               setError(null)
+              try {
+                await onCancelOrder()
+                onClose()
+              } catch (e) {
+                setError(e instanceof ApiError ? e.message : 'Não foi possível cancelar a venda.')
+                setBusy(false)
+              }
             }}
-            className={`mt-3 text-xs ${dimTextClassName} hover:underline`}
+            className="mt-3 text-xs text-red-400 hover:underline disabled:opacity-60"
           >
-            ← Escolher outra forma
+            Cancelar venda
           </button>
+        ) : (
+          step !== 'choose' && (
+            <button
+              type="button"
+              onClick={() => {
+                setStep('choose')
+                setError(null)
+              }}
+              className={`mt-3 text-xs ${dimTextClassName} hover:underline`}
+            >
+              ← Escolher outra forma
+            </button>
+          )
         )}
       </motion.div>
     </motion.div>

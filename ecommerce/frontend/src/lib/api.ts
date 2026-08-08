@@ -24,6 +24,9 @@ import type {
   EvolutionStatus,
   FinanceiroSummary,
   FinanceiroTimeseriesPoint,
+  FormulatedProductPayload,
+  Ingredient,
+  IngredientPayload,
   LucroSummary,
   Motoboy,
   MotoboyFinanceiro,
@@ -514,6 +517,42 @@ const remoteApi = {
         }
         return (await res.json()) as { url: string }
       },
+      // ERP Formulação — feature nova, só existe no motor Rust multi-tenant
+      // (sem fallback pra RPC Supabase legado, que nunca teve esse conceito).
+      stockEntry: (id: string, quantity: number) =>
+        railwayAdmin<Product>(`/api/admin/products/${id}/stock-entry`, {
+          method: 'POST',
+          body: JSON.stringify({ quantity }),
+        }),
+      createFormulation: (payload: FormulatedProductPayload) =>
+        railwayAdmin<Product>('/api/admin/products/erp-formulation', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }),
+      updateFormulation: (id: string, payload: FormulatedProductPayload) =>
+        railwayAdmin<Product>(`/api/admin/products/${id}/erp-formulation`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
+    },
+    ingredients: {
+      list: () => railwayAdmin<Ingredient[]>('/api/admin/ingredients'),
+      create: (payload: IngredientPayload) =>
+        railwayAdmin<Ingredient>('/api/admin/ingredients', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }),
+      update: (id: string, payload: IngredientPayload) =>
+        railwayAdmin<Ingredient>(`/api/admin/ingredients/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
+      delete: (id: string) => railwayAdmin<void>(`/api/admin/ingredients/${id}`, { method: 'DELETE' }),
+      stockEntry: (id: string, quantity: number) =>
+        railwayAdmin<Ingredient>(`/api/admin/ingredients/${id}/stock-entry`, {
+          method: 'POST',
+          body: JSON.stringify({ quantity }),
+        }),
     },
     motoboys: {
       list: () =>
@@ -1341,6 +1380,14 @@ const remoteApi = {
       request<void>('/api/pdv/notify-pix-charge', {
         method: 'POST',
         body: JSON.stringify({ order_id: orderId }),
+      }),
+    // Link de cobrança no cartão (link de pagamento / checkout transparente)
+    // — manda pela instância Evolution API JÁ CONECTADA da própria loja,
+    // nunca abrindo WhatsApp no aparelho do lojista.
+    notifyCardCharge: (orderId: string, whatsapp: string, linkUrl?: string, checkoutUrl?: string) =>
+      request<void>('/api/pdv/notify-card-charge', {
+        method: 'POST',
+        body: JSON.stringify({ order_id: orderId, whatsapp, link_url: linkUrl, checkout_url: checkoutUrl }),
       }),
     relatorio: () =>
       isRailwayAdminJwt()

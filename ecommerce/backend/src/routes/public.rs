@@ -638,6 +638,79 @@ pub async fn notify_pdv_pix_charge(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct NotifyPdvCardChargeInput {
+    pub order_id: String,
+    /// PDV deixa o lojista digitar/confirmar o WhatsApp do cliente na hora
+    /// (a venda pode não ter sido criada com um número, ou o lojista quer
+    /// mandar pra outro) — sempre usa ESSE número, nunca abre WhatsApp no
+    /// aparelho do lojista (era o bug: `window.open` local mandava o
+    /// PRÓPRIO lojista clicar "enviar").
+    pub whatsapp: String,
+    /// "Link de cobrança" (Checkout Pro — Pix/cartão/boleto, hospedado pela
+    /// própria Mercado Pago). Pelo menos um dos dois tem que vir preenchido.
+    #[serde(default)]
+    pub link_url: Option<String>,
+    /// "Link checkout" (nossa página `/pagamento/:id` — só cartão,
+    /// tokenizado). O lojista pode mandar os dois pro mesmo cliente.
+    #[serde(default)]
+    pub checkout_url: Option<String>,
+}
+
+/// PDV — "Enviar link de cobrança" / "Enviar checkout": manda o link de
+/// pagamento com cartão pro WhatsApp do CLIENTE através da instância
+/// Evolution API já conectada da própria loja (mesmo mecanismo que já
+/// manda confirmação de venda/Pix), nunca abrindo o WhatsApp no aparelho
+/// do lojista.
+pub async fn notify_pdv_card_charge(
+    State(state): State<AppState>,
+    Json(input): Json<NotifyPdvCardChargeInput>,
+) -> Result<StatusCode, AppError> {
+    let store = tenant::tenant_for_order(&state.pool, &input.order_id).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let Some(order) = fetch_order_row(&mut *tx, &store.id, &input.order_id).await? else {
+        return Err(AppError::NotFound("order not found".to_string()));
+    };
+
+    if order.payment_method != "cartao" {
+        return Err(AppError::BadRequest("order is not a card payment".to_string()));
+    }
+
+    let digits = whatsapp::digits_only(&input.whatsapp);
+    if digits.is_empty() {
+        return Err(AppError::BadRequest("informe um WhatsApp válido".to_string()));
+    }
+    let link_url = input.link_url.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let checkout_url = input.checkout_url.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    if link_url.is_none() && checkout_url.is_none() {
+        return Err(AppError::BadRequest("escolha pelo menos uma forma de cobrança pra enviar".to_string()));
+    }
+
+    let items = fetch_items(&mut *tx, &store.id, &order.id).await?;
+    tx.commit().await?;
+
+    let itens_texto = items
+        .iter()
+        .map(|i| format!("{}x {}", i.quantity, i.product_name))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let total_str = format!("{:.2}", order.total).replace('.', ",");
+
+    // Msg 1 — resumo do pedido. Msg 2/3 — cada link escolhido, um de cada
+    // vez (o lojista pode mandar os dois). `notify_sequential` AGUARDA cada
+    // envio terminar antes do próximo — sem isso as mensagens (disparadas
+    // como tasks independentes) podiam chegar fora de ordem no WhatsApp.
+    let summary = format!("Compra na {} (R$ {total_str})\n\n{itens_texto}", store.name);
+    whatsapp::notify_sequential(&state, &store.whatsapp_instance, &digits, &summary).await;
+    if let Some(url) = link_url {
+        whatsapp::notify_sequential(&state, &store.whatsapp_instance, &digits, url).await;
+    }
+    if let Some(url) = checkout_url {
+        whatsapp::notify_sequential(&state, &store.whatsapp_instance, &digits, url).await;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// Só manda o WhatsApp de "pagamento confirmado" pra esse pedido — chamada
 /// pela Vercel Edge Function depois que ELA já confirmou o pagamento no
 /// Supabase (o Pix em si saiu do Rust/Railway, mas o envio de WhatsApp via
@@ -791,13 +864,20 @@ pub async fn simulate_pix_paid(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<OrderDto>, AppError> {
-    if state.abacatepay_key.is_some() {
+    let store = tenant::tenant_for_order(&state.pool, &id).await?;
+    // CRÍTICO: antes disso só checava uma env var GLOBAL (ABACATEPAY_API_KEY)
+    // — como a plataforma passou a usar Mercado Pago, essa env var nem
+    // existe mais em produção, deixando "simular pagamento aprovado"
+    // disponível pra QUALQUER loja real (dava pra marcar qualquer pedido
+    // pendente como pago sem pagar nada). Agora checa o gateway de VERDADE
+    // configurado NESSA loja especificamente — só permite simular quando
+    // essa loja não tem nenhum gateway online real conectado.
+    let payment = tenant::load_tenant_payment(&state.pool, &store.id).await?;
+    if payment.online_provider().is_some() {
         return Err(AppError::Forbidden(
-            "a real ABACATEPAY_API_KEY is configured; simulate-pix-paid is disabled".to_string(),
+            "esta loja tem um gateway de pagamento real conectado; simular pagamento está desabilitado".to_string(),
         ));
     }
-
-    let store = tenant::tenant_for_order(&state.pool, &id).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
     let Some(order) = fetch_order_row(&mut *tx, &store.id, &id).await? else {
         return Err(AppError::NotFound("order not found".to_string()));

@@ -292,11 +292,39 @@ async fn handle_mercadopago(
         return Ok(());
     }
 
-    sqlx::query("UPDATE orders SET payment_status = 'pago', updated_at = now()::text WHERE tenant_id = $1 AND id = $2")
+    // Venda de balcão com cartão link/transparente nasce `status = 'pendente'`
+    // (ver routes/pdv.rs::create_sale) — agora que o pagamento confirmou de
+    // verdade, vira 'concluido' junto (balcão não tem pipeline de entrega,
+    // então não passa por nenhum status intermediário). Pedido de
+    // entrega/checkout público mantém o status como está — o pipeline dele
+    // é tratado em outro lugar.
+    // Link de pagamento (Checkout Pro) deixa o cliente escolher QUALQUER
+    // forma na hora, mesmo a venda tendo nascido como "cartão" no PDV —
+    // sincroniza `payment_method` com o que a Mercado Pago confirma ter
+    // sido usado de verdade (COALESCE preserva o valor atual quando a MP
+    // não devolve um método reconhecido).
+    if order.delivery_type == "balcao" && order.status == "pendente" {
+        sqlx::query(
+            "UPDATE orders SET payment_status = 'pago', status = 'concluido', \
+             payment_method = COALESCE($3, payment_method), updated_at = now()::text \
+             WHERE tenant_id = $1 AND id = $2",
+        )
         .bind(&tenant_id)
         .bind(&order_id)
+        .bind(details.payment_method)
         .execute(&mut *tx)
         .await?;
+    } else {
+        sqlx::query(
+            "UPDATE orders SET payment_status = 'pago', payment_method = COALESCE($3, payment_method), \
+             updated_at = now()::text WHERE tenant_id = $1 AND id = $2",
+        )
+        .bind(&tenant_id)
+        .bind(&order_id)
+        .bind(details.payment_method)
+        .execute(&mut *tx)
+        .await?;
+    }
     orders_common::decrement_stock_for_order(&mut *tx, &tenant_id, &order_id)
         .await
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;

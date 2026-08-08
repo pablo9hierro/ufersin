@@ -5,6 +5,8 @@ import { ApiError } from '../../lib/apiError'
 import { authService } from '../../services/authService'
 import { useCustomerAuth } from '../../store/customerAuth'
 import { useCustomer } from '../../store/customer'
+import BirthdateInput from '../../components/checkout/BirthdateInput'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -26,6 +28,8 @@ export default function AuthModal({
   const navigate = useNavigate()
   const auth = useCustomerAuth()
   const customerDraft = useCustomer()
+  const tenantConfig = useTenantConfig()
+  const requiresBirthdate = !!tenantConfig?.vende_mais_18
   const [mode, setMode] = useState<'login' | 'register'>(initialMode)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,7 +49,7 @@ export default function AuthModal({
     setError(null)
     const digits = loginWhatsapp.replace(/\D/g, '')
     if (digits.length < 10) return setError('Informe um WhatsApp válido.')
-    if (!/^\d{4}$/.test(loginPassword)) return setError('A senha tem 4 dígitos.')
+    if (!/^\d{6}$/.test(loginPassword)) return setError('A senha tem 6 dígitos.')
     setLoading(true)
     try {
       const result = await authService.customer.login(`55${digits}`, loginPassword)
@@ -64,8 +68,8 @@ export default function AuthModal({
     const digits = regWhatsapp.replace(/\D/g, '')
     if (digits.length < 10) return setError('Informe um WhatsApp válido.')
     if (!regEmail.trim() || !regEmail.includes('@')) return setError('Informe um e-mail válido.')
-    if (!regBirthdate) return setError('Informe sua data de nascimento.')
-    if (!/^\d{4}$/.test(regPassword)) return setError('A senha tem 4 dígitos.')
+    if (requiresBirthdate && !regBirthdate) return setError('Informe sua data de nascimento.')
+    if (!/^\d{6}$/.test(regPassword)) return setError('A senha tem 6 dígitos.')
     setLoading(true)
     try {
       const result = await authService.customer.register({ whatsapp: `55${digits}`, password: regPassword, name: regName, email: regEmail, birthdate: regBirthdate })
@@ -101,11 +105,11 @@ export default function AuthModal({
           <div className="space-y-3">
             <div>
               <label className="text-xs font-semibold u2-dim">WhatsApp</label>
-              <input className={inputClass} inputMode="numeric" placeholder="(83) 99999-9999" value={loginWhatsapp} onChange={(e) => setLoginWhatsapp(formatPhone(e.target.value))} />
+              <input className={inputClass} inputMode="numeric" autoComplete="off" placeholder="(83) 99999-9999" value={loginWhatsapp} onChange={(e) => setLoginWhatsapp(formatPhone(e.target.value))} />
             </div>
             <div>
-              <label className="text-xs font-semibold u2-dim">Senha (4 dígitos)</label>
-              <input className={inputClass} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value.replace(/\D/g, '').slice(0, 4))} />
+              <label className="text-xs font-semibold u2-dim">Senha (6 dígitos)</label>
+              <input className={inputClass} type="password" inputMode="numeric" maxLength={6} placeholder="••••••" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value.replace(/\D/g, '').slice(0, 6))} />
             </div>
             <button
               type="button"
@@ -130,19 +134,21 @@ export default function AuthModal({
             </div>
             <div>
               <label className="text-xs font-semibold u2-dim">WhatsApp</label>
-              <input className={inputClass} inputMode="numeric" placeholder="(83) 99999-9999" value={regWhatsapp} onChange={(e) => setRegWhatsapp(formatPhone(e.target.value))} />
+              <input className={inputClass} inputMode="numeric" autoComplete="off" placeholder="(83) 99999-9999" value={regWhatsapp} onChange={(e) => setRegWhatsapp(formatPhone(e.target.value))} />
             </div>
             <div>
               <label className="text-xs font-semibold u2-dim">E-mail</label>
               <input className={inputClass} type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} />
             </div>
+            {requiresBirthdate && (
+              <div>
+                <label className="text-xs font-semibold u2-dim">Data de nascimento</label>
+                <BirthdateInput value={regBirthdate} onChange={setRegBirthdate} />
+              </div>
+            )}
             <div>
-              <label className="text-xs font-semibold u2-dim">Data de nascimento</label>
-              <input className={inputClass} type="date" value={regBirthdate} onChange={(e) => setRegBirthdate(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold u2-dim">Senha (4 dígitos)</label>
-              <input className={inputClass} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={regPassword} onChange={(e) => setRegPassword(e.target.value.replace(/\D/g, '').slice(0, 4))} />
+              <label className="text-xs font-semibold u2-dim">Senha (6 dígitos)</label>
+              <input className={inputClass} type="password" inputMode="numeric" maxLength={6} placeholder="••••••" value={regPassword} onChange={(e) => setRegPassword(e.target.value.replace(/\D/g, '').slice(0, 6))} />
             </div>
             {error && <p className="text-xs text-red-500">{error}</p>}
             <button type="button" onClick={handleRegister} disabled={loading} className="u2-btn-primary w-full py-2.5 flex items-center justify-center gap-2 mt-1">

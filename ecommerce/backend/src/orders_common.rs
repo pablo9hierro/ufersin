@@ -1,6 +1,7 @@
-use sqlx::PgExecutor;
+use sqlx::{PgConnection, PgExecutor};
 
 use crate::error::AppError;
+use crate::formulation;
 use crate::models::{OrderDto, OrderItemDto, OrderRow};
 
 /// Generic over `PgExecutor` so callers can pass either `&state.pool` (rare
@@ -70,20 +71,33 @@ pub fn short_id(id: &str) -> &str {
 /// order) — every caller must check it's the one making that transition
 /// happen before calling this, so stock is never decremented twice for
 /// the same order.
-pub async fn decrement_stock_for_order<'e, E>(executor: E, tenant_id: &str, order_id: &str) -> Result<(), AppError>
-where
-    E: PgExecutor<'e>,
-{
+///
+/// Manual products (`origin_type = 'manual'`) keep the blind UPDATE of
+/// always. ERP formulation products (`origin_type = 'erp_formulation'`)
+/// NEVER have their `quantity` written here directly — instead the
+/// INGREDIENTS they consume are decremented (`formulation::
+/// consume_ingredients_for_order`) and the product's `quantity`/
+/// `cost_price` get recalculated from the new ingredient stock
+/// (`formulation::recompute_dependents`). Signature is a concrete
+/// `&mut PgConnection` (not generic `PgExecutor`) because this now runs
+/// several sequential queries — every call site already passes `&mut *tx`,
+/// which derefs fine to this type with zero call-site changes.
+pub async fn decrement_stock_for_order(tx: &mut PgConnection, tenant_id: &str, order_id: &str) -> Result<(), AppError> {
     sqlx::query(
         "UPDATE products p SET quantity = p.quantity - oi.quantity \
          FROM order_items oi \
          WHERE p.tenant_id = $1 AND p.id = oi.product_id \
-           AND oi.tenant_id = $1 AND oi.order_id = $2",
+           AND oi.tenant_id = $1 AND oi.order_id = $2 AND p.origin_type = 'manual'",
     )
     .bind(tenant_id)
     .bind(order_id)
-    .execute(executor)
+    .execute(&mut *tx)
     .await?;
+
+    let touched_ingredients = formulation::consume_ingredients_for_order(tx, tenant_id, order_id).await?;
+    for ingredient_id in touched_ingredients {
+        formulation::recompute_dependents(tx, tenant_id, &ingredient_id).await?;
+    }
     Ok(())
 }
 
@@ -92,19 +106,21 @@ where
 /// reached `payment_status = 'pago'` before the cancel (so stock was
 /// actually decremented in the first place — an order cancelled while
 /// still unpaid never touched stock, so there's nothing to restore).
-pub async fn restock_order_items<'e, E>(executor: E, tenant_id: &str, order_id: &str) -> Result<(), AppError>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn restock_order_items(tx: &mut PgConnection, tenant_id: &str, order_id: &str) -> Result<(), AppError> {
     sqlx::query(
         "UPDATE products p SET quantity = p.quantity + oi.quantity \
          FROM order_items oi \
          WHERE p.tenant_id = $1 AND p.id = oi.product_id \
-           AND oi.tenant_id = $1 AND oi.order_id = $2",
+           AND oi.tenant_id = $1 AND oi.order_id = $2 AND p.origin_type = 'manual'",
     )
     .bind(tenant_id)
     .bind(order_id)
-    .execute(executor)
+    .execute(&mut *tx)
     .await?;
+
+    let touched_ingredients = formulation::restock_ingredients_for_order(tx, tenant_id, order_id).await?;
+    for ingredient_id in touched_ingredients {
+        formulation::recompute_dependents(tx, tenant_id, &ingredient_id).await?;
+    }
     Ok(())
 }

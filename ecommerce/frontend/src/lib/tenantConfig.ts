@@ -80,7 +80,11 @@ export function tenantPaysAtPickup(
   return !!config?.pagamento_na_retirada && isPickup
 }
 
-/** Error when delivery + non-Pix (or no online Pix) under entrega_somente_pix. */
+/** Error when delivery + payment not prepaid via the platform gateway
+ * (Pix or cartão), under `entrega_somente_pix`. O nome do campo ficou de
+ * quando só existia Pix online — hoje a mesma conta Mercado Pago processa
+ * cartão também, então "entrega só com pagamento já feito" aceita os dois,
+ * nunca só Pix. */
 export function deliveryPixOnlyError(
   config: TenantConfig | null | undefined,
   isPickup: boolean,
@@ -88,10 +92,10 @@ export function deliveryPixOnlyError(
 ): string | null {
   if (!config?.entrega_somente_pix || isPickup) return null
   if (!tenantHasOnlinePix(config)) {
-    return 'Esta loja só aceita entrega com Pix pago no checkout. Escolha retirada na loja ou use Pix online (loja precisa ter Pix de plataforma configurado).'
+    return 'Esta loja só aceita entrega com pagamento já feito no checkout. Escolha retirada na loja ou pague online (loja precisa ter pagamento de plataforma configurado).'
   }
-  if (paymentMethod !== 'pix') {
-    return 'Compras com entrega só são aceitas com Pix pago no checkout. Outras formas de pagamento são só para retirada na loja.'
+  if (paymentMethod !== 'pix' && paymentMethod !== 'cartao') {
+    return 'Compras com entrega só são aceitas com Pix ou cartão pagos no checkout. Outras formas de pagamento são só para retirada na loja.'
   }
   return null
 }

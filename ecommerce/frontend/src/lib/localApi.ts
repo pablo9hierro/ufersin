@@ -2916,6 +2916,7 @@ export const localApi = {
     createSale: pdvCreateSale,
     notifySale: async () => {},
     notifyPixCharge: async () => {},
+    notifyCardCharge: async () => {},
     relatorio: vendedorRelatorio,
   },
   admin: {
@@ -2926,6 +2927,32 @@ export const localApi = {
       update: updateProduct,
       delete: deleteProduct,
       uploadImage: uploadProductImage,
+      // ERP Formulação não existe no modo demonstração (loja fake, sem
+      // backend real por trás) — mesmo shape do remoteApi, sempre rejeita.
+      stockEntry: async () => {
+        throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
+      },
+      createFormulation: async () => {
+        throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
+      },
+      updateFormulation: async () => {
+        throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
+      },
+    },
+    ingredients: {
+      list: async () => [],
+      create: async () => {
+        throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
+      },
+      update: async () => {
+        throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
+      },
+      delete: async () => {
+        throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
+      },
+      stockEntry: async () => {
+        throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
+      },
     },
     motoboys: {
       list: adminListMotoboys,

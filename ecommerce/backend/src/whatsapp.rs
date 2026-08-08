@@ -49,6 +49,49 @@ pub fn notify(state: &AppState, instance: &str, phone: &str, message: &str) {
     });
 }
 
+/// Mesma coisa que `notify`, mas AGUARDA o envio terminar antes de voltar —
+/// use quando a ORDEM de duas mensagens importa (ex: resumo do pedido antes
+/// do link de cobrança). `notify()` sozinho dispara cada chamada como uma
+/// task independente (`tokio::spawn`) sem NENHUMA garantia de ordem entre
+/// elas — duas chamadas seguidas podiam chegar na Evolution API fora de
+/// ordem (mensagem 2 antes da 1) dependendo da latência de rede de cada
+/// requisição. `await` simples entre as duas chamadas já resolve isso sem
+/// precisar de fila externa (Redis etc.) — só duas requisições HTTP em
+/// sequência.
+pub async fn notify_sequential(state: &AppState, instance: &str, phone: &str, message: &str) {
+    if state.evolution_api_url.is_empty() || state.evolution_api_key.is_empty() || instance.is_empty() {
+        tracing::info!("[whatsapp not configured] to {}: {}", phone, message);
+        return;
+    }
+    let url = format!(
+        "{}/message/sendText/{instance}",
+        state.evolution_api_url.trim_end_matches('/'),
+    );
+    let result = state
+        .http
+        .post(&url)
+        .timeout(Duration::from_secs(10))
+        .header("apikey", state.evolution_api_key.as_str())
+        .json(&json!({ "number": phone, "text": message }))
+        .send()
+        .await;
+
+    match result {
+        Ok(resp) if !resp.status().is_success() => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            tracing::warn!(
+                "evolution api returned non-success status {} for phone {}: {}",
+                status, phone, body
+            );
+        }
+        Err(e) => {
+            tracing::warn!("failed to reach evolution api for phone {}: {}", phone, e);
+        }
+        _ => {}
+    }
+}
+
 /// Strip everything except digits, so phone numbers are always sent as
 /// "digits only with country code" as required by the gateway.
 pub fn digits_only(s: &str) -> String {

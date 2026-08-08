@@ -7,6 +7,7 @@ import { useCustomerAuth } from '../../store/customerAuth'
 import { useCustomer } from '../../store/customer'
 import { brandName } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import BirthdateInput from '../../components/checkout/BirthdateInput'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -34,6 +35,7 @@ export default function AuthModal({
   const customerDraft = useCustomer()
   const tenantConfig = useTenantConfig()
   const name = brandName(tenantConfig?.loja_nome)
+  const requiresBirthdate = !!tenantConfig?.vende_mais_18
   const [mode, setMode] = useState<'login' | 'register'>(initialMode)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,7 +55,7 @@ export default function AuthModal({
     setError(null)
     const digits = loginWhatsapp.replace(/\D/g, '')
     if (digits.length < 10) return setError('Informe um WhatsApp válido.')
-    if (!/^\d{4}$/.test(loginPassword)) return setError('A senha tem 4 dígitos.')
+    if (!/^\d{6}$/.test(loginPassword)) return setError('A senha tem 6 dígitos.')
     setLoading(true)
     try {
       const result = await authService.customer.login(`55${digits}`, loginPassword)
@@ -72,8 +74,8 @@ export default function AuthModal({
     const digits = regWhatsapp.replace(/\D/g, '')
     if (digits.length < 10) return setError('Informe um WhatsApp válido.')
     if (!regEmail.trim() || !regEmail.includes('@')) return setError('Informe um e-mail válido.')
-    if (!regBirthdate) return setError('Informe sua data de nascimento.')
-    if (!/^\d{4}$/.test(regPassword)) return setError('A senha tem 4 dígitos.')
+    if (requiresBirthdate && !regBirthdate) return setError('Informe sua data de nascimento.')
+    if (!/^\d{6}$/.test(regPassword)) return setError('A senha tem 6 dígitos.')
     setLoading(true)
     try {
       const result = await authService.customer.register({ whatsapp: `55${digits}`, password: regPassword, name: regName, email: regEmail, birthdate: regBirthdate })
@@ -90,7 +92,14 @@ export default function AuthModal({
   const inputStyle = { background: 'var(--u3-surface)', color: 'var(--u3-white)' }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto u3-page">
+    // `.u3-page` (uiux3/theme.css) declara `position: relative` fora de
+    // qualquer @layer do Tailwind — em CSS não-camadas sempre vence sobre
+    // utilities (`fixed`/`inset-0`), então colocar as duas classes juntas
+    // no MESMO elemento fazia o overlay virar um bloco normal no fluxo do
+    // documento (aparecia embaixo do checkout em vez de cobrir a tela).
+    // `.u3-page` (fundo/cor/min-height) fica isolado num filho.
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="u3-page">
       <div className="u3-onboard-photo relative px-6 pt-10 pb-8 text-center">
         <button type="button" onClick={onClose} className="u3-icon-btn absolute top-4 right-4" aria-label="Fechar">
           <X className="w-4 h-4" />
@@ -99,7 +108,13 @@ export default function AuthModal({
         <p className="u3-dim text-sm max-w-xs mx-auto">Junte-se a nós e comece sua jornada rumo ao hambúrguer perfeito.</p>
       </div>
 
-      <div className="px-6 pb-10 max-w-sm mx-auto -mt-4">
+      {/* `.u3-onboard-photo` acima é `relative` (só pra ancorar o botão de
+          fechar `absolute`) — isso já basta pra virar um elemento
+          "posicionado", que em CSS pinta ACIMA de irmãos não-posicionados
+          independente da ordem no HTML. Sem `relative z-10` aqui, o cartão
+          do formulário (que devia sobrepor a foto por causa do `-mt-4`)
+          ficava por BAIXO da foto em vez de por cima. */}
+      <div className="relative z-10 px-6 pb-10 max-w-sm mx-auto -mt-4">
         <div className="flex gap-2 mb-5">
           <button type="button" onClick={() => setMode('login')} className={mode === 'login' ? 'u3-pill-primary flex-1 py-2.5 text-sm' : 'u3-pill-secondary flex-1 py-2.5 text-sm'}>
             Entrar
@@ -113,11 +128,11 @@ export default function AuthModal({
           <div className="space-y-3">
             <div>
               <label className="text-xs font-semibold u3-dim">WhatsApp</label>
-              <input className={inputClass} style={inputStyle} inputMode="numeric" placeholder="(83) 99999-9999" value={loginWhatsapp} onChange={(e) => setLoginWhatsapp(formatPhone(e.target.value))} />
+              <input className={inputClass} style={inputStyle} inputMode="numeric" autoComplete="off" placeholder="(83) 99999-9999" value={loginWhatsapp} onChange={(e) => setLoginWhatsapp(formatPhone(e.target.value))} />
             </div>
             <div>
-              <label className="text-xs font-semibold u3-dim">Senha (4 dígitos)</label>
-              <input className={inputClass} style={inputStyle} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value.replace(/\D/g, '').slice(0, 4))} />
+              <label className="text-xs font-semibold u3-dim">Senha (6 dígitos)</label>
+              <input className={inputClass} style={inputStyle} type="password" inputMode="numeric" maxLength={6} placeholder="••••••" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value.replace(/\D/g, '').slice(0, 6))} />
             </div>
             <button
               type="button"
@@ -142,19 +157,21 @@ export default function AuthModal({
             </div>
             <div>
               <label className="text-xs font-semibold u3-dim">WhatsApp</label>
-              <input className={inputClass} style={inputStyle} inputMode="numeric" placeholder="(83) 99999-9999" value={regWhatsapp} onChange={(e) => setRegWhatsapp(formatPhone(e.target.value))} />
+              <input className={inputClass} style={inputStyle} inputMode="numeric" autoComplete="off" placeholder="(83) 99999-9999" value={regWhatsapp} onChange={(e) => setRegWhatsapp(formatPhone(e.target.value))} />
             </div>
             <div>
               <label className="text-xs font-semibold u3-dim">E-mail</label>
               <input className={inputClass} style={inputStyle} type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} />
             </div>
+            {requiresBirthdate && (
+              <div>
+                <label className="text-xs font-semibold u3-dim">Data de nascimento</label>
+                <BirthdateInput value={regBirthdate} onChange={setRegBirthdate} />
+              </div>
+            )}
             <div>
-              <label className="text-xs font-semibold u3-dim">Data de nascimento</label>
-              <input className={inputClass} style={inputStyle} type="date" value={regBirthdate} onChange={(e) => setRegBirthdate(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold u3-dim">Senha (4 dígitos)</label>
-              <input className={inputClass} style={inputStyle} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={regPassword} onChange={(e) => setRegPassword(e.target.value.replace(/\D/g, '').slice(0, 4))} />
+              <label className="text-xs font-semibold u3-dim">Senha (6 dígitos)</label>
+              <input className={inputClass} style={inputStyle} type="password" inputMode="numeric" maxLength={6} placeholder="••••••" value={regPassword} onChange={(e) => setRegPassword(e.target.value.replace(/\D/g, '').slice(0, 6))} />
             </div>
             {error && <p className="text-xs text-red-500">{error}</p>}
             <button type="button" onClick={handleRegister} disabled={loading} className="u3-pill-primary w-full py-3 flex items-center justify-center gap-2 mt-1">
@@ -162,6 +179,7 @@ export default function AuthModal({
             </button>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

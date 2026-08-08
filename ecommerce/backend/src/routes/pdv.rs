@@ -163,13 +163,23 @@ pub async fn create_sale(
         "pago"
     };
     let card_payment_mode = if input.payment_method == "cartao" { input.card_payment_mode.as_deref() } else { None };
+    let card_type = if input.payment_method == "cartao" { input.card_type.as_deref() } else { None };
+    let card_installments =
+        if input.payment_method == "cartao" && card_type == Some("credito") { input.card_installments } else { None };
+    // Venda de balcão nasce "concluído" (entregue na hora) SÓ quando já
+    // nasce paga. Pix com QR e cartão link/transparente ficam pendentes de
+    // pagamento — deixar `status = 'concluido'` mesmo assim fazia a venda
+    // aparecer como finalizada em Pedidos (e ficar IMPOSSÍVEL de cancelar,
+    // já que o cancelamento de admin bloqueia justamente `status =
+    // 'concluido'`) antes mesmo do cliente pagar.
+    let status = if payment_status == "pago" { "concluido" } else { "pendente" };
     sqlx::query(
         "INSERT INTO orders (\
             id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
             payment_method, payment_status, status, shipping_price, total, discount_amount, \
-            sold_by_role, sold_by_id, card_payment_mode\
+            sold_by_role, sold_by_id, card_payment_mode, card_type, card_installments\
          ) VALUES (\
-            $1, $2, $3, $4, $5, 'balcao', $6, $7, 'concluido', 0, $8, $9, $10, $11, $12\
+            $1, $2, $3, $4, $5, 'balcao', $6, $7, $15, 0, $8, $9, $10, $11, $12, $13, $14\
          )",
     )
     .bind(&order_id)
@@ -184,6 +194,9 @@ pub async fn create_sale(
     .bind(&claims.role)
     .bind(&claims.sub)
     .bind(card_payment_mode)
+    .bind(card_type)
+    .bind(card_installments)
+    .bind(status)
     .execute(&mut *tx)
     .await?;
 

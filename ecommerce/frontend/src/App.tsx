@@ -12,6 +12,8 @@ import { deriveAccentTrio } from './lib/colorHarmony'
 import { useLayoutStyle, type LayoutStyle } from './store/layoutStyle'
 import { useTenantConfig } from './hooks/useTenantConfig'
 import { useCart } from './store/cart'
+import { useCustomer } from './store/customer'
+import { useCustomerAuth } from './store/customerAuth'
 import DemoPaletteSwitcher from './components/theme/DemoPaletteSwitcher'
 import './uiux2/theme.css'
 import './uiux3/theme.css'
@@ -28,6 +30,7 @@ const AdminPedidos = lazy(() => import('./pages/admin/AdminPedidos'))
 const AdminPdv = lazy(() => import('./pages/admin/AdminPdv'))
 const AdminProdutos = lazy(() => import('./pages/admin/AdminProdutos'))
 const AdminProdutosXml = lazy(() => import('./pages/admin/AdminProdutosXml'))
+const AdminProdutosFormulacao = lazy(() => import('./pages/admin/AdminProdutosFormulacao'))
 const AdminMotoboys = lazy(() => import('./pages/admin/AdminMotoboys'))
 const AdminFrete = lazy(() => import('./pages/admin/AdminFrete'))
 const AdminFinanceiro = lazy(() => import('./pages/admin/AdminFinanceiro'))
@@ -114,7 +117,10 @@ function TenantBootstrap() {
   useEffect(() => {
     if (isStaff || isDemoModeActive()) return
     const slug = resolveTenantSlug()
-    if (slug) useCart.getState().syncTenant(slug)
+    if (!slug) return
+    useCart.getState().syncTenant(slug)
+    useCustomer.getState().syncTenant(slug)
+    useCustomerAuth.getState().syncTenant(slug)
   }, [isStaff, params, location.pathname])
 
   return null
@@ -206,10 +212,17 @@ function StyleAware({
   ufersin: Ufersin,
   burgerbite: Burgerbite,
   burgerhouse: Burgerhouse,
+  skipVenderExternamenteGate = false,
 }: {
   ufersin: LazyPage
   burgerbite: LazyPage
   burgerhouse: LazyPage
+  /** `/pagamento/:orderId` completa uma venda que JÁ existe (PDV mandou o
+   * link pro WhatsApp do cliente) — "loja sem venda externa" bloqueia
+   * navegação/catálogo público, não o pagamento de um pedido específico já
+   * criado. Sem essa exceção, uma loja PDV-only nunca conseguia receber
+   * pagamento online de jeito nenhum: o próprio link de cobrança 404ava. */
+  skipVenderExternamenteGate?: boolean
 }) {
   const demoStyle = useLayoutStyle((s) => s.style)
   const tenantConfig = useTenantConfig()
@@ -230,7 +243,7 @@ function StyleAware({
   if (!slug) return <LojaSemTenant />
   // Não aplicar ufersin por padrão enquanto a config (com layout_style) não chega.
   if (!tenantConfig) return <StyleLoading />
-  if (tenantConfig.vender_externamente === false) return <LojaSemVendaExterna />
+  if (tenantConfig.vender_externamente === false && !skipVenderExternamenteGate) return <LojaSemVendaExterna />
 
   const style = resolveStorefrontStyle(demoStyle, tenantConfig.layout_style)
   const Page = style === 'burgerbite' ? Burgerbite : style === 'burgerhouse' ? Burgerhouse : Ufersin
@@ -259,7 +272,7 @@ export default function App() {
           <Route path="/checkout" element={<StyleAware ufersin={Uiux2Checkout} burgerbite={Uiux3Checkout} burgerhouse={Uiux4Checkout} />} />
           <Route path="/banner" element={<StyleAware ufersin={Uiux2Banner} burgerbite={Uiux3Banner} burgerhouse={Uiux4Banner} />} />
           <Route path="/banner/checkout" element={<StyleAware ufersin={Uiux2BannerCheckout} burgerbite={Uiux3BannerCheckout} burgerhouse={Uiux4BannerCheckout} />} />
-          <Route path="/pagamento/:orderId" element={<StyleAware ufersin={Uiux2Pagamento} burgerbite={Uiux3Pagamento} burgerhouse={Uiux4Pagamento} />} />
+          <Route path="/pagamento/:orderId" element={<StyleAware ufersin={Uiux2Pagamento} burgerbite={Uiux3Pagamento} burgerhouse={Uiux4Pagamento} skipVenderExternamenteGate />} />
           <Route path="/consultar" element={<StyleAware ufersin={Uiux2Consultar} burgerbite={Uiux3Consultar} burgerhouse={Uiux4Consultar} />} />
           <Route path="/recuperar-senha" element={<StyleAware ufersin={Uiux2RecuperarSenha} burgerbite={Uiux3RecuperarSenha} burgerhouse={Uiux4RecuperarSenha} />} />
           <Route path="/cliente/favoritos" element={<StyleAware ufersin={Uiux2Favoritos} burgerbite={Uiux3Favoritos} burgerhouse={Uiux4Favoritos} />} />
@@ -275,6 +288,7 @@ export default function App() {
             <Route path="pdv" element={<AdminPdv />} />
             <Route path="produtos" element={<AdminProdutos />} />
             <Route path="produtos/xml" element={<AdminProdutosXml />} />
+            <Route path="produtos/erp-formulacao" element={<AdminProdutosFormulacao />} />
             <Route path="frete" element={<AdminFrete />} />
             <Route path="motoboys" element={<AdminMotoboys />} />
             <Route path="crm" element={<AdminCrm />} />

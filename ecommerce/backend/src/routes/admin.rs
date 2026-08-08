@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::auth::{hash_password, AdminTenant, AdminUser};
 use crate::error::AppError;
 use crate::features::{self, Feature};
+use crate::formulation;
 use crate::models::{
     Category, CategoryInput, FinanceiroSummary, LucroSummary, MotoboyDto, MotoboyInput, MotoboyRow,
     OrderDto, OrderRow, ProductDto, ProductInput, ProductRow, SetStoreHoursInput,
@@ -221,9 +222,17 @@ pub async fn update_product(
         .as_ref()
         .map(|b| b.trim().to_string())
         .filter(|b| !b.is_empty());
+    // Produto ERP (`origin_type = 'erp_formulation'`) tem `quantity`/
+    // `cost_price` CALCULADOS a partir da formulação (ver `formulation.rs`)
+    // — bloqueio de verdade aqui no SQL, não só escondendo o campo no
+    // frontend. Qualquer valor mandado pelo cliente pra esses dois campos é
+    // simplesmente ignorado quando o produto é ERP.
     let result = sqlx::query(
-        "UPDATE products SET name = $1, description = $2, price = $3, quantity = $4, image_url = $5, \
-         category_id = $6, active = $7, cost_price = $8, low_stock_threshold = $9, barcode = $10 \
+        "UPDATE products SET name = $1, description = $2, price = $3, \
+         quantity = CASE WHEN origin_type = 'erp_formulation' THEN quantity ELSE $4 END, \
+         image_url = $5, category_id = $6, active = $7, \
+         cost_price = CASE WHEN origin_type = 'erp_formulation' THEN cost_price ELSE $8 END, \
+         low_stock_threshold = $9, barcode = $10 \
          WHERE tenant_id = $11 AND id = $12",
     )
     .bind(&input.name)
@@ -301,6 +310,386 @@ pub async fn delete_product(
     }
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------- ERP Formulação (insumos / ficha técnica) ----------
+//
+// Produto ERP continua sendo um `products` normal (`origin_type =
+// 'erp_formulation'`) — catálogo/vitrine/PDV leem exatamente como sempre
+// leram. `quantity`/`cost_price` desse produto são sempre recalculados por
+// `formulation::recompute_formulated_product`, nunca aceitos crus do
+// cliente (ver guarda em `update_product` acima). Mesma feature flag de
+// sempre (`Feature::Catalogo`) — não é uma flag nova.
+
+pub async fn list_ingredients(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<crate::models::Ingredient>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows = sqlx::query_as(
+        "SELECT id, name, unit, quantity, cost_price FROM ingredients WHERE tenant_id = $1 ORDER BY name",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+pub async fn create_ingredient(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<crate::models::IngredientInput>,
+) -> Result<Json<crate::models::Ingredient>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("name is required".to_string()));
+    }
+    // Valida a unidade cedo (mesma tabela de `formulation::convert`) —
+    // erro claro na hora de cadastrar, não um insumo com unidade quebrada.
+    formulation::convert(0.0, &input.unit, &input.unit)?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO ingredients (id, tenant_id, name, unit, quantity, cost_price) VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(input.name.trim())
+    .bind(&input.unit)
+    .bind(input.quantity)
+    .bind(input.cost_price)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db) if db.is_unique_violation() => {
+            AppError::BadRequest("já existe um insumo com esse nome".to_string())
+        }
+        other => other.into(),
+    })?;
+    tx.commit().await?;
+    Ok(Json(crate::models::Ingredient {
+        id,
+        name: input.name.trim().to_string(),
+        unit: input.unit,
+        quantity: input.quantity,
+        cost_price: input.cost_price,
+    }))
+}
+
+pub async fn update_ingredient(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<crate::models::IngredientInput>,
+) -> Result<Json<crate::models::Ingredient>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("name is required".to_string()));
+    }
+    formulation::convert(0.0, &input.unit, &input.unit)?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let result = sqlx::query(
+        "UPDATE ingredients SET name = $1, unit = $2, quantity = $3, cost_price = $4 \
+         WHERE tenant_id = $5 AND id = $6",
+    )
+    .bind(input.name.trim())
+    .bind(&input.unit)
+    .bind(input.quantity)
+    .bind(input.cost_price)
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db) if db.is_unique_violation() => {
+            AppError::BadRequest("já existe um insumo com esse nome".to_string())
+        }
+        other => other.into(),
+    })?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("ingredient not found".to_string()));
+    }
+    // Custo/unidade podem ter mudado — todo produto ERP que usa esse
+    // insumo precisa recalcular custo (e possivelmente disponibilidade, se
+    // a unidade mudou).
+    formulation::recompute_dependents(&mut tx, &claims.tenant_id, &id).await?;
+    tx.commit().await?;
+    Ok(Json(crate::models::Ingredient {
+        id,
+        name: input.name.trim().to_string(),
+        unit: input.unit,
+        quantity: input.quantity,
+        cost_price: input.cost_price,
+    }))
+}
+
+pub async fn delete_ingredient(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let result = sqlx::query("DELETE FROM ingredients WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(db) if db.is_foreign_key_violation() => AppError::BadRequest(
+                "esse insumo está em uso numa formulação — remova-o da formulação antes de excluir".to_string(),
+            ),
+            other => other.into(),
+        })?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("ingredient not found".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// "Informar aumento de estoque" de um INSUMO — sempre soma (nunca
+/// sobrescreve), registra no ledger, recalcula todo produto ERP dependente.
+pub async fn ingredient_stock_entry(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<crate::models::StockEntryInput>,
+) -> Result<Json<crate::models::Ingredient>, AppError> {
+    if input.quantity <= 0.0 {
+        return Err(AppError::BadRequest("quantidade adicionada deve ser maior que zero".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let result = sqlx::query("UPDATE ingredients SET quantity = quantity + $1 WHERE tenant_id = $2 AND id = $3")
+        .bind(input.quantity)
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("ingredient not found".to_string()));
+    }
+    sqlx::query(
+        "INSERT INTO stock_movements (id, tenant_id, entity_type, entity_id, delta, reason) \
+         VALUES ($1, $2, 'ingredient', $3, $4, 'manual_entry')",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(input.quantity)
+    .execute(&mut *tx)
+    .await?;
+    formulation::recompute_dependents(&mut tx, &claims.tenant_id, &id).await?;
+    let row = sqlx::query_as(
+        "SELECT id, name, unit, quantity, cost_price FROM ingredients WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+/// "Informar aumento de estoque" de um PRODUTO — só pra `origin_type =
+/// 'manual'`. Produto ERP rejeita com 400 (o estoque dele é sempre
+/// derivado dos insumos — nunca uma entrada manual).
+pub async fn product_stock_entry(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<crate::models::StockEntryInput>,
+) -> Result<Json<ProductDto>, AppError> {
+    if input.quantity <= 0.0 {
+        return Err(AppError::BadRequest("quantidade adicionada deve ser maior que zero".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let result = sqlx::query(
+        "UPDATE products SET quantity = quantity + $1 \
+         WHERE tenant_id = $2 AND id = $3 AND origin_type = 'manual'",
+    )
+    .bind(input.quantity as i64)
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+    if result.rows_affected() == 0 {
+        // Pode ser 404 (produto não existe) ou 400 (é ERP) — checa qual.
+        let origin: Option<(String,)> =
+            sqlx::query_as("SELECT origin_type FROM products WHERE tenant_id = $1 AND id = $2")
+                .bind(&claims.tenant_id)
+                .bind(&id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        return match origin {
+            Some((o,)) if o == "erp_formulation" => Err(AppError::BadRequest(
+                "estoque desse produto é calculado automaticamente pelos insumos".to_string(),
+            )),
+            _ => Err(AppError::NotFound("product not found".to_string())),
+        };
+    }
+    sqlx::query(
+        "INSERT INTO stock_movements (id, tenant_id, entity_type, entity_id, delta, reason) \
+         VALUES ($1, $2, 'product', $3, $4, 'manual_entry')",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(input.quantity)
+    .execute(&mut *tx)
+    .await?;
+    let row: ProductRow = sqlx::query_as(&format!("{PRODUCT_SELECT} WHERE p.tenant_id = $1 AND p.id = $2"))
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(Json(row.into()))
+}
+
+async fn save_formulation_lines(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    product_id: &str,
+    lines: &[crate::models::FormulationLineInput],
+) -> Result<(), AppError> {
+    if lines.is_empty() {
+        return Err(AppError::BadRequest("informe pelo menos um insumo na formulação".to_string()));
+    }
+    for line in lines {
+        if line.quantity <= 0.0 {
+            return Err(AppError::BadRequest("quantidade do insumo deve ser maior que zero".to_string()));
+        }
+        sqlx::query(
+            "INSERT INTO product_formulations (id, tenant_id, product_id, ingredient_id, quantity, unit) \
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(tenant_id)
+        .bind(product_id)
+        .bind(&line.ingredient_id)
+        .bind(line.quantity)
+        .bind(&line.unit)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(db) if db.is_unique_violation() => {
+                AppError::BadRequest("insumo repetido na formulação".to_string())
+            }
+            other => other.into(),
+        })?;
+    }
+    formulation::recompute_formulated_product(tx, tenant_id, product_id).await
+}
+
+pub async fn create_formulated_product(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<crate::models::FormulatedProductInput>,
+) -> Result<Json<ProductDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    if input.product.name.trim().is_empty() {
+        return Err(AppError::BadRequest("name is required".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    let active = input.product.active.unwrap_or(true);
+    let barcode = input
+        .product
+        .barcode
+        .as_ref()
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty());
+    sqlx::query(
+        "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active, cost_price, low_stock_threshold, barcode, origin_type) \
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, 0, $9, $10, 'erp_formulation')",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(&input.product.name)
+    .bind(&input.product.description)
+    .bind(input.product.price)
+    .bind(&input.product.image_url)
+    .bind(&input.product.category_id)
+    .bind(active as i64)
+    .bind(input.product.low_stock_threshold)
+    .bind(&barcode)
+    .execute(&mut *tx)
+    .await?;
+
+    save_formulation_lines(&mut tx, &claims.tenant_id, &id, &input.formulation).await?;
+
+    let row: ProductRow = sqlx::query_as(&format!("{PRODUCT_SELECT} WHERE p.tenant_id = $1 AND p.id = $2"))
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(Json(row.into()))
+}
+
+pub async fn update_formulated_product(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<crate::models::FormulatedProductInput>,
+) -> Result<Json<ProductDto>, AppError> {
+    if input.product.name.trim().is_empty() {
+        return Err(AppError::BadRequest("name is required".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let origin: Option<(String,)> =
+        sqlx::query_as("SELECT origin_type FROM products WHERE tenant_id = $1 AND id = $2")
+            .bind(&claims.tenant_id)
+            .bind(&id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    match origin {
+        None => return Err(AppError::NotFound("product not found".to_string())),
+        Some((o,)) if o != "erp_formulation" => {
+            return Err(AppError::BadRequest("esse produto não é um produto ERP".to_string()));
+        }
+        _ => {}
+    }
+
+    let active = input.product.active.unwrap_or(true);
+    let barcode = input
+        .product
+        .barcode
+        .as_ref()
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty());
+    sqlx::query(
+        "UPDATE products SET name = $1, description = $2, price = $3, image_url = $4, \
+         category_id = $5, active = $6, low_stock_threshold = $7, barcode = $8 \
+         WHERE tenant_id = $9 AND id = $10",
+    )
+    .bind(&input.product.name)
+    .bind(&input.product.description)
+    .bind(input.product.price)
+    .bind(&input.product.image_url)
+    .bind(&input.product.category_id)
+    .bind(active as i64)
+    .bind(input.product.low_stock_threshold)
+    .bind(&barcode)
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query("DELETE FROM product_formulations WHERE tenant_id = $1 AND product_id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    save_formulation_lines(&mut tx, &claims.tenant_id, &id, &input.formulation).await?;
+
+    let row: ProductRow = sqlx::query_as(&format!("{PRODUCT_SELECT} WHERE p.tenant_id = $1 AND p.id = $2"))
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(Json(row.into()))
 }
 
 // ---------- Motoboys ----------
@@ -467,10 +856,16 @@ pub async fn list_orders(
     Query(q): Query<OrdersQuery>,
 ) -> Result<Json<Vec<OrderDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    // Pedidos é exclusivo de pedido feito na vitrine (entrega/retirada) — venda
+    // de balcão (PDV) tem a própria tela (Vendas/relatório do PDV, ver
+    // `list_pdv_sales` abaixo) e não deve aparecer misturada aqui, senão o
+    // lojista confunde uma venda de balcão pendente de cartão com um pedido
+    // online de verdade precisando de preparo/entrega.
     let rows: Vec<OrderRow> = match q.status {
         Some(status) => {
             sqlx::query_as(
-                "SELECT * FROM orders WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC",
+                "SELECT * FROM orders WHERE tenant_id = $1 AND status = $2 AND delivery_type != 'balcao' \
+                 ORDER BY created_at DESC",
             )
             .bind(&claims.tenant_id)
             .bind(status)
@@ -478,10 +873,13 @@ pub async fn list_orders(
             .await?
         }
         None => {
-            sqlx::query_as("SELECT * FROM orders WHERE tenant_id = $1 ORDER BY created_at DESC")
-                .bind(&claims.tenant_id)
-                .fetch_all(&mut *tx)
-                .await?
+            sqlx::query_as(
+                "SELECT * FROM orders WHERE tenant_id = $1 AND delivery_type != 'balcao' \
+                 ORDER BY created_at DESC",
+            )
+            .bind(&claims.tenant_id)
+            .fetch_all(&mut *tx)
+            .await?
         }
     };
 

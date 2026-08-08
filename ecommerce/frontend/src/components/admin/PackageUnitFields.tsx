@@ -26,6 +26,8 @@ type Props = {
   disabled?: boolean
   hint?: string
   selectClassName?: string
+  /** Cadastro manual e por XML exigem a unidade preenchida — marca com *. */
+  required?: boolean
 }
 
 /** Unidade de revenda + conteúdo do pacote (quando unit === pacote). */
@@ -35,11 +37,14 @@ export default function PackageUnitFields({
   disabled,
   hint,
   selectClassName = 'input-field',
+  required,
 }: Props) {
   return (
     <div className="space-y-2">
       <div>
-        <label className="label">Unidade</label>
+        <label className="label">
+          Unidade {required && <span className="text-amber-400">*</span>}
+        </label>
         <select
           className={selectClassName}
           value={value.unit}

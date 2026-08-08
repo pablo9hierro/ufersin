@@ -175,7 +175,20 @@ export default function AdminProdutosXml() {
   }
 
   const removeDraft = (id: string) => {
-    askConfirm('Deseja remover mesmo?', () => {
+    const draft = drafts.find((d) => d.id === id)
+    const catalogProductId = draft?.status === 'saved' ? draft.catalogProductId : undefined
+    const message = catalogProductId
+      ? 'Este produto já foi salvo no catálogo. Remover aqui também vai excluí-lo de Produtos. Deseja remover mesmo?'
+      : 'Deseja remover mesmo?'
+    askConfirm(message, async () => {
+      if (catalogProductId) {
+        try {
+          await adminService.products.delete(catalogProductId)
+        } catch (e) {
+          setSaveError(e instanceof ApiError ? e.message : 'Falha ao excluir do catálogo.')
+          return
+        }
+      }
       setDrafts((prev) => {
         const next = prev.filter((d) => d.id !== id)
         setActiveIndex((i) => Math.min(i, Math.max(0, next.length - 1)))

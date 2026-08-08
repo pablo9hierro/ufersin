@@ -26,6 +26,7 @@ export default function Pagamento() {
   // mesma conta Mercado Pago serve Pix e cartão, então reaproveita aqui.
   const onlineGateway = tenantHasOnlinePix(tenantConfig)
   const customerEmail = useCustomerAuth((s) => s.customer?.email ?? undefined)
+  const customerWhatsapp = useCustomerAuth((s) => s.customer?.whatsapp)
   const [order, setOrder] = useState<Order | null>(null)
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -132,6 +133,13 @@ export default function Pagamento() {
             mode="checkout"
             onClose={() => navigate(`/consultar?order=${order.id}`)}
             onSuccess={(updated) => setOrder(updated)}
+            autoSendWhatsapp={
+              tenantConfig?.entrega_somente_pix && order.delivery_type === 'entrega' ? customerWhatsapp : undefined
+            }
+            onChangePaymentMethod={() => navigate('/checkout')}
+            onCancelOrder={
+              customerWhatsapp ? async () => { await orderService.cancel(order.id, customerWhatsapp) } : undefined
+            }
           />
         ) : (
           <>
@@ -161,9 +169,11 @@ export default function Pagamento() {
               Aguardando confirmação do pagamento...
             </div>
 
-            <button onClick={handleSimulate} className="text-xs text-son-silver-dim underline hover:text-white">
-              (ambiente de teste) simular pagamento aprovado
-            </button>
+            {!onlineGateway && (
+              <button onClick={handleSimulate} className="text-xs text-son-silver-dim underline hover:text-white">
+                (ambiente de teste) simular pagamento aprovado
+              </button>
+            )}
           </>
         )}
       </PageTransition>
