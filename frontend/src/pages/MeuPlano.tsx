@@ -331,6 +331,9 @@ export default function MeuPlano() {
     try {
       await authStore.signOut('lojista')
     } finally {
+      // Sinaliza pra Landing não jogar de volta pro painel mesmo se uma
+      // sessão "ressuscitada" aparecer no primeiro instante após o reload.
+      sessionStorage.setItem('resolutoo_just_logged_out', '1')
       // Reload completo (não navigate client-side) — no navegador mobile,
       // a troca de rota "por dentro" podia deixar a página anterior
       // renderizada por trás do cache de navegação, dando a impressão de

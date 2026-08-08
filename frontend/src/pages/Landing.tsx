@@ -12,7 +12,7 @@ import Contact from '../components/landing/Contact'
 import Footer from '../components/landing/Footer'
 import { api } from '../lib/api'
 import { CmsEditProvider, usePlatformContent } from '../lib/cms'
-import { useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
+import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { resolveSessionHome } from '../lib/sessionHome'
 
@@ -31,6 +31,20 @@ export default function Landing() {
 
   useEffect(() => {
     if (!ready) return
+
+    // Logo depois de um logout explícito, alguma sessão "ressuscitada" (key
+    // legada do supabase-js, refresh-token ainda válido, corrida entre
+    // abas) não pode jogar o lojista de volta pro painel sem ele pedir —
+    // aqui é a landing pública, "acabei de sair" sempre ganha.
+    if (typeof window !== 'undefined' && sessionStorage.getItem('resolutoo_just_logged_out') === '1') {
+      sessionStorage.removeItem('resolutoo_just_logged_out')
+      if (isAuthenticated) {
+        void authStore.signOut('lojista')
+        void authStore.signOut('superadmin')
+      }
+      setAllowLanding(true)
+      return
+    }
 
     if (!isAuthenticated) {
       setAllowLanding(true)
