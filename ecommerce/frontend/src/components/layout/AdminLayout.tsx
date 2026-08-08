@@ -425,6 +425,8 @@ export default function AdminLayout() {
     if (!navVisible(i, demo, tenantPlano)) return false
     // Pedidos + Frete (Essential) share venda externa — same flag as storefront.
     if ((i.href === '/admin/pedidos' || i.href === '/admin/frete') && !pedidosLiberado) return false
+    // Loja só retirada — sem entrega, não existe frete pra configurar.
+    if (i.href === '/admin/frete' && tenantConfig?.apenas_retirada) return false
     return true
   })
 
