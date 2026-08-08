@@ -621,37 +621,36 @@ export default function Checkout() {
 
           <div>
             <label className="label">Forma de pagamento *</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className={`grid gap-2 ${entregaSomentePix && !pickup ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {(
                 [
                   { value: 'pix', label: 'Pix', icon: QrCode },
                   { value: 'cartao', label: 'Cartão', icon: CreditCard },
                   { value: 'dinheiro', label: 'Dinheiro', icon: Wallet },
                 ] as const
-              ).map(({ value, label, icon: Icon }) => {
-                const blocked = value === 'dinheiro' && entregaSomentePix && !pickup
-                return (
+              )
+                // Entrega no plano essential é sempre paga antes — dinheiro
+                // nem entra na lista de opções (não só desabilitado) quando
+                // o pedido é pra entrega. Só existe pra retirada.
+                .filter((o) => o.value !== 'dinheiro' || pickup)
+                .map(({ value, label, icon: Icon }) => (
                   <button
                     key={value}
                     type="button"
-                    disabled={blocked}
                     onClick={() => {
                       setPaymentMethod(value)
                       if (value !== 'dinheiro') setCashCents(0)
                     }}
                     className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border text-sm font-medium transition-all ${
-                      blocked
-                        ? 'bg-son-surface border-white/10 text-son-silver opacity-30 cursor-not-allowed'
-                        : paymentMethod === value
-                          ? 'sunset-bg text-white border-transparent'
-                          : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
+                      paymentMethod === value
+                        ? 'sunset-bg text-white border-transparent'
+                        : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
                     }`}
                   >
                     <Icon className="w-4 h-4" />
                     {label}
                   </button>
-                )
-              })}
+                ))}
             </div>
             {entregaSomentePix && !pickup && (
               <p className="text-xs text-son-silver-dim mt-2">

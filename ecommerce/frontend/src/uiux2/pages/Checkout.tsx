@@ -482,34 +482,30 @@ export default function Uiux2Checkout() {
                 Entrega só com pagamento feito antes (Pix ou cartão) — dinheiro fica só pra retirada na loja.
               </p>
             )}
-            <div className="grid grid-cols-3 gap-2 mt-1">
+            <div className={`grid gap-2 mt-1 ${entregaSomentePix && !pickup ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {(
                 [
                   { value: 'pix', label: 'Pix', icon: QrCode },
                   { value: 'cartao', label: 'Cartão', icon: CreditCard },
                   { value: 'dinheiro', label: 'Dinheiro', icon: Wallet },
                 ] as const
-              ).map(({ value, label, icon: Icon }) => {
-                const blocked = value === 'dinheiro' && entregaSomentePix && !pickup
-                return (
+              )
+                .filter((o) => o.value !== 'dinheiro' || pickup)
+                .map(({ value, label, icon: Icon }) => (
                   <button
                     key={value}
                     type="button"
-                    disabled={blocked}
                     onClick={() => { setPaymentMethod(value); if (value !== 'dinheiro') setCashCents(0) }}
                     className={
-                      blocked
-                        ? 'u2-btn-secondary flex flex-col items-center gap-1.5 py-3 text-sm opacity-30 cursor-not-allowed'
-                        : paymentMethod === value
-                          ? 'u2-btn-primary flex flex-col items-center gap-1.5 py-3 text-sm'
-                          : 'u2-btn-secondary flex flex-col items-center gap-1.5 py-3 text-sm'
+                      paymentMethod === value
+                        ? 'u2-btn-primary flex flex-col items-center gap-1.5 py-3 text-sm'
+                        : 'u2-btn-secondary flex flex-col items-center gap-1.5 py-3 text-sm'
                     }
                   >
                     <Icon className="w-4 h-4" />
                     {label}
                   </button>
-                )
-              })}
+                ))}
             </div>
             {paymentMethod === 'dinheiro' && (
               <CashAmountInput

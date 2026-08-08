@@ -46,6 +46,7 @@ export default function BannerCheckout() {
 
   const [pickupAtStore, setPickupAtStore] = useState(false)
   const apenasRetirada = !!tenantConfig?.apenas_retirada
+  const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const pickup = apenasRetirada || pickupAtStore
   const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
@@ -63,6 +64,10 @@ export default function BannerCheckout() {
   useEffect(() => {
     if (apenasRetirada) setPickupAtStore(true)
   }, [apenasRetirada])
+
+  useEffect(() => {
+    if (entregaSomentePix && !pickup && paymentMethod === 'dinheiro') setPaymentMethod('pix')
+  }, [entregaSomentePix, pickup, paymentMethod])
 
   useEffect(() => {
     if (!bannerCart.promotionId || bannerCart.items.length === 0) {
@@ -345,14 +350,16 @@ export default function BannerCheckout() {
 
           <div>
             <label className="label">Forma de pagamento *</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className={`grid gap-2 ${entregaSomentePix && !pickup ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {(
                 [
                   { value: 'pix', label: 'Pix', icon: QrCode },
                   { value: 'cartao', label: 'Cartão', icon: CreditCard },
                   { value: 'dinheiro', label: 'Dinheiro', icon: Wallet },
                 ] as const
-              ).map(({ value, label, icon: Icon }) => (
+              )
+                .filter((o) => o.value !== 'dinheiro' || pickup)
+                .map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}
                   type="button"

@@ -100,6 +100,14 @@ export function clearPlatformAuthKey(role: AuthRole) {
   try {
     localStorage.removeItem(AUTH_STORAGE_KEYS[role])
     localStorage.removeItem(LEGACY_AUTH_STORAGE_KEYS[role])
+    // A key crua do supabase-js (formato padrão `sb-<ref>-auth-token`, de
+    // antes do storageKey namespaced existir) precisa sumir também — senão
+    // migrateLegacyAuthStorage() a ressuscita pro slot que acabou de ser
+    // limpo assim que a página recarrega, e o logout "não pega".
+    if (url) {
+      const ref = new URL(url).hostname.split('.')[0]
+      if (ref) localStorage.removeItem(`sb-${ref}-auth-token`)
+    }
   } catch {
     /* ignore */
   }
