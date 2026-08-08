@@ -152,7 +152,9 @@ export default function Onboarding() {
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
-  const [entregaSomentePix, setEntregaSomentePix] = useState(false)
+  // Regra fixa do plano essential — entrega só sai com pagamento prévio
+  // (Pix/cartão), dinheiro só na retirada/PDV. Sem toggle: sempre true.
+  const entregaSomentePix = true
   const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
 
   const [loading, setLoading] = useState(false)
@@ -195,7 +197,6 @@ export default function Onboarding() {
         setVendeMais18(pre.vendeMais18)
         setApenasRetirada(pre.apenasRetirada)
         setPagamentoNaRetirada(pre.pagamentoNaRetirada)
-        setEntregaSomentePix(pre.entregaSomentePix)
         setLayoutStyle(pre.layoutStyle)
         setHasCreds(pre.hasCreds)
 
@@ -659,19 +660,6 @@ export default function Onboarding() {
 
           {venderExternamente && (
             <>
-              <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={entregaSomentePix}
-                  onChange={(e) => setEntregaSomentePix(e.target.checked)}
-                  className="w-4 h-4 mt-0.5"
-                />
-                <span className="text-xs text-uf-silver-dim">
-                  <span className="block text-uf-silver font-semibold mb-0.5">Entrega apenas para compras com pagamento prévio</span>
-                  Pedidos com endereço de entrega só podem ser pagos com Pix ou cartão no checkout — dinheiro fica disponível só pra retirada na loja ou vendas no PDV.
-                </span>
-              </label>
-
               <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                 <input
                   type="checkbox"

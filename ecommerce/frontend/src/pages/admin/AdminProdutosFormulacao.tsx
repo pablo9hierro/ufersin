@@ -371,7 +371,7 @@ export default function AdminProdutosFormulacao() {
                       <Pencil className="w-3.5 h-3.5" /> Editar
                     </button>
                     <button onClick={() => setStockEntryIngredient(i)} className="btn-secondary text-sm py-2 px-3">
-                      <Wallet className="w-3.5 h-3.5" /> Estoque
+                      <Wallet className="w-3.5 h-3.5" /> Atualizar estoque
                     </button>
                     <button onClick={() => removeIngredient(i)} className="btn-secondary text-sm py-2 px-3 hover:text-son-pink">
                       <Trash2 className="w-3.5 h-3.5" />

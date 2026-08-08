@@ -141,7 +141,9 @@ export default function MeuPlano() {
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
-  const [entregaSomentePix, setEntregaSomentePix] = useState(false)
+  // Regra fixa do plano essential — entrega só sai com pagamento prévio
+  // (Pix/cartão), dinheiro só na retirada/PDV. Sem toggle: sempre true.
+  const entregaSomentePix = true
   const [pagamentoManual, setPagamentoManual] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [hasCredenciais, setHasCredenciais] = useState(false)
@@ -213,7 +215,6 @@ export default function MeuPlano() {
         setVendeMais18(!!m.vende_mais_18)
         setApenasRetirada(!!m.apenas_retirada)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
-        setEntregaSomentePix(!!m.entrega_somente_pix)
         setPagamentoManual(!!m.pagamento_manual)
         setVenderExternamente(m.vender_externamente !== false)
         // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
@@ -241,7 +242,6 @@ export default function MeuPlano() {
               }
               if (typeof row.apenas_retirada === 'boolean') setApenasRetirada(row.apenas_retirada)
               if (typeof row.pagamento_na_retirada === 'boolean') setPagamentoNaRetirada(row.pagamento_na_retirada)
-              if (typeof row.entrega_somente_pix === 'boolean') setEntregaSomentePix(row.entrega_somente_pix)
               if (typeof row.pagamento_manual === 'boolean') setPagamentoManual(row.pagamento_manual)
               if (typeof row.vende_mais_18 === 'boolean') setVendeMais18(row.vende_mais_18)
               if (typeof row.vender_externamente === 'boolean') setVenderExternamente(row.vender_externamente)
@@ -857,22 +857,6 @@ export default function MeuPlano() {
                   </label>
                   {venderExternamente && (
                   <>
-                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={entregaSomentePix}
-                      onChange={(e) => setEntregaSomentePix(e.target.checked)}
-                      className="w-4 h-4 mt-0.5"
-                      data-testid="pref-entrega-somente-pix"
-                    />
-                    <span className="text-xs text-uf-silver-dim">
-                      <span className="block text-uf-silver font-semibold mb-0.5">
-                        Entrega apenas para compras com pagamento prévio
-                      </span>
-                      Pedidos com endereço de entrega só podem ser pagos com Pix ou cartão no checkout —
-                      dinheiro fica disponível só pra retirada na loja ou vendas no PDV.
-                    </span>
-                  </label>
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"
