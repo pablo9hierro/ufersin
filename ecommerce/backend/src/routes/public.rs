@@ -94,6 +94,59 @@ pub async fn get_public_product(
     }
 }
 
+#[derive(serde::Serialize)]
+pub struct PublicOrderStatusDto {
+    pub id: String,
+    pub short_id: String,
+    pub status: String,
+    pub payment_status: String,
+    pub payment_method: String,
+    pub delivery_type: String,
+    pub total: f64,
+    pub created_at: String,
+}
+
+/// Consulta pedidos de um telefone nessa loja — só os campos que o próprio
+/// cliente já vê na tela pública "/consultar" (nada além disso). Usado pelo
+/// módulo Assistente IA pra responder "cadê meu pedido" sem inventar. Sem
+/// login (mesmo modelo de autorização das outras rotas públicas deste
+/// arquivo: conhecer o telefone já é o limite razoável aqui, e é o mesmo
+/// telefone que a Evolution API confirma dono da conversa do WhatsApp).
+pub async fn list_public_orders_by_phone(
+    State(state): State<AppState>,
+    Path((slug, phone)): Path<(String, String)>,
+) -> Result<Json<Vec<PublicOrderStatusDto>>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let rows: Vec<(String, String, String, String, String, f64, String)> = sqlx::query_as(
+        "SELECT id, status, payment_status, payment_method, delivery_type, total, created_at::text \
+         FROM orders WHERE tenant_id = $1 AND customer_whatsapp LIKE '%' || $2 \
+         ORDER BY created_at DESC LIMIT 5",
+    )
+    .bind(&store.id)
+    .bind(&digits)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, status, payment_status, payment_method, delivery_type, total, created_at)| {
+                PublicOrderStatusDto {
+                    short_id: short_id(&id).to_string(),
+                    id,
+                    status,
+                    payment_status,
+                    payment_method,
+                    delivery_type,
+                    total,
+                    created_at,
+                }
+            })
+            .collect(),
+    ))
+}
+
 pub async fn list_public_categories(
     State(state): State<AppState>,
     Path(slug): Path<String>,

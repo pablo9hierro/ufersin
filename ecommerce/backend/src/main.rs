@@ -276,6 +276,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::public::get_public_mp_key),
         )
         .route(
+            "/api/public/catalog/{slug}/orders-by-phone/{phone}",
+            get(routes::public::list_public_orders_by_phone),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )
