@@ -147,6 +147,131 @@ pub async fn list_public_orders_by_phone(
     ))
 }
 
+#[derive(serde::Deserialize)]
+pub struct AssistantOrderItemInput {
+    pub product_id: String,
+    pub quantity: i64,
+}
+
+#[derive(serde::Deserialize)]
+pub struct AssistantOrderInput {
+    pub customer_name: String,
+    pub customer_whatsapp: String,
+    pub items: Vec<AssistantOrderItemInput>,
+}
+
+/// Cria pedido a partir do Assistente IA (WhatsApp) — mesma lógica de
+/// inserção do PDV (`pdv::create_sale`), só que sem login de vendedor
+/// (autorização aqui é o slug da loja, mesmo modelo das outras rotas
+/// públicas deste arquivo) e sempre como retirada + Pix, porque o
+/// atendimento por WhatsApp ainda não coleta endereço/localização. Nunca
+/// nasce paga — quem confirma o pagamento de verdade é sempre o fluxo Pix
+/// (create_pix_payment + refresh_payment), nunca esse endpoint.
+pub async fn create_assistant_order(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(input): Json<AssistantOrderInput>,
+) -> Result<Json<OrderDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    if input.items.is_empty() {
+        return Err(AppError::BadRequest("pedido precisa ter pelo menos um item".to_string()));
+    }
+    let name = input.customer_name.trim();
+    let whatsapp = input.customer_whatsapp.trim();
+    if name.is_empty() || whatsapp.is_empty() {
+        return Err(AppError::BadRequest("nome e whatsapp do cliente sao obrigatorios".to_string()));
+    }
+
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+
+    let mut total = 0.0_f64;
+    let mut line_items: Vec<(String, String, f64, i64)> = Vec::with_capacity(input.items.len());
+    for item in &input.items {
+        if item.quantity <= 0 {
+            return Err(AppError::BadRequest("quantidade do item deve ser positiva".to_string()));
+        }
+        let row: Option<ProductRow> = sqlx::query_as(&format!(
+            "{PRODUCT_SELECT} WHERE p.tenant_id = $1 AND p.id = $2"
+        ))
+        .bind(&store.id)
+        .bind(&item.product_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(product) = row else {
+            return Err(AppError::BadRequest(format!("produto {} nao encontrado", item.product_id)));
+        };
+        if product.active == 0 {
+            return Err(AppError::BadRequest(format!("produto {} nao esta disponivel", product.name)));
+        }
+        if product.quantity < item.quantity {
+            return Err(AppError::BadRequest(format!("estoque insuficiente pra {}", product.name)));
+        }
+        total += product.price * item.quantity as f64;
+        line_items.push((product.id, product.name, product.price, item.quantity));
+    }
+
+    let existing_customer: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM customers WHERE tenant_id = $1 AND whatsapp = $2")
+            .bind(&store.id)
+            .bind(whatsapp)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let customer_id = if let Some((id,)) = existing_customer {
+        id
+    } else {
+        let id = uuid::Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO customers (id, tenant_id, name, whatsapp) VALUES ($1, $2, $3, $4)")
+            .bind(&id)
+            .bind(&store.id)
+            .bind(name)
+            .bind(whatsapp)
+            .execute(&mut *tx)
+            .await?;
+        id
+    };
+
+    let order_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO orders (\
+            id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
+            payment_method, payment_status, status, shipping_price, total, discount_amount, sold_by_role\
+         ) VALUES ($1, $2, $3, $4, $5, 'balcao', 'pix', 'pendente', 'pendente', 0, $6, 0, 'assistente_ia')",
+    )
+    .bind(&order_id)
+    .bind(&store.id)
+    .bind(&customer_id)
+    .bind(name)
+    .bind(whatsapp)
+    .bind(total)
+    .execute(&mut *tx)
+    .await?;
+
+    for (product_id, product_name, unit_price, quantity) in &line_items {
+        sqlx::query(
+            "INSERT INTO order_items (id, tenant_id, order_id, product_id, product_name, unit_price, quantity) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&store.id)
+        .bind(&order_id)
+        .bind(product_id)
+        .bind(product_name)
+        .bind(unit_price)
+        .bind(quantity)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    // Pedido nasce sempre pendente (nunca dá baixa aqui) — quem confirma
+    // pagamento e decrementa estoque é sempre create_pix_payment +
+    // refresh_payment, o mesmo fluxo Pix de todo o resto do sistema.
+    let dto = fetch_order_dto(&mut tx, &store.id, &order_id)
+        .await?
+        .ok_or_else(|| AppError::Internal("assistant order vanished after insert".to_string()))?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
 pub async fn list_public_categories(
     State(state): State<AppState>,
     Path(slug): Path<String>,

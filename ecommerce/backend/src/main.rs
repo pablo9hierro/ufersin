@@ -280,6 +280,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::public::list_public_orders_by_phone),
         )
         .route(
+            "/api/public/catalog/{slug}/assistant-order",
+            post(routes::public::create_assistant_order),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )
