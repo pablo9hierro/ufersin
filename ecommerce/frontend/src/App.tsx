@@ -38,6 +38,7 @@ const AdminSenha = lazy(() => import('./pages/admin/AdminSenha'))
 const AdminPromocoes = lazy(() => import('./pages/admin/AdminPromocoes'))
 const AdminLayoutCliente = lazy(() => import('./pages/admin/AdminLayoutCliente'))
 const AdminCrm = lazy(() => import('./pages/admin/AdminCrm'))
+const AdminChat = lazy(() => import('./pages/admin/AdminChat'))
 const MotoboyFila = lazy(() => import('./pages/motoboy/MotoboyFila'))
 const MotoboyCorrida = lazy(() => import('./pages/motoboy/MotoboyCorrida'))
 const MotoboyFinanceiro = lazy(() => import('./pages/motoboy/MotoboyFinanceiro'))
@@ -292,6 +293,7 @@ export default function App() {
             <Route path="frete" element={<AdminFrete />} />
             <Route path="motoboys" element={<AdminMotoboys />} />
             <Route path="crm" element={<AdminCrm />} />
+            <Route path="chat" element={<AdminChat />} />
             <Route path="promocoes" element={<AdminPromocoes />} />
             <Route path="layout-cliente" element={<AdminLayoutCliente />} />
             <Route path="relatorios" element={<AdminFinanceiro />} />

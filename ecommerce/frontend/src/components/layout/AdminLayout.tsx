@@ -6,6 +6,7 @@ import {
   LogOut,
   MapPinned,
   Megaphone,
+  MessageCircle,
   Package,
   Settings,
   ShoppingCart,
@@ -40,6 +41,7 @@ import {
   classifyWaStatusPayload,
   type WaVerdict,
 } from '../../lib/whatsappGate'
+import { isAssistantIaBetaTenant } from '../../lib/assistantIaBeta'
 
 type NavItem = {
   href: string
@@ -55,6 +57,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/pdv', label: 'PDV', icon: ShoppingCart, requiredPlan: 'essential' },
   { href: '/admin/produtos', label: 'Produtos', icon: Package, requiredPlan: 'essential' },
   { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'essential', hideAtOrAbove: 'management' },
+  { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
   { href: '/admin/motoboys', label: 'Funcionários', icon: Truck, requiredPlan: 'management' },
   { href: '/admin/crm', label: 'CRM', icon: Users, requiredPlan: 'premium' },
   { href: '/admin/promocoes', label: 'Promoções', icon: Megaphone, requiredPlan: 'management' },
@@ -427,6 +430,8 @@ export default function AdminLayout() {
     if ((i.href === '/admin/pedidos' || i.href === '/admin/frete') && !pedidosLiberado) return false
     // Loja só retirada — sem entrega, não existe frete pra configurar.
     if (i.href === '/admin/frete' && tenantConfig?.apenas_retirada) return false
+    // Assistente IA em beta — só a loja no allowlist enxerga o menu.
+    if (i.href === '/admin/chat' && !isAssistantIaBetaTenant(tenantConfig?.slug)) return false
     return true
   })
 

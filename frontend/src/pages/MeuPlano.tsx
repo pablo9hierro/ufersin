@@ -35,6 +35,8 @@ import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
 import StorefrontCmsPreview, { type CartFabStyle } from '../components/StorefrontCmsPreview'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
 import { supabase } from '../lib/supabaseClient'
+import { isAssistantIaBetaTenant } from '../lib/assistantIaBeta'
+import AssistantIaTab from './AssistantIaTab'
 
 const CORES = ['#0f5132', '#4d7cff', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981']
 
@@ -49,17 +51,18 @@ function maskMpAccessToken(token: string): string {
   return `••••••••${last}`
 }
 
-type Tab = 'plano' | 'layout' | 'financeiro' | 'redes'
+type Tab = 'plano' | 'layout' | 'financeiro' | 'redes' | 'assistente-ia'
 
 const TAB_PATH: Record<Tab, string> = {
   plano: '/meu-plano',
   layout: '/meu-plano/layout',
   financeiro: '/meu-plano/financeiro',
   redes: '/meu-plano/redes',
+  'assistente-ia': '/meu-plano/assistente-ia',
 }
 
 function tabFromParam(param: string | undefined): Tab {
-  if (param === 'layout' || param === 'financeiro' || param === 'redes') return param
+  if (param === 'layout' || param === 'financeiro' || param === 'redes' || param === 'assistente-ia') return param
   return 'plano'
 }
 
@@ -679,6 +682,7 @@ export default function MeuPlano() {
     { id: 'layout', label: 'Layout', path: TAB_PATH.layout },
     { id: 'financeiro', label: 'Financeiro', path: TAB_PATH.financeiro },
     { id: 'redes', label: 'Redes sociais', path: TAB_PATH.redes },
+    ...(isAssistantIaBetaTenant(me.slug) ? [{ id: 'assistente-ia' as const, label: 'Assistente IA', path: TAB_PATH['assistente-ia'] }] : []),
   ]
 
   return (
@@ -1315,6 +1319,7 @@ export default function MeuPlano() {
               </button>
             </form>
           )}
+          {tab === 'assistente-ia' && isAssistantIaBetaTenant(me.slug) && me.slug && <AssistantIaTab tenantSlug={me.slug} />}
           <Outlet />
         </motion.div>
       </div>
