@@ -399,9 +399,22 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
         tracing::info!("assistant-ia forward: skipping, message from a group chat");
         return;
     }
-    let text = message
-        .get("conversation")
-        .and_then(|v| v.as_str())
+    // Localização fixa compartilhada no chat (usada pro assistente saber
+    // endereço de entrega/coleta) — mesma extração de lat/lng do outro
+    // handler de localização acima, só que aqui vira texto (link do Maps)
+    // pra entrar na conversa como qualquer outra mensagem, sem exigir um
+    // tipo de payload novo no lado do assistant-ia.
+    let location_text = message
+        .get("locationMessage")
+        .or_else(|| message.get("liveLocationMessage"))
+        .and_then(|loc| {
+            let lat = loc.get("degreesLatitude").and_then(|v| v.as_f64())?;
+            let lng = loc.get("degreesLongitude").and_then(|v| v.as_f64())?;
+            Some(format!("[Cliente compartilhou localização fixa: https://maps.google.com/?q={lat},{lng}]"))
+        });
+    let text = location_text
+        .as_deref()
+        .or_else(|| message.get("conversation").and_then(|v| v.as_str()))
         .or_else(|| message.get("extendedTextMessage").and_then(|m| m.get("text")).and_then(|v| v.as_str()));
     let Some(text) = text else {
         tracing::info!("assistant-ia forward: skipping, no text field in message: {message}");
