@@ -387,6 +387,18 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
         tracing::info!("assistant-ia forward: skipping, fromMe=true");
         return;
     }
+    // JID de grupo termina em "@g.us" (contatos 1:1 terminam em
+    // "@s.whatsapp.net") — a assistente é uma vendedora/atendente de
+    // cliente individual, nunca deve responder dentro de um grupo.
+    let is_group = data
+        .get("key")
+        .and_then(|k| k.get("remoteJid"))
+        .and_then(|v| v.as_str())
+        .is_some_and(|jid| jid.ends_with("@g.us"));
+    if is_group {
+        tracing::info!("assistant-ia forward: skipping, message from a group chat");
+        return;
+    }
     let text = message
         .get("conversation")
         .and_then(|v| v.as_str())
