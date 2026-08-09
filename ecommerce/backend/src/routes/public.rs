@@ -287,7 +287,7 @@ pub async fn get_public_sitemap(
     let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
     let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT id, updated_at::text FROM products WHERE tenant_id = $1 AND active <> 0 ORDER BY name",
+        "SELECT id, created_at::text FROM products WHERE tenant_id = $1 AND active <> 0 ORDER BY name",
     )
     .bind(&store.id)
     .fetch_all(&mut *tx)
