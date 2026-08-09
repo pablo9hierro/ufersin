@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from '../../lib/tenantRouter'
-import { MapPin, ShoppingBag, Star, Truck, Wallet } from 'lucide-react'
+import { MapPin, ShoppingBag, Star, Truck, Wallet, Wrench } from 'lucide-react'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { tenantFullAddress, tenantMapsHref, tenantShareLinks } from '../../lib/tenantConfig'
@@ -73,6 +73,9 @@ export default function Uiux2Landing() {
             <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
               <button onClick={() => navigate('/catalogo')} className="u2-btn-primary px-6 py-3 flex items-center justify-center gap-2">
                 <ShoppingBag className="w-4 h-4" /> Ver catálogo
+              </button>
+              <button onClick={() => navigate('/servicos')} className="u2-btn-secondary px-6 py-3 flex items-center justify-center gap-2">
+                <Wrench className="w-4 h-4" /> Ver serviços
               </button>
               <button onClick={() => (customerAuth.token ? navigate('/consultar') : setShowAuthModal(true))} className="u2-btn-secondary px-6 py-3 flex items-center justify-center gap-2">
                 Acompanhar entrega

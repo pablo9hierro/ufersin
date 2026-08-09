@@ -7,6 +7,7 @@ use crate::abacatepay;
 use crate::cancel;
 use crate::error::AppError;
 use crate::formulation;
+use crate::geocode;
 use crate::google_routes::{self, Ponto, RotaResult};
 use crate::mercadopago;
 use crate::mercadopago_link;
@@ -551,12 +552,18 @@ pub async fn get_public_store_status(
 
     tx.commit().await?;
 
+    let (pickup_lat, pickup_lng) = geocode::geocode_address(&state.http, &store.pickup_address)
+        .await
+        .unzip();
+
     Ok(Json(StoreStatusDto {
         hours,
         manually_closed: status.0,
         manual_closed_reason: status.1,
         onboarding_hours_done: true,
         pickup_address: store.pickup_address,
+        pickup_lat,
+        pickup_lng,
     }))
 }
 

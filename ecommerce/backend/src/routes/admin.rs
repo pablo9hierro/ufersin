@@ -1964,6 +1964,8 @@ pub async fn get_store_status(
         // duplica a query aqui, só a rota pública precisa disso pra
         // vitrine/Assistente IA.
         pickup_address: String::new(),
+        pickup_lat: None,
+        pickup_lng: None,
     }))
 }
 

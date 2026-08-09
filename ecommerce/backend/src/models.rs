@@ -623,6 +623,14 @@ pub struct StoreStatusDto {
     /// da vitrine e pela tool de geolocalização do Assistente IA.
     #[serde(default)]
     pub pickup_address: String,
+    /// Coordenadas geocodificadas de `pickup_address` (Nominatim/OSM, sem
+    /// precisar de API key) — `None` quando o endereço está vazio ou não
+    /// foi possível geocodificar. Usado pelo Assistente IA pra mandar a
+    /// localização da loja como PIN de verdade no WhatsApp, não só texto.
+    #[serde(default)]
+    pub pickup_lat: Option<f64>,
+    #[serde(default)]
+    pub pickup_lng: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]

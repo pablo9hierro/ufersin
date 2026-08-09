@@ -4,6 +4,7 @@ mod cancel;
 mod error;
 mod features;
 mod formulation;
+mod geocode;
 mod google_routes;
 mod mercadopago;
 mod mercadopago_link;

@@ -175,6 +175,11 @@ const tenantAwarePublicCatalog = {
     },
   },
   services: {
+    list: async () => {
+      const base = railwayPublicCatalogBase()
+      if (!base) return []
+      return request<PublicService[]>(`${base}/services`)
+    },
     get: async (id: string) => {
       const base = railwayPublicCatalogBase()
       if (!base) throw new ApiError(404, 'Serviço não disponível.')
