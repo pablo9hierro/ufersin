@@ -213,7 +213,9 @@ pub async fn create_assistant_order(
             return Err(AppError::BadRequest("quantidade do item deve ser positiva".to_string()));
         }
         if let Some(service_id) = &item.service_id {
-            let row: Option<(String, String, f64, i64)> = sqlx::query_as(
+            // services.active é INTEGER (i32) no banco — diferente de
+            // products.active, que é BIGINT (i64). Não confundir os dois.
+            let row: Option<(String, String, f64, i32)> = sqlx::query_as(
                 "SELECT id, name, price, active FROM services WHERE tenant_id = $1 AND id = $2",
             )
             .bind(&store.id)
