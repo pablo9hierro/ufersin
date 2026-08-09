@@ -447,6 +447,238 @@ pub async fn delete_ingredient(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ---------- Serviços (entidade separada de produto, sem estoque próprio) ----------
+// Mora na página /produtos/servicos. Custo é só referência calculada a
+// partir de insumos (mesma tabela `ingredients` do ERP Formulação) + custos
+// extras livres — o preço final (`price`) é sempre digitado pelo lojista,
+// nunca calculado automaticamente (diferente de produto ERP).
+
+async fn load_service_dto(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    row: crate::models::ServiceRow,
+) -> Result<crate::models::ServiceDto, AppError> {
+    let ingredient_rows: Vec<(String, String, f64, String, f64, String)> = sqlx::query_as(
+        "SELECT si.ingredient_id, i.name, si.quantity, si.unit, i.cost_price, i.unit \
+         FROM service_ingredients si \
+         JOIN ingredients i ON i.id = si.ingredient_id AND i.tenant_id = si.tenant_id \
+         WHERE si.tenant_id = $1 AND si.service_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(&row.id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut estimated_cost = 0.0;
+    let mut ingredients = Vec::with_capacity(ingredient_rows.len());
+    for (ingredient_id, ingredient_name, quantity, unit, ingredient_cost_price, ingredient_unit) in ingredient_rows {
+        if let Ok(converted) = formulation::convert(quantity, &unit, &ingredient_unit) {
+            estimated_cost += converted * ingredient_cost_price;
+        }
+        ingredients.push(crate::models::ServiceIngredientDto {
+            ingredient_id,
+            ingredient_name,
+            quantity,
+            unit,
+        });
+    }
+
+    let extra_cost_rows: Vec<(String, f64)> = sqlx::query_as(
+        "SELECT label, value FROM service_extra_costs WHERE tenant_id = $1 AND service_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(&row.id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let extra_costs: Vec<crate::models::ServiceExtraCostDto> = extra_cost_rows
+        .into_iter()
+        .map(|(label, value)| {
+            estimated_cost += value;
+            crate::models::ServiceExtraCostDto { label, value }
+        })
+        .collect();
+
+    Ok(crate::models::ServiceDto {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        category_id: row.category_id,
+        price: row.price,
+        active: row.active != 0,
+        estimated_cost,
+        ingredients,
+        extra_costs,
+    })
+}
+
+pub async fn list_services(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<crate::models::ServiceDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<crate::models::ServiceRow> = sqlx::query_as(
+        "SELECT id, name, description, category_id, price, active FROM services WHERE tenant_id = $1 ORDER BY name",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut dtos = Vec::with_capacity(rows.len());
+    for row in rows {
+        dtos.push(load_service_dto(&mut tx, &claims.tenant_id, row).await?);
+    }
+    tx.commit().await?;
+    Ok(Json(dtos))
+}
+
+async fn save_service_lines(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    service_id: &str,
+    ingredients: &[crate::models::ServiceIngredientInput],
+    extra_costs: &[crate::models::ServiceExtraCostInput],
+) -> Result<(), AppError> {
+    sqlx::query("DELETE FROM service_ingredients WHERE tenant_id = $1 AND service_id = $2")
+        .bind(tenant_id)
+        .bind(service_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM service_extra_costs WHERE tenant_id = $1 AND service_id = $2")
+        .bind(tenant_id)
+        .bind(service_id)
+        .execute(&mut *tx)
+        .await?;
+    for line in ingredients {
+        if line.quantity <= 0.0 {
+            return Err(AppError::BadRequest("quantidade do insumo deve ser positiva".to_string()));
+        }
+        formulation::convert(0.0, &line.unit, &line.unit)?;
+        sqlx::query(
+            "INSERT INTO service_ingredients (id, tenant_id, service_id, ingredient_id, quantity, unit) \
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(tenant_id)
+        .bind(service_id)
+        .bind(&line.ingredient_id)
+        .bind(line.quantity)
+        .bind(&line.unit)
+        .execute(&mut *tx)
+        .await?;
+    }
+    for extra in extra_costs {
+        if extra.label.trim().is_empty() {
+            continue;
+        }
+        sqlx::query("INSERT INTO service_extra_costs (id, tenant_id, service_id, label, value) VALUES ($1, $2, $3, $4, $5)")
+            .bind(Uuid::new_v4().to_string())
+            .bind(tenant_id)
+            .bind(service_id)
+            .bind(extra.label.trim())
+            .bind(extra.value)
+            .execute(&mut *tx)
+            .await?;
+    }
+    Ok(())
+}
+
+pub async fn create_service(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<crate::models::ServiceInput>,
+) -> Result<Json<crate::models::ServiceDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("name is required".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO services (id, tenant_id, name, description, category_id, price, active) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(input.name.trim())
+    .bind(&input.description)
+    .bind(&input.category_id)
+    .bind(input.price)
+    .bind(input.active.unwrap_or(true) as i32)
+    .execute(&mut *tx)
+    .await?;
+    save_service_lines(&mut tx, &claims.tenant_id, &id, &input.ingredients, &input.extra_costs).await?;
+
+    let row = crate::models::ServiceRow {
+        id: id.clone(),
+        name: input.name.trim().to_string(),
+        description: input.description.clone(),
+        category_id: input.category_id.clone(),
+        price: input.price,
+        active: input.active.unwrap_or(true) as i64,
+    };
+    let dto = load_service_dto(&mut tx, &claims.tenant_id, row).await?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+pub async fn update_service(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<crate::models::ServiceInput>,
+) -> Result<Json<crate::models::ServiceDto>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("name is required".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let result = sqlx::query(
+        "UPDATE services SET name = $1, description = $2, category_id = $3, price = $4, active = $5 \
+         WHERE tenant_id = $6 AND id = $7",
+    )
+    .bind(input.name.trim())
+    .bind(&input.description)
+    .bind(&input.category_id)
+    .bind(input.price)
+    .bind(input.active.unwrap_or(true) as i32)
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("service not found".to_string()));
+    }
+    save_service_lines(&mut tx, &claims.tenant_id, &id, &input.ingredients, &input.extra_costs).await?;
+
+    let row = crate::models::ServiceRow {
+        id: id.clone(),
+        name: input.name.trim().to_string(),
+        description: input.description.clone(),
+        category_id: input.category_id.clone(),
+        price: input.price,
+        active: input.active.unwrap_or(true) as i64,
+    };
+    let dto = load_service_dto(&mut tx, &claims.tenant_id, row).await?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+pub async fn delete_service(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let result = sqlx::query("DELETE FROM services WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("service not found".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// "Informar aumento de estoque" de um INSUMO — sempre soma (nunca
 /// sobrescreve), registra no ledger, recalcula todo produto ERP dependente.
 pub async fn ingredient_stock_entry(

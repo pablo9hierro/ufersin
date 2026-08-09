@@ -2954,6 +2954,18 @@ export const localApi = {
         throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
       },
     },
+    services: {
+      list: async () => [],
+      create: async () => {
+        throw new ApiError(400, 'Serviços não estão disponíveis no modo demonstração.')
+      },
+      update: async () => {
+        throw new ApiError(400, 'Serviços não estão disponíveis no modo demonstração.')
+      },
+      delete: async () => {
+        throw new ApiError(400, 'Serviços não estão disponíveis no modo demonstração.')
+      },
+    },
     motoboys: {
       list: adminListMotoboys,
       create: createMotoboy,

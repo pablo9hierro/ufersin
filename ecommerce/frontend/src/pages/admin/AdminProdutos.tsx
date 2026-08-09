@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Barcode, Check, FileUp, FlaskConical, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
+import { AlertTriangle, Barcode, Boxes, Check, FileUp, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, Wrench, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import BarcodePreview from '../../components/admin/BarcodePreview'
 import CategorySelectField from '../../components/admin/CategorySelectField'
@@ -276,8 +276,11 @@ export default function AdminProdutos() {
               <FileUp className="w-4 h-4" />
               {xmlPending > 0 ? `Importar XML (${xmlPending})` : 'Importar XML'}
             </Link>
-            <Link to="/admin/produtos/erp-formulacao" className="btn-secondary text-sm py-2 px-4">
-              <FlaskConical className="w-4 h-4" /> ERP Formulação
+            <Link to="/admin/estoque" className="btn-secondary text-sm py-2 px-4">
+              <Boxes className="w-4 h-4" /> Estoque
+            </Link>
+            <Link to="/admin/produtos/servicos" className="btn-secondary text-sm py-2 px-4">
+              <Wrench className="w-4 h-4" /> Serviços
             </Link>
             <button onClick={openNew} className="btn-primary text-sm py-2 px-4">
               <Plus className="w-4 h-4" /> Novo produto

@@ -13,6 +13,7 @@ import {
   FinanceiroSummarySchema,
   FinanceiroTimeseriesPointSchema,
   IngredientSchema,
+  ServiceSchema,
   LucroSummarySchema,
   MotoboyPendingSchema,
   MotoboySchema,
@@ -39,6 +40,7 @@ import {
   type StoreHourDay,
   type FormulatedProductPayload,
   type IngredientPayload,
+  type ServicePayload,
 } from '../../types'
 
 // Módulo Admin — único ponto do app autorizado a chamar `api.admin.*`.
@@ -85,6 +87,14 @@ export const adminEndpoint = {
     delete: async (id: string) => api.admin.ingredients.delete(id),
     stockEntry: async (id: string, quantity: number) =>
       validate(IngredientSchema, await api.admin.ingredients.stockEntry(id, quantity), 'admin.ingredients.stockEntry'),
+  },
+  services: {
+    list: async () => validateList(ServiceSchema, await api.admin.services.list(), 'admin.services.list'),
+    create: async (payload: ServicePayload) =>
+      validate(ServiceSchema, await api.admin.services.create(payload), 'admin.services.create'),
+    update: async (id: string, payload: ServicePayload) =>
+      validate(ServiceSchema, await api.admin.services.update(id, payload), 'admin.services.update'),
+    delete: async (id: string) => api.admin.services.delete(id),
   },
   motoboys: {
     list: async () => validateList(MotoboySchema, await api.admin.motoboys.list(), 'admin.motoboys.list'),

@@ -27,6 +27,8 @@ import type {
   FormulatedProductPayload,
   Ingredient,
   IngredientPayload,
+  Service,
+  ServicePayload,
   LucroSummary,
   Motoboy,
   MotoboyFinanceiro,
@@ -553,6 +555,20 @@ const remoteApi = {
           method: 'POST',
           body: JSON.stringify({ quantity }),
         }),
+    },
+    services: {
+      list: () => railwayAdmin<Service[]>('/api/admin/services'),
+      create: (payload: ServicePayload) =>
+        railwayAdmin<Service>('/api/admin/services', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }),
+      update: (id: string, payload: ServicePayload) =>
+        railwayAdmin<Service>(`/api/admin/services/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
+      delete: (id: string) => railwayAdmin<void>(`/api/admin/services/${id}`, { method: 'DELETE' }),
     },
     motoboys: {
       list: () =>

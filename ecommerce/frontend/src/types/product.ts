@@ -72,6 +72,43 @@ export type FormulatedProductPayload = {
   formulation: FormulationLinePayload[]
 }
 
+// ---------- Serviços (separados de produto, sem estoque próprio) ----------
+
+export const ServiceIngredientSchema = z.object({
+  ingredient_id: z.string(),
+  ingredient_name: z.string(),
+  quantity: z.number(),
+  unit: z.enum(['g', 'kg', 'ml', 'l', 'un']),
+})
+
+export const ServiceExtraCostSchema = z.object({
+  label: z.string(),
+  value: z.number(),
+})
+
+export const ServiceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  category_id: z.string().nullable(),
+  price: z.number(),
+  active: z.boolean(),
+  estimated_cost: z.number(),
+  ingredients: z.array(ServiceIngredientSchema),
+  extra_costs: z.array(ServiceExtraCostSchema),
+})
+export type Service = z.infer<typeof ServiceSchema>
+
+export type ServicePayload = {
+  name: string
+  description?: string
+  category_id?: string | null
+  price: number
+  active?: boolean
+  ingredients: { ingredient_id: string; quantity: number; unit: Ingredient['unit'] }[]
+  extra_costs: { label: string; value: number }[]
+}
+
 export const ProductDiscountSchema = z.object({
   product_id: z.string(),
   discount_type: DiscountTypeSchema,

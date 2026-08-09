@@ -384,6 +384,14 @@ async fn main() -> anyhow::Result<()> {
             post(routes::admin::ingredient_stock_entry),
         )
         .route(
+            "/api/admin/services",
+            get(routes::admin::list_services).post(routes::admin::create_service),
+        )
+        .route(
+            "/api/admin/services/{id}",
+            put(routes::admin::update_service).delete(routes::admin::delete_service),
+        )
+        .route(
             "/api/admin/motoboys",
             get(routes::admin::list_motoboys).post(routes::admin::create_motoboy),
         )

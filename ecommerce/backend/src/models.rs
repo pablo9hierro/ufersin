@@ -140,6 +140,75 @@ pub struct FormulatedProductInput {
     pub formulation: Vec<FormulationLineInput>,
 }
 
+// ---------- Serviços (separados de produto — sem estoque próprio) ----------
+
+#[derive(Debug, sqlx::FromRow, Serialize)]
+pub struct ServiceRow {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category_id: Option<String>,
+    pub price: f64,
+    pub active: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ServiceExtraCostDto {
+    pub label: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ServiceIngredientDto {
+    pub ingredient_id: String,
+    pub ingredient_name: String,
+    pub quantity: f64,
+    pub unit: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ServiceDto {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category_id: Option<String>,
+    pub price: f64,
+    pub active: bool,
+    /// Soma dos itens de estoque usados + custos extras — só referência
+    /// pro lojista, o `price` final continua sendo digitado por ele.
+    pub estimated_cost: f64,
+    pub ingredients: Vec<ServiceIngredientDto>,
+    pub extra_costs: Vec<ServiceExtraCostDto>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ServiceIngredientInput {
+    pub ingredient_id: String,
+    pub quantity: f64,
+    pub unit: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ServiceExtraCostInput {
+    pub label: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ServiceInput {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub category_id: Option<String>,
+    pub price: f64,
+    #[serde(default)]
+    pub active: Option<bool>,
+    #[serde(default)]
+    pub ingredients: Vec<ServiceIngredientInput>,
+    #[serde(default)]
+    pub extra_costs: Vec<ServiceExtraCostInput>,
+}
+
 // ---------- Motoboys ----------
 
 #[derive(Debug, sqlx::FromRow)]

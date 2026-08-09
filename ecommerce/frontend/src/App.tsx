@@ -30,7 +30,9 @@ const AdminPedidos = lazy(() => import('./pages/admin/AdminPedidos'))
 const AdminPdv = lazy(() => import('./pages/admin/AdminPdv'))
 const AdminProdutos = lazy(() => import('./pages/admin/AdminProdutos'))
 const AdminProdutosXml = lazy(() => import('./pages/admin/AdminProdutosXml'))
-const AdminProdutosFormulacao = lazy(() => import('./pages/admin/AdminProdutosFormulacao'))
+const AdminEstoque = lazy(() => import('./pages/admin/AdminEstoque'))
+const AdminEstoqueXml = lazy(() => import('./pages/admin/AdminEstoqueXml'))
+const AdminProdutosServicos = lazy(() => import('./pages/admin/AdminProdutosServicos'))
 const AdminMotoboys = lazy(() => import('./pages/admin/AdminMotoboys'))
 const AdminFrete = lazy(() => import('./pages/admin/AdminFrete'))
 const AdminFinanceiro = lazy(() => import('./pages/admin/AdminFinanceiro'))
@@ -289,7 +291,10 @@ export default function App() {
             <Route path="pdv" element={<AdminPdv />} />
             <Route path="produtos" element={<AdminProdutos />} />
             <Route path="produtos/xml" element={<AdminProdutosXml />} />
-            <Route path="produtos/erp-formulacao" element={<AdminProdutosFormulacao />} />
+            <Route path="produtos/erp-formulacao" element={<Navigate to="/admin/estoque" replace />} />
+            <Route path="produtos/servicos" element={<AdminProdutosServicos />} />
+            <Route path="estoque" element={<AdminEstoque />} />
+            <Route path="estoque/xml" element={<AdminEstoqueXml />} />
             <Route path="frete" element={<AdminFrete />} />
             <Route path="motoboys" element={<AdminMotoboys />} />
             <Route path="crm" element={<AdminCrm />} />
