@@ -327,7 +327,7 @@ pub async fn list_ingredients(
 ) -> Result<Json<Vec<crate::models::Ingredient>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let rows = sqlx::query_as(
-        "SELECT id, name, unit, quantity, cost_price FROM ingredients WHERE tenant_id = $1 ORDER BY name",
+        "SELECT id, name, unit, quantity, cost_price, low_stock_threshold FROM ingredients WHERE tenant_id = $1 ORDER BY name",
     )
     .bind(&claims.tenant_id)
     .fetch_all(&mut *tx)
@@ -351,7 +351,8 @@ pub async fn create_ingredient(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let id = Uuid::new_v4().to_string();
     sqlx::query(
-        "INSERT INTO ingredients (id, tenant_id, name, unit, quantity, cost_price) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO ingredients (id, tenant_id, name, unit, quantity, cost_price, low_stock_threshold) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -359,6 +360,7 @@ pub async fn create_ingredient(
     .bind(&input.unit)
     .bind(input.quantity)
     .bind(input.cost_price)
+    .bind(input.low_stock_threshold)
     .execute(&mut *tx)
     .await
     .map_err(|e| match e {
@@ -374,6 +376,7 @@ pub async fn create_ingredient(
         unit: input.unit,
         quantity: input.quantity,
         cost_price: input.cost_price,
+        low_stock_threshold: input.low_stock_threshold,
     }))
 }
 
@@ -389,13 +392,14 @@ pub async fn update_ingredient(
     formulation::convert(0.0, &input.unit, &input.unit)?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let result = sqlx::query(
-        "UPDATE ingredients SET name = $1, unit = $2, quantity = $3, cost_price = $4 \
-         WHERE tenant_id = $5 AND id = $6",
+        "UPDATE ingredients SET name = $1, unit = $2, quantity = $3, cost_price = $4, low_stock_threshold = $5 \
+         WHERE tenant_id = $6 AND id = $7",
     )
     .bind(input.name.trim())
     .bind(&input.unit)
     .bind(input.quantity)
     .bind(input.cost_price)
+    .bind(input.low_stock_threshold)
     .bind(&claims.tenant_id)
     .bind(&id)
     .execute(&mut *tx)
@@ -420,6 +424,7 @@ pub async fn update_ingredient(
         unit: input.unit,
         quantity: input.quantity,
         cost_price: input.cost_price,
+        low_stock_threshold: input.low_stock_threshold,
     }))
 }
 
@@ -498,6 +503,18 @@ async fn load_service_dto(
         })
         .collect();
 
+    // Disponibilidade: se tem insumo(s) ligado(s), é sempre calculada (o
+    // insumo limitante manda, mesma lógica de produto ERP) — nunca a
+    // `manual_quantity` nesse caso. Sem insumo, usa a quantidade manual
+    // (se definida) — sem nenhum dos dois, disponibilidade "ilimitada"
+    // (`None`, front não trava nem mostra alerta de estoque).
+    let quantity_from_stock = !ingredients.is_empty();
+    let available_quantity = if quantity_from_stock {
+        formulation::compute_service_available_quantity(&mut *tx, tenant_id, &row.id).await?
+    } else {
+        row.manual_quantity
+    };
+
     Ok(crate::models::ServiceDto {
         id: row.id,
         name: row.name,
@@ -508,6 +525,10 @@ async fn load_service_dto(
         estimated_cost,
         ingredients,
         extra_costs,
+        available_quantity,
+        low_stock_threshold: row.low_stock_threshold,
+        manual_quantity: row.manual_quantity,
+        quantity_from_stock,
     })
 }
 
@@ -517,7 +538,8 @@ pub async fn list_services(
 ) -> Result<Json<Vec<crate::models::ServiceDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<crate::models::ServiceRow> = sqlx::query_as(
-        "SELECT id, name, description, category_id, price, active FROM services WHERE tenant_id = $1 ORDER BY name",
+        "SELECT id, name, description, category_id, price, active, low_stock_threshold, manual_quantity \
+         FROM services WHERE tenant_id = $1 ORDER BY name",
     )
     .bind(&claims.tenant_id)
     .fetch_all(&mut *tx)
@@ -590,11 +612,14 @@ pub async fn create_service(
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("name is required".to_string()));
     }
+    // Quantidade manual só faz sentido sem insumo ligado — nesse caso a
+    // disponibilidade é sempre calculada a partir do estoque.
+    let manual_quantity = if input.ingredients.is_empty() { input.manual_quantity } else { None };
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let id = Uuid::new_v4().to_string();
     sqlx::query(
-        "INSERT INTO services (id, tenant_id, name, description, category_id, price, active) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO services (id, tenant_id, name, description, category_id, price, active, low_stock_threshold, manual_quantity) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -603,6 +628,8 @@ pub async fn create_service(
     .bind(&input.category_id)
     .bind(input.price)
     .bind(input.active.unwrap_or(true) as i32)
+    .bind(input.low_stock_threshold)
+    .bind(manual_quantity)
     .execute(&mut *tx)
     .await?;
     save_service_lines(&mut tx, &claims.tenant_id, &id, &input.ingredients, &input.extra_costs).await?;
@@ -613,7 +640,9 @@ pub async fn create_service(
         description: input.description.clone(),
         category_id: input.category_id.clone(),
         price: input.price,
-        active: input.active.unwrap_or(true) as i64,
+        active: input.active.unwrap_or(true) as i32,
+        low_stock_threshold: input.low_stock_threshold,
+        manual_quantity,
     };
     let dto = load_service_dto(&mut tx, &claims.tenant_id, row).await?;
     tx.commit().await?;
@@ -629,16 +658,20 @@ pub async fn update_service(
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("name is required".to_string()));
     }
+    let manual_quantity = if input.ingredients.is_empty() { input.manual_quantity } else { None };
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let result = sqlx::query(
-        "UPDATE services SET name = $1, description = $2, category_id = $3, price = $4, active = $5 \
-         WHERE tenant_id = $6 AND id = $7",
+        "UPDATE services SET name = $1, description = $2, category_id = $3, price = $4, active = $5, \
+         low_stock_threshold = $6, manual_quantity = $7 \
+         WHERE tenant_id = $8 AND id = $9",
     )
     .bind(input.name.trim())
     .bind(&input.description)
     .bind(&input.category_id)
     .bind(input.price)
     .bind(input.active.unwrap_or(true) as i32)
+    .bind(input.low_stock_threshold)
+    .bind(manual_quantity)
     .bind(&claims.tenant_id)
     .bind(&id)
     .execute(&mut *tx)
@@ -654,7 +687,9 @@ pub async fn update_service(
         description: input.description.clone(),
         category_id: input.category_id.clone(),
         price: input.price,
-        active: input.active.unwrap_or(true) as i64,
+        active: input.active.unwrap_or(true) as i32,
+        low_stock_threshold: input.low_stock_threshold,
+        manual_quantity,
     };
     let dto = load_service_dto(&mut tx, &claims.tenant_id, row).await?;
     tx.commit().await?;

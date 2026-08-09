@@ -103,6 +103,9 @@ pub struct Ingredient {
     pub quantity: f64,
     /// Custo por 1 `unit`.
     pub cost_price: f64,
+    /// Quando `quantity` cai nesse valor ou abaixo, o item entra na aba
+    /// "baixo estoque" — `None` desativa o alerta pra esse insumo.
+    pub low_stock_threshold: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +116,8 @@ pub struct IngredientInput {
     pub quantity: f64,
     #[serde(default)]
     pub cost_price: f64,
+    #[serde(default)]
+    pub low_stock_threshold: Option<f64>,
 }
 
 /// Corpo de `POST /api/admin/ingredients/{id}/stock-entry` e
@@ -149,7 +154,11 @@ pub struct ServiceRow {
     pub description: String,
     pub category_id: Option<String>,
     pub price: f64,
-    pub active: i64,
+    /// `services.active` é INTEGER (i32) no banco — diferente de
+    /// `products.active`, que é BIGINT (i64). Não confundir os dois.
+    pub active: i32,
+    pub low_stock_threshold: Option<f64>,
+    pub manual_quantity: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -179,6 +188,17 @@ pub struct ServiceDto {
     pub estimated_cost: f64,
     pub ingredients: Vec<ServiceIngredientDto>,
     pub extra_costs: Vec<ServiceExtraCostDto>,
+    /// `None` = disponibilidade não controlada (sem insumo ligado e sem
+    /// quantidade manual definida). Quando há insumo(s) ligado(s), é
+    /// sempre calculada (o insumo limitante manda) — nunca editável nesse
+    /// caso. Só é editável (`manual_quantity`) quando não há insumo.
+    pub available_quantity: Option<f64>,
+    pub low_stock_threshold: Option<f64>,
+    /// Só relevante/editável quando `ingredients` está vazio.
+    pub manual_quantity: Option<f64>,
+    /// `true` quando tem insumo(s) ligado(s) — front usa isso pra saber
+    /// se o campo de quantidade deve ficar travado (calculado) ou aberto.
+    pub quantity_from_stock: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -207,6 +227,12 @@ pub struct ServiceInput {
     pub ingredients: Vec<ServiceIngredientInput>,
     #[serde(default)]
     pub extra_costs: Vec<ServiceExtraCostInput>,
+    #[serde(default)]
+    pub low_stock_threshold: Option<f64>,
+    /// Ignorado se `ingredients` não estiver vazio — nesse caso a
+    /// disponibilidade é sempre calculada, nunca aceita do cliente.
+    #[serde(default)]
+    pub manual_quantity: Option<f64>,
 }
 
 // ---------- Motoboys ----------

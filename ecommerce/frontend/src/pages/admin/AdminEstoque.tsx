@@ -124,15 +124,24 @@ export default function AdminEstoque() {
     unit: Ingredient['unit']
     quantity: string
     cost_price: string
+    low_stock_threshold: string
   } | null>(null)
   const [ingredientSaving, setIngredientSaving] = useState(false)
   const [ingredientError, setIngredientError] = useState<string | null>(null)
   const [stockEntryIngredient, setStockEntryIngredient] = useState<Ingredient | null>(null)
+  const [stockFilter, setStockFilter] = useState<'todos' | 'baixo' | 'esgotado'>('todos')
 
   const openNewIngredient = () =>
-    setIngredientForm({ id: null, name: '', unit: 'g', quantity: '', cost_price: '' })
+    setIngredientForm({ id: null, name: '', unit: 'g', quantity: '', cost_price: '', low_stock_threshold: '' })
   const openEditIngredient = (i: Ingredient) =>
-    setIngredientForm({ id: i.id, name: i.name, unit: i.unit, quantity: String(i.quantity), cost_price: String(i.cost_price) })
+    setIngredientForm({
+      id: i.id,
+      name: i.name,
+      unit: i.unit,
+      quantity: String(i.quantity),
+      cost_price: String(i.cost_price),
+      low_stock_threshold: i.low_stock_threshold != null ? String(i.low_stock_threshold) : '',
+    })
 
   const saveIngredient = async () => {
     if (!ingredientForm) return
@@ -148,6 +157,7 @@ export default function AdminEstoque() {
         unit: ingredientForm.unit,
         quantity: Number(ingredientForm.quantity) || 0,
         cost_price: Number(ingredientForm.cost_price) || 0,
+        low_stock_threshold: ingredientForm.low_stock_threshold.trim() === '' ? null : Number(ingredientForm.low_stock_threshold),
       }
       if (ingredientForm.id) await adminService.ingredients.update(ingredientForm.id, payload)
       else await adminService.ingredients.create(payload)
@@ -362,41 +372,75 @@ export default function AdminEstoque() {
         </div>
       ) : tab === 'insumos' ? (
         <div>
-          <div className="flex justify-end mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="flex gap-2">
+              {(['todos', 'baixo', 'esgotado'] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setStockFilter(f)}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
+                    stockFilter === f ? 'sunset-bg text-white border-transparent' : 'bg-son-surface border-white/10 text-son-silver-dim hover:border-son-pink/30'
+                  }`}
+                >
+                  {f === 'todos' ? 'Todos' : f === 'baixo' ? 'Baixo estoque' : 'Esgotados'}
+                </button>
+              ))}
+            </div>
             <button type="button" onClick={openNewIngredient} className="btn-primary text-sm py-2 px-4">
               <Plus className="w-4 h-4" /> Novo item de estoque
             </button>
           </div>
-          {ingredients.length === 0 ? (
-            <p className="text-sm text-son-silver-dim">Nenhum item de estoque cadastrado ainda.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {ingredients.map((i) => (
-                <Card key={i.id} className="p-4">
-                  <p className="font-semibold text-white">{i.name}</p>
-                  <div className="flex items-center justify-between text-sm mb-3">
-                    <span className="text-son-silver-dim">
-                      {i.quantity} {i.unit} em estoque
-                    </span>
-                    <span className="sunset-text font-bold">
-                      {currency(i.cost_price)}/{i.unit}
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => openEditIngredient(i)} className="btn-secondary flex-1 text-sm py-2">
-                      <Pencil className="w-3.5 h-3.5" /> Editar
-                    </button>
-                    <button onClick={() => setStockEntryIngredient(i)} className="btn-secondary text-sm py-2 px-3">
-                      <Wallet className="w-3.5 h-3.5" /> Atualizar estoque
-                    </button>
-                    <button onClick={() => removeIngredient(i)} className="btn-secondary text-sm py-2 px-3 hover:text-son-pink">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
+          {(() => {
+            const filtered = ingredients.filter((i) => {
+              if (stockFilter === 'esgotado') return i.quantity <= 0
+              if (stockFilter === 'baixo') return i.low_stock_threshold != null && i.quantity > 0 && i.quantity <= i.low_stock_threshold
+              return true
+            })
+            if (filtered.length === 0) {
+              return (
+                <p className="text-sm text-son-silver-dim">
+                  {stockFilter === 'todos' ? 'Nenhum item de estoque cadastrado ainda.' : 'Nenhum item nessa condição.'}
+                </p>
+              )
+            }
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filtered.map((i) => {
+                  const esgotado = i.quantity <= 0
+                  const baixo = !esgotado && i.low_stock_threshold != null && i.quantity <= i.low_stock_threshold
+                  return (
+                    <Card key={i.id} className={`p-4 ${esgotado ? 'border-red-500/40' : baixo ? 'border-amber-500/40' : ''}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold text-white">{i.name}</p>
+                        {esgotado && <span className="text-[10px] font-bold text-red-400 shrink-0">ESGOTADO</span>}
+                        {baixo && <span className="text-[10px] font-bold text-amber-400 shrink-0">BAIXO ESTOQUE</span>}
+                      </div>
+                      <div className="flex items-center justify-between text-sm mb-3">
+                        <span className="text-son-silver-dim">
+                          {i.quantity} {i.unit} em estoque
+                        </span>
+                        <span className="sunset-text font-bold">
+                          {currency(i.cost_price)}/{i.unit}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => openEditIngredient(i)} className="btn-secondary flex-1 text-sm py-2">
+                          <Pencil className="w-3.5 h-3.5" /> Editar
+                        </button>
+                        <button onClick={() => setStockEntryIngredient(i)} className="btn-secondary text-sm py-2 px-3">
+                          <Wallet className="w-3.5 h-3.5" /> Atualizar estoque
+                        </button>
+                        <button onClick={() => removeIngredient(i)} className="btn-secondary text-sm py-2 px-3 hover:text-son-pink">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </Card>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </div>
       ) : (
         <div>
@@ -538,6 +582,17 @@ export default function AdminEstoque() {
                   step="0.01"
                   value={ingredientForm.cost_price}
                   onChange={(e) => setIngredientForm({ ...ingredientForm, cost_price: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Avisar baixo estoque ao chegar em (opcional)</label>
+                <input
+                  className="input-field"
+                  type="number"
+                  step="any"
+                  placeholder={`Ex: 10 ${ingredientForm.unit}`}
+                  value={ingredientForm.low_stock_threshold}
+                  onChange={(e) => setIngredientForm({ ...ingredientForm, low_stock_threshold: e.target.value })}
                 />
               </div>
               {ingredientError && <p className="error-msg">{ingredientError}</p>}

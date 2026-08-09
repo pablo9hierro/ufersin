@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::abacatepay;
 use crate::cancel;
 use crate::error::AppError;
+use crate::formulation;
 use crate::google_routes::{self, Ponto, RotaResult};
 use crate::mercadopago;
 use crate::mercadopago_link;
@@ -336,6 +337,11 @@ pub struct PublicServiceDto {
     pub description: String,
     pub category_name: Option<String>,
     pub price: f64,
+    /// `None` = disponibilidade não controlada (sempre "disponível").
+    /// `Some(0.0)` = indisponível agora por falta de peça em estoque —
+    /// vitrine/Assistente IA devem tratar isso como "fora de estoque",
+    /// nunca vender/oferecer um serviço nessa condição.
+    pub available_quantity: Option<f64>,
 }
 
 /// Lista de serviços ativos da loja — mesmo modelo de autorização (slug =
@@ -347,26 +353,31 @@ pub async fn list_public_services(
 ) -> Result<Json<Vec<PublicServiceDto>>, AppError> {
     let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
-    let rows: Vec<(String, String, String, Option<String>, f64)> = sqlx::query_as(
-        "SELECT s.id, s.name, s.description, c.name, s.price \
+    let rows: Vec<(String, String, String, Option<String>, f64, Option<f64>)> = sqlx::query_as(
+        "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity \
          FROM services s LEFT JOIN categories c ON c.id = s.category_id \
          WHERE s.tenant_id = $1 AND s.active <> 0 ORDER BY s.name",
     )
     .bind(&store.id)
     .fetch_all(&mut *tx)
     .await?;
+    let mut services = Vec::with_capacity(rows.len());
+    for (id, name, description, category_name, price, manual_quantity) in rows {
+        let has_ingredients: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM service_ingredients WHERE tenant_id = $1 AND service_id = $2")
+                .bind(&store.id)
+                .bind(&id)
+                .fetch_one(&mut *tx)
+                .await?;
+        let available_quantity = if has_ingredients.0 > 0 {
+            formulation::compute_service_available_quantity(&mut *tx, &store.id, &id).await?
+        } else {
+            manual_quantity
+        };
+        services.push(PublicServiceDto { id, name, description, category_name, price, available_quantity });
+    }
     tx.commit().await?;
-    Ok(Json(
-        rows.into_iter()
-            .map(|(id, name, description, category_name, price)| PublicServiceDto {
-                id,
-                name,
-                description,
-                category_name,
-                price,
-            })
-            .collect(),
-    ))
+    Ok(Json(services))
 }
 
 /// Sitemap.xml só dos serviços da loja (separado do sitemap de produtos).

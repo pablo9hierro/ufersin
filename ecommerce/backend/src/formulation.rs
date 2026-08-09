@@ -37,6 +37,38 @@ pub fn convert(qty: f64, from: &str, to: &str) -> Result<f64, AppError> {
     Ok(qty * from_factor / to_factor)
 }
 
+/// Disponibilidade calculada de um serviço a partir dos insumos ligados a
+/// ele (insumo limitante — mesma lógica de produto ERP). `Ok(None)` quando
+/// o serviço não tem insumo ligado (front decide se usa `manual_quantity`
+/// nesse caso). Usado tanto pelo admin (`routes/admin.rs`) quanto pela
+/// vitrine/Assistente IA pública (`routes/public.rs`), pra nunca divergir.
+pub async fn compute_service_available_quantity(
+    tx: &mut PgConnection,
+    tenant_id: &str,
+    service_id: &str,
+) -> Result<Option<f64>, AppError> {
+    let lines: Vec<(f64, String, f64, String)> = sqlx::query_as(
+        "SELECT si.quantity, si.unit, i.quantity, i.unit \
+         FROM service_ingredients si \
+         JOIN ingredients i ON i.id = si.ingredient_id AND i.tenant_id = si.tenant_id \
+         WHERE si.tenant_id = $1 AND si.service_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(service_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    if lines.is_empty() {
+        return Ok(None);
+    }
+    let mut min_available: f64 = f64::MAX;
+    for (line_quantity, line_unit, ingredient_quantity, ingredient_unit) in lines {
+        let Ok(converted_stock) = convert(ingredient_quantity, &ingredient_unit, &line_unit) else { continue };
+        let can_make = (converted_stock / line_quantity).floor().max(0.0);
+        min_available = min_available.min(can_make);
+    }
+    Ok(Some(if min_available == f64::MAX { 0.0 } else { min_available }))
+}
+
 #[derive(Debug, sqlx::FromRow)]
 struct FormulationLine {
     quantity: f64,

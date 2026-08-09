@@ -40,6 +40,7 @@ export const IngredientSchema = z.object({
   unit: z.enum(['g', 'kg', 'ml', 'l', 'un']),
   quantity: z.number(),
   cost_price: z.number(),
+  low_stock_threshold: z.number().nullable().optional(),
 })
 export type Ingredient = z.infer<typeof IngredientSchema>
 
@@ -48,6 +49,7 @@ export type IngredientPayload = {
   unit: Ingredient['unit']
   quantity: number
   cost_price: number
+  low_stock_threshold?: number | null
 }
 
 export type FormulationLinePayload = {
@@ -96,6 +98,10 @@ export const ServiceSchema = z.object({
   estimated_cost: z.number(),
   ingredients: z.array(ServiceIngredientSchema),
   extra_costs: z.array(ServiceExtraCostSchema),
+  available_quantity: z.number().nullable().optional(),
+  low_stock_threshold: z.number().nullable().optional(),
+  manual_quantity: z.number().nullable().optional(),
+  quantity_from_stock: z.boolean().optional(),
 })
 export type Service = z.infer<typeof ServiceSchema>
 
@@ -107,6 +113,8 @@ export type ServicePayload = {
   active?: boolean
   ingredients: { ingredient_id: string; quantity: number; unit: Ingredient['unit'] }[]
   extra_costs: { label: string; value: number }[]
+  low_stock_threshold?: number | null
+  manual_quantity?: number | null
 }
 
 export const ProductDiscountSchema = z.object({

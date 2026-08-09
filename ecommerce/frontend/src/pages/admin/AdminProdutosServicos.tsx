@@ -59,9 +59,12 @@ export default function AdminProdutosServicos() {
     price: string
     ingredientLines: ServiceIngredientLine[]
     extraCostLines: ExtraCostLine[]
+    manual_quantity: string
+    low_stock_threshold: string
   } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [availFilter, setAvailFilter] = useState<'todos' | 'baixo' | 'esgotado'>('todos')
 
   const openNew = () =>
     setForm({
@@ -72,6 +75,8 @@ export default function AdminProdutosServicos() {
       price: '',
       ingredientLines: [{ ...EMPTY_INGREDIENT_LINE }],
       extraCostLines: [],
+      manual_quantity: '',
+      low_stock_threshold: '',
     })
 
   const openEdit = (s: Service) =>
@@ -86,7 +91,12 @@ export default function AdminProdutosServicos() {
           ? s.ingredients.map((i) => ({ ingredient_id: i.ingredient_id, quantity: String(i.quantity), unit: i.unit }))
           : [{ ...EMPTY_INGREDIENT_LINE }],
       extraCostLines: s.extra_costs.map((c) => ({ label: c.label, value: String(c.value) })),
+      manual_quantity: s.manual_quantity != null ? String(s.manual_quantity) : '',
+      low_stock_threshold: s.low_stock_threshold != null ? String(s.low_stock_threshold) : '',
     })
+
+  const hasIngredientLines = (f: { ingredientLines: ServiceIngredientLine[] }) =>
+    f.ingredientLines.some((l) => l.ingredient_id && Number(l.quantity) > 0)
 
   const addIngredientLine = () =>
     setForm((f) => (f ? { ...f, ingredientLines: [...f.ingredientLines, { ...EMPTY_INGREDIENT_LINE }] } : f))
@@ -144,6 +154,9 @@ export default function AdminProdutosServicos() {
         extra_costs: form.extraCostLines
           .filter((l) => l.label.trim() && Number(l.value) > 0)
           .map((l) => ({ label: l.label.trim(), value: Number(l.value) })),
+        low_stock_threshold: form.low_stock_threshold.trim() === '' ? null : Number(form.low_stock_threshold),
+        manual_quantity:
+          hasIngredientLines(form) || form.manual_quantity.trim() === '' ? null : Number(form.manual_quantity),
       }
       if (form.id) await adminService.services.update(form.id, payload)
       else await adminService.services.create(payload)
@@ -186,6 +199,23 @@ export default function AdminProdutosServicos() {
         </p>
       </Card>
 
+      {!loading && services.length > 0 && (
+        <div className="flex gap-2 mb-4">
+          {(['todos', 'baixo', 'esgotado'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setAvailFilter(f)}
+              className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
+                availFilter === f ? 'sunset-bg text-white border-transparent' : 'bg-son-surface border-white/10 text-son-silver-dim hover:border-son-pink/30'
+              }`}
+            >
+              {f === 'todos' ? 'Todos' : f === 'baixo' ? 'Baixo estoque de serviço' : 'Em falta'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-10">
           <Loader2 className="w-6 h-6 animate-spin text-son-silver-dim" />
@@ -193,31 +223,62 @@ export default function AdminProdutosServicos() {
       ) : services.length === 0 ? (
         <p className="text-sm text-son-silver-dim">Nenhum serviço cadastrado ainda.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {services.map((s) => (
-            <Card key={s.id} className="p-4">
-              <div className="w-full aspect-video rounded-xl bg-son-surface-light flex items-center justify-center overflow-hidden mb-3">
-                <Wrench className="w-8 h-8 text-son-silver-dim/40" />
-              </div>
-              <p className="font-semibold text-white">{s.name}</p>
-              <p className="text-xs text-son-silver-dim mb-1">{categories.find((c) => c.id === s.category_id)?.name ?? 'Sem categoria'}</p>
-              <div className="flex items-center justify-between text-sm mb-3">
-                <span className="sunset-text font-bold">{currency(s.price)}</span>
-                <span className="text-son-silver-dim" title="Custo estimado a partir dos itens de estoque + custos extras">
-                  custo ref. {currency(s.estimated_cost)}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => openEdit(s)} className="btn-secondary flex-1 text-sm py-2">
-                  <Pencil className="w-3.5 h-3.5" /> Editar
-                </button>
-                <button onClick={() => remove(s)} className="btn-secondary text-sm py-2 px-3 hover:text-son-pink">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </Card>
-          ))}
-        </div>
+        (() => {
+          const filtered = services.filter((s) => {
+            if (availFilter === 'esgotado') return s.available_quantity != null && s.available_quantity <= 0
+            if (availFilter === 'baixo')
+              return (
+                s.available_quantity != null &&
+                s.available_quantity > 0 &&
+                s.low_stock_threshold != null &&
+                s.available_quantity <= s.low_stock_threshold
+              )
+            return true
+          })
+          if (filtered.length === 0) return <p className="text-sm text-son-silver-dim">Nenhum serviço nessa condição.</p>
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtered.map((s) => {
+                const esgotado = s.available_quantity != null && s.available_quantity <= 0
+                const baixo =
+                  !esgotado && s.available_quantity != null && s.low_stock_threshold != null && s.available_quantity <= s.low_stock_threshold
+                return (
+                  <Card key={s.id} className={`p-4 ${esgotado ? 'border-red-500/40' : baixo ? 'border-amber-500/40' : ''}`}>
+                    <div className="w-full aspect-video rounded-xl bg-son-surface-light flex items-center justify-center overflow-hidden mb-3">
+                      <Wrench className="w-8 h-8 text-son-silver-dim/40" />
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-white">{s.name}</p>
+                      {esgotado && <span className="text-[10px] font-bold text-red-400 shrink-0">EM FALTA</span>}
+                      {baixo && <span className="text-[10px] font-bold text-amber-400 shrink-0">BAIXO ESTOQUE</span>}
+                    </div>
+                    <p className="text-xs text-son-silver-dim mb-1">{categories.find((c) => c.id === s.category_id)?.name ?? 'Sem categoria'}</p>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="sunset-text font-bold">{currency(s.price)}</span>
+                      <span className="text-son-silver-dim" title="Custo estimado a partir dos itens de estoque + custos extras">
+                        custo ref. {currency(s.estimated_cost)}
+                      </span>
+                    </div>
+                    {s.available_quantity != null && (
+                      <p className="text-xs text-son-silver-dim mb-2">
+                        Disponível: <span className="text-white font-semibold">{s.available_quantity}</span>
+                        {s.quantity_from_stock ? ' (calculado pelo estoque)' : ''}
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <button onClick={() => openEdit(s)} className="btn-secondary flex-1 text-sm py-2">
+                        <Pencil className="w-3.5 h-3.5" /> Editar
+                      </button>
+                      <button onClick={() => remove(s)} className="btn-secondary text-sm py-2 px-3 hover:text-son-pink">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          )
+        })()
       )}
 
       {form && (
@@ -348,6 +409,40 @@ export default function AdminProdutosServicos() {
                   Preço final do serviço <span className="text-amber-400">*</span>
                 </label>
                 <input className="input-field" type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Quantidade de serviços disponíveis</label>
+                  {hasIngredientLines(form) ? (
+                    <>
+                      <input className="input-field opacity-60 cursor-not-allowed" value="calculado pelo estoque" disabled readOnly />
+                      <p className="text-[10px] text-son-silver-dim mt-1">
+                        Calculado automaticamente pela disponibilidade dos itens de estoque ligados acima.
+                      </p>
+                    </>
+                  ) : (
+                    <input
+                      className="input-field"
+                      type="number"
+                      step="1"
+                      placeholder="Deixe vazio pra ilimitado"
+                      value={form.manual_quantity}
+                      onChange={(e) => setForm({ ...form, manual_quantity: e.target.value })}
+                    />
+                  )}
+                </div>
+                <div>
+                  <label className="label">Avisar baixo estoque em (opcional)</label>
+                  <input
+                    className="input-field"
+                    type="number"
+                    step="1"
+                    placeholder="Ex: 2"
+                    value={form.low_stock_threshold}
+                    onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })}
+                  />
+                </div>
               </div>
 
               {error && <p className="error-msg">{error}</p>}
