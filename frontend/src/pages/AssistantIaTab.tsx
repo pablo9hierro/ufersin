@@ -14,6 +14,8 @@ type AssistantConfig = {
   min_response_chars: number
   max_response_chars: number
   anthropic_api_key: string | null
+  ai_provider: 'anthropic' | 'openrouter'
+  ai_model: string | null
 }
 
 type RagDocument = {
@@ -182,18 +184,49 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
           />
         </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Motor de IA</label>
+            <select
+              className="input-field"
+              value={config.ai_provider}
+              onChange={(e) => setConfig({ ...config, ai_provider: e.target.value as 'anthropic' | 'openrouter' })}
+            >
+              <option value="anthropic">Anthropic (Claude direto)</option>
+              <option value="openrouter">OpenRouter (vários modelos)</option>
+            </select>
+          </div>
+          {config.ai_provider === 'openrouter' && (
+            <div>
+              <label className="label">Modelo (OpenRouter)</label>
+              <input
+                className="input-field"
+                placeholder="Ex: anthropic/claude-3.5-sonnet"
+                value={config.ai_model ?? ''}
+                onChange={(e) => setConfig({ ...config, ai_model: e.target.value })}
+              />
+            </div>
+          )}
+        </div>
         <div>
-          <label className="label">Chave da API do motor de IA (opcional)</label>
+          <label className="label">
+            Chave da API do motor de IA {config.ai_provider === 'anthropic' ? '(opcional)' : ''}
+          </label>
           <input
             type="password"
             className="input-field"
-            placeholder="Deixe vazio pra usar a chave padrão da plataforma"
+            placeholder={
+              config.ai_provider === 'anthropic'
+                ? 'Deixe vazio pra usar a chave padrão da plataforma'
+                : 'Chave da sua conta OpenRouter (openrouter.ai/keys)'
+            }
             value={config.anthropic_api_key ?? ''}
             onChange={(e) => setConfig({ ...config, anthropic_api_key: e.target.value })}
           />
           <p className="text-[10px] text-uf-silver-dim mt-1">
-            Troque aqui se o crédito da chave padrão da plataforma acabar — sua própria chave da Anthropic passa a ser
-            usada só nessa loja.
+            {config.ai_provider === 'anthropic'
+              ? 'Troque aqui se o crédito da chave padrão da plataforma acabar — sua própria chave da Anthropic (console.anthropic.com) passa a ser usada só nessa loja.'
+              : 'Obrigatória pra usar OpenRouter — gere em openrouter.ai/keys.'}
           </p>
         </div>
 
