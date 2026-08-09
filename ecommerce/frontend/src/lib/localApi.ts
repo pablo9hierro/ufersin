@@ -2874,6 +2874,12 @@ async function trackDeliveryPositionLocal(orderId: string): Promise<DeliveryPosi
 export const localApi = {
   categories: { list: listCategoriesPublic },
   products: { list: listProducts, get: getProduct, salesCounts: productSalesCounts },
+  publicServices: {
+    list: async () => [] as { id: string; name: string; description: string; category_name: string | null; price: number; available_quantity: number | null }[],
+    get: async () => {
+      throw new ApiError(404, 'Serviços não estão disponíveis no modo demonstração.')
+    },
+  },
   shippingSettings: { get: getShippingSettings },
   siteSettings: { get: getSiteSettings },
   storeStatus: { get: getStoreStatus },
