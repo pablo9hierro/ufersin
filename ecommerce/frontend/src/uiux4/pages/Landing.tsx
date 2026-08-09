@@ -62,6 +62,9 @@ export default function Uiux4Landing() {
             <button onClick={() => navigate('/catalogo')} className="u4-btn-primary px-6 py-3 text-sm">
               Ver produtos
             </button>
+            <button onClick={() => navigate('/servicos')} className="u4-btn-secondary px-6 py-3 text-sm">
+              Ver serviços
+            </button>
             <button onClick={() => (customerAuth.token ? navigate('/consultar') : setShowAuthModal(true))} className="u4-btn-secondary px-6 py-3 text-sm">
               Acompanhar entrega
             </button>
