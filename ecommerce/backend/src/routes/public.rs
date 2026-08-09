@@ -316,6 +316,77 @@ pub async fn get_public_sitemap(
         .into_response())
 }
 
+#[derive(serde::Serialize)]
+pub struct PublicServiceDto {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category_name: Option<String>,
+    pub price: f64,
+}
+
+/// Lista de serviços ativos da loja — mesmo modelo de autorização (slug =
+/// loja) das outras rotas públicas deste arquivo. Usado pela vitrine e
+/// pela tool `buscar_servicos` do Assistente IA.
+pub async fn list_public_services(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Vec<PublicServiceDto>>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let rows: Vec<(String, String, String, Option<String>, f64)> = sqlx::query_as(
+        "SELECT s.id, s.name, s.description, c.name, s.price \
+         FROM services s LEFT JOIN categories c ON c.id = s.category_id \
+         WHERE s.tenant_id = $1 AND s.active <> 0 ORDER BY s.name",
+    )
+    .bind(&store.id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, name, description, category_name, price)| PublicServiceDto {
+                id,
+                name,
+                description,
+                category_name,
+                price,
+            })
+            .collect(),
+    ))
+}
+
+/// Sitemap.xml só dos serviços da loja (separado do sitemap de produtos).
+pub async fn get_public_services_sitemap(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<axum::response::Response, AppError> {
+    use axum::http::header;
+    use axum::response::IntoResponse;
+
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT id, created_at::text FROM services WHERE tenant_id = $1 AND active <> 0 ORDER BY name",
+    )
+    .bind(&store.id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let base = "https://resolutoo.com/loja";
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
+    for (id, created_at) in rows {
+        xml.push_str("  <url>\n");
+        xml.push_str(&format!("    <loc>{base}/servico/{id}?tenant={slug}</loc>\n"));
+        xml.push_str(&format!("    <lastmod>{}</lastmod>\n", &created_at[..created_at.len().min(10)]));
+        xml.push_str("  </url>\n");
+    }
+    xml.push_str("</urlset>\n");
+
+    Ok(([(header::CONTENT_TYPE, "application/xml; charset=utf-8")], xml).into_response())
+}
+
 pub async fn list_public_categories(
     State(state): State<AppState>,
     Path(slug): Path<String>,
@@ -377,6 +448,7 @@ pub async fn get_public_store_status(
         manually_closed: status.0,
         manual_closed_reason: status.1,
         onboarding_hours_done: true,
+        pickup_address: store.pickup_address,
     }))
 }
 

@@ -593,6 +593,10 @@ pub struct StoreStatusDto {
     /// Etapa 2 do painel: horário já foi salvo pelo lojista pelo menos uma vez.
     #[serde(default)]
     pub onboarding_hours_done: bool,
+    /// Endereço de retirada/localização da loja — usado pelo botão de mapa
+    /// da vitrine e pela tool de geolocalização do Assistente IA.
+    #[serde(default)]
+    pub pickup_address: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1925,6 +1925,10 @@ pub async fn get_store_status(
         manually_closed: status.0,
         manual_closed_reason: status.1,
         onboarding_hours_done: hours_done.0,
+        // Admin já tem o endereço em outra tela (config da loja) — não
+        // duplica a query aqui, só a rota pública precisa disso pra
+        // vitrine/Assistente IA.
+        pickup_address: String::new(),
     }))
 }
 

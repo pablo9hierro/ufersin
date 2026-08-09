@@ -288,6 +288,14 @@ async fn main() -> anyhow::Result<()> {
             get(routes::public::get_public_sitemap),
         )
         .route(
+            "/api/public/catalog/{slug}/services",
+            get(routes::public::list_public_services),
+        )
+        .route(
+            "/api/public/catalog/{slug}/sitemap-servicos.xml",
+            get(routes::public::get_public_services_sitemap),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )
