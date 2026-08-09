@@ -186,6 +186,37 @@ pub async fn teardown_whatsapp(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SyncPickupAddressInput {
+    pub tenant_slug: String,
+    pub pickup_address: String,
+}
+
+/// Resolutoo (ufersin/backend) chama sempre que o lojista edita
+/// endereço/número em /meu-plano/layout — antes só sincronizava no
+/// onboarding inicial, então editar depois nunca atualizava o
+/// `pickup_address` real usado pela vitrine/Assistente IA.
+pub async fn sync_pickup_address(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SyncPickupAddressInput>,
+) -> Result<StatusCode, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = input.tenant_slug.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest("tenant_slug obrigatório".to_string()));
+    }
+    let result = sqlx::query("UPDATE tenants SET pickup_address = $1, updated_at = now()::text WHERE slug = $2")
+        .bind(input.pickup_address.trim())
+        .bind(&slug)
+        .execute(&state.pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }

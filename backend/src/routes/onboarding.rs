@@ -584,6 +584,29 @@ pub async fn editar_onboarding(
         }
     }
 
+    // Sync pickup_address (loja/vitrine/Assistente IA) when endereço ou
+    // número foram tocados — lê o valor JÁ COALESCEado (endereco/numero
+    // podem ter vindo só um dos dois nesta edição).
+    if body.endereco.is_some() || body.endereco_numero.is_some() {
+        let addr_row: Option<(Option<String>, Option<String>)> =
+            sqlx::query_as("SELECT endereco, endereco_numero FROM subscribers WHERE id = $1")
+                .bind(&claims.sub)
+                .fetch_optional(&state.pool)
+                .await?;
+        if let Some((endereco, numero)) = addr_row {
+            let endereco = endereco.unwrap_or_default();
+            if !endereco.trim().is_empty() {
+                let pickup = match numero.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                    Some(n) => format!("{}, {}", endereco.trim(), n),
+                    None => endereco.trim().to_string(),
+                };
+                if let Err(e) = sync_store_pickup_address(&state, &slug, &pickup).await {
+                    tracing::warn!("sync-pickup-address for slug {slug} failed (endereco already saved): {e:?}");
+                }
+            }
+        }
+    }
+
     // Sync payment credentials when any payment field was touched.
     if body.forma_pagamento.is_some()
         || body.plataforma_pagamento.is_some()
@@ -643,6 +666,42 @@ pub(crate) async fn sync_store_payment_credentials(
         return Err(AppError::Internal(format!(
             "sync-payment-credentials failed: {status} {text}"
         )));
+    }
+    Ok(())
+}
+
+/// Espelho de `sync_store_payment_credentials` — chamado quando o lojista
+/// edita endereço/número em /meu-plano/layout, pra manter
+/// `ecommerce.tenants.pickup_address` (vitrine + tool de localização do
+/// Assistente IA) em dia com o que está salvo aqui.
+pub(crate) async fn sync_store_pickup_address(
+    state: &AppState,
+    slug: &str,
+    pickup_address: &str,
+) -> Result<(), AppError> {
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Ok(());
+    }
+    let url = format!(
+        "{}/internal/sync-pickup-address",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "tenant_slug": slug,
+            "pickup_address": pickup_address,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("sync-pickup-address unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!("sync-pickup-address failed: {status} {text}")));
     }
     Ok(())
 }
