@@ -395,6 +395,25 @@ pub struct PublicServiceDto {
 /// Lista de serviços ativos da loja — mesmo modelo de autorização (slug =
 /// loja) das outras rotas públicas deste arquivo. Usado pela vitrine e
 /// pela tool `buscar_servicos` do Assistente IA.
+async fn load_public_service_availability(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    service_id: &str,
+    manual_quantity: Option<f64>,
+) -> Result<Option<f64>, AppError> {
+    let has_ingredients: (i64,) =
+        sqlx::query_as("SELECT count(*) FROM service_ingredients WHERE tenant_id = $1 AND service_id = $2")
+            .bind(tenant_id)
+            .bind(service_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if has_ingredients.0 > 0 {
+        formulation::compute_service_available_quantity(&mut *tx, tenant_id, service_id).await
+    } else {
+        Ok(manual_quantity)
+    }
+}
+
 pub async fn list_public_services(
     State(state): State<AppState>,
     Path(slug): Path<String>,
@@ -411,21 +430,36 @@ pub async fn list_public_services(
     .await?;
     let mut services = Vec::with_capacity(rows.len());
     for (id, name, description, category_name, price, manual_quantity) in rows {
-        let has_ingredients: (i64,) =
-            sqlx::query_as("SELECT count(*) FROM service_ingredients WHERE tenant_id = $1 AND service_id = $2")
-                .bind(&store.id)
-                .bind(&id)
-                .fetch_one(&mut *tx)
-                .await?;
-        let available_quantity = if has_ingredients.0 > 0 {
-            formulation::compute_service_available_quantity(&mut *tx, &store.id, &id).await?
-        } else {
-            manual_quantity
-        };
+        let available_quantity = load_public_service_availability(&mut tx, &store.id, &id, manual_quantity).await?;
         services.push(PublicServiceDto { id, name, description, category_name, price, available_quantity });
     }
     tx.commit().await?;
     Ok(Json(services))
+}
+
+/// Detalhe público de UM serviço — página `/loja/servico/{id}` da vitrine
+/// e link que o Assistente IA manda pro cliente na prévia do carrinho.
+pub async fn get_public_service(
+    State(state): State<AppState>,
+    Path((slug, id)): Path<(String, String)>,
+) -> Result<Json<PublicServiceDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let row: Option<(String, String, String, Option<String>, f64, Option<f64>)> = sqlx::query_as(
+        "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity \
+         FROM services s LEFT JOIN categories c ON c.id = s.category_id \
+         WHERE s.tenant_id = $1 AND s.id = $2 AND s.active <> 0",
+    )
+    .bind(&store.id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((id, name, description, category_name, price, manual_quantity)) = row else {
+        return Err(AppError::NotFound("service not found".to_string()));
+    };
+    let available_quantity = load_public_service_availability(&mut tx, &store.id, &id, manual_quantity).await?;
+    tx.commit().await?;
+    Ok(Json(PublicServiceDto { id, name, description, category_name, price, available_quantity }))
 }
 
 /// Sitemap.xml só dos serviços da loja (separado do sitemap de produtos).

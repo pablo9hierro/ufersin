@@ -292,6 +292,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::public::list_public_services),
         )
         .route(
+            "/api/public/catalog/{slug}/services/{id}",
+            get(routes::public::get_public_service),
+        )
+        .route(
             "/api/public/catalog/{slug}/sitemap-servicos.xml",
             get(routes::public::get_public_services_sitemap),
         )

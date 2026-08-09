@@ -131,6 +131,15 @@ async function request<T>(
  * Com slug, SEMPRE Railway — nunca misturar com `ufersin.products` (era a
  * causa do catálogo vazio com produtos no admin).
  */
+type PublicService = {
+  id: string
+  name: string
+  description: string
+  category_name: string | null
+  price: number
+  available_quantity: number | null
+}
+
 function railwayPublicCatalogBase(): string | null {
   const slug = resolveTenantSlug().trim()
   if (!slug) return null
@@ -163,6 +172,13 @@ const tenantAwarePublicCatalog = {
       return request<{ product_id: string; sold_count: number }[]>(
         `${base}/product-sales-counts`
       )
+    },
+  },
+  services: {
+    get: async (id: string) => {
+      const base = railwayPublicCatalogBase()
+      if (!base) throw new ApiError(404, 'Serviço não disponível.')
+      return request<PublicService>(`${base}/services/${encodeURIComponent(id)}`)
     },
   },
   storeStatus: {
@@ -277,6 +293,7 @@ const remoteApi = {
   // single-tenant / sem slug → Supabase RLS (supabasePublicApi).
   categories: tenantAwarePublicCatalog.categories,
   products: tenantAwarePublicCatalog.products,
+  publicServices: tenantAwarePublicCatalog.services,
   shippingSettings: supabasePublicApi.shippingSettings,
   siteSettings: supabasePublicApi.siteSettings,
   storeStatus: tenantAwarePublicCatalog.storeStatus,

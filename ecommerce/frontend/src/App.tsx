@@ -49,6 +49,7 @@ const MotoboyConta = lazy(() => import('./pages/motoboy/MotoboyConta'))
 const Uiux2Landing = lazy(() => import('./uiux2/pages/Landing'))
 const Uiux2Catalogo = lazy(() => import('./uiux2/pages/Catalogo'))
 const Uiux2ProdutoDetalhe = lazy(() => import('./uiux2/pages/ProdutoDetalhe'))
+const ServicoDetalhe = lazy(() => import('./pages/ServicoDetalhe'))
 const Uiux2Carrinho = lazy(() => import('./uiux2/pages/Carrinho'))
 const Uiux2Checkout = lazy(() => import('./uiux2/pages/Checkout'))
 const Uiux2Consultar = lazy(() => import('./uiux2/pages/Consultar'))
@@ -271,6 +272,7 @@ export default function App() {
           <Route path="/demo-entrar" element={<DemoEntrar />} />
           <Route path="/catalogo" element={<StyleAware ufersin={Uiux2Catalogo} burgerbite={Uiux3Catalogo} burgerhouse={Uiux4Catalogo} />} />
           <Route path="/produto/:id" element={<StyleAware ufersin={Uiux2ProdutoDetalhe} burgerbite={Uiux3ProdutoDetalhe} burgerhouse={Uiux4ProdutoDetalhe} />} />
+          <Route path="/servico/:id" element={<ServicoDetalhe />} />
           <Route path="/carrinho" element={<StyleAware ufersin={Uiux2Carrinho} burgerbite={Uiux3Carrinho} burgerhouse={Uiux4Carrinho} />} />
           <Route path="/checkout" element={<StyleAware ufersin={Uiux2Checkout} burgerbite={Uiux3Checkout} burgerhouse={Uiux4Checkout} />} />
           <Route path="/banner" element={<StyleAware ufersin={Uiux2Banner} burgerbite={Uiux3Banner} burgerhouse={Uiux4Banner} />} />
