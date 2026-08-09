@@ -365,6 +365,7 @@ async fn handle_mercadopago(
 /// própria loja e mensagens sem texto, como localização/mídia).
 fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, data: &Value, message: &Value) {
     let Ok(assistant_ia_url) = std::env::var("ASSISTANT_IA_URL") else {
+        tracing::info!("assistant-ia forward: ASSISTANT_IA_URL not set, skipping");
         return;
     };
     let from_me = data
@@ -373,6 +374,7 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if from_me {
+        tracing::info!("assistant-ia forward: skipping, fromMe=true");
         return;
     }
     let text = message
@@ -380,6 +382,7 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
         .and_then(|v| v.as_str())
         .or_else(|| message.get("extendedTextMessage").and_then(|m| m.get("text")).and_then(|v| v.as_str()));
     let Some(text) = text else {
+        tracing::info!("assistant-ia forward: skipping, no text field in message: {message}");
         return;
     };
     let remote_jid = data
@@ -389,9 +392,13 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
         .unwrap_or("");
     let phone: String = remote_jid.chars().take_while(char::is_ascii_digit).collect();
     if phone.is_empty() {
+        tracing::info!("assistant-ia forward: skipping, empty phone from remoteJid={remote_jid}");
         return;
     }
     let customer_name = data.get("pushName").and_then(|v| v.as_str()).map(str::to_string);
+    tracing::info!(
+        "assistant-ia forward: sending tenant_id={tenant_id} instance={instance} phone={phone} url={assistant_ia_url}"
+    );
 
     let http = state.http.clone();
     let tenant_id = tenant_id.to_string();
@@ -410,8 +417,9 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
             }))
             .send()
             .await;
-        if let Err(e) = result {
-            tracing::warn!("falha ao encaminhar mensagem pro assistant-ia (ignorado): {e:?}");
+        match result {
+            Ok(resp) => tracing::info!("assistant-ia forward: response status={}", resp.status()),
+            Err(e) => tracing::warn!("falha ao encaminhar mensagem pro assistant-ia (ignorado): {e:?}"),
         }
     });
 }
