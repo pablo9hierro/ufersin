@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2, MessageCircle, Send } from 'lucide-react'
+import { Loader2, MessageCircle, Send, Trash2 } from 'lucide-react'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { ASSISTANT_IA_API_URL } from '../../lib/assistantIaBeta'
 
@@ -88,6 +88,14 @@ export default function AdminChat() {
     }
   }
 
+  const deleteConversation = async (c: Conversation) => {
+    if (!base) return
+    if (!window.confirm(`Apagar todo o histórico da conversa com ${c.customer_name || formatPhone(c.phone)}? Essa ação não pode ser desfeita.`)) return
+    await fetch(`${base}/conversations/${c.id}`, { method: 'DELETE' })
+    setConversations((cs) => cs.filter((x) => x.id !== c.id))
+    setSelected((s) => (s?.id === c.id ? null : s))
+  }
+
   if (!tenantSlug) return null
 
   return (
@@ -107,10 +115,13 @@ export default function AdminChat() {
           </p>
         ) : (
           conversations.map((c) => (
-            <button
+            <div
               key={c.id}
+              role="button"
+              tabIndex={0}
               onClick={() => setSelected(c)}
-              className={`w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors ${
+              onKeyDown={(e) => e.key === 'Enter' && setSelected(c)}
+              className={`w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer group relative ${
                 selected?.id === c.id ? 'bg-white/5' : ''
               }`}
             >
@@ -128,10 +139,21 @@ export default function AdminChat() {
                   {c.status}
                 </span>
               </div>
-              <p className="text-xs text-son-silver-dim mt-0.5">
+              <p className="text-xs text-son-silver-dim mt-0.5 pr-6">
                 {c.human_override ? 'Atendimento humano' : c.assistant_enabled ? 'IA respondendo' : 'IA pausada'}
               </p>
-            </button>
+              <button
+                type="button"
+                title="Apagar histórico dessa conversa"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void deleteConversation(c)
+                }}
+                className="absolute right-3 bottom-2.5 text-son-silver-dim hover:text-son-pink opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           ))
         )}
       </div>
