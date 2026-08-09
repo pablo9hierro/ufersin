@@ -76,6 +76,8 @@ async fn handle(state: &AppState, payload: &Value) -> anyhow::Result<()> {
         .unwrap_or(data);
     let message = data.get("message").unwrap_or(&Value::Null);
 
+    forward_to_assistant_ia(state, &tenant_id, instance, data, message);
+
     // WhatsApp has two distinct share types: a fixed pin ("locationMessage")
     // and a live/moving share ("liveLocationMessage") — both carry the same
     // lat/lng field names, so either is handled the same way here.
@@ -352,4 +354,64 @@ async fn handle_mercadopago(
 
     tracing::info!("mercadopago webhook: pedido {order_id} confirmado pago (payment_id={payment_id})");
     Ok(())
+}
+
+/// Encaminha mensagens de texto recebidas pra o módulo isolado de
+/// Assistente IA (repositório separado `a-vrtek-gente`), quando
+/// `ASSISTANT_IA_URL` estiver configurada — sem alterar em nada o
+/// processamento normal do webhook da Evolution acima. Fire-and-forget:
+/// nunca bloqueia nem falha esse handler, só loga+ignora qualquer erro.
+/// Só repassa mensagem de texto de cliente (ignora mensagens enviadas pela
+/// própria loja e mensagens sem texto, como localização/mídia).
+fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, data: &Value, message: &Value) {
+    let Ok(assistant_ia_url) = std::env::var("ASSISTANT_IA_URL") else {
+        return;
+    };
+    let from_me = data
+        .get("key")
+        .and_then(|k| k.get("fromMe"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if from_me {
+        return;
+    }
+    let text = message
+        .get("conversation")
+        .and_then(|v| v.as_str())
+        .or_else(|| message.get("extendedTextMessage").and_then(|m| m.get("text")).and_then(|v| v.as_str()));
+    let Some(text) = text else {
+        return;
+    };
+    let remote_jid = data
+        .get("key")
+        .and_then(|k| k.get("remoteJid"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let phone: String = remote_jid.chars().take_while(char::is_ascii_digit).collect();
+    if phone.is_empty() {
+        return;
+    }
+    let customer_name = data.get("pushName").and_then(|v| v.as_str()).map(str::to_string);
+
+    let http = state.http.clone();
+    let tenant_id = tenant_id.to_string();
+    let instance = instance.to_string();
+    let text = text.to_string();
+    tokio::spawn(async move {
+        let result = http
+            .post(format!("{}/webhook/evolution", assistant_ia_url.trim_end_matches('/')))
+            .timeout(std::time::Duration::from_secs(5))
+            .json(&serde_json::json!({
+                "tenant_slug": tenant_id,
+                "instance": instance,
+                "phone": phone,
+                "text": text,
+                "customer_name": customer_name,
+            }))
+            .send()
+            .await;
+        if let Err(e) = result {
+            tracing::warn!("falha ao encaminhar mensagem pro assistant-ia (ignorado): {e:?}");
+        }
+    });
 }
