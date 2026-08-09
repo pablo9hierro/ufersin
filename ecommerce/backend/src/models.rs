@@ -484,7 +484,12 @@ pub struct PdvSaleInput {
 
 #[derive(Debug, Deserialize)]
 pub struct PdvSaleItemInput {
-    pub product_id: String,
+    #[serde(default)]
+    pub product_id: Option<String>,
+    /// Serviço — mutuamente exclusivo com `product_id` (mesmo padrão de
+    /// `AssistantOrderItemInput`, ver routes/public.rs).
+    #[serde(default)]
+    pub service_id: Option<String>,
     pub quantity: i64,
 }
 

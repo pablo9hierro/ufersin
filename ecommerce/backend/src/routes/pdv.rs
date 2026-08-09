@@ -9,6 +9,7 @@ use crate::features::{self, Feature};
 use crate::models::{OrderDto, OrderRow, PdvSaleInput, ProductDto, ProductRow};
 use crate::orders_common;
 use crate::orders_common::fetch_order_dto;
+use crate::routes::public::{load_public_service_availability, PublicServiceDto};
 use crate::state::AppState;
 use crate::tenant;
 
@@ -31,6 +32,31 @@ pub async fn list_products(
     .await?;
     tx.commit().await?;
     Ok(Json(rows.into_iter().map(ProductDto::from).collect()))
+}
+
+/// Serviços ativos do tenant — mesma fonte do CRUD admin, pro PDV poder
+/// vender serviço igual produto (mesmo padrão de `list_products`).
+pub async fn list_services(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+) -> Result<Json<Vec<PublicServiceDto>>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<(String, String, String, Option<String>, f64, Option<f64>)> = sqlx::query_as(
+        "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity \
+         FROM services s LEFT JOIN categories c ON c.id = s.category_id \
+         WHERE s.tenant_id = $1 AND s.active <> 0 ORDER BY s.name",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut services = Vec::with_capacity(rows.len());
+    for (id, name, description, category_name, price, manual_quantity) in rows {
+        let available_quantity = load_public_service_availability(&mut tx, &claims.tenant_id, &id, manual_quantity).await?;
+        services.push(PublicServiceDto { id, name, description, category_name, price, available_quantity });
+    }
+    tx.commit().await?;
+    Ok(Json(services))
 }
 
 pub async fn create_sale(
@@ -68,25 +94,63 @@ pub async fn create_sale(
         if item.quantity <= 0 {
             return Err(AppError::BadRequest("item quantity must be positive".to_string()));
         }
+        if let Some(service_id) = &item.service_id {
+            let row: Option<(String, String, f64, i32)> = sqlx::query_as(
+                "SELECT id, name, price, active FROM services WHERE tenant_id = $1 AND id = $2 FOR UPDATE",
+            )
+            .bind(&claims.tenant_id)
+            .bind(service_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            let Some((id, name, price, active)) = row else {
+                return Err(AppError::BadRequest(format!("service {service_id} not found")));
+            };
+            if active == 0 {
+                return Err(AppError::BadRequest(format!("service {name} is not available")));
+            }
+            let has_ingredients: (i64,) = sqlx::query_as(
+                "SELECT count(*) FROM service_ingredients WHERE tenant_id = $1 AND service_id = $2",
+            )
+            .bind(&claims.tenant_id)
+            .bind(&id)
+            .fetch_one(&mut *tx)
+            .await?;
+            if has_ingredients.0 > 0 {
+                let available = crate::formulation::compute_service_available_quantity(&mut tx, &claims.tenant_id, &id)
+                    .await?
+                    .unwrap_or(0.0);
+                if available < item.quantity as f64 {
+                    return Err(AppError::BadRequest(format!(
+                        "insufficient part stock for service {name}"
+                    )));
+                }
+            }
+            subtotal += price * item.quantity as f64;
+            line_items.push((id, name, price, item.quantity));
+            continue;
+        }
+        let Some(product_id) = &item.product_id else {
+            return Err(AppError::BadRequest("item must have product_id or service_id".to_string()));
+        };
         // Lock the product row alone (LEFT JOIN + FOR UPDATE fails on nullable side).
         let locked: Option<(String,)> =
             sqlx::query_as("SELECT id FROM products WHERE tenant_id = $1 AND id = $2 FOR UPDATE")
                 .bind(&claims.tenant_id)
-                .bind(&item.product_id)
+                .bind(product_id)
                 .fetch_optional(&mut *tx)
                 .await?;
         if locked.is_none() {
-            return Err(AppError::BadRequest(format!("product {} not found", item.product_id)));
+            return Err(AppError::BadRequest(format!("product {product_id} not found")));
         }
         let row: Option<ProductRow> = sqlx::query_as(&format!(
             "{PRODUCT_SELECT} WHERE p.tenant_id = $1 AND p.id = $2"
         ))
         .bind(&claims.tenant_id)
-        .bind(&item.product_id)
+        .bind(product_id)
         .fetch_optional(&mut *tx)
         .await?;
         let Some(product) = row else {
-            return Err(AppError::BadRequest(format!("product {} not found", item.product_id)));
+            return Err(AppError::BadRequest(format!("product {product_id} not found")));
         };
         if product.active == 0 {
             return Err(AppError::BadRequest(format!(

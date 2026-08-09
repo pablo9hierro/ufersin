@@ -339,6 +339,7 @@ async fn main() -> anyhow::Result<()> {
             post(routes::public::notify_pdv_card_charge),
         )
         .route("/api/pdv/products", get(routes::pdv::list_products))
+        .route("/api/pdv/services", get(routes::pdv::list_services))
         .route("/api/pdv/sales", post(routes::pdv::create_sale))
         .route("/api/pdv/relatorio", get(routes::pdv::relatorio))
         // Cliente deslogado que esqueceu a senha — dispara o código de 3

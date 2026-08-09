@@ -398,7 +398,7 @@ pub struct PublicServiceDto {
 /// Lista de serviços ativos da loja — mesmo modelo de autorização (slug =
 /// loja) das outras rotas públicas deste arquivo. Usado pela vitrine e
 /// pela tool `buscar_servicos` do Assistente IA.
-async fn load_public_service_availability(
+pub(crate) async fn load_public_service_availability(
     tx: &mut sqlx::PgConnection,
     tenant_id: &str,
     service_id: &str,
