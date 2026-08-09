@@ -158,11 +158,23 @@ async fn apply_order_ingredient_delta(
     sign: f64,
     reason: &str,
 ) -> Result<Vec<String>, AppError> {
+    // UNION dos dois jeitos de `order_items.product_id` referenciar um
+    // insumo: via ficha técnica de produto ERP (`product_formulations`) OU
+    // via peça ligada a um serviço vendido pelo Assistente IA
+    // (`service_ingredients` — `oi.product_id` guarda o id do SERVIÇO
+    // nesse caso, `order_items` não distingue produto/serviço por design,
+    // ver `create_assistant_order`).
     let rows: Vec<(String, f64, String, String)> = sqlx::query_as(
         "SELECT pf.ingredient_id, oi.quantity::double precision * pf.quantity AS needed, pf.unit, i.unit AS ingredient_unit \
          FROM order_items oi \
          JOIN product_formulations pf ON pf.tenant_id = oi.tenant_id AND pf.product_id = oi.product_id \
          JOIN ingredients i ON i.id = pf.ingredient_id AND i.tenant_id = pf.tenant_id \
+         WHERE oi.tenant_id = $1 AND oi.order_id = $2 \
+         UNION ALL \
+         SELECT si.ingredient_id, oi.quantity::double precision * si.quantity AS needed, si.unit, i.unit AS ingredient_unit \
+         FROM order_items oi \
+         JOIN service_ingredients si ON si.tenant_id = oi.tenant_id AND si.service_id = oi.product_id \
+         JOIN ingredients i ON i.id = si.ingredient_id AND i.tenant_id = si.tenant_id \
          WHERE oi.tenant_id = $1 AND oi.order_id = $2",
     )
     .bind(tenant_id)

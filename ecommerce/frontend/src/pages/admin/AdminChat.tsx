@@ -51,19 +51,24 @@ export default function AdminChat() {
 
   useEffect(() => {
     loadConversations()
-    const interval = setInterval(loadConversations, 8000)
+    const interval = setInterval(loadConversations, 3000)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantSlug])
 
   useEffect(() => {
     if (!selected || !base) return
-    setLoadingMessages(true)
-    fetch(`${base}/conversations/${selected.id}/messages`)
-      .then((r) => r.json())
-      .then((data) => setMessages(Array.isArray(data) ? data : []))
-      .catch(() => {})
-      .finally(() => setLoadingMessages(false))
+    const loadMessages = (showSpinner: boolean) => {
+      if (showSpinner) setLoadingMessages(true)
+      fetch(`${base}/conversations/${selected.id}/messages`)
+        .then((r) => r.json())
+        .then((data) => setMessages(Array.isArray(data) ? data : []))
+        .catch(() => {})
+        .finally(() => showSpinner && setLoadingMessages(false))
+    }
+    loadMessages(true)
+    const interval = setInterval(() => loadMessages(false), 3000)
+    return () => clearInterval(interval)
   }, [selected, base])
 
   const toggleAssistant = async (enabled: boolean) => {

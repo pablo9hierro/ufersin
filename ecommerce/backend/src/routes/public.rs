@@ -150,7 +150,13 @@ pub async fn list_public_orders_by_phone(
 
 #[derive(serde::Deserialize)]
 pub struct AssistantOrderItemInput {
-    pub product_id: String,
+    #[serde(default)]
+    pub product_id: Option<String>,
+    /// Serviço (reparo/manutenção) — mutuamente exclusivo com `product_id`.
+    /// Sem estoque próprio na tabela `products`; usa `services` + a
+    /// disponibilidade calculada por insumo (`formulation::compute_service_available_quantity`).
+    #[serde(default)]
+    pub service_id: Option<String>,
     pub quantity: i64,
 }
 
@@ -199,19 +205,61 @@ pub async fn create_assistant_order(
 
     let mut total = 0.0_f64;
     let mut line_items: Vec<(String, String, f64, i64)> = Vec::with_capacity(input.items.len());
+    // Serviços cujo estoque de insumo precisa ser decrementado depois que o
+    // pedido é criado (id do serviço, quantidade vendida).
+    let mut service_consumptions: Vec<(String, i64)> = Vec::new();
     for item in &input.items {
         if item.quantity <= 0 {
             return Err(AppError::BadRequest("quantidade do item deve ser positiva".to_string()));
         }
+        if let Some(service_id) = &item.service_id {
+            let row: Option<(String, String, f64, i64)> = sqlx::query_as(
+                "SELECT id, name, price, active FROM services WHERE tenant_id = $1 AND id = $2",
+            )
+            .bind(&store.id)
+            .bind(service_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            let Some((id, name, price, active)) = row else {
+                return Err(AppError::BadRequest(format!("servico {service_id} nao encontrado")));
+            };
+            if active == 0 {
+                return Err(AppError::BadRequest(format!("servico {name} nao esta disponivel")));
+            }
+            let has_ingredients: (i64,) = sqlx::query_as(
+                "SELECT count(*) FROM service_ingredients WHERE tenant_id = $1 AND service_id = $2",
+            )
+            .bind(&store.id)
+            .bind(&id)
+            .fetch_one(&mut *tx)
+            .await?;
+            if has_ingredients.0 > 0 {
+                let available = formulation::compute_service_available_quantity(&mut *tx, &store.id, &id)
+                    .await?
+                    .unwrap_or(0.0);
+                if available < item.quantity as f64 {
+                    return Err(AppError::BadRequest(format!(
+                        "servico {name} sem peca em estoque suficiente pra essa quantidade"
+                    )));
+                }
+                service_consumptions.push((id.clone(), item.quantity));
+            }
+            total += price * item.quantity as f64;
+            line_items.push((id, name, price, item.quantity));
+            continue;
+        }
+        let Some(product_id) = &item.product_id else {
+            return Err(AppError::BadRequest("item precisa ter product_id ou service_id".to_string()));
+        };
         let row: Option<ProductRow> = sqlx::query_as(&format!(
             "{PRODUCT_SELECT} WHERE p.tenant_id = $1 AND p.id = $2"
         ))
         .bind(&store.id)
-        .bind(&item.product_id)
+        .bind(product_id)
         .fetch_optional(&mut *tx)
         .await?;
         let Some(product) = row else {
-            return Err(AppError::BadRequest(format!("produto {} nao encontrado", item.product_id)));
+            return Err(AppError::BadRequest(format!("produto {product_id} nao encontrado")));
         };
         if product.active == 0 {
             return Err(AppError::BadRequest(format!("produto {} nao esta disponivel", product.name)));

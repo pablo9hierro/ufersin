@@ -7,10 +7,13 @@ type AssistantConfig = {
   enabled: boolean
   prompt_interpreter: string
   prompt_validator: string
-  prompt_supervisor: string
   start_keywords: string[]
   end_keywords: string[]
   window_timeout_minutes: number
+  message_batch_window_seconds: number
+  min_response_chars: number
+  max_response_chars: number
+  anthropic_api_key: string | null
 }
 
 type RagDocument = {
@@ -133,7 +136,7 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
         </label>
 
         <div>
-          <label className="label">Prompt do assistente principal (interpretação)</label>
+          <label className="label">Prompt da 1ª camada (interpretação de intenção)</label>
           <textarea
             className="input-field min-h-24"
             value={config.prompt_interpreter}
@@ -142,19 +145,11 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
           />
         </div>
         <div>
-          <label className="label">Prompt do validador</label>
+          <label className="label">Prompt da 2ª camada (atendimento, ferramentas e resposta final)</label>
           <textarea
             className="input-field min-h-20"
             value={config.prompt_validator}
             onChange={(e) => setConfig({ ...config, prompt_validator: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className="label">Prompt do supervisor de contexto</label>
-          <textarea
-            className="input-field min-h-20"
-            value={config.prompt_supervisor}
-            onChange={(e) => setConfig({ ...config, prompt_supervisor: e.target.value })}
           />
         </div>
 
@@ -185,6 +180,59 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
             value={config.window_timeout_minutes}
             onChange={(e) => setConfig({ ...config, window_timeout_minutes: Number(e.target.value) || 30 })}
           />
+        </div>
+
+        <div>
+          <label className="label">Chave da API do motor de IA (opcional)</label>
+          <input
+            type="password"
+            className="input-field"
+            placeholder="Deixe vazio pra usar a chave padrão da plataforma"
+            value={config.anthropic_api_key ?? ''}
+            onChange={(e) => setConfig({ ...config, anthropic_api_key: e.target.value })}
+          />
+          <p className="text-[10px] text-uf-silver-dim mt-1">
+            Troque aqui se o crédito da chave padrão da plataforma acabar — sua própria chave da Anthropic passa a ser
+            usada só nessa loja.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label className="label">Esperar quantos segundos pra agrupar mensagens em sequência</label>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              className="input-field"
+              value={config.message_batch_window_seconds}
+              onChange={(e) => setConfig({ ...config, message_batch_window_seconds: Number(e.target.value) || 8 })}
+            />
+            <p className="text-[10px] text-uf-silver-dim mt-1">
+              Se o cliente mandar várias mensagens seguidas, a IA espera esse tempo antes de responder, junta tudo numa
+              interpretação só.
+            </p>
+          </div>
+          <div>
+            <label className="label">Tamanho mínimo da resposta (caracteres)</label>
+            <input
+              type="number"
+              min={20}
+              className="input-field"
+              value={config.min_response_chars}
+              onChange={(e) => setConfig({ ...config, min_response_chars: Number(e.target.value) || 150 })}
+            />
+          </div>
+          <div>
+            <label className="label">Tamanho máximo da resposta (caracteres)</label>
+            <input
+              type="number"
+              min={20}
+              className="input-field"
+              value={config.max_response_chars}
+              onChange={(e) => setConfig({ ...config, max_response_chars: Number(e.target.value) || 300 })}
+            />
+          </div>
         </div>
 
         {error && <p className="error-msg">{error}</p>}
