@@ -158,15 +158,24 @@ pub struct AssistantOrderInput {
     pub customer_name: String,
     pub customer_whatsapp: String,
     pub items: Vec<AssistantOrderItemInput>,
+    /// "pix" (padrão) ou "cartao" (gera link de cobrança depois via
+    /// create_card_link, em vez de QR/copia-e-cola Pix).
+    #[serde(default = "default_assistant_payment_method")]
+    pub payment_method: String,
+}
+
+fn default_assistant_payment_method() -> String {
+    "pix".to_string()
 }
 
 /// Cria pedido a partir do Assistente IA (WhatsApp) — mesma lógica de
 /// inserção do PDV (`pdv::create_sale`), só que sem login de vendedor
 /// (autorização aqui é o slug da loja, mesmo modelo das outras rotas
-/// públicas deste arquivo) e sempre como retirada + Pix, porque o
-/// atendimento por WhatsApp ainda não coleta endereço/localização. Nunca
+/// públicas deste arquivo) e sempre como retirada, porque o atendimento
+/// por WhatsApp ainda não coleta endereço/localização pra entrega. Nunca
 /// nasce paga — quem confirma o pagamento de verdade é sempre o fluxo Pix
-/// (create_pix_payment + refresh_payment), nunca esse endpoint.
+/// (create_pix_payment) ou cartão (create_card_link) + refresh_payment,
+/// nunca esse endpoint.
 pub async fn create_assistant_order(
     State(state): State<AppState>,
     Path(slug): Path<String>,
@@ -180,6 +189,9 @@ pub async fn create_assistant_order(
     let whatsapp = input.customer_whatsapp.trim();
     if name.is_empty() || whatsapp.is_empty() {
         return Err(AppError::BadRequest("nome e whatsapp do cliente sao obrigatorios".to_string()));
+    }
+    if !matches!(input.payment_method.as_str(), "pix" | "cartao") {
+        return Err(AppError::BadRequest("payment_method invalido".to_string()));
     }
 
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
@@ -235,13 +247,14 @@ pub async fn create_assistant_order(
         "INSERT INTO orders (\
             id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
             payment_method, payment_status, status, shipping_price, total, discount_amount, sold_by_role\
-         ) VALUES ($1, $2, $3, $4, $5, 'balcao', 'pix', 'pendente', 'pendente', 0, $6, 0, 'assistente_ia')",
+         ) VALUES ($1, $2, $3, $4, $5, 'balcao', $6, 'pendente', 'pendente', 0, $7, 0, 'assistente_ia')",
     )
     .bind(&order_id)
     .bind(&store.id)
     .bind(&customer_id)
     .bind(name)
     .bind(whatsapp)
+    .bind(&input.payment_method)
     .bind(total)
     .execute(&mut *tx)
     .await?;
