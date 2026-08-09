@@ -14,7 +14,7 @@ type AssistantConfig = {
   min_response_chars: number
   max_response_chars: number
   anthropic_api_key: string | null
-  ai_provider: 'anthropic' | 'openrouter'
+  ai_provider: 'anthropic' | 'openrouter' | 'openai'
   ai_model: string | null
 }
 
@@ -190,18 +190,19 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
             <select
               className="input-field"
               value={config.ai_provider}
-              onChange={(e) => setConfig({ ...config, ai_provider: e.target.value as 'anthropic' | 'openrouter' })}
+              onChange={(e) => setConfig({ ...config, ai_provider: e.target.value as 'anthropic' | 'openrouter' | 'openai' })}
             >
               <option value="anthropic">Anthropic (Claude direto)</option>
+              <option value="openai">OpenAI (ChatGPT direto)</option>
               <option value="openrouter">OpenRouter (vários modelos)</option>
             </select>
           </div>
-          {config.ai_provider === 'openrouter' && (
+          {config.ai_provider !== 'anthropic' && (
             <div>
-              <label className="label">Modelo (OpenRouter)</label>
+              <label className="label">Modelo {config.ai_provider === 'openai' ? '(OpenAI)' : '(OpenRouter)'}</label>
               <input
                 className="input-field"
-                placeholder="Ex: anthropic/claude-3.5-sonnet"
+                placeholder={config.ai_provider === 'openai' ? 'Ex: gpt-4o-mini, gpt-5-nano' : 'Ex: anthropic/claude-3.5-sonnet'}
                 value={config.ai_model ?? ''}
                 onChange={(e) => setConfig({ ...config, ai_model: e.target.value })}
               />
@@ -218,7 +219,9 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
             placeholder={
               config.ai_provider === 'anthropic'
                 ? 'Deixe vazio pra usar a chave padrão da plataforma'
-                : 'Chave da sua conta OpenRouter (openrouter.ai/keys)'
+                : config.ai_provider === 'openai'
+                  ? 'Chave da sua conta OpenAI (sk-proj-..., platform.openai.com/api-keys)'
+                  : 'Chave da sua conta OpenRouter (openrouter.ai/keys)'
             }
             value={config.anthropic_api_key ?? ''}
             onChange={(e) => setConfig({ ...config, anthropic_api_key: e.target.value })}
@@ -226,7 +229,9 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
           <p className="text-[10px] text-uf-silver-dim mt-1">
             {config.ai_provider === 'anthropic'
               ? 'Troque aqui se o crédito da chave padrão da plataforma acabar — sua própria chave da Anthropic (console.anthropic.com) passa a ser usada só nessa loja.'
-              : 'Obrigatória pra usar OpenRouter — gere em openrouter.ai/keys.'}
+              : config.ai_provider === 'openai'
+                ? 'Obrigatória pra usar OpenAI — gere em platform.openai.com/api-keys.'
+                : 'Obrigatória pra usar OpenRouter — gere em openrouter.ai/keys.'}
           </p>
         </div>
 
