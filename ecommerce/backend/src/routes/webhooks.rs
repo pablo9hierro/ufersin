@@ -76,7 +76,17 @@ async fn handle(state: &AppState, payload: &Value) -> anyhow::Result<()> {
         .unwrap_or(data);
     let message = data.get("message").unwrap_or(&Value::Null);
 
-    forward_to_assistant_ia(state, &tenant_id, instance, data, message);
+    // O modulo assistant-ia identifica lojas pelo slug (o mesmo usado nas
+    // URLs do painel/vitrine), nao pelo id interno (UUID) — busca aqui em
+    // vez de estender resolve_tenant_id, que outros chamadores usam so
+    // pelo id.
+    if let Ok(Some((slug,))) = sqlx::query_as::<_, (String,)>("SELECT slug FROM tenants WHERE id = $1")
+        .bind(&tenant_id)
+        .fetch_optional(&state.pool)
+        .await
+    {
+        forward_to_assistant_ia(state, &slug, instance, data, message);
+    }
 
     // WhatsApp has two distinct share types: a fixed pin ("locationMessage")
     // and a live/moving share ("liveLocationMessage") — both carry the same
