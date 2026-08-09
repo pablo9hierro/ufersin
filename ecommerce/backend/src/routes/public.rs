@@ -272,6 +272,50 @@ pub async fn create_assistant_order(
     Ok(Json(dto))
 }
 
+/// Sitemap.xml da vitrine pública do tenant — um <url> por produto ativo,
+/// pra indexação em buscadores. A mesma URL pública que o botão
+/// "compartilhar produto" do catálogo usa (`/loja/produto/{id}?tenant=`).
+/// A Assistente IA também pode usar isso como fonte de link direto pra
+/// mandar pro cliente (além do buscar_produtos, que já traz preço/nome).
+pub async fn get_public_sitemap(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<axum::response::Response, AppError> {
+    use axum::http::header;
+    use axum::response::IntoResponse;
+
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT id, updated_at::text FROM products WHERE tenant_id = $1 AND active <> 0 ORDER BY name",
+    )
+    .bind(&store.id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let base = "https://resolutoo.com/loja";
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
+    xml.push_str(&format!(
+        "  <url><loc>{base}/catalogo?tenant={slug}</loc></url>\n"
+    ));
+    for (id, updated_at) in rows {
+        xml.push_str("  <url>\n");
+        xml.push_str(&format!("    <loc>{base}/produto/{id}?tenant={slug}</loc>\n"));
+        if let Some(ts) = updated_at {
+            xml.push_str(&format!("    <lastmod>{}</lastmod>\n", &ts[..ts.len().min(10)]));
+        }
+        xml.push_str("  </url>\n");
+    }
+    xml.push_str("</urlset>\n");
+
+    Ok((
+        [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
+        xml,
+    )
+        .into_response())
+}
+
 pub async fn list_public_categories(
     State(state): State<AppState>,
     Path(slug): Path<String>,

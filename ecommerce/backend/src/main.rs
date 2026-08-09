@@ -284,6 +284,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::public::create_assistant_order),
         )
         .route(
+            "/api/public/catalog/{slug}/sitemap.xml",
+            get(routes::public::get_public_sitemap),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )
