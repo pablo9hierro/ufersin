@@ -170,6 +170,11 @@ pub struct AssistantOrderInput {
     /// create_card_link, em vez de QR/copia-e-cola Pix).
     #[serde(default = "default_assistant_payment_method")]
     pub payment_method: String,
+    /// Valor de entrega/coleta já calculado pela tool `calcular_valor_entrega`
+    /// (preço por km real da loja) — nunca inventado pela IA. `None`/0 =
+    /// retirada, sem taxa de entrega.
+    #[serde(default)]
+    pub shipping_price: Option<f64>,
 }
 
 fn default_assistant_payment_method() -> String {
@@ -294,20 +299,26 @@ pub async fn create_assistant_order(
         id
     };
 
+    let shipping_price = input.shipping_price.filter(|p| p.is_finite() && *p > 0.0).unwrap_or(0.0);
+    let delivery_type = if shipping_price > 0.0 { "entrega" } else { "balcao" };
+    let order_total = total + shipping_price;
+
     let order_id = uuid::Uuid::new_v4().to_string();
     sqlx::query(
         "INSERT INTO orders (\
             id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
             payment_method, payment_status, status, shipping_price, total, discount_amount, sold_by_role\
-         ) VALUES ($1, $2, $3, $4, $5, 'balcao', $6, 'pendente', 'pendente', 0, $7, 0, 'assistente_ia')",
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendente', 'pendente', $8, $9, 0, 'assistente_ia')",
     )
     .bind(&order_id)
     .bind(&store.id)
     .bind(&customer_id)
     .bind(name)
     .bind(whatsapp)
+    .bind(delivery_type)
     .bind(&input.payment_method)
-    .bind(total)
+    .bind(shipping_price)
+    .bind(order_total)
     .execute(&mut *tx)
     .await?;
 
@@ -933,6 +944,59 @@ pub async fn compute_route(
 ) -> Result<Json<RotaResult>, AppError> {
     let rota = google_routes::calcular_rota(&state, input.de, input.ate).await?;
     Ok(Json(rota))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EstimateDeliveryInput {
+    pub lat: f64,
+    pub lng: f64,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct EstimateDeliveryDto {
+    pub km: f64,
+    pub price: f64,
+    /// `false` quando a distância passa do raio máximo configurado em
+    /// /admin/frete — nesse caso `price` ainda vem calculado (pra
+    /// referência), mas a loja não deveria aceitar a entrega.
+    pub within_range: bool,
+}
+
+/// Calcula o valor de entrega/coleta pro cliente, com o MESMO preço por
+/// km cadastrado pelo lojista em /admin/frete (`shipping_settings`) —
+/// usado tanto pelo checkout normal da vitrine quanto pela tool de
+/// entrega/coleta do Assistente IA, pra nunca inventar um valor
+/// diferente do que a loja já cobra de verdade.
+pub async fn estimate_delivery(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(input): Json<EstimateDeliveryInput>,
+) -> Result<Json<EstimateDeliveryDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let settings: Option<(f64, Option<f64>, f64, f64)> = sqlx::query_as(
+        "SELECT price_per_km, max_km, store_lat, store_lng FROM shipping_settings WHERE tenant_id = $1",
+    )
+    .bind(&store.id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((price_per_km, max_km, store_lat, store_lng)) = settings else {
+        return Err(AppError::BadRequest("loja ainda não configurou o frete (/admin/frete)".to_string()));
+    };
+    if store_lat == 0.0 && store_lng == 0.0 {
+        return Err(AppError::BadRequest("loja ainda não cadastrou a localização própria em /admin/frete".to_string()));
+    }
+
+    let rota = google_routes::calcular_rota(
+        &state,
+        Ponto { lat: store_lat, lng: store_lng },
+        Ponto { lat: input.lat, lng: input.lng },
+    )
+    .await?;
+
+    let within_range = max_km.map(|max| rota.km <= max).unwrap_or(true);
+    let price = (rota.km * price_per_km * 100.0).round() / 100.0;
+
+    Ok(Json(EstimateDeliveryDto { km: rota.km, price, within_range }))
 }
 
 #[derive(Debug, Deserialize)]

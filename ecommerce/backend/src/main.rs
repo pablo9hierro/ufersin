@@ -285,6 +285,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::public::create_assistant_order),
         )
         .route(
+            "/api/public/catalog/{slug}/estimate-delivery",
+            post(routes::public::estimate_delivery),
+        )
+        .route(
             "/api/public/catalog/{slug}/sitemap.xml",
             get(routes::public::get_public_sitemap),
         )
