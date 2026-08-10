@@ -195,7 +195,11 @@ pub struct SyncPickupAddressInput {
 /// Resolutoo (ufersin/backend) chama sempre que o lojista edita
 /// endereço/número em /meu-plano/layout — antes só sincronizava no
 /// onboarding inicial, então editar depois nunca atualizava o
-/// `pickup_address` real usado pela vitrine/Assistente IA.
+/// `pickup_address` real usado pela vitrine/Assistente IA. Também
+/// geocodifica esse mesmo endereço e atualiza `shipping_settings.
+/// store_lat/store_lng`, usado pelo cálculo real de frete (/admin/frete
+/// e a tool de entrega do Assistente IA) — antes só era setado (zerado)
+/// no provisionamento inicial, nunca atualizado depois.
 pub async fn sync_pickup_address(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -206,14 +210,31 @@ pub async fn sync_pickup_address(
     if slug.is_empty() {
         return Err(AppError::BadRequest("tenant_slug obrigatório".to_string()));
     }
-    let result = sqlx::query("UPDATE tenants SET pickup_address = $1, updated_at = now()::text WHERE slug = $2")
-        .bind(input.pickup_address.trim())
-        .bind(&slug)
+    let address = input.pickup_address.trim();
+    let row: Option<(String,)> = sqlx::query_as(
+        "UPDATE tenants SET pickup_address = $1, updated_at = now()::text WHERE slug = $2 RETURNING id",
+    )
+    .bind(address)
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((tenant_id,)) = row else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    if let Some((lat, lng)) = crate::geocode::geocode_address(&state.http, address).await {
+        sqlx::query(
+            "UPDATE shipping_settings SET store_lat = $1, store_lng = $2 WHERE tenant_id = $3",
+        )
+        .bind(lat)
+        .bind(lng)
+        .bind(&tenant_id)
         .execute(&state.pool)
         .await?;
-    if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("tenant not found".to_string()));
+    } else {
+        tracing::warn!("sync-pickup-address: geocode falhou pra tenant {slug}, shipping_settings.store_lat/lng não atualizado");
     }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
