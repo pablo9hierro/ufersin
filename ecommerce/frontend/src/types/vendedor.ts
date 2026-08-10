@@ -12,7 +12,8 @@ export const VendedorSchema = z.object({
 export type Vendedor = z.infer<typeof VendedorSchema>
 
 export const PdvSaleItemInputSchema = z.object({
-  product_id: z.string(),
+  product_id: z.string().optional(),
+  service_id: z.string().optional(),
   quantity: z.number(),
 })
 export type PdvSaleItemInput = z.infer<typeof PdvSaleItemInputSchema>

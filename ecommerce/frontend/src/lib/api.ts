@@ -1376,6 +1376,9 @@ const remoteApi = {
       isRailwayAdminJwt()
         ? railwayAdmin<Product[]>('/api/pdv/products')
         : supabasePublicApi.products.list(),
+    // Serviços no PDV só existem no motor Railway (schema `loja`) — lojas
+    // ainda na Supabase legada não têm a feature, retorna lista vazia.
+    listServices: () => (isRailwayAdminJwt() ? railwayAdmin<PublicService[]>('/api/pdv/services') : Promise.resolve([])),
     createSale: (payload: {
       items: PdvSaleItemInput[]
       payment_method: PaymentMethod

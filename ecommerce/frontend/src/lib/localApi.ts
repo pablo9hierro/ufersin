@@ -2134,7 +2134,7 @@ function pdvActorFromToken(): { role: 'admin' | 'vendedor'; id: string } {
 }
 
 async function pdvCreateSale(payload: {
-  items: { product_id: string; quantity: number }[]
+  items: { product_id?: string; service_id?: string; quantity: number }[]
   payment_method: PaymentMethod
   customer_name?: string
   customer_whatsapp?: string
@@ -2142,6 +2142,10 @@ async function pdvCreateSale(payload: {
   discount_value?: number
 }): Promise<Order> {
   if (!payload.items.length) throw new ApiError(400, 'sale must have at least one item')
+  // Serviços não existem no modo demonstração (banco local) — só na loja real via Railway.
+  if (payload.items.some((i) => i.service_id)) {
+    throw new ApiError(400, 'Venda de serviços não está disponível no modo demonstração.')
+  }
   const db = loadDb()
   const actor = pdvActorFromToken()
 
@@ -2919,6 +2923,7 @@ export const localApi = {
   },
   pdv: {
     listProducts: async () => listProducts(),
+    listServices: async () => [] as { id: string; name: string; description: string; category_name: string | null; price: number; available_quantity: number | null }[],
     createSale: pdvCreateSale,
     notifySale: async () => {},
     notifyPixCharge: async () => {},

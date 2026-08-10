@@ -24,6 +24,8 @@ import { orderService } from '../../services/orderService'
 import { adminService } from '../../services/adminService'
 import { pdvService } from '../../services/pdvService'
 import type { Order, PaymentMethod, Product } from '../../types'
+import type { PublicService } from '../../services/serviceService'
+import { Wrench } from 'lucide-react'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal, formatCashMask, formatTrocoLabel, computeTroco } from '../../lib/cashMask'
 import { PRODUCTION_CHECKOUT_ORIGIN } from '../../components/checkout/CardPaymentDialog'
@@ -45,9 +47,34 @@ function formatPhone(value: string) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
 }
 
+// Unifica produto e serviço num único formato pro PDV — serviço nunca tem
+// código de barras e sua "disponibilidade" (quando não depende de nenhuma
+// peça de estoque) vem null da API, tratada aqui como ilimitada.
+interface PdvItem {
+  id: string
+  kind: 'product' | 'service'
+  name: string
+  price: number
+  stock: number | null
+  image_url?: string | null
+  barcode?: string | null
+}
+
 interface CartLine {
-  product: Product
+  item: PdvItem
   quantity: number
+}
+
+function cartKey(kind: PdvItem['kind'], id: string) {
+  return `${kind}:${id}`
+}
+
+function productToPdvItem(p: Product): PdvItem {
+  return { id: p.id, kind: 'product', name: p.name, price: p.price, stock: p.quantity, image_url: p.image_url, barcode: p.barcode }
+}
+
+function serviceToPdvItem(s: PublicService): PdvItem {
+  return { id: s.id, kind: 'service', name: s.name, price: s.price, stock: s.available_quantity }
 }
 
 export default function AdminPdv() {
@@ -55,7 +82,9 @@ export default function AdminPdv() {
   const plataformaPix = tenantHasOnlinePix(tenantConfig)
 
   const [products, setProducts] = useState<Product[]>([])
+  const [services, setServices] = useState<PublicService[]>([])
   const [loadingProducts, setLoadingProducts] = useState(true)
+  const [catalogTab, setCatalogTab] = useState<'produtos' | 'servicos'>('produtos')
   const [cart, setCart] = useState<Record<string, CartLine>>({})
   const [query, setQuery] = useState('')
   const [barcodeInput, setBarcodeInput] = useState('')
@@ -151,6 +180,9 @@ export default function AdminPdv() {
         .finally(() => {
           if (!cancelled) setLoadingProducts(false)
         })
+      pdvService.listServices().then((s) => {
+        if (!cancelled) setServices(s)
+      })
     }
     load()
     const onFocus = () => load()
@@ -178,45 +210,53 @@ export default function AdminPdv() {
     barcodeInputRef.current?.focus()
   }, [])
 
-  const results = useMemo(() => filterPdvProducts(products, query), [query, products])
+  const productResults = useMemo(() => filterPdvProducts(products, query), [query, products])
+  const serviceResults = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (q.length < 2) return []
+    return services.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 12)
+  }, [query, services])
 
   const cartLines = Object.values(cart)
   const { subtotal: cartSubtotal, discount: discountAmount, total: cartTotal } = pdvCartTotals(
-    cartLines.map((l) => ({ price: l.product.price, quantity: l.quantity })),
+    cartLines.map((l) => ({ price: l.item.price, quantity: l.quantity })),
     discountType,
     Number(discountValue) || 0
   )
 
-  const addToCart = (product: Product, qty = 1) => {
+  const addToCart = (item: PdvItem, qty = 1) => {
+    const key = cartKey(item.kind, item.id)
     setCart((c) => {
-      const existing = c[product.id]
+      const existing = c[key]
       const nextQty = (existing?.quantity ?? 0) + qty
-      if (nextQty > product.quantity) {
-        setScanError(`Só tem ${product.quantity} em estoque de ${product.name}.`)
+      if (item.stock != null && nextQty > item.stock) {
+        setScanError(`Só tem ${item.stock} disponível de ${item.name}.`)
         return c
       }
       setScanError(null)
-      return { ...c, [product.id]: { product, quantity: nextQty } }
+      return { ...c, [key]: { item, quantity: nextQty } }
     })
   }
 
-  const changeQty = (productId: string, delta: number) => {
+  const changeQty = (kind: PdvItem['kind'], id: string, delta: number) => {
+    const key = cartKey(kind, id)
     setCart((c) => {
-      const line = c[productId]
+      const line = c[key]
       if (!line) return c
       const nextQty = line.quantity + delta
       if (nextQty <= 0) {
-        const { [productId]: _removed, ...rest } = c
+        const { [key]: _removed, ...rest } = c
         return rest
       }
-      if (nextQty > line.product.quantity) return c
-      return { ...c, [productId]: { ...line, quantity: nextQty } }
+      if (line.item.stock != null && nextQty > line.item.stock) return c
+      return { ...c, [key]: { ...line, quantity: nextQty } }
     })
   }
 
-  const removeFromCart = (productId: string) => {
+  const removeFromCart = (kind: PdvItem['kind'], id: string) => {
+    const key = cartKey(kind, id)
     setCart((c) => {
-      const { [productId]: _removed, ...rest } = c
+      const { [key]: _removed, ...rest } = c
       return rest
     })
   }
@@ -231,7 +271,7 @@ export default function AdminPdv() {
       setScanError(`Nenhum produto com o código de barras "${code}".`)
       return
     }
-    addToCart(product)
+    addToCart(productToPdvItem(product))
   }
 
   const openScanner = async () => {
@@ -267,7 +307,7 @@ export default function AdminPdv() {
           setScanError(`Nenhum produto com o código de barras "${code}".`)
           return
         }
-        addToCart(product)
+        addToCart(productToPdvItem(product))
         closeScanner()
       })
       .catch(() => {
@@ -299,11 +339,16 @@ export default function AdminPdv() {
     setCardType('')
     setCardInstallments(1)
     pdvService.listProducts().then((p) => setProducts(p.filter((x) => x.active !== false)))
+    pdvService.listServices().then((s) => setServices(s))
     setTimeout(() => setSuccess(null), 4000)
   }
 
   const buildSalePayload = () => ({
-    items: cartLines.map((l) => ({ product_id: l.product.id, quantity: l.quantity })),
+    items: cartLines.map((l) =>
+      l.item.kind === 'service'
+        ? { service_id: l.item.id, quantity: l.quantity }
+        : { product_id: l.item.id, quantity: l.quantity }
+    ),
     payment_method: paymentMethod,
     customer_name: customerName.trim() || undefined,
     customer_whatsapp: customerWhatsapp.replace(/\D/g, '') ? `55${customerWhatsapp.replace(/\D/g, '')}` : undefined,
@@ -572,9 +617,28 @@ export default function AdminPdv() {
 
           {scanError && <p className="error-msg mb-4">{scanError}</p>}
 
+          {services.length > 0 && (
+            <div className="flex rounded-2xl overflow-hidden border border-white/10 mb-3 w-fit">
+              <button
+                type="button"
+                onClick={() => setCatalogTab('produtos')}
+                className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 ${catalogTab === 'produtos' ? 'sunset-bg text-white' : 'bg-son-surface text-son-silver-dim'}`}
+              >
+                <Package className="w-3.5 h-3.5" /> Produtos
+              </button>
+              <button
+                type="button"
+                onClick={() => setCatalogTab('servicos')}
+                className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 ${catalogTab === 'servicos' ? 'sunset-bg text-white' : 'bg-son-surface text-son-silver-dim'}`}
+              >
+                <Wrench className="w-3.5 h-3.5" /> Serviços
+              </button>
+            </div>
+          )}
+
           <div className="mb-2">
             <label className="label flex items-center gap-1.5">
-              <Search className="w-3.5 h-3.5" /> Buscar produto pelo nome
+              <Search className="w-3.5 h-3.5" /> Buscar {catalogTab === 'servicos' ? 'serviço' : 'produto'} pelo nome
             </label>
             <input
               className="input-field"
@@ -589,16 +653,17 @@ export default function AdminPdv() {
               <Loader2 className="w-5 h-5 animate-spin text-son-pink" />
             </div>
           ) : (
-            query.trim().length >= 2 && (
+            query.trim().length >= 2 &&
+            (catalogTab === 'produtos' ? (
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {results.length === 0 ? (
+                {productResults.length === 0 ? (
                   <p className="text-xs text-son-silver-dim py-3">Nenhum produto encontrado.</p>
                 ) : (
-                  results.map((p) => (
+                  productResults.map((p) => (
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => addToCart(p)}
+                      onClick={() => addToCart(productToPdvItem(p))}
                       disabled={p.quantity <= 0}
                       className="w-full flex items-center gap-3 bg-son-surface border border-white/5 rounded-2xl px-3 py-2.5 text-left hover:border-son-pink/30 transition-colors disabled:opacity-40"
                     >
@@ -618,7 +683,34 @@ export default function AdminPdv() {
                   ))
                 )}
               </div>
-            )
+            ) : (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {serviceResults.length === 0 ? (
+                  <p className="text-xs text-son-silver-dim py-3">Nenhum serviço encontrado.</p>
+                ) : (
+                  serviceResults.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => addToCart(serviceToPdvItem(s))}
+                      disabled={s.available_quantity != null && s.available_quantity <= 0}
+                      className="w-full flex items-center gap-3 bg-son-surface border border-white/5 rounded-2xl px-3 py-2.5 text-left hover:border-son-pink/30 transition-colors disabled:opacity-40"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-son-surface-light flex items-center justify-center overflow-hidden flex-shrink-0">
+                        <Wrench className="w-4 h-4 text-son-silver-dim/40" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-white truncate">{s.name}</p>
+                        <p className="text-xs text-son-silver-dim">
+                          {s.available_quantity == null ? 'serviço' : `${s.available_quantity} disponível`}
+                        </p>
+                      </div>
+                      <span className="sunset-text font-bold text-sm flex-none">{currency(s.price)}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ))
           )}
         </div>
 
@@ -632,31 +724,34 @@ export default function AdminPdv() {
           ) : (
             <div className="space-y-2 mb-4">
               {cartLines.map((l) => (
-                <div key={l.product.id} className="flex items-center gap-3 bg-son-surface border border-white/5 rounded-2xl px-3 py-2.5">
+                <div key={cartKey(l.item.kind, l.item.id)} className="flex items-center gap-3 bg-son-surface border border-white/5 rounded-2xl px-3 py-2.5">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-white truncate">{l.product.name}</p>
-                    <p className="text-xs text-son-silver-dim">{currency(l.product.price)} un.</p>
+                    <p className="text-sm text-white truncate flex items-center gap-1.5">
+                      {l.item.kind === 'service' && <Wrench className="w-3 h-3 text-son-silver-dim flex-none" />}
+                      {l.item.name}
+                    </p>
+                    <p className="text-xs text-son-silver-dim">{currency(l.item.price)} un.</p>
                   </div>
                   <div className="flex items-center gap-1.5 flex-none">
                     <button
-                      onClick={() => changeQty(l.product.id, -1)}
+                      onClick={() => changeQty(l.item.kind, l.item.id, -1)}
                       className="w-7 h-7 flex items-center justify-center rounded-full bg-white/5 text-son-silver-dim hover:text-white"
                     >
                       <Minus className="w-3.5 h-3.5" />
                     </button>
                     <span className="w-6 text-center text-sm text-white">{l.quantity}</span>
                     <button
-                      onClick={() => changeQty(l.product.id, 1)}
-                      disabled={l.quantity >= l.product.quantity}
+                      onClick={() => changeQty(l.item.kind, l.item.id, 1)}
+                      disabled={l.item.stock != null && l.quantity >= l.item.stock}
                       className="w-7 h-7 flex items-center justify-center rounded-full bg-white/5 text-son-silver-dim hover:text-white disabled:opacity-30"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
                   <span className="sunset-text font-bold text-sm flex-none w-16 text-right">
-                    {currency(l.product.price * l.quantity)}
+                    {currency(l.item.price * l.quantity)}
                   </span>
-                  <button onClick={() => removeFromCart(l.product.id)} className="text-son-silver-dim hover:text-son-pink flex-none">
+                  <button onClick={() => removeFromCart(l.item.kind, l.item.id)} className="text-son-silver-dim hover:text-son-pink flex-none">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>

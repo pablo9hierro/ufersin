@@ -7,6 +7,9 @@ import { OrderSchema, ProductSchema, VendedorRelatorioSchema, type PaymentMethod
 // autorizado a chamar `api.pdv.*`.
 export const pdvEndpoint = {
   listProducts: async () => validateList(ProductSchema, await api.pdv.listProducts(), 'pdv.listProducts'),
+  // Sem zod aqui de propósito: mesmo shape leve (PublicService) já usado
+  // sem validação na vitrine pública (serviceService.ts), fonte é o mesmo endpoint.
+  listServices: async () => api.pdv.listServices(),
   createSale: async (payload: {
     items: PdvSaleItemInput[]
     payment_method: PaymentMethod
