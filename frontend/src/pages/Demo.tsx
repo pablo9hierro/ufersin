@@ -32,7 +32,12 @@ const RAMOS: RamoDef[] = [
     desc: 'Assistência técnica e loja de equipamentos — catálogo de produtos e serviços de reparo.',
     icon: Smartphone,
     comingSoon: false,
-    buildPath: (plano) => `/demo/${plano}?ramo=eletronica`,
+    // Módulo separado (app próprio, vrtech/TechFix) — NUNCA a rota
+    // /demo/:plano do motor de e-commerce genérico (esse é só pro ramo
+    // 'ecommerce'). Local: porta padrão do Next.js dev; produção: domínio
+    // real do módulo.
+    buildPath: () =>
+      window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://vrtech-jp.vercel.app',
   },
 ]
 
@@ -64,7 +69,14 @@ export default function Demo({ cmsPreview = false }: DemoProps) {
 
   const handleEscolherRamo = (ramo: RamoDef) => {
     if (cmsPreview || ramo.comingSoon || !pendingPlano) return
-    navigate(ramo.buildPath(pendingPlano))
+    const path = ramo.buildPath(pendingPlano)
+    // Ramo eletrônicos é um app totalmente separado (vrtech) — nunca
+    // roteamento interno do React Router, sempre navegação de página cheia.
+    if (path.startsWith('http')) {
+      window.open(path, '_blank', 'noopener,noreferrer')
+    } else {
+      navigate(path)
+    }
     setPendingPlano(null)
   }
 
