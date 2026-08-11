@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Check, Loader2, Lock, Scissors, ShoppingBag, X } from 'lucide-react'
+import { ArrowLeft, Check, Loader2, Lock, ShoppingBag, Smartphone, X } from 'lucide-react'
 import type { PlanoCode } from '../lib/api'
 import { CmsEditProvider, CmsText, usePlatformContent } from '../lib/cms'
 import { fetchPlans, formatBRL, getPlans, planDisplayName } from '../lib/plans'
 
-type RamoCode = 'ecommerce' | 'salao_barbearia'
+type RamoCode = 'ecommerce' | 'eletronica'
 
 interface RamoDef {
   code: RamoCode
@@ -27,12 +27,12 @@ const RAMOS: RamoDef[] = [
     buildPath: (plano) => `/demo/${plano}`,
   },
   {
-    code: 'salao_barbearia',
-    label: 'Salão de beleza / Barbearia',
-    desc: 'Agendamento de horários e serviços.',
-    icon: Scissors,
-    comingSoon: true,
-    buildPath: (plano) => `/demo/${plano}?ramo=salao_barbearia`,
+    code: 'eletronica',
+    label: 'Manutenção e venda de eletrônicos',
+    desc: 'Assistência técnica e loja de equipamentos — catálogo de produtos e serviços de reparo.',
+    icon: Smartphone,
+    comingSoon: false,
+    buildPath: (plano) => `/demo/${plano}?ramo=eletronica`,
   },
 ]
 

@@ -19,7 +19,7 @@ export default function Demo() {
           <p className="mt-4 text-uf-silver-dim max-w-xl mx-auto">
             Quer mexer de verdade? Testa o painel mockado e vê o que cada plano libera.
           </p>
-          <a href="/demo" target="_blank" rel="noreferrer" className="btn-primary px-6 py-3 text-sm mt-6 inline-flex">
+          <a href="/demo" className="btn-primary px-6 py-3 text-sm mt-6 inline-flex">
             <MousePointerClick className="w-4 h-4" />
             Testar demo
           </a>
