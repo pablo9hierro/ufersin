@@ -171,6 +171,8 @@ pub struct ServiceRow {
     pub active: i32,
     pub low_stock_threshold: Option<f64>,
     pub manual_quantity: Option<f64>,
+    pub model_name: Option<String>,
+    pub repair_type: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -211,6 +213,8 @@ pub struct ServiceDto {
     /// `true` quando tem insumo(s) ligado(s) — front usa isso pra saber
     /// se o campo de quantidade deve ficar travado (calculado) ou aberto.
     pub quantity_from_stock: bool,
+    pub model_name: Option<String>,
+    pub repair_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -245,6 +249,10 @@ pub struct ServiceInput {
     /// disponibilidade é sempre calculada, nunca aceita do cliente.
     #[serde(default)]
     pub manual_quantity: Option<f64>,
+    #[serde(default)]
+    pub model_name: Option<String>,
+    #[serde(default)]
+    pub repair_type: Option<String>,
 }
 
 // ---------- Motoboys ----------

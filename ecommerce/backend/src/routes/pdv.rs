@@ -42,8 +42,8 @@ pub async fn list_services(
 ) -> Result<Json<Vec<PublicServiceDto>>, AppError> {
     features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    let rows: Vec<(String, String, String, Option<String>, f64, Option<f64>)> = sqlx::query_as(
-        "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity \
+    let rows: Vec<(String, String, String, Option<String>, f64, Option<f64>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity, s.model_name, s.repair_type \
          FROM services s LEFT JOIN categories c ON c.id = s.category_id \
          WHERE s.tenant_id = $1 AND s.active <> 0 ORDER BY s.name",
     )
@@ -51,9 +51,9 @@ pub async fn list_services(
     .fetch_all(&mut *tx)
     .await?;
     let mut services = Vec::with_capacity(rows.len());
-    for (id, name, description, category_name, price, manual_quantity) in rows {
+    for (id, name, description, category_name, price, manual_quantity, model_name, repair_type) in rows {
         let available_quantity = load_public_service_availability(&mut tx, &claims.tenant_id, &id, manual_quantity).await?;
-        services.push(PublicServiceDto { id, name, description, category_name, price, available_quantity });
+        services.push(PublicServiceDto { id, name, description, category_name, price, available_quantity, model_name, repair_type });
     }
     tx.commit().await?;
     Ok(Json(services))

@@ -403,6 +403,8 @@ pub struct PublicServiceDto {
     /// vitrine/Assistente IA devem tratar isso como "fora de estoque",
     /// nunca vender/oferecer um serviço nessa condição.
     pub available_quantity: Option<f64>,
+    pub model_name: Option<String>,
+    pub repair_type: Option<String>,
 }
 
 /// Lista de serviços ativos da loja — mesmo modelo de autorização (slug =
@@ -433,8 +435,8 @@ pub async fn list_public_services(
 ) -> Result<Json<Vec<PublicServiceDto>>, AppError> {
     let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
-    let rows: Vec<(String, String, String, Option<String>, f64, Option<f64>)> = sqlx::query_as(
-        "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity \
+    let rows: Vec<(String, String, String, Option<String>, f64, Option<f64>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity, s.model_name, s.repair_type \
          FROM services s LEFT JOIN categories c ON c.id = s.category_id \
          WHERE s.tenant_id = $1 AND s.active <> 0 ORDER BY s.name",
     )
@@ -442,9 +444,9 @@ pub async fn list_public_services(
     .fetch_all(&mut *tx)
     .await?;
     let mut services = Vec::with_capacity(rows.len());
-    for (id, name, description, category_name, price, manual_quantity) in rows {
+    for (id, name, description, category_name, price, manual_quantity, model_name, repair_type) in rows {
         let available_quantity = load_public_service_availability(&mut tx, &store.id, &id, manual_quantity).await?;
-        services.push(PublicServiceDto { id, name, description, category_name, price, available_quantity });
+        services.push(PublicServiceDto { id, name, description, category_name, price, available_quantity, model_name, repair_type });
     }
     tx.commit().await?;
     Ok(Json(services))
@@ -458,8 +460,8 @@ pub async fn get_public_service(
 ) -> Result<Json<PublicServiceDto>, AppError> {
     let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
-    let row: Option<(String, String, String, Option<String>, f64, Option<f64>)> = sqlx::query_as(
-        "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity \
+    let row: Option<(String, String, String, Option<String>, f64, Option<f64>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity, s.model_name, s.repair_type \
          FROM services s LEFT JOIN categories c ON c.id = s.category_id \
          WHERE s.tenant_id = $1 AND s.id = $2 AND s.active <> 0",
     )
@@ -467,12 +469,12 @@ pub async fn get_public_service(
     .bind(&id)
     .fetch_optional(&mut *tx)
     .await?;
-    let Some((id, name, description, category_name, price, manual_quantity)) = row else {
+    let Some((id, name, description, category_name, price, manual_quantity, model_name, repair_type)) = row else {
         return Err(AppError::NotFound("service not found".to_string()));
     };
     let available_quantity = load_public_service_availability(&mut tx, &store.id, &id, manual_quantity).await?;
     tx.commit().await?;
-    Ok(Json(PublicServiceDto { id, name, description, category_name, price, available_quantity }))
+    Ok(Json(PublicServiceDto { id, name, description, category_name, price, available_quantity, model_name, repair_type }))
 }
 
 /// Sitemap.xml só dos serviços da loja (separado do sitemap de produtos).

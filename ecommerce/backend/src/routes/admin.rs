@@ -533,6 +533,8 @@ async fn load_service_dto(
         low_stock_threshold: row.low_stock_threshold,
         manual_quantity: row.manual_quantity,
         quantity_from_stock,
+        model_name: row.model_name,
+        repair_type: row.repair_type,
     })
 }
 
@@ -542,7 +544,7 @@ pub async fn list_services(
 ) -> Result<Json<Vec<crate::models::ServiceDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<crate::models::ServiceRow> = sqlx::query_as(
-        "SELECT id, name, description, category_id, price, active, low_stock_threshold, manual_quantity \
+        "SELECT id, name, description, category_id, price, active, low_stock_threshold, manual_quantity, model_name, repair_type \
          FROM services WHERE tenant_id = $1 ORDER BY name",
     )
     .bind(&claims.tenant_id)
@@ -622,8 +624,8 @@ pub async fn create_service(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let id = Uuid::new_v4().to_string();
     sqlx::query(
-        "INSERT INTO services (id, tenant_id, name, description, category_id, price, active, low_stock_threshold, manual_quantity) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        "INSERT INTO services (id, tenant_id, name, description, category_id, price, active, low_stock_threshold, manual_quantity, model_name, repair_type) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -634,6 +636,8 @@ pub async fn create_service(
     .bind(input.active.unwrap_or(true) as i32)
     .bind(input.low_stock_threshold)
     .bind(manual_quantity)
+    .bind(&input.model_name)
+    .bind(&input.repair_type)
     .execute(&mut *tx)
     .await?;
     save_service_lines(&mut tx, &claims.tenant_id, &id, &input.ingredients, &input.extra_costs).await?;
@@ -647,6 +651,8 @@ pub async fn create_service(
         active: input.active.unwrap_or(true) as i32,
         low_stock_threshold: input.low_stock_threshold,
         manual_quantity,
+        model_name: input.model_name.clone(),
+        repair_type: input.repair_type.clone(),
     };
     let dto = load_service_dto(&mut tx, &claims.tenant_id, row).await?;
     tx.commit().await?;
@@ -666,8 +672,8 @@ pub async fn update_service(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let result = sqlx::query(
         "UPDATE services SET name = $1, description = $2, category_id = $3, price = $4, active = $5, \
-         low_stock_threshold = $6, manual_quantity = $7 \
-         WHERE tenant_id = $8 AND id = $9",
+         low_stock_threshold = $6, manual_quantity = $7, model_name = $8, repair_type = $9 \
+         WHERE tenant_id = $10 AND id = $11",
     )
     .bind(input.name.trim())
     .bind(&input.description)
@@ -676,6 +682,8 @@ pub async fn update_service(
     .bind(input.active.unwrap_or(true) as i32)
     .bind(input.low_stock_threshold)
     .bind(manual_quantity)
+    .bind(&input.model_name)
+    .bind(&input.repair_type)
     .bind(&claims.tenant_id)
     .bind(&id)
     .execute(&mut *tx)
@@ -694,6 +702,8 @@ pub async fn update_service(
         active: input.active.unwrap_or(true) as i32,
         low_stock_threshold: input.low_stock_threshold,
         manual_quantity,
+        model_name: input.model_name.clone(),
+        repair_type: input.repair_type.clone(),
     };
     let dto = load_service_dto(&mut tx, &claims.tenant_id, row).await?;
     tx.commit().await?;
