@@ -182,8 +182,8 @@ pub async fn create_product(
         .map(|b| b.trim().to_string())
         .filter(|b| !b.is_empty());
     sqlx::query(
-        "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active, cost_price, low_stock_threshold, barcode) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+        "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active, cost_price, low_stock_threshold, barcode, phone_brand, phone_model) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -197,6 +197,8 @@ pub async fn create_product(
     .bind(input.cost_price)
     .bind(input.low_stock_threshold)
     .bind(&barcode)
+    .bind(&input.phone_brand)
+    .bind(&input.phone_model)
     .execute(&mut *tx)
     .await?;
 
@@ -232,8 +234,8 @@ pub async fn update_product(
          quantity = CASE WHEN origin_type = 'erp_formulation' THEN quantity ELSE $4 END, \
          image_url = $5, category_id = $6, active = $7, \
          cost_price = CASE WHEN origin_type = 'erp_formulation' THEN cost_price ELSE $8 END, \
-         low_stock_threshold = $9, barcode = $10 \
-         WHERE tenant_id = $11 AND id = $12",
+         low_stock_threshold = $9, barcode = $10, phone_brand = $11, phone_model = $12 \
+         WHERE tenant_id = $13 AND id = $14",
     )
     .bind(&input.name)
     .bind(&input.description)
@@ -245,6 +247,8 @@ pub async fn update_product(
     .bind(input.cost_price)
     .bind(input.low_stock_threshold)
     .bind(&barcode)
+    .bind(&input.phone_brand)
+    .bind(&input.phone_model)
     .bind(&claims.tenant_id)
     .bind(&id)
     .execute(&mut *tx)

@@ -35,6 +35,10 @@ pub struct ProductRow {
     /// cliente em create/update normal; só é setado por
     /// `create_formulated_product`/mudado nunca depois.
     pub origin_type: String,
+    /// Marca/modelo do aparelho — só usado pelo ramo eletrônicos, NULL pra
+    /// qualquer outro tenant. Ver módulo eletrônicos (VR Tech).
+    pub phone_brand: Option<String>,
+    pub phone_model: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,6 +56,8 @@ pub struct ProductDto {
     pub low_stock_threshold: Option<i64>,
     pub barcode: Option<String>,
     pub origin_type: String,
+    pub phone_brand: Option<String>,
+    pub phone_model: Option<String>,
 }
 
 impl From<ProductRow> for ProductDto {
@@ -70,6 +76,8 @@ impl From<ProductRow> for ProductDto {
             low_stock_threshold: r.low_stock_threshold,
             barcode: r.barcode,
             origin_type: r.origin_type,
+            phone_brand: r.phone_brand,
+            phone_model: r.phone_model,
         }
     }
 }
@@ -90,6 +98,10 @@ pub struct ProductInput {
     pub low_stock_threshold: Option<i64>,
     #[serde(default)]
     pub barcode: Option<String>,
+    #[serde(default)]
+    pub phone_brand: Option<String>,
+    #[serde(default)]
+    pub phone_model: Option<String>,
 }
 
 // ---------- ERP Formulação (insumos / ficha técnica) ----------
