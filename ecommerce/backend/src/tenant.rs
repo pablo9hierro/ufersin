@@ -38,28 +38,12 @@ impl TenantPayment {
             .filter(|s| !s.is_empty())
     }
 
-    pub fn abacate_token(&self) -> Option<&str> {
-        if self.forma_pagamento != "plataforma" {
-            return None;
-        }
-        if self.plataforma_pagamento.as_deref() != Some("abacate_pay") {
-            return None;
-        }
-        self.plataforma_credenciais
-            .as_ref()
-            .and_then(|v| v.get("token"))
-            .and_then(|t| t.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-    }
-
     pub fn online_provider(&self) -> Option<&'static str> {
         if self.forma_pagamento != "plataforma" {
             return None;
         }
         match self.plataforma_pagamento.as_deref() {
             Some("mercado_pago") if self.mp_access_token().is_some() => Some("mercado_pago"),
-            Some("abacate_pay") if self.abacate_token().is_some() => Some("abacate_pay"),
             _ => None,
         }
     }

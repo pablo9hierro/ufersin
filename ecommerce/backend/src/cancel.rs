@@ -7,7 +7,7 @@
 //! Online Pix refund: when the order was charged via Mercado Pago and the
 //! tenant has an access token, call MP refunds **before** flipping status.
 //! On refund API failure we do **not** cancel (customer stays charged with
-//! a clear error). Manual / unpaid / Abacate without refund path → cancel
+//! a clear error). Manual / unpaid orders without a refund path → cancel
 //! only; lojista acerta devolução offline se já recebeu.
 
 use sqlx::PgConnection;
@@ -127,7 +127,7 @@ pub async fn apply_cancel(
         && order.payment_status == "pago"
         && order.pix_payment_id.is_some()
     {
-        // Charged online via Abacate/mock or MP token missing → cancel only;
+        // Charged via legacy/mock provider or MP token missing → cancel only;
         // lojista resolves money manually if needed.
         refund_status = "not_applicable".to_string();
     }

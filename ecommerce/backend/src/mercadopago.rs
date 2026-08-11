@@ -7,11 +7,16 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::abacatepay::PixResult;
 use crate::error::AppError;
 use crate::state::AppState;
 
 const BASE_URL: &str = "https://api.mercadopago.com";
+
+pub struct PixResult {
+    pub payment_id: String,
+    pub qr_code: String,
+    pub qr_code_base64: String,
+}
 
 #[derive(Debug, Deserialize)]
 struct MpPaymentResponse {

@@ -3,7 +3,6 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
 
-use crate::abacatepay;
 use crate::cancel;
 use crate::error::AppError;
 use crate::formulation;
@@ -681,8 +680,8 @@ fn force_flag(q: &CreatePixQuery) -> bool {
     )
 }
 
-/// Cria a cobrança Pix (Mercado Pago por tenant, AbacatePay legado/global,
-/// ou QR mock). Idempotente: se já tiver cobrança e `force` não veio, devolve
+/// Cria a cobrança Pix (Mercado Pago por tenant — único provedor suportado).
+/// Idempotente: se já tiver cobrança e `force` não veio, devolve
 /// como está. Com `?force=1` (e pagamento ainda pendente), gera outra.
 pub async fn create_pix_payment(
     State(state): State<AppState>,
@@ -711,7 +710,6 @@ pub async fn create_pix_payment(
         return Ok(Json(dto));
     }
 
-    let digits = whatsapp::digits_only(&order.customer_whatsapp);
     let (pix, provider) = match payment_cfg.online_provider() {
         Some("mercado_pago") => {
             let token = payment_cfg.mp_access_token().unwrap();
@@ -731,19 +729,11 @@ pub async fn create_pix_payment(
             .await?;
             (pix, "mercado_pago")
         }
-        Some("abacate_pay") | None => {
-            // Tenant Abacate token (if synced) else global ABACATEPAY_API_KEY / mock.
-            let pix =
-                abacatepay::create_pix_charge(&state, &store.name, order.total, &order.customer_name, &digits)
-                    .await?;
-            let provider = if state.abacatepay_key.is_some() || payment_cfg.abacate_token().is_some() {
-                "abacate_pay"
-            } else {
-                "mock"
-            };
-            (pix, provider)
+        _ => {
+            return Err(AppError::BadRequest(
+                "Esta loja não tem Mercado Pago conectado — pagamento via Pix indisponível.".to_string(),
+            ));
         }
-        _ => unreachable!(),
     };
 
     sqlx::query(
@@ -1240,9 +1230,6 @@ pub async fn refresh_payment(
         };
         let status = mercadopago::get_payment_status(&state, token, &payment_id).await?;
         status.eq_ignore_ascii_case("approved")
-    } else if state.abacatepay_key.is_some() {
-        let status = abacatepay::get_charge_status(&state, &payment_id).await?;
-        status == "PAID"
     } else {
         false
     };
@@ -1338,13 +1325,10 @@ pub async fn simulate_pix_paid(
     Path(id): Path<String>,
 ) -> Result<Json<OrderDto>, AppError> {
     let store = tenant::tenant_for_order(&state.pool, &id).await?;
-    // CRÍTICO: antes disso só checava uma env var GLOBAL (ABACATEPAY_API_KEY)
-    // — como a plataforma passou a usar Mercado Pago, essa env var nem
-    // existe mais em produção, deixando "simular pagamento aprovado"
-    // disponível pra QUALQUER loja real (dava pra marcar qualquer pedido
-    // pendente como pago sem pagar nada). Agora checa o gateway de VERDADE
-    // configurado NESSA loja especificamente — só permite simular quando
-    // essa loja não tem nenhum gateway online real conectado.
+    // CRÍTICO: checa o gateway de VERDADE configurado NESSA loja
+    // especificamente — só permite simular quando essa loja não tem nenhum
+    // gateway online real conectado (senão daria pra marcar qualquer pedido
+    // pendente como pago sem pagar nada).
     let payment = tenant::load_tenant_payment(&state.pool, &store.id).await?;
     if payment.online_provider().is_some() {
         return Err(AppError::Forbidden(

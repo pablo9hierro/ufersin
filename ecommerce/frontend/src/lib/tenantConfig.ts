@@ -23,7 +23,7 @@ export interface TenantConfig {
   /** Dígitos do WhatsApp da loja (onboarding / Meu plano) pra `wa.me`. */
   whatsapp: string
   forma_pagamento: 'manual' | 'plataforma'
-  plataforma_pagamento: 'mercado_pago' | 'abacate_pay' | null
+  plataforma_pagamento: 'mercado_pago' | null
   /** False para conexão do modelo antigo (Access Token colado à mão) — só
    * true quando veio do fluxo OAuth novo. AdminLayout.tsx usa isso pra
    * decidir se o gate de "Mercado Pago desconectado" fica bloqueando. */

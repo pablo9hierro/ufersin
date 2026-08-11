@@ -171,7 +171,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         (row.status.clone(), row.onboarding_status.clone())
     };
 
-    let metodo_pagamento = row.gateway.as_deref().map(|g| if g == "abacatepay" { "Pix" } else { "Cartão de crédito" }.to_string());
+    let metodo_pagamento = row.gateway.as_deref().map(|_| "Cartão de crédito".to_string());
     let dominio = row.slug.as_ref().map(|s| format!("resolutoo.com/loja/?tenant={s}"));
     let refund_eligible_on_cancel = within_cancel_refund_window(row.created_at);
 

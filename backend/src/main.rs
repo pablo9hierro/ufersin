@@ -1,4 +1,3 @@
-mod abacatepay_gateway;
 mod auth;
 mod coupons;
 mod error;
@@ -51,13 +50,6 @@ async fn main() -> anyhow::Result<()> {
     let mp_token_env = std::env::var("MP_ACCESS_TOKEN")
         .ok()
         .filter(|s| !s.trim().is_empty());
-
-    let abacatepay_token = std::env::var("ABACATEPAY_API_KEY")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
-    if abacatepay_token.is_none() {
-        tracing::info!("ABACATEPAY_API_KEY not set — gateway AbacatePay em modo MOCK");
-    }
 
     let valor_padrao: f64 = std::env::var("PLANO_VALOR_MENSAL")
         .ok()
@@ -163,7 +155,6 @@ async fn main() -> anyhow::Result<()> {
         http,
         supabase_jwks: Arc::new(supabase_jwks),
         mp_token: Arc::new(tokio::sync::RwLock::new(mp_token)),
-        abacatepay_token: Arc::new(abacatepay_token),
         valor_padrao,
         back_url: Arc::new(back_url),
         ecommerce_internal_url: Arc::new(ecommerce_internal_url),
@@ -236,7 +227,6 @@ async fn main() -> anyhow::Result<()> {
             "/api/contratos/pandadoc/session",
             post(routes::contratos::pandadoc_session),
         )
-        .route("/api/webhooks/abacatepay", post(routes::webhooks::abacatepay_webhook))
         .route(
             "/api/webhooks/mercadopago",
             get(routes::webhooks::mercadopago_webhook).post(routes::webhooks::mercadopago_webhook),

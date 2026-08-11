@@ -253,7 +253,7 @@ pub async fn simular_pagamento(
 ) -> Result<Json<StatusAssinatura>, AppError> {
     if !gateway::sandbox_mode(&state) {
         return Err(AppError::BadRequest(
-            "simulação só disponível em homologação (MP TEST-… / Abacate abc_dev_ / mock)".to_string(),
+            "simulação só disponível em homologação (MP TEST-… / mock)".to_string(),
         ));
     }
 

@@ -21,11 +21,6 @@ pub struct AppState {
     /// de `platform_payment_credentials` (ou de `MP_ACCESS_TOKEN` como
     /// fallback legado, ver main.rs).
     pub mp_token: Arc<tokio::sync::RwLock<Option<String>>>,
-    /// None = camada AbacatePay em modo mock — ver gateway.rs/
-    /// abacatepay_gateway.rs. Usado como fallback quando `MP_ACCESS_TOKEN`
-    /// não está setado; com MP configurado, novas assinaturas Resolutoo
-    /// vão pelo Mercado Pago (ver gateway::resolve_gateway_kind).
-    pub abacatepay_token: Arc<Option<String>>,
     /// Preço padrão da assinatura mensal (R$), usado quando o formulário
     /// não especifica outro plano.
     pub valor_padrao: f64,

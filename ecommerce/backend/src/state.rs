@@ -15,7 +15,6 @@ pub struct AppState {
     /// "motoboy-<id>"), not global — see tenant::Tenant.
     pub evolution_api_url: Arc<String>,
     pub evolution_api_key: Arc<String>,
-    pub abacatepay_key: Arc<Option<String>>,
     /// Chave da Google Routes API — GLOBAL e compartilhada por todos os
     /// tenants de propósito (nunca uma chave por loja). None = cai pro
     /// OSRM (rota) e pro heurístico de distância em linha reta em SQL

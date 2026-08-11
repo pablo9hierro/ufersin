@@ -107,14 +107,12 @@ export default function AdminLayout() {
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
   const whatsappRequired = tenantConfig?.whatsapp_habilitado === true
   // Cobrança manual (store-wide) deixou de existir — toda loja precisa de
-  // um gateway conectado (Mercado Pago ou Abacate Pay). Dinheiro continua
-  // valendo por pedido (PDV/retirada), isso aqui é só sobre ter Pix/cartão
-  // online disponíveis.
-  // Mercado Pago especificamente exige ter vindo do fluxo OAuth novo — uma
-  // conexão do modelo antigo (Access Token colado à mão, antes desta
-  // feature) tem forma_pagamento='plataforma' mas não é mais aceita como
-  // "conectado": o lojista precisa reconectar pra loja voltar a funcionar.
-  // Abacate Pay não passou por essa migração, continua como sempre foi.
+  // Mercado Pago conectado. Dinheiro continua valendo por pedido
+  // (PDV/retirada), isso aqui é só sobre ter Pix/cartão online disponíveis.
+  // Mercado Pago exige ter vindo do fluxo OAuth novo — uma conexão do
+  // modelo antigo (Access Token colado à mão, antes desta feature) tem
+  // forma_pagamento='plataforma' mas não é mais aceita como "conectado":
+  // o lojista precisa reconectar pra loja voltar a funcionar.
   const paymentGatewayConnected =
     tenantConfig?.forma_pagamento === 'plataforma' &&
     (tenantConfig?.plataforma_pagamento !== 'mercado_pago' || tenantConfig?.plataforma_oauth === true)

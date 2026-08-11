@@ -54,7 +54,7 @@ pub struct OnboardingInput {
     #[serde(default = "default_forma_pagamento")]
     pub forma_pagamento: String, // 'manual' | 'plataforma'
     #[serde(default)]
-    pub plataforma_pagamento: Option<String>, // 'mercado_pago' | 'abacate_pay'
+    pub plataforma_pagamento: Option<String>, // 'mercado_pago'
     #[serde(default)]
     pub plataforma_credenciais: Option<serde_json::Value>,
     /// Estilo de vitrine: ufersin | burgerbite | burgerhouse

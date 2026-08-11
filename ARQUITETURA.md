@@ -102,7 +102,7 @@ password_hash      Argon2 (auth.rs::hash_password) -- só serve pro handoff de a
                     tenant, nunca autentica o subscriber (isso é Supabase Auth)
 plan_code          'essential' | 'management' | 'premium' | NULL  -- NULL até assinar um plano
 valor_mensal       double precision | NULL
-gateway            'mercadopago' | 'abacatepay' | NULL
+gateway            'mercadopago' | NULL
 mp_preapproval_id  -- id da cobrança recorrente no gateway
 status             'sem_assinatura' | 'pendente' | 'ativo' | 'pausado' | 'cancelado'
 onboarding_status  'aguardando_pagamento' | 'aguardando_onboarding' | 'provisionado'
@@ -253,7 +253,6 @@ POST /api/me/cancelar
 POST /api/onboarding
 PUT  /api/onboarding
 GET  /api/public/tenant-config/:slug   (público, sem auth)
-POST /api/webhooks/abacatepay
 ```
 
 Login, confirmação de e-mail e redefinição de senha **não são rotas deste

@@ -1,4 +1,3 @@
-mod abacatepay;
 mod auth;
 mod cancel;
 mod error;
@@ -77,16 +76,6 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!(
             "EVOLUTION_API_URL/EVOLUTION_API_KEY not fully set — WhatsApp messages will only be logged, not sent"
         );
-    }
-
-    let abacatepay_key = std::env::var("ABACATEPAY_API_KEY")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
-
-    if abacatepay_key.is_none() {
-        tracing::info!("ABACATEPAY_API_KEY not set — running Pix in MOCK mode");
-    } else {
-        tracing::info!("ABACATEPAY_API_KEY set — using real AbacatePay API");
     }
 
     let google_routes_key = std::env::var("GOOGLE_ROUTES_API_KEY")
@@ -214,7 +203,6 @@ async fn main() -> anyhow::Result<()> {
         http,
         evolution_api_url: Arc::new(evolution_api_url),
         evolution_api_key: Arc::new(evolution_api_key),
-        abacatepay_key: Arc::new(abacatepay_key),
         google_routes_key: Arc::new(google_routes_key),
         backend_public_url: Arc::new(backend_public_url),
         frontend_public_url: Arc::new(frontend_public_url),

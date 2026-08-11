@@ -558,7 +558,7 @@ async function createPixPayment(id: string): Promise<Order> {
 }
 
 async function refreshPayment(id: string): Promise<Order> {
-  // Nenhuma AbacatePay de verdade pra consultar em modo demo — espelha o
+  // Nenhum gateway de verdade pra consultar em modo demo — espelha o
   // modo mock do backend, que também nunca confirma sozinho sem
   // simulate-pix-paid.
   return getOrder(id)
