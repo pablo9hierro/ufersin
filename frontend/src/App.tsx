@@ -3,6 +3,7 @@ import EnvironmentBanner from './components/EnvironmentBanner'
 import Landing from './pages/Landing'
 import Demo from './pages/Demo'
 import DemoPlano from './pages/DemoPlano'
+import DemoPlanoEletronica from './pages/DemoPlanoEletronica'
 import DemoExperience from './pages/DemoExperience'
 import Cadastro from './pages/Cadastro'
 import Login from './pages/Login'
@@ -37,6 +38,8 @@ export default function App() {
       <Route path="/demo/vendedor/:plano" element={<DemoExperience />} />
       <Route path="/demo/motoboy" element={<DemoExperience />} />
       <Route path="/demo/motoboy/:plano" element={<DemoExperience />} />
+      {/* Ramo eletrônicos (vrtech) — módulo separado, escolha de área própria */}
+      <Route path="/demo/eletronica/:plano" element={<DemoPlanoEletronica />} />
       {/* Escolha de área por plano (essential|management|premium) */}
       <Route path="/demo/:plano" element={<DemoPlano />} />
       <Route path="/cadastro" element={<Cadastro />} />
