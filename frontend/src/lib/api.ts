@@ -232,6 +232,8 @@ export interface MeResponse {
   cart_fab_animate: boolean
   /** True se cancelar agora gera estorno automático (≤7 dias). */
   refund_eligible_on_cancel: boolean
+  /** "ecommerce" (padrão) | "eletronicos" — decide onboarding e site. */
+  vertical: 'ecommerce' | 'eletronicos'
 }
 
 export type ContractKind = 'platform_subscription' | 'checkout_compra_normal' | 'checkout_mais18'
@@ -281,6 +283,7 @@ export interface OnboardingInput {
   plataforma_pagamento?: PlataformaPagamento
   plataforma_credenciais?: Record<string, string>
   layout_style?: 'ufersin' | 'burgerbite' | 'burgerhouse'
+  vertical?: 'ecommerce' | 'eletronicos'
 }
 export interface OnboardingOutput {
   tenant_id: string

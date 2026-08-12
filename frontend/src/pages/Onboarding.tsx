@@ -156,6 +156,10 @@ export default function Onboarding() {
   // (Pix/cartão), dinheiro só na retirada/PDV. Sem toggle: sempre true.
   const entregaSomentePix = true
   const [layoutStyle, setLayoutStyle] = useState<StorefrontStyle>('ufersin')
+  // Ramo do negócio — decide qual onboarding/site o lojista recebe. null =
+  // ainda não escolheu (só pra loja nova; complementary/já provisionado
+  // pula direto, o ramo já foi decidido na primeira vez).
+  const [vertical, setVertical] = useState<'ecommerce' | 'eletronicos' | null>(null)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -209,6 +213,8 @@ export default function Onboarding() {
 
         // Upgrade complementary (BE set aguardando_onboarding + store exists).
         if (storeAlreadyExists(me) && me.onboarding_status === 'aguardando_onboarding') {
+          // Ramo já foi decidido lá na primeira vez — nunca perguntar de novo.
+          setVertical(me.vertical)
           setMode('complementary')
           return
         }
@@ -393,6 +399,7 @@ export default function Onboarding() {
           entrega_somente_pix: entregaSomentePix,
           whatsapp_habilitado: true,
           layout_style: venderExternamente ? layoutStyle : 'ufersin',
+          vertical: vertical ?? 'ecommerce',
           // O backend valida forma_pagamento no próprio corpo do cadastro
           // inicial (não só o que o callback OAuth já gravou no banco) —
           // sem mandar isso aqui, POST /api/onboarding sempre rejeitava
@@ -413,6 +420,57 @@ export default function Onboarding() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Loja nova, ainda sem ramo escolhido — pergunta antes de mostrar
+  // qualquer campo do formulário (o formulário abaixo varia conforme a
+  // resposta: eletrônicos não mostra o seletor de tema de vitrine).
+  if (mode === 'full' && vertical === null) {
+    return (
+      <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 py-16 relative">
+        <div className="uf-mesh" />
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="relative z-10 max-w-lg w-full text-center"
+        >
+          <div className="flex justify-end mb-2">
+            <button type="button" onClick={handleLogout} className="btn-ghost text-sm">
+              <LogOut className="w-4 h-4" />
+              Sair
+            </button>
+          </div>
+          <span className="uf-eyebrow mb-4">Onboarding</span>
+          <h1 className="text-2xl sm:text-3xl font-black mt-4 mb-2">Qual é o ramo da sua loja?</h1>
+          <p className="text-sm text-uf-silver-dim mb-8">
+            Isso decide qual site e painel você vai receber — escolha com atenção, não dá pra trocar depois.
+          </p>
+          <div className="grid gap-4">
+            <button
+              type="button"
+              onClick={() => setVertical('ecommerce')}
+              className="uf-glass uf-glass-hover text-left rounded-2xl p-5"
+            >
+              <p className="font-bold text-sm">Ecommerce</p>
+              <p className="text-xs text-uf-silver-dim mt-1">
+                Lanchonete, pizzaria, tabacaria, conveniência e afins — catálogo, checkout e entrega.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setVertical('eletronicos')}
+              className="uf-glass uf-glass-hover text-left rounded-2xl p-5"
+            >
+              <p className="font-bold text-sm">Manutenção e venda de eletrônicos</p>
+              <p className="text-xs text-uf-silver-dim mt-1">
+                Assistência técnica e loja de equipamentos — catálogo de produtos e serviços de reparo.
+              </p>
+            </button>
+          </div>
+        </motion.div>
+      </main>
+    )
   }
 
   if (done) {
