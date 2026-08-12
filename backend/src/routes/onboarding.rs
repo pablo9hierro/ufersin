@@ -60,6 +60,11 @@ pub struct OnboardingInput {
     /// Estilo de vitrine: ufersin | burgerbite | burgerhouse
     #[serde(default = "default_layout_style")]
     pub layout_style: String,
+    /// "ecommerce" (padrão) | "eletronicos" — escolhido logo no início do
+    /// fluxo de assinatura (antes deste formulário), decide se o lojista
+    /// recebe o motor genérico ou o módulo isolado de assistência técnica.
+    #[serde(default = "default_vertical")]
+    pub vertical: String,
 }
 fn default_color() -> String {
     "#0f5132".to_string()
@@ -72,6 +77,9 @@ fn default_forma_pagamento() -> String {
 }
 fn default_layout_style() -> String {
     "ufersin".to_string()
+}
+fn default_vertical() -> String {
+    "ecommerce".to_string()
 }
 
 #[derive(Debug, Serialize)]
@@ -87,6 +95,7 @@ struct ProvisionRequest<'a> {
     admin_email: &'a str,
     admin_password_hash: &'a str,
     admin_name: &'a str,
+    vertical: &'a str,
 }
 
 #[derive(Debug, Deserialize)]
@@ -150,12 +159,18 @@ pub async fn onboarding(
     if body.endereco.trim().is_empty() {
         return Err(AppError::BadRequest("endereço é obrigatório".to_string()));
     }
-    validate_essential_fields(&body, plataforma_credenciais_atual.as_ref())?;
-    if !matches!(body.layout_style.as_str(), "ufersin" | "burgerbite" | "burgerhouse") {
+    if !matches!(body.vertical.as_str(), "ecommerce" | "eletronicos") {
+        return Err(AppError::BadRequest("vertical deve ser ecommerce ou eletronicos".to_string()));
+    }
+    // Módulo eletrônicos não usa o sistema de temas do motor genérico —
+    // só valida layout_style pro ramo que realmente usa (evita exigir um
+    // campo sem sentido no onboarding do outro ramo).
+    if body.vertical == "ecommerce" && !matches!(body.layout_style.as_str(), "ufersin" | "burgerbite" | "burgerhouse") {
         return Err(AppError::BadRequest(
             "layout_style deve ser ufersin, burgerbite ou burgerhouse".to_string(),
         ));
     }
+    validate_essential_fields(&body, plataforma_credenciais_atual.as_ref())?;
 
     // Instância de WhatsApp única por tenant (spec: "cada Tenant deverá
     // possuir SUA PRÓPRIA INSTÂNCIA") — deriva do slug, que já é único.
@@ -194,6 +209,7 @@ pub async fn onboarding(
         admin_email: email.trim(),
         admin_password_hash: &password_hash,
         admin_name: responsavel_nome.trim(),
+        vertical: &body.vertical,
     };
 
     let resp = state
@@ -226,7 +242,7 @@ pub async fn onboarding(
          plataforma_credenciais = COALESCE($17, plataforma_credenciais), \
          layout_style = $18, instagram = $19, endereco_numero = $20, vende_mais_18 = $21, \
          facebook = $22, apenas_retirada = $23, pagamento_na_retirada = $24, \
-         entrega_somente_pix = $25, pagamento_manual = $26, updated_at = now() \
+         entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -255,6 +271,7 @@ pub async fn onboarding(
     .bind(body.pagamento_na_retirada)
     .bind(body.entrega_somente_pix)
     .bind(body.pagamento_manual)
+    .bind(&body.vertical)
     .execute(&state.pool)
     .await?;
 

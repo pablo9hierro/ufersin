@@ -49,12 +49,20 @@ pub struct ProvisionTenantInput {
     /// MESMA senha que já usa no painel da Rodoletas.
     pub admin_password_hash: String,
     pub admin_name: String,
+    /// "ecommerce" (padrão) | "eletronicos" — decide se o tenant é servido
+    /// pelo motor genérico (uiux2/3/4 + AdminLayout) ou pelo módulo
+    /// isolado de assistência técnica (vrtech). Ver migrations/0019.
+    #[serde(default = "default_vertical")]
+    pub vertical: String,
 }
 fn default_color() -> String {
     "#0f5132".to_string()
 }
 fn default_pickup() -> String {
     "combine o endereço pelo WhatsApp da loja".to_string()
+}
+fn default_vertical() -> String {
+    "ecommerce".to_string()
 }
 
 #[derive(Debug, Serialize)]
@@ -73,6 +81,9 @@ pub async fn provision_tenant(
     if !matches!(input.plan_code.as_str(), "essential" | "management" | "premium") {
         return Err(AppError::BadRequest("plan_code inválido".to_string()));
     }
+    if !matches!(input.vertical.as_str(), "ecommerce" | "eletronicos") {
+        return Err(AppError::BadRequest("vertical deve ser ecommerce ou eletronicos".to_string()));
+    }
     let slug = input.tenant_slug.trim().to_lowercase();
     if slug.is_empty() || !slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         return Err(AppError::BadRequest("tenant_slug precisa ser [a-z0-9-]".to_string()));
@@ -90,8 +101,8 @@ pub async fn provision_tenant(
 
     let tenant_id = Uuid::new_v4().to_string();
     sqlx::query(
-        "INSERT INTO tenants (id, organization_id, slug, name, status, theme_primary_color, whatsapp_instance, pickup_address) \
-         VALUES ($1, $2, $3, $4, 'ativo', $5, $6, $7)",
+        "INSERT INTO tenants (id, organization_id, slug, name, status, theme_primary_color, whatsapp_instance, pickup_address, vertical) \
+         VALUES ($1, $2, $3, $4, 'ativo', $5, $6, $7, $8)",
     )
     .bind(&tenant_id)
     .bind(&org_id)
@@ -100,6 +111,7 @@ pub async fn provision_tenant(
     .bind(&input.theme_primary_color)
     .bind(input.whatsapp_instance.trim())
     .bind(&input.pickup_address)
+    .bind(&input.vertical)
     .execute(&mut *tx)
     .await
     .map_err(|e| match e {

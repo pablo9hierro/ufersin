@@ -57,6 +57,7 @@ struct SubscriberRow {
     landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
+    vertical: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -121,6 +122,9 @@ pub struct MeResponse {
     pub cart_fab_animate: bool,
     /// True se cancelar agora gera estorno automático (≤7 dias desde assinante_desde).
     pub refund_eligible_on_cancel: bool,
+    /// "ecommerce" | "eletronicos" — decide se "Ver minha loja" no painel
+    /// aponta pro motor genérico ou pro módulo vrtech.
+    pub vertical: String,
 }
 
 pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<MeResponse>, AppError> {
@@ -143,7 +147,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 COALESCE(pagamento_manual, false) as pagamento_manual, coupon_code,
                 landing_headline, landing_sub, landing_badge, landing_hero_image_url,
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
-                COALESCE(cart_fab_animate, false) as cart_fab_animate
+                COALESCE(cart_fab_animate, false) as cart_fab_animate,
+                COALESCE(vertical, 'ecommerce') as vertical
          FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
@@ -226,6 +231,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         cart_fab_style: row.cart_fab_style,
         cart_fab_animate: row.cart_fab_animate,
         refund_eligible_on_cancel,
+        vertical: row.vertical,
     }))
 }
 
