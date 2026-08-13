@@ -261,10 +261,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/superadmin/coupons/{id}",
             put(routes::superadmin::update_coupon).delete(routes::superadmin::delete_coupon),
         )
-        .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", openapi::build()))
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
-        .with_state(state);
+        .layer(TraceLayer::new_for_http());
+
+    // Swagger só em ambiente local — RAILWAY_ENVIRONMENT só existe quando
+    // rodando na Railway (produção). Evita expor a doc publicamente até
+    // decisão explícita de subir pra produção.
+    let app = if std::env::var("RAILWAY_ENVIRONMENT").is_err() {
+        app.merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", openapi::build()))
+    } else {
+        app
+    };
+    let app = app.with_state(state);
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{port}");
