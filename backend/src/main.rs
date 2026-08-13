@@ -5,6 +5,7 @@ mod gateway;
 mod jwks;
 mod mercadopago;
 mod mercadopago_oauth;
+mod openapi;
 mod pandadoc;
 mod plans;
 mod routes;
@@ -20,6 +21,8 @@ use axum::Router;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
+
+use utoipa_swagger_ui::SwaggerUi;
 
 use state::AppState;
 
@@ -258,6 +261,7 @@ async fn main() -> anyhow::Result<()> {
             "/api/superadmin/coupons/{id}",
             put(routes::superadmin::update_coupon).delete(routes::superadmin::delete_coupon),
         )
+        .merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", openapi::build()))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
