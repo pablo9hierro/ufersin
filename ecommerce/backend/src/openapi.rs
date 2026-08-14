@@ -513,6 +513,22 @@ fn routes() -> Vec<Route> {
             description: "Atualiza o endereço/coordenada de retirada usado como origem no cálculo de frete.",
             body: Some("`{ tenant_slug, address, lat, lng }`"), query: &[] },
 
+        // ------------------------------------------------------------------
+        Route { path: "/api/sandbox/orders/{order_id}/payments", method: Get, tag: "Sandbox (simulação de pagamento)", auth: Public,
+            summary: "Listar pagamentos simulados do pedido",
+            description: "Cobranças simuladas geradas para o pedido, com status atual. Só responde em loja com credencial de simulação; loja com Mercado Pago real recebe `403`.",
+            body: None, query: &[] },
+
+        Route { path: "/api/sandbox/payments/{payment_id}/approve", method: Post, tag: "Sandbox (simulação de pagamento)", auth: Public,
+            summary: "Aprovar pagamento simulado",
+            description: "Equivale ao cliente ter pago. Aprova a cobrança no simulador e dispara o **mesmo handler do webhook real** — o que é exercitado é o fluxo de produção inteiro: rebusca do pagamento, idempotência, baixa de estoque, transição de status e notificação no WhatsApp. Recusa (`403`) em loja com Mercado Pago de verdade conectado.",
+            body: None, query: &[] },
+
+        Route { path: "/api/sandbox/payments/{payment_id}/reject", method: Post, tag: "Sandbox (simulação de pagamento)", auth: Public,
+            summary: "Recusar pagamento simulado",
+            description: "Marca a cobrança como recusada, para exercitar o caminho de falha. O pedido continua pendente, como aconteceria de verdade.",
+            body: None, query: &[] },
+
         Route { path: "/internal/teardown-whatsapp", method: Post, tag: "Interno (plataforma)", auth: Internal,
             summary: "Remover instância WhatsApp",
             description: "Apaga a instância Evolution da loja — usado no cancelamento da assinatura, para não deixar sessão órfã conectada.",
@@ -596,6 +612,7 @@ pub fn build() -> OpenApi {
             Tag::new("Admin — Configuração"),
             Tag::new("Motoboy"),
             Tag::new("Webhooks"),
+            Tag::new("Sandbox (simulação de pagamento)"),
             Tag::new("Interno (plataforma)"),
         ]))
         .components(Some(components))

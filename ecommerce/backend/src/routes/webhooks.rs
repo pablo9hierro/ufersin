@@ -228,7 +228,7 @@ pub async fn mercadopago_webhook(
     StatusCode::OK
 }
 
-async fn handle_mercadopago(
+pub(crate) async fn handle_mercadopago(
     state: &AppState,
     headers: &HeaderMap,
     query: &HashMap<String, String>,

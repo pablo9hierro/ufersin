@@ -128,6 +128,14 @@ pub async fn create_pix_charge(
     customer_email: Option<&str>,
     external_reference: &str,
 ) -> Result<PixResult, AppError> {
+    // Loja de teste: devolve uma cobrança simulada sem sair para a API do
+    // Mercado Pago. O resto do fluxo (webhook, baixa de estoque, notificação)
+    // segue idêntico ao de uma loja real.
+    if crate::mp_sandbox::is_sandbox_token(access_token) {
+        tracing::info!("mercado pago SANDBOX: pix simulado para order={external_reference}");
+        return Ok(crate::mp_sandbox::create_pix_charge(total, external_reference));
+    }
+
     validate_mp_token_shape(access_token)?;
     tracing::info!(
         "mercado pago create pix: token={} order={external_reference}",
@@ -265,6 +273,10 @@ pub async fn refund_payment(
     if payment_id.starts_with("mock-") {
         return Ok(format!("mock-refund-{payment_id}"));
     }
+    if crate::mp_sandbox::is_sandbox_token(access_token) {
+        crate::mp_sandbox::refund(payment_id);
+        return Ok(format!("sandbox-refund-{payment_id}"));
+    }
 
     let resp = state
         .http
@@ -312,6 +324,12 @@ pub async fn get_payment_status(
 ) -> Result<String, AppError> {
     if payment_id.starts_with("mock-") {
         return Ok("pending".to_string());
+    }
+    if crate::mp_sandbox::is_sandbox_token(access_token) {
+        // Sem registro é pagamento de um restart anterior (o store é em
+        // memória) — tratar como pendente evita marcar pedido como pago
+        // por engano.
+        return Ok(crate::mp_sandbox::get_status(payment_id).unwrap_or_else(|| "pending".to_string()));
     }
 
     let resp = state

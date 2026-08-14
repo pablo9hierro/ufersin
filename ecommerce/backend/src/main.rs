@@ -8,6 +8,7 @@ mod google_routes;
 mod mercadopago;
 mod mercadopago_link;
 mod models;
+mod mp_sandbox;
 mod openapi;
 mod orders_common;
 mod routes;
@@ -492,6 +493,20 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/internal/sync-pickup-address",
             post(routes::internal::sync_pickup_address),
+        )
+        // Simulação de pagamento — só responde em loja com credencial
+        // sandbox; loja com Mercado Pago real recebe 403.
+        .route(
+            "/api/sandbox/orders/{order_id}/payments",
+            get(routes::sandbox::list_order_payments),
+        )
+        .route(
+            "/api/sandbox/payments/{payment_id}/approve",
+            post(routes::sandbox::approve_payment),
+        )
+        .route(
+            "/api/sandbox/payments/{payment_id}/reject",
+            post(routes::sandbox::reject_payment),
         )
         .layer(cors)
         .layer(TraceLayer::new_for_http())

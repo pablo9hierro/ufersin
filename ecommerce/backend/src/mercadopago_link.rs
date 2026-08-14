@@ -220,6 +220,23 @@ pub async fn fetch_payment_details(
     access_token: &str,
     payment_id: &str,
 ) -> Result<PaymentDetails, AppError> {
+    // Loja de teste: o "pagamento" vive no simulador em memória. Como o
+    // webhook rebusca o pagamento antes de confiar em qualquer coisa, é aqui
+    // que a simulação precisa responder — assim o handler do webhook roda
+    // exatamente igual ao de uma loja real.
+    if crate::mp_sandbox::is_sandbox_token(access_token) {
+        let Some(p) = crate::mp_sandbox::get(payment_id) else {
+            return Err(AppError::NotFound(format!(
+                "pagamento simulado {payment_id} não encontrado (o simulador é em memória e some no restart)"
+            )));
+        };
+        return Ok(PaymentDetails {
+            status: p.status,
+            external_reference: Some(p.external_reference),
+            payment_method: Some(if p.method == "card" { "cartao" } else { "pix" }),
+        });
+    }
+
     let resp = state
         .http
         .get(format!("{BASE_URL}/v1/payments/{payment_id}"))
