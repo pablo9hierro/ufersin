@@ -327,8 +327,10 @@ export default function MeuPlano() {
     !storeSlug &&
     (me.onboarding_status === 'aguardando_onboarding' ||
       (normalizeSubscriptionStatus(me.status) === 'ativo' && !me.tenant_id))
-  const panelUrl = storeSlug ? storeAdminLoginUrl(storeSlug, me.email) : null
-  const publicUrl = storeSlug ? storePublicUrl(storeSlug) : null
+  // Loja de eletrônicos é atendida por outra aplicação (app da VR Tech), com
+  // vitrine e painel próprios — não pelo frontend do motor genérico.
+  const panelUrl = storeSlug ? storeAdminLoginUrl(storeSlug, me.email, me.vertical) : null
+  const publicUrl = storeSlug ? storePublicUrl(storeSlug, me.vertical) : null
 
   const handleLogout = async () => {
     try {
@@ -682,7 +684,11 @@ export default function MeuPlano() {
     { id: 'layout', label: 'Layout', path: TAB_PATH.layout },
     { id: 'financeiro', label: 'Financeiro', path: TAB_PATH.financeiro },
     { id: 'redes', label: 'Redes sociais', path: TAB_PATH.redes },
-    ...(isAssistantIaBetaTenant(me.slug) ? [{ id: 'assistente-ia' as const, label: 'Assistente IA', path: TAB_PATH['assistente-ia'] }] : []),
+    // Eletrônicos já tem assistente própria no painel da loja; para o
+    // ecommerce, o módulo isolado ainda está em beta por loja.
+    ...(me.vertical === 'eletronicos' || isAssistantIaBetaTenant(me.slug)
+      ? [{ id: 'assistente-ia' as const, label: 'Assistente IA', path: TAB_PATH['assistente-ia'] }]
+      : []),
   ]
 
   return (
@@ -1319,7 +1325,31 @@ export default function MeuPlano() {
               </button>
             </form>
           )}
-          {tab === 'assistente-ia' && isAssistantIaBetaTenant(me.slug) && me.slug && <AssistantIaTab tenantSlug={me.slug} />}
+          {/* A assistente do ramo eletrônicos roda dentro do próprio app da
+              loja (com as ferramentas de agenda), e não no módulo isolado que
+              atende o ecommerce — configurar pelo módulo errado não teria
+              efeito nenhum no WhatsApp dela. */}
+          {tab === 'assistente-ia' && me.vertical === 'eletronicos' && panelUrl && (
+            <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-3">
+              <h2 className="text-lg font-semibold text-white">Assistente IA</h2>
+              <p className="text-sm text-uf-silver/70">
+                A secretária IA da sua loja é configurada no painel da loja — lá você define os
+                prompts, a chave da IA, a base de conhecimento e a agenda que ela usa para marcar
+                os atendimentos.
+              </p>
+              <a
+                href={`${panelUrl.replace(/\/login$/, '')}/dashboard/assistente-ia`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl bg-uf-violet px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-uf-violet/90"
+              >
+                Abrir configuração da Assistente IA
+              </a>
+            </section>
+          )}
+          {tab === 'assistente-ia' && me.vertical !== 'eletronicos' && isAssistantIaBetaTenant(me.slug) && me.slug && (
+            <AssistantIaTab tenantSlug={me.slug} />
+          )}
           <Outlet />
         </motion.div>
       </div>
