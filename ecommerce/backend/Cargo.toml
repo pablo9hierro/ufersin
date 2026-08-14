@@ -31,6 +31,8 @@ qrcode = "0.14"
 # slow-to-compile codecs (AVIF/rav1e, EXR...) we never use.
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
+utoipa = "5"
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 anyhow = "1"
 hmac = "0.12"
 sha2 = "0.10"

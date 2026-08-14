@@ -8,6 +8,7 @@ mod google_routes;
 mod mercadopago;
 mod mercadopago_link;
 mod models;
+mod openapi;
 mod orders_common;
 mod routes;
 mod seed;
@@ -23,6 +24,7 @@ use std::sync::Arc;
 use axum::extract::DefaultBodyLimit;
 use axum::http::HeaderValue;
 use axum::routing::{get, patch, post, put};
+use utoipa_swagger_ui::SwaggerUi;
 use axum::Router;
 use rand::Rng;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -496,8 +498,17 @@ async fn main() -> anyhow::Result<()> {
         // Axum's próprio default é 2MB — baixo demais pra banner de campanha
         // (foto de marketing em boa resolução passa disso fácil, mesmo que a
         // foto de produto raramente passasse). 10MB cobre com folga.
-        .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
-        .with_state(state);
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024));
+
+    // Swagger só fora de produção: a doc expõe o mapa completo da API
+    // (inclusive as rotas internas), então fica atrás do mesmo critério de
+    // ambiente usado no ufersin-api — RAILWAY_ENVIRONMENT só existe lá.
+    let app = if std::env::var("RAILWAY_ENVIRONMENT").is_err() {
+        app.merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", openapi::build()))
+    } else {
+        app
+    };
+    let app = app.with_state(state);
 
     // Bind to 0.0.0.0 so this also works inside a container (Railway etc, which
     // injects PORT); locally it's still reachable at http://localhost:<port>.
