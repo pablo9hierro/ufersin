@@ -200,6 +200,13 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    let vrtech_template_url = std::env::var("VRTECH_TEMPLATE_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let vrtech_internal_key = std::env::var("VRTECH_INTERNAL_KEY")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+
     let state = AppState {
         pool,
         jwt_secret: Arc::new(jwt_secret),
@@ -214,6 +221,8 @@ async fn main() -> anyhow::Result<()> {
         internal_api_key: Arc::new(internal_api_key),
         whatsapp_connect_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         mercadopago_webhook_secret: Arc::new(mercadopago_webhook_secret),
+        vrtech_template_url: Arc::new(vrtech_template_url),
+        vrtech_internal_key: Arc::new(vrtech_internal_key),
     };
 
     // CORS_ORIGINS: comma-separated list of allowed frontend origins. Defaults

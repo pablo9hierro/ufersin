@@ -257,7 +257,7 @@ fn routes() -> Vec<Route> {
         // ------------------------------------------------------------------
         Route { path: "/api/orders/{id}/create-pix-payment", method: Post, tag: "Pagamentos", auth: Public,
             summary: "Gerar cobrança Pix",
-            description: "Cria a cobrança Pix no Mercado Pago da loja e devolve QR code (base64) e copia-e-cola. Exige que o lojista tenha conectado o Mercado Pago; sem credencial, responde `400` explicando. O pedido só vira `pago` pelo webhook ou por consulta de status — nunca pela palavra do cliente.",
+            description: "Cria a cobrança Pix no Mercado Pago da loja e devolve QR code (base64) e copia-e-cola. Exige que o lojista tenha conectado o Mercado Pago; sem credencial, responde `400` explicando. O pedido só vira `pago` pelo webhook ou por consulta de status — nunca pela palavra do cliente.\n\nApós gerar a cobrança, dispara em background (não bloqueia a resposta) duas mensagens WhatsApp ao cliente, em sequência: mensagem 1 (resumo — no tenant `vrtech`, renderizada via Template Zap chamando `POST /api/internal/payment-notify` do app vrtech; nos demais tenants, um resumo padrão) e mensagem 2 com o copia-e-cola REAL, que nunca passa por template nenhum.",
             body: None, query: &[] },
 
         Route { path: "/api/orders/{id}/refresh-payment", method: Post, tag: "Pagamentos", auth: Public,

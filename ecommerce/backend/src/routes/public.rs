@@ -758,7 +758,125 @@ pub async fn create_pix_payment(
         .await?
         .ok_or_else(|| AppError::NotFound("order not found".to_string()))?;
     tx.commit().await?;
+
+    if provider == "mercado_pago" {
+        notify_pix_generated(
+            &state,
+            &store,
+            order.customer_name.clone(),
+            order.customer_whatsapp.clone(),
+            order.total,
+            id.clone(),
+            pix.qr_code.clone(),
+        );
+    }
+
     Ok(Json(dto))
+}
+
+/// Manda ao cliente a notificação de cobrança Pix recém-gerada: mensagem 1
+/// (resumo, editável via Template Zap só para o tenant `vrtech`) seguida da
+/// mensagem 2 com o copia-e-cola REAL — que nunca passa por template
+/// nenhum, é o valor que acabou de sair da Mercado Pago.
+///
+/// Fire-and-forget (`tokio::spawn`): a resposta HTTP pro cliente não espera
+/// o WhatsApp sair. Dentro da task, as duas mensagens são enviadas em
+/// sequência (`notify_sequential`) pra garantir a ordem entre elas.
+fn notify_pix_generated(
+    state: &AppState,
+    store: &tenant::Tenant,
+    customer_name: String,
+    customer_whatsapp: String,
+    total: f64,
+    order_id: String,
+    pix_copia_cola: String,
+) {
+    let digits = whatsapp::digits_only(&customer_whatsapp);
+    if digits.is_empty() {
+        return;
+    }
+
+    let state = state.clone();
+    let store_id = store.id.clone();
+    let store_name = store.name.clone();
+    let instance = store.whatsapp_instance.clone();
+
+    tokio::spawn(async move {
+        // Bridge com o vrtech é por tenant, não por env global: outro tenant
+        // qualquer nunca aciona isso, mesmo que as envs estejam configuradas
+        // neste binário compartilhado.
+        let is_vrtech: bool = sqlx::query_scalar("SELECT slug = 'vrtech' FROM tenants WHERE id = $1")
+            .bind(&store_id)
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(false);
+
+        let total_str = format!("{:.2}", total).replace('.', ",");
+        let fallback_summary = format!(
+            "Seu pedido está pronto! 💳\n\nValor: R$ {total_str}\n\nSegue abaixo o código para pagamento via Pix."
+        );
+
+        let message1 = if is_vrtech {
+            match (state.vrtech_template_url.as_ref(), state.vrtech_internal_key.as_ref()) {
+                (Some(url), Some(key)) => render_vrtech_payment_message(
+                    &state,
+                    url,
+                    key,
+                    &customer_name,
+                    &order_id,
+                    &total_str,
+                )
+                .await
+                .unwrap_or_else(|| fallback_summary.clone()),
+                _ => fallback_summary.clone(),
+            }
+        } else {
+            fallback_summary.clone()
+        };
+
+        whatsapp::notify_sequential(&state, &instance, &digits, &message1).await;
+        whatsapp::notify_sequential(&state, &instance, &digits, &pix_copia_cola).await;
+        tracing::info!(
+            "pix payment notification sent: store={store_name} order={order_id} vrtech_template={is_vrtech}"
+        );
+    });
+}
+
+/// Chama o vrtech (`POST /api/internal/payment-notify`) pra renderizar a
+/// mensagem 1 com o Template Zap configurado pelo lojista. Qualquer falha
+/// (timeout, rede, resposta inesperada) devolve `None` — o chamador cai no
+/// resumo padrão, o Pix nunca deixa de notificar por causa disso.
+async fn render_vrtech_payment_message(
+    state: &AppState,
+    base_url: &str,
+    internal_key: &str,
+    customer_name: &str,
+    order_id: &str,
+    total_str: &str,
+) -> Option<String> {
+    let url = format!("{}/api/internal/payment-notify", base_url.trim_end_matches('/'));
+    let resp = state
+        .http
+        .post(url)
+        .timeout(std::time::Duration::from_secs(5))
+        .header("x-internal-key", internal_key)
+        .json(&serde_json::json!({
+            "nome": customer_name,
+            "pedido": order_id.chars().take(8).collect::<String>(),
+            "valor": format!("R$ {total_str}"),
+        }))
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        tracing::warn!("vrtech payment-notify returned {}", resp.status());
+        return None;
+    }
+    let body: serde_json::Value = resp.json().await.ok()?;
+    body.get("message").and_then(|v| v.as_str()).map(str::to_string)
 }
 
 fn mp_access_token_or_err(

@@ -54,4 +54,12 @@ pub struct AppState {
     /// validar assinatura (ainda assim sempre rebusca o pagamento na API da
     /// MP antes de gravar qualquer coisa — nunca confia só no corpo).
     pub mercadopago_webhook_secret: Arc<Option<String>>,
+    /// Bridge pro Template Zap do vrtech (app Next.js separado, eletrônicos):
+    /// depois de gerar uma cobrança Pix, este backend chama o vrtech pra
+    /// renderizar a mensagem 1 (editável pelo lojista) antes de mandar a
+    /// mensagem 2 com o copia-e-cola real. Só o tenant `vrtech` tem essas
+    /// envs configuradas — nenhum outro tenant é afetado. None = usa o
+    /// resumo padrão já existente, sem chamar nada externo.
+    pub vrtech_template_url: Arc<Option<String>>,
+    pub vrtech_internal_key: Arc<Option<String>>,
 }
