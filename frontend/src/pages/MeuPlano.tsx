@@ -148,6 +148,7 @@ export default function MeuPlano() {
   // (Pix/cartão), dinheiro só na retirada/PDV. Sem toggle: sempre true.
   const entregaSomentePix = true
   const [pagamentoManual, setPagamentoManual] = useState(false)
+  const [pagamentoProdutoNaEntrega, setPagamentoProdutoNaEntrega] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [hasCredenciais, setHasCredenciais] = useState(false)
   const [credencialMask, setCredencialMask] = useState<string | null>(null)
@@ -219,6 +220,7 @@ export default function MeuPlano() {
         setApenasRetirada(!!m.apenas_retirada)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
         setPagamentoManual(!!m.pagamento_manual)
+        setPagamentoProdutoNaEntrega(!!m.pagamento_produto_na_entrega)
         setVenderExternamente(m.vender_externamente !== false)
         // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
         setHasCredenciais(!!m.has_plataforma_credenciais || m.forma_pagamento === 'plataforma')
@@ -676,6 +678,7 @@ export default function MeuPlano() {
       pagamento_na_retirada: pagamentoNaRetirada,
       entrega_somente_pix: entregaSomentePix,
       pagamento_manual: pagamentoManual,
+      pagamento_produto_na_entrega: pagamentoProdutoNaEntrega,
     })
   }
 
@@ -905,6 +908,24 @@ export default function MeuPlano() {
                     </span>
                   </label>
                   </>
+                  )}
+                  {me.vertical === 'eletronicos' && (
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={pagamentoProdutoNaEntrega}
+                      onChange={(e) => setPagamentoProdutoNaEntrega(e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                      data-testid="pref-pagamento-produto-na-entrega"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">
+                        Aceitar pagamento de produto no ato da entrega
+                      </span>
+                      Além de pagar no checkout, o cliente pode optar por pagar o produto (+ entrega) só
+                      quando o pedido chegar. Vale pro checkout da vitrine e pra assistente de IA.
+                    </span>
+                  </label>
                   )}
                   <button type="submit" disabled={saving} className="btn-primary w-full py-3" data-testid="salvar-preferencias">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

@@ -50,6 +50,7 @@ struct SubscriberRow {
     pagamento_na_retirada: bool,
     entrega_somente_pix: bool,
     pagamento_manual: bool,
+    pagamento_produto_na_entrega: bool,
     coupon_code: Option<String>,
     landing_headline: Option<String>,
     landing_sub: Option<String>,
@@ -105,6 +106,8 @@ pub struct MeResponse {
     pub entrega_somente_pix: bool,
     /// Preferência /meu-plano: força confirmação manual (sem QR Pix online).
     pub pagamento_manual: bool,
+    /// Ramo eletrônicos (vertical): aceita pagar produto (+ entrega) no ato da entrega.
+    pub pagamento_produto_na_entrega: bool,
     pub coupon_code: Option<String>,
     /// Próxima cobrança / histórico de faturas dependem de consultar o
     /// gateway (Mercado Pago não expõe isso na mesma chamada de status) ou
@@ -144,7 +147,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 COALESCE(apenas_retirada, false) as apenas_retirada,
                 COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada,
                 COALESCE(entrega_somente_pix, false) as entrega_somente_pix,
-                COALESCE(pagamento_manual, false) as pagamento_manual, coupon_code,
+                COALESCE(pagamento_manual, false) as pagamento_manual,
+                COALESCE(pagamento_produto_na_entrega, false) as pagamento_produto_na_entrega, coupon_code,
                 landing_headline, landing_sub, landing_badge, landing_hero_image_url,
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
                 COALESCE(cart_fab_animate, false) as cart_fab_animate,
@@ -222,6 +226,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         pagamento_na_retirada: row.pagamento_na_retirada,
         entrega_somente_pix: row.entrega_somente_pix,
         pagamento_manual: row.pagamento_manual,
+        pagamento_produto_na_entrega: row.pagamento_produto_na_entrega,
         coupon_code: row.coupon_code,
         proxima_cobranca: None,
         landing_headline: row.landing_headline,

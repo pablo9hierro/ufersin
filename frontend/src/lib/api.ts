@@ -211,6 +211,8 @@ export interface MeResponse {
   entrega_somente_pix: boolean
   /** Preferência: confirmação manual (sem QR Pix online). */
   pagamento_manual: boolean
+  /** Ramo eletrônicos: aceita pagar produto (+ entrega) no ato da entrega. */
+  pagamento_produto_na_entrega: boolean
   whatsapp_habilitado: boolean
   forma_pagamento: FormaPagamento
   plataforma_pagamento: PlataformaPagamento | null
@@ -278,6 +280,7 @@ export interface OnboardingInput {
   pagamento_na_retirada?: boolean
   entrega_somente_pix?: boolean
   pagamento_manual?: boolean
+  pagamento_produto_na_entrega?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -309,6 +312,7 @@ export interface EditOnboardingInput {
   pagamento_na_retirada?: boolean
   entrega_somente_pix?: boolean
   pagamento_manual?: boolean
+  pagamento_produto_na_entrega?: boolean
   whatsapp_habilitado?: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento

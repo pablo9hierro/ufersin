@@ -47,6 +47,9 @@ pub struct OnboardingInput {
     /// Modo pagamento manual (confirmação offline; sem QR Pix no checkout).
     #[serde(default)]
     pub pagamento_manual: bool,
+    /// Ramo eletrônicos: aceita pagar produto (+ entrega) no ato da entrega.
+    #[serde(default)]
+    pub pagamento_produto_na_entrega: bool,
 
     // WhatsApp: só a flag aqui; QR connect fica na etapa 2 do painel da loja.
     #[serde(default = "default_true")]
@@ -242,7 +245,8 @@ pub async fn onboarding(
          plataforma_credenciais = COALESCE($17, plataforma_credenciais), \
          layout_style = $18, instagram = $19, endereco_numero = $20, vende_mais_18 = $21, \
          facebook = $22, apenas_retirada = $23, pagamento_na_retirada = $24, \
-         entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, updated_at = now() \
+         entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, \
+         pagamento_produto_na_entrega = $28, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -272,6 +276,7 @@ pub async fn onboarding(
     .bind(body.entrega_somente_pix)
     .bind(body.pagamento_manual)
     .bind(&body.vertical)
+    .bind(body.pagamento_produto_na_entrega)
     .execute(&state.pool)
     .await?;
 
@@ -418,6 +423,8 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub pagamento_manual: Option<bool>,
     #[serde(default)]
+    pub pagamento_produto_na_entrega: Option<bool>,
+    #[serde(default)]
     pub whatsapp_habilitado: Option<bool>,
     #[serde(default)]
     pub forma_pagamento: Option<String>,
@@ -552,6 +559,7 @@ pub async fn editar_onboarding(
          pagamento_na_retirada = COALESCE($25, pagamento_na_retirada), \
          entrega_somente_pix = COALESCE($26, entrega_somente_pix), \
          pagamento_manual = COALESCE($27, pagamento_manual), \
+         pagamento_produto_na_entrega = COALESCE($30, pagamento_produto_na_entrega), \
          landing_hero_image_url = CASE \
            WHEN $28::text IS NULL THEN landing_hero_image_url \
            WHEN NULLIF($28, '') IS NULL THEN NULL \
@@ -591,6 +599,7 @@ pub async fn editar_onboarding(
     .bind(body.pagamento_manual)
     .bind(body.landing_hero_image_url.as_ref().map(|s| s.trim().to_string()))
     .bind(&claims.sub)
+    .bind(body.pagamento_produto_na_entrega)
     .execute(&state.pool)
     .await?;
 
@@ -900,6 +909,8 @@ pub struct TenantConfigResponse {
     pub entrega_somente_pix: bool,
     /// Preferência: confirmação manual (sem QR Pix online).
     pub pagamento_manual: bool,
+    /// Ramo eletrônicos: aceita pagar produto (+ entrega) no ato da entrega.
+    pub pagamento_produto_na_entrega: bool,
     pub endereco: Option<String>,
     pub endereco_numero: Option<String>,
     pub instagram: Option<String>,
@@ -930,6 +941,7 @@ struct TenantConfigRow {
     pagamento_na_retirada: bool,
     entrega_somente_pix: bool,
     pagamento_manual: bool,
+    pagamento_produto_na_entrega: bool,
     endereco: Option<String>,
     endereco_numero: Option<String>,
     instagram: Option<String>,
@@ -963,6 +975,7 @@ pub async fn tenant_config(
          COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada, \
          COALESCE(entrega_somente_pix, false) as entrega_somente_pix, \
          COALESCE(pagamento_manual, false) as pagamento_manual, \
+         COALESCE(pagamento_produto_na_entrega, false) as pagamento_produto_na_entrega, \
          endereco, endereco_numero, instagram, facebook, logo_url, \
          landing_headline, landing_sub, landing_badge, landing_hero_image_url, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
@@ -996,6 +1009,7 @@ pub async fn tenant_config(
         pagamento_na_retirada: row.pagamento_na_retirada,
         entrega_somente_pix: row.entrega_somente_pix,
         pagamento_manual: row.pagamento_manual,
+        pagamento_produto_na_entrega: row.pagamento_produto_na_entrega,
         endereco: row.endereco,
         endereco_numero: row.endereco_numero,
         instagram: row.instagram,
