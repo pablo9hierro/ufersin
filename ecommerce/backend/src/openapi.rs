@@ -230,8 +230,8 @@ fn routes() -> Vec<Route> {
             body: Some("`{ customer_name, customer_whatsapp, items: [{ product_id | service_id, quantity }], shipping_price }`"), query: &[] },
 
         Route { path: "/api/public/catalog/{slug}/estimate-delivery", method: Post, tag: "Catálogo público", auth: Public,
-            summary: "Calcular frete até um endereço",
-            description: "Calcula distância e preço da entrega a partir das coordenadas do cliente, usando as `shipping_settings` da loja (coordenada da loja + preço por km, ou tabela por bairro).",
+            summary: "Calcular frete e ETA até um endereço",
+            description: "Calcula distância, preço e tempo estimado de entrega a partir das coordenadas do cliente, usando as `shipping_settings` da loja (coordenada da loja, preço por km e minutos estimados por km). Resposta: `{ km, price, within_range, estimated_minutes }` — `estimated_minutes` é `null` quando o lojista não configurou minutos/km (nesse caso não é mostrado tempo nenhum, só o preço).",
             body: Some("`{ lat, lng }`"), query: &[] },
 
         Route { path: "/api/public/catalog/{slug}/services", method: Get, tag: "Catálogo público", auth: Public,
@@ -418,7 +418,9 @@ fn routes() -> Vec<Route> {
         Route { path: "/api/admin/orders", method: Get, tag: "Admin — Pedidos", auth: Admin,
             summary: "Listar pedidos", description: "Pedidos do tenant com itens, status de pagamento e entrega.", body: None, query: &[("status", "Filtra por status do pedido.")] },
         Route { path: "/api/admin/orders/{id}/status", method: Patch, tag: "Admin — Pedidos", auth: Admin,
-            summary: "Mudar status do pedido", description: "Avança o pedido no fluxo (em preparo, pronto, saiu para entrega, entregue).", body: Some("`{ status }`"), query: &[] },
+            summary: "Mudar status do pedido",
+            description: "Avança o pedido no fluxo (em preparo, pronto, saiu para entrega, entregue). Ao entrar em \"saiu para entrega\", envia WhatsApp automático ao cliente incluindo o tempo estimado de entrega quando a loja configurou `minutes_per_km` em /admin/shipping-settings e o pedido tem coordenada do cliente salva — senão manda a mensagem padrão sem ETA.",
+            body: Some("`{ status }`"), query: &[] },
         Route { path: "/api/admin/orders/{id}/cancel", method: Post, tag: "Admin — Pedidos", auth: Admin,
             summary: "Cancelar pedido (lojista)", description: "Cancela e devolve ao estoque os itens já debitados.", body: None, query: &[] },
 
@@ -447,9 +449,11 @@ fn routes() -> Vec<Route> {
         Route { path: "/api/admin/store-manual-status", method: Put, tag: "Admin — Configuração", auth: Admin,
             summary: "Abrir/fechar a loja manualmente", description: "Override do horário automático — fecha a loja na hora (ex: falta de entregador) ou reabre fora do expediente.", body: Some("`{ manual_status }`"), query: &[] },
         Route { path: "/api/admin/shipping-settings", method: Get, tag: "Admin — Configuração", auth: Admin,
-            summary: "Ler configuração de frete", description: "Coordenada da loja, preço por km, raio de entrega e tabela por bairro.", body: None, query: &[] },
+            summary: "Ler configuração de frete", description: "Preço por km, raio máximo e minutos estimados por km (usado pro ETA de entrega). Resposta: `{ price_per_km, max_km, minutes_per_km }`.", body: None, query: &[] },
         Route { path: "/api/admin/shipping-settings", method: Put, tag: "Admin — Configuração", auth: Admin,
-            summary: "Salvar configuração de frete", description: "Define como o frete é calculado. É o que alimenta o `estimate-delivery` do checkout.", body: Some("`{ store_lat, store_lng, price_per_km, max_distance_km, neighborhood_rates? }`"), query: &[] },
+            summary: "Salvar configuração de frete",
+            description: "Define como o frete e o ETA são calculados. Alimenta tanto o `estimate-delivery` do checkout quanto a mensagem automática de \"saiu para entrega\". `minutes_per_km` é uma estimativa operacional definida pelo lojista, não a velocidade real de ninguém — 0 (padrão) desliga o cálculo de ETA, mostrando só o preço do frete como sempre foi.",
+            body: Some("`{ price_per_km, max_km?, minutes_per_km }`"), query: &[] },
         Route { path: "/api/admin/onboarding-gate", method: Get, tag: "Admin — Configuração", auth: Admin,
             summary: "O que falta configurar", description: "Lista as pendências que ainda travam a loja de operar (frete, pagamento, catálogo vazio). O painel usa para guiar o lojista no primeiro acesso.", body: None, query: &[] },
 

@@ -1295,9 +1295,15 @@ pub async fn update_order_status(
     if input.status == "entregas" {
         let store = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
         let digits = whatsapp::digits_only(&customer_whatsapp);
-        let msg =
-            "Seu pedido saiu para entrega! Em breve você recebe. Qualquer dúvida, fale com a loja pelo WhatsApp."
-                .to_string();
+        let eta = crate::routes::public::delivery_eta_minutes(&state, &claims.tenant_id, &order).await;
+        let msg = match eta {
+            Some(min) => format!(
+                "Seu pedido saiu para entrega! Tempo estimado: {}~{} min. Qualquer dúvida, fale com a loja pelo WhatsApp.",
+                if min > 5 { min - 5 } else { min }, min + 5,
+            ),
+            None => "Seu pedido saiu para entrega! Em breve você recebe. Qualquer dúvida, fale com a loja pelo WhatsApp."
+                .to_string(),
+        };
         whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
     }
 
@@ -2056,12 +2062,18 @@ pub async fn set_store_manual_status(
 pub struct ShippingSettingsDto {
     pub price_per_km: f64,
     pub max_km: Option<f64>,
+    /// Minutos estimados por km rodado — usado pra calcular o ETA mostrado
+    /// no checkout e na mensagem de "saiu pra entrega". 0 = não configurado
+    /// (nenhum ETA é calculado, só o preço, como sempre foi).
+    pub minutes_per_km: f64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateShippingSettingsInput {
     pub price_per_km: f64,
     pub max_km: Option<f64>,
+    #[serde(default)]
+    pub minutes_per_km: f64,
 }
 
 async fn ensure_shipping_settings(
@@ -2085,8 +2097,8 @@ pub async fn get_shipping_settings(
     features::require_feature(&state.pool, &claims.tenant_id, Feature::Pedidos).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     ensure_shipping_settings(&mut tx, &claims.tenant_id).await?;
-    let row: (f64, Option<f64>) = sqlx::query_as(
-        "SELECT price_per_km, max_km FROM shipping_settings WHERE tenant_id = $1",
+    let row: (f64, Option<f64>, f64) = sqlx::query_as(
+        "SELECT price_per_km, max_km, minutes_per_km FROM shipping_settings WHERE tenant_id = $1",
     )
     .bind(&claims.tenant_id)
     .fetch_one(&mut *tx)
@@ -2095,6 +2107,7 @@ pub async fn get_shipping_settings(
     Ok(Json(ShippingSettingsDto {
         price_per_km: row.0,
         max_km: row.1,
+        minutes_per_km: row.2,
     }))
 }
 
@@ -2116,19 +2129,26 @@ pub async fn update_shipping_settings(
             ));
         }
     }
+    if !body.minutes_per_km.is_finite() || body.minutes_per_km < 0.0 {
+        return Err(AppError::BadRequest(
+            "minutes_per_km must be a non-negative number".to_string(),
+        ));
+    }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     ensure_shipping_settings(&mut tx, &claims.tenant_id).await?;
     sqlx::query(
-        "UPDATE shipping_settings SET price_per_km = $2, max_km = $3 WHERE tenant_id = $1",
+        "UPDATE shipping_settings SET price_per_km = $2, max_km = $3, minutes_per_km = $4 WHERE tenant_id = $1",
     )
     .bind(&claims.tenant_id)
     .bind(body.price_per_km)
     .bind(body.max_km)
+    .bind(body.minutes_per_km)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
     Ok(Json(ShippingSettingsDto {
         price_per_km: body.price_per_km,
         max_km: body.max_km,
+        minutes_per_km: body.minutes_per_km,
     }))
 }

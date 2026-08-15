@@ -1070,6 +1070,10 @@ pub struct EstimateDeliveryDto {
     /// /admin/frete — nesse caso `price` ainda vem calculado (pra
     /// referência), mas a loja não deveria aceitar a entrega.
     pub within_range: bool,
+    /// Tempo estimado de entrega, arredondado pra cima. `None` quando o
+    /// lojista não configurou `minutes_per_km` em /admin/frete — nesse caso
+    /// nenhum ETA é mostrado, só o preço (nunca inventamos um tempo).
+    pub estimated_minutes: Option<i64>,
 }
 
 /// Calcula o valor de entrega/coleta pro cliente, com o MESMO preço por
@@ -1083,13 +1087,13 @@ pub async fn estimate_delivery(
     Json(input): Json<EstimateDeliveryInput>,
 ) -> Result<Json<EstimateDeliveryDto>, AppError> {
     let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
-    let settings: Option<(f64, Option<f64>, f64, f64)> = sqlx::query_as(
-        "SELECT price_per_km, max_km, store_lat, store_lng FROM shipping_settings WHERE tenant_id = $1",
+    let settings: Option<(f64, Option<f64>, f64, f64, f64)> = sqlx::query_as(
+        "SELECT price_per_km, max_km, store_lat, store_lng, minutes_per_km FROM shipping_settings WHERE tenant_id = $1",
     )
     .bind(&store.id)
     .fetch_optional(&state.pool)
     .await?;
-    let Some((price_per_km, max_km, store_lat, store_lng)) = settings else {
+    let Some((price_per_km, max_km, store_lat, store_lng, minutes_per_km)) = settings else {
         return Err(AppError::BadRequest("loja ainda não configurou o frete (/admin/frete)".to_string()));
     };
     if store_lat == 0.0 && store_lng == 0.0 {
@@ -1105,8 +1109,62 @@ pub async fn estimate_delivery(
 
     let within_range = max_km.map(|max| rota.km <= max).unwrap_or(true);
     let price = (rota.km * price_per_km * 100.0).round() / 100.0;
+    let estimated_minutes = estimate_minutes(rota.km, minutes_per_km);
 
-    Ok(Json(EstimateDeliveryDto { km: rota.km, price, within_range }))
+    Ok(Json(EstimateDeliveryDto { km: rota.km, price, within_range, estimated_minutes }))
+}
+
+/// `minutes_per_km` é uma estimativa operacional configurada pelo lojista —
+/// não a velocidade real de ninguém — por isso o nome deixa isso explícito
+/// (o campo salvo no banco é só `minutes_per_km`, mas conceitualmente é
+/// sempre "estimado"). 0/não configurado = `None`, nunca inventa um tempo.
+fn estimate_minutes(km: f64, minutes_per_km: f64) -> Option<i64> {
+    if minutes_per_km <= 0.0 {
+        return None;
+    }
+    Some((km * minutes_per_km).ceil() as i64)
+}
+
+/// ETA estático (loja → cliente) pra quando o pedido sai pra entrega — a
+/// mesma conta de `estimate_delivery`, só que a partir da coordenada já
+/// salva no pedido em vez de uma vinda no corpo da requisição.
+///
+/// Não recalcula em tempo real a partir da posição do motoboy: este backend
+/// não rastreia GPS ao vivo de motoboy (o que existe é o motoboy compartilhar
+/// a localização DO CLIENTE uma vez, pro mapa de acompanhamento — ver
+/// `webhooks::evolution_webhook`). Fazer o "recálculo dinâmico conforme o
+/// motoboy anda" exigiria uma feature nova de rastreamento de posição do
+/// motoboy que não existe hoje — fora do escopo deste ETA por distância.
+/// Best-effort: qualquer falha (sem coordenada, sem config, erro de rota)
+/// devolve `None` em vez de quebrar a mudança de status.
+pub async fn delivery_eta_minutes(
+    state: &AppState,
+    tenant_id: &str,
+    order: &crate::models::OrderRow,
+) -> Option<i64> {
+    let (customer_lat, customer_lng) = (order.customer_lat?, order.customer_lng?);
+
+    let settings: (f64, f64, f64) = sqlx::query_as(
+        "SELECT store_lat, store_lng, minutes_per_km FROM shipping_settings WHERE tenant_id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()??;
+    let (store_lat, store_lng, minutes_per_km) = settings;
+    if minutes_per_km <= 0.0 || (store_lat == 0.0 && store_lng == 0.0) {
+        return None;
+    }
+
+    let rota = google_routes::calcular_rota(
+        state,
+        Ponto { lat: store_lat, lng: store_lng },
+        Ponto { lat: customer_lat, lng: customer_lng },
+    )
+    .await
+    .ok()?;
+
+    estimate_minutes(rota.km, minutes_per_km)
 }
 
 #[derive(Debug, Deserialize)]
