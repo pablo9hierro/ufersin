@@ -351,6 +351,7 @@ pub struct OrderRow {
     pub card_payment_charge_id: Option<String>,
     pub card_type: Option<String>,
     pub card_installments: Option<i64>,
+    pub payment_on_delivery: bool,
 }
 
 #[derive(Debug, sqlx::FromRow, Serialize, Clone)]
@@ -405,6 +406,10 @@ pub struct OrderDto {
     pub card_payment_charge_id: Option<String>,
     pub card_type: Option<String>,
     pub card_installments: Option<i64>,
+    /// Cliente escolheu pagar produto (+ entrega) no ato da entrega — só
+    /// tem efeito real quando o lojista habilitou essa opção em /meu-plano
+    /// (flag na plataforma). Aqui é só a preferência registrada no pedido.
+    pub payment_on_delivery: bool,
     pub items: Vec<OrderItemDto>,
 }
 
@@ -457,6 +462,7 @@ impl OrderDto {
             card_payment_charge_id: row.card_payment_charge_id,
             card_type: row.card_type,
             card_installments: row.card_installments,
+            payment_on_delivery: row.payment_on_delivery,
             items,
         }
     }

@@ -226,8 +226,8 @@ fn routes() -> Vec<Route> {
 
         Route { path: "/api/public/catalog/{slug}/assistant-order", method: Post, tag: "Catálogo público", auth: Public,
             summary: "Criar pedido (checkout / assistente)",
-            description: "Cria um pedido real a partir de itens de produto e/ou serviço. Usado tanto pelo checkout da vitrine quanto pela assistente de WhatsApp. Valida estoque e recalcula o total no servidor — preço enviado pelo cliente não é confiado.",
-            body: Some("`{ customer_name, customer_whatsapp, items: [{ product_id | service_id, quantity }], shipping_price }`"), query: &[] },
+            description: "Cria um pedido real a partir de itens de produto e/ou serviço. Usado tanto pelo checkout da vitrine quanto pela assistente de WhatsApp. Valida estoque e recalcula o total no servidor — preço enviado pelo cliente não é confiado. `payment_on_delivery` registra a preferência do cliente de pagar no ato da entrega (informativo — o pedido já nasce sempre pendente, sem cobrança automática aqui).",
+            body: Some("`{ customer_name, customer_whatsapp, items: [{ product_id | service_id, quantity }], shipping_price, payment_on_delivery }`"), query: &[] },
 
         Route { path: "/api/public/catalog/{slug}/estimate-delivery", method: Post, tag: "Catálogo público", auth: Public,
             summary: "Calcular frete e ETA até um endereço",

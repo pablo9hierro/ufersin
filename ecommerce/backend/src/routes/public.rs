@@ -174,6 +174,14 @@ pub struct AssistantOrderInput {
     /// retirada, sem taxa de entrega.
     #[serde(default)]
     pub shipping_price: Option<f64>,
+    /// Cliente escolheu pagar produto (+ entrega) no ato da entrega, em vez
+    /// de agora. Só tem efeito real quando o lojista habilitou essa opção em
+    /// /meu-plano (flag na plataforma, fora deste schema — ver comentário em
+    /// tenant.rs::tenant_for_slug) — aqui é só o registro informativo da
+    /// escolha do cliente; este endpoint já nunca cria pedido pago mesmo
+    /// sem essa flag.
+    #[serde(default)]
+    pub payment_on_delivery: bool,
 }
 
 fn default_assistant_payment_method() -> String {
@@ -306,8 +314,9 @@ pub async fn create_assistant_order(
     sqlx::query(
         "INSERT INTO orders (\
             id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
-            payment_method, payment_status, status, shipping_price, total, discount_amount, sold_by_role\
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendente', 'pendente', $8, $9, 0, 'assistente_ia')",
+            payment_method, payment_status, status, shipping_price, total, discount_amount, sold_by_role, \
+            payment_on_delivery\
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendente', 'pendente', $8, $9, 0, 'assistente_ia', $10)",
     )
     .bind(&order_id)
     .bind(&store.id)
@@ -318,6 +327,7 @@ pub async fn create_assistant_order(
     .bind(&input.payment_method)
     .bind(shipping_price)
     .bind(order_total)
+    .bind(input.payment_on_delivery)
     .execute(&mut *tx)
     .await?;
 
