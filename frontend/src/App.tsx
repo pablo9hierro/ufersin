@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import EnvironmentBanner from './components/EnvironmentBanner'
 import Landing from './pages/Landing'
 import Demo from './pages/Demo'
+import DemoAssistente from './pages/DemoAssistente'
 import DemoPlano from './pages/DemoPlano'
 import DemoPlanoEletronica from './pages/DemoPlanoEletronica'
 import DemoExperience from './pages/DemoExperience'
@@ -29,6 +30,7 @@ export default function App() {
       <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/demo" element={<Demo />} />
+      <Route path="/demo/assistente/:kind" element={<DemoAssistente />} />
       {/* Experiências mock — URL canônica na barra de endereço Resolutoo */}
       <Route path="/demo/vitrine" element={<DemoExperience />} />
       <Route path="/demo/vitrine/:plano" element={<DemoExperience />} />

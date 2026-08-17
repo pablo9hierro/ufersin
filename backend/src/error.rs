@@ -12,6 +12,8 @@ pub enum AppError {
     /// Autenticado, mas sem permissão (ex.: lojista em rota de superadmin).
     Forbidden(String),
     NotFound(String),
+    /// Rate limit (ex.: demo pública de IA) — nunca usado pra erro de negócio comum.
+    TooManyRequests(String),
     Internal(String),
 }
 
@@ -22,6 +24,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m),
             AppError::Forbidden(m) => (StatusCode::FORBIDDEN, m),
             AppError::NotFound(m) => (StatusCode::NOT_FOUND, m),
+            AppError::TooManyRequests(m) => (StatusCode::TOO_MANY_REQUESTS, m),
             AppError::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
         };
         (status, Json(json!({ "error": msg }))).into_response()

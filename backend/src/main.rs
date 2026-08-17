@@ -1,5 +1,6 @@
 mod auth;
 mod coupons;
+mod demo_assistant;
 mod error;
 mod gateway;
 mod jwks;
@@ -115,6 +116,15 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    let demo_ai = demo_assistant::llm::DemoAiConfig::from_env();
+    if !demo_ai.enabled() {
+        tracing::warn!(
+            "DEMO_AI_OPENAI_API_KEY não configurada — a demo pública de IA na landing vai \
+             responder erro amigável até isso ser setado (resto do backend sobe normal)"
+        );
+    }
+    let demo_rate_limit = demo_assistant::rate_limit::RateLimitConfig::from_env();
+
     let supabase_service_key = env_trimmed("SUPABASE_SERVICE_ROLE_KEY");
     if supabase_service_key.is_empty() {
         tracing::warn!("SUPABASE_SERVICE_ROLE_KEY not set — upload de logo em /api/me/upload-logo vai falhar");
@@ -168,6 +178,8 @@ async fn main() -> anyhow::Result<()> {
         payment_mode,
         public_api_url: Arc::new(public_api_url),
         mercadopago_oauth,
+        demo_ai,
+        demo_rate_limit,
     };
 
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
@@ -215,6 +227,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/superadmin/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start_platform))
         .route("/api/superadmin/mercadopago/oauth/disconnect", post(mercadopago_oauth::oauth_disconnect_platform))
         .route("/api/public/tenant-config/{slug}", get(routes::onboarding::tenant_config))
+        .route("/api/public/demo-assistant/{kind}/config", get(routes::demo_assistant::config))
+        .route("/api/public/demo-assistant/{kind}/message", post(routes::demo_assistant::message))
         .route("/api/public/contratos/catalog", get(routes::contratos::catalog))
         .route(
             "/api/public/contratos/accept-checkout",

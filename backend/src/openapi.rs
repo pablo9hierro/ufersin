@@ -231,6 +231,17 @@ fn routes() -> Vec<Route> {
             body: None, query: &[] },
 
         // ------------------------------------------------------------------
+        Route { path: "/api/public/demo-assistant/{kind}/config", method: Get, tag: "Assistente IA (demo)", auth: Public,
+            summary: "Configuração da demo pública de assistente de IA",
+            description: "`kind` é `ecommerce` ou `eletronicos`. Devolve o prompt padrão da demo (o que o botão \"voltar às configurações padrão\" do frontend restaura), perguntas de exemplo e o catálogo mockado usado pelas tools — nunca dado de tenant real. Sem rate limit (leitura barata, sem custo de LLM).",
+            body: None, query: &[] },
+
+        Route { path: "/api/public/demo-assistant/{kind}/message", method: Post, tag: "Assistente IA (demo)", auth: Public,
+            summary: "Enviar mensagem na demo pública de assistente de IA",
+            description: "Chama um modelo de IA real (padrão OpenAI, com fallback automático pra modelos OpenRouter configurados se a chamada falhar de forma permanente — chave inválida/sem crédito/modelo removido) com tool-calling resolvido sempre contra o catálogo mockado (`mock_data.rs`), nunca contra o Postgres real. `prompt_override`, se enviado, é usado só nessa chamada — nunca persistido no servidor, isolamento de sessão é 100% client-side. Protegida por rate limit server-side (por `session_id` e por IP, ver `platform_demo_assistant_usage`) — excedido retorna 429 antes de gastar qualquer chamada de LLM.",
+            body: Some("`{ session_id, message, history: [{role, content}], prompt_override? }`"), query: &[] },
+
+        // ------------------------------------------------------------------
         Route { path: "/api/mercadopago/oauth/start", method: Post, tag: "Mercado Pago (lojista)", auth: Subscriber,
             summary: "Iniciar conexão da conta Mercado Pago",
             description: "Passo 1 do OAuth. Gera um `state` de uso único (limpando qualquer tentativa anterior abandonada do mesmo assinante) mais o par PKCE (`code_challenge` S256) e devolve a URL de autorização do Mercado Pago para redirecionar o lojista. Exige `MERCADOPAGO_OAUTH_CLIENT_ID`/`CLIENT_SECRET`/`REDIRECT_URI` configurados no servidor.",
@@ -467,6 +478,7 @@ pub fn build() -> OpenApi {
             Tag::new("Webhooks"),
             Tag::new("Contratos"),
             Tag::new("Público"),
+            Tag::new("Assistente IA (demo)"),
             Tag::new("Superadmin"),
             Tag::new("Sistema"),
         ]))

@@ -22,6 +22,9 @@ export const CONTENT_DEFAULTS: Record<string, string> = {
   'demo.title': 'Escolha um plano pra ver por dentro',
   'demo.sub':
     'Você vai acessar as páginas reais que vem com cada plano — vitrine, painel admin e área do motoboy — com dados de demonstração, exatamente como o assinante recebe.',
+  'landing.assistants.title': 'Assistentes de IA que atendem por você',
+  'landing.assistants.sub':
+    'Duas assistentes prontas, treinadas pro seu tipo de negócio. Converse agora mesmo com uma demonstração real — dados fictícios, IA de verdade.',
   'assinar.title': 'Escolha o ciclo e como pagar.',
   'assinar.sub': 'Preço cobrado vem do banco — cupons aplicam no servidor.',
   'contato.whatsapp': '5500000000000',

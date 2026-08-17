@@ -1,6 +1,8 @@
 use sqlx::PgPool;
 use std::sync::Arc;
 
+use crate::demo_assistant::llm::DemoAiConfig;
+use crate::demo_assistant::rate_limit::RateLimitConfig;
 use crate::jwks::JwksVerifier;
 use crate::mercadopago_oauth::MercadoPagoOAuthConfig;
 use crate::pandadoc::PandadocConfig;
@@ -49,6 +51,10 @@ pub struct AppState {
     /// Conexão OAuth da conta Mercado Pago do lojista (ver mercadopago_oauth.rs)
     /// — substitui colar Access Token manual em Onboarding/Meu Plano.
     pub mercadopago_oauth: MercadoPagoOAuthConfig,
+    /// Fallback OpenAI → OpenRouter da demo pública de IA (landing). Vazio
+    /// = feature desliga com erro amigável, sem derrubar o resto do backend.
+    pub demo_ai: DemoAiConfig,
+    pub demo_rate_limit: RateLimitConfig,
 }
 
 impl AppState {
