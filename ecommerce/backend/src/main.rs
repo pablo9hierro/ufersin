@@ -182,8 +182,13 @@ async fn main() -> anyhow::Result<()> {
     // transação Postgres aberta o tempo todo nos handlers que chamam a MP
     // dentro de `tx` (create_card_link/create_card_payment). Client único
     // reaproveitado em todo o `state.http`.
+    // OSRM público (router.project-osrm.org, fallback de calcular_rota sem
+    // GOOGLE_ROUTES_API_KEY) devolve 403 pra requisição sem User-Agent —
+    // reqwest não manda um por padrão. Sem isso, TODO cálculo de frete via
+    // OSRM falha silenciosamente com "osrm route failed" (BUG-014).
     let http = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
+        .user_agent("Resolutoo/1.0 (+https://resolutoo.com)")
         .build()
         .expect("failed to build reqwest client");
 

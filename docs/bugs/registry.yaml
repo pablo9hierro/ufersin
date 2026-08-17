@@ -1,0 +1,374 @@
+# Registro de bugs, quebras e desvios de comportamento — Resolutoo
+#
+# Fonte de verdade legível por máquina. Cada entrada aqui DEVE ter, se
+# severity=critical e status=fixed: um `regression_test_id` que aparece
+# literalmente (via grep) em algum teste real dentro de
+# ecommerce/frontend/tests/bug-regressions/run.mjs — OU um
+# `manual_verification` descrevendo o passo a passo pra checar na mão,
+# quando automatizar não é viável (custa dinheiro real de API, precisa de
+# fluxo multi-turno de WhatsApp, etc).
+#
+# scripts/check-bug-coverage.mjs lê este arquivo e falha se algum bug
+# crítico e corrigido não tiver NENHUM dos dois — regression_test_id
+# grepável ou manual_verification preenchido. Rode via
+# `npm run test:bug-coverage` (ecommerce/frontend) — ver docs/bugs/README.md.
+#
+# Campos:
+#   id                  — BUG-NNN, estável, nunca reutilizar depois de criado
+#   title               — resumo de uma linha
+#   area                — [frontend, backend, database, api, railway, supabase, vercel, evolution-api, ai-pipeline]
+#   service             — nome do serviço/repo afetado
+#   severity            — critical | high | medium | low
+#   status              — fixed | monitoring | wont-fix | open
+#   reported_at         — data (YYYY-MM-DD) que o usuário relatou
+#   fixed_at            — data do fix, se status=fixed
+#   symptom             — o que o usuário observou/relatou (comportamento, não causa)
+#   root_cause          — causa técnica real, descoberta por investigação — nunca suposição
+#   fix_commit          — hash do commit que corrigiu (repo:hash)
+#   fix_files           — arquivos tocados pelo fix
+#   regression_test_id  — string exata usada no nome do teste em run.mjs (se automatizado)
+#   manual_verification — passo a passo pra verificar na mão (se não automatizado)
+
+- id: BUG-001
+  title: "Conectar/desconectar WhatsApp (Evolution API) não funcionava"
+  area: [backend, evolution-api, railway]
+  service: ecommerce-api
+  severity: high
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    Botão "Desconectar" em /loja/admin/conta retornava erro cru
+    "evolution api returned 500 Internal Server Error: Connection Closed".
+    "Gerar novo QR" não gerava QR nenhum mesmo com a instância
+    supostamente aberta.
+  root_cause: >
+    connect() sempre chamava GET /instance/connect direto: se o Evolution
+    API ainda achava que a instância estava "open" (mesmo com o socket
+    morto), esse endpoint não devolve QR — acha que não precisa
+    reconectar. logout() tratava QUALQUER erro do Evolution API (incluindo
+    o 500 "Connection Closed" esperado quando o socket já está morto) como
+    falha real, mesmo quando o resultado prático desejado (sessão fora do
+    ar) já era verdade.
+  fix_commit: "ufersin:cfdff74"
+  fix_files: ["ecommerce/backend/src/whatsapp.rs"]
+  regression_test_id: "BUG-001"
+  manual_verification: >
+    Em /loja/admin/conta: clicar Desconectar numa sessão já morta não deve
+    mostrar erro cru "evolution api returned 500"; clicar Gerar novo QR
+    deve sempre tentar logout antes de pedir QR novo.
+
+- id: BUG-002
+  title: "Instância Evolution API presa em estado 'open' falso — QR nunca gerava de verdade"
+  area: [evolution-api, database, railway]
+  service: "Evolution API (Postgres próprio, tabela Instance/Session)"
+  severity: high
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    Mesmo depois do fix do BUG-001, "Gerar novo QR" continuava sem
+    resultado — Evolution API insistia que a instância "loja-resusu"
+    estava open, e nenhuma chamada de API (logout, restart, connect)
+    mudava isso.
+  root_cause: >
+    A tabela Instance do Postgres do Evolution API tinha
+    connectionStatus='open' desde antes do WhatsApp ter deslogado a
+    sessão por fora (evento 401 "Log out instance", visível em
+    disconnectionReasonCode/disconnectionObject). O Evolution API nunca
+    corrige esse campo sozinho quando o socket morre de forma anormal —
+    fica com um estado "zumbi" pra sempre até alguém corrigir direto no
+    banco. A tabela Session ainda tinha as credenciais antigas (creds),
+    então mesmo um logout bem-sucedido não geraria um QR pra um número
+    NOVO, só tentaria reconectar o mesmo número antigo.
+  fix_commit: "manual (UPDATE direto no Postgres do Evolution API, sem commit de código)"
+  fix_files: []
+  regression_test_id: null
+  manual_verification: >
+    Verificar direto no Postgres do Evolution API: SELECT
+    "connectionStatus" FROM "Instance" WHERE name='loja-resusu' deve
+    bater com o estado real observado em /loja/admin/conta. Se a loja
+    reportar "Conectado" mas mensagens não chegarem/saírem por mais de
+    alguns minutos, suspeitar deste mesmo problema de novo.
+
+- id: BUG-003
+  title: "Mensagens no /admin/chat só apareciam depois de recarregar a página"
+  area: [frontend]
+  service: ecommerce/frontend (AdminChat.tsx)
+  severity: medium
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    Depois de mandar mensagem (via "Novo Chat" ou na caixa de uma
+    conversa aberta), nada aparecia na tela até dar F5.
+  root_cause: >
+    Nenhuma ação de envio disparava um refetch imediato — tudo dependia
+    do próximo tick do polling (intervalo de 3s). O useEffect de
+    mensagens também dependia do objeto `selected` inteiro (não só do id),
+    o que podia reiniciar o polling sem necessidade a cada novo fetch de
+    `conversations`.
+  fix_commit: "ufersin:37c3530"
+  fix_files: ["ecommerce/frontend/src/pages/admin/AdminChat.tsx"]
+  regression_test_id: null
+  manual_verification: >
+    Em /loja/admin/chat: mandar mensagem numa conversa selecionada deve
+    aparecer na lista em menos de ~2s, sem reload manual. (UI-only,
+    não verificável por teste HTTP puro — precisa de Playwright real.)
+
+- id: BUG-004
+  title: "assistant-ia (config/RAG/conversas) sem autenticação real — vazamento de chave de API real"
+  area: [backend, api, database]
+  service: "assistant-ia (a-vrtek-gente)"
+  severity: critical
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    GET/PUT /api/tenants/{slug}/config, RAG upload/list/delete, e list/
+    delete de conversas eram acessíveis por QUALQUER UM sem login,
+    sabendo só o slug do tenant (público, visível em toda URL da loja).
+    Confirmado ao vivo: a chamada devolvia o prompt completo E a chave de
+    API OpenAI real em texto puro.
+  root_cause: >
+    Todas as rotas administrativas desse serviço só tinham `betaGate`
+    (checa se o slug está numa allowlist hardcoded) — zero verificação
+    criptográfica/de sessão. Qualquer requisição direta ao serviço
+    (bypassando o frontend) tinha acesso total de leitura E escrita.
+  fix_commit: "a-vrtek-gente:1730314 / ufersin:14e1d36"
+  fix_files:
+    - "a-vrtek-gente/backend/src/services/internalAuth.ts (novo)"
+    - "a-vrtek-gente/backend/src/routes/config.ts"
+    - "a-vrtek-gente/backend/src/rag/upload.ts"
+    - "a-vrtek-gente/backend/src/routes/conversations.ts"
+    - "ecommerce/backend/src/routes/admin.rs (proxies novos)"
+    - "ufersin/backend/src/routes/assistant_ia.rs (novo, proxies)"
+  regression_test_id: "BUG-004"
+  manual_verification: null
+
+- id: BUG-005
+  title: "Motor 2 (prompt técnico) editável pelo lojista quando deveria ser fixo da plataforma"
+  area: [ai-pipeline, backend, frontend]
+  service: "assistant-ia (a-vrtek-gente)"
+  severity: high
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    Pedido explícito do dono da plataforma: a segunda camada de IA
+    (execução técnica/tool calling) não deveria ser configurável pelo
+    lojista de forma alguma — só a primeira camada (tom/contexto
+    comercial).
+  root_cause: >
+    `prompt_validator` era um campo editável na tela /meu-plano/
+    assistente-ia e influenciava diretamente a resposta final da IA 2.
+  fix_commit: "a-vrtek-gente:1730314"
+  fix_files:
+    - "a-vrtek-gente/backend/src/agents/pipeline.ts"
+    - "a-vrtek-gente/backend/src/routes/config.ts"
+    - "ufersin/frontend/src/pages/AssistantIaTab.tsx"
+  regression_test_id: "BUG-005"
+  manual_verification: null
+
+- id: BUG-006
+  title: "RAG tratado como fonte de dado/fato em vez de referência de estilo de atendimento"
+  area: [ai-pipeline]
+  service: "assistant-ia (a-vrtek-gente)"
+  severity: medium
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    Correção explícita do dono da plataforma: RAG não deve ser consultado
+    como base de conhecimento factual (preço, produto, disponibilidade) —
+    só como exemplo de como a loja costuma atender (tom, estilo). A única
+    fonte de dado real deve ser o prompt principal + tool calling.
+  root_cause: >
+    O texto injetado no prompt da IA 2 rotulava os chunks recuperados
+    como "Base de conhecimento da loja (use quando relevante)" — uma
+    IA poderia interpretar isso como autorização pra citar dado dali como
+    se fosse fato atual.
+  fix_commit: "a-vrtek-gente:1730314"
+  fix_files: ["a-vrtek-gente/backend/src/agents/pipeline.ts"]
+  regression_test_id: null
+  manual_verification: >
+    Revisão de prompt (não observável via teste HTTP): confirmar que o
+    texto injetado antes do RAG diz explicitamente "use APENAS como
+    referência de ESTILO" e "PROIBIDO tratar qualquer coisa nesses
+    exemplos como dado real".
+
+- id: BUG-007
+  title: "IA narrava intenção de usar ferramenta em vez de executar de verdade (demo assistant)"
+  area: [ai-pipeline, backend]
+  service: "ufersin/backend (demo_assistant)"
+  severity: high
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    A IA respondia texto tipo "vou buscar o produto X..." em vez de
+    chamar a ferramenta e já trazer o resultado na mesma resposta,
+    obrigando o cliente a perguntar de novo.
+  root_cause: >
+    O loop de tool-calling não forçava uma chamada de ferramenta real na
+    primeira rodada — o modelo podia optar por só descrever a intenção em
+    texto.
+  fix_commit: "ufersin:cec0bfe (branch feat/swagger-completo, não mergeado em main)"
+  fix_files: ["backend/src/demo_assistant/llm.rs"]
+  regression_test_id: null
+  manual_verification: >
+    Módulo não está em produção (só em feat/swagger-completo). Quando for
+    mergeado: enviar mensagem que exige busca de produto e confirmar que
+    tool_calls_used > 0 na mesma resposta que já contém o resultado.
+
+- id: BUG-008
+  title: "Busca de catálogo (vrtech) imprecisa — 'iPhone 14' também batia com 'iPhone 14 Pro'"
+  area: [backend, ai-pipeline]
+  service: "ufersin/backend (demo_assistant)"
+  severity: medium
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    Cliente pedia orçamento pro "iPhone 14" e a IA aprovava/cobrava pelo
+    preço do "iPhone 14 Pro" — dispositivo e valor errados.
+  root_cause: >
+    Busca por palavra-chave sem ranqueamento: "iPhone 14 Pro" contém
+    todas as palavras da busca "iphone 14" também, e o código pegava só o
+    primeiro resultado (ordem arbitrária da API).
+  fix_commit: "ufersin:cec0bfe (branch feat/swagger-completo)"
+  fix_files: ["backend/src/demo_assistant/vrtech_catalog.rs"]
+  regression_test_id: null
+  manual_verification: "Buscar 'iphone 14' deve retornar o iPhone 14 normal primeiro, não o Pro."
+
+- id: BUG-009
+  title: "Busca de catálogo falhava quando a IA ecoava sufixo tipo '(prazo ~60 min)' como parte da busca"
+  area: [backend, ai-pipeline]
+  service: "ufersin/backend (demo_assistant)"
+  severity: medium
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    'aprovar_orcamento' falhava com 'não encontrado no catálogo' mesmo
+    pro serviço certo, porque a IA reusava o label formatado inteiro
+    (incluindo o "(prazo ~60 min)") como termo de busca.
+  root_cause: >
+    Nenhuma limpeza de texto entre parênteses antes de tokenizar a busca
+    — palavras tipo "prazo"/"min" nunca existem nos dados reais, zerando
+    o match.
+  fix_commit: "ufersin:cec0bfe (branch feat/swagger-completo)"
+  fix_files: ["backend/src/demo_assistant/vrtech_catalog.rs"]
+  regression_test_id: null
+  manual_verification: "Buscar 'iPhone 14 — Troca de bateria (prazo ~60 min)' literal deve achar o serviço."
+
+- id: BUG-010
+  title: "Catálogo demo (ecommerce) alucinava produtos inventados (ex: 'pizza')"
+  area: [ai-pipeline]
+  service: "ufersin/backend (demo_assistant)"
+  severity: high
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    A IA oferecia categorias/produtos que nunca existiram no catálogo
+    real da demo (ex: pizza, quando o catálogo só tem
+    Bebidas/Lanches/Sobremesas).
+  root_cause: >
+    O prompt padrão mencionava "lanchonete/pizzaria" e citava "quero uma
+    pizza" como exemplo, induzindo a IA a alucinar mesmo sem nenhuma
+    busca real por trás.
+  fix_commit: "ufersin:cec0bfe (branch feat/swagger-completo)"
+  fix_files: ["backend/src/demo_assistant/prompts.rs", "backend/src/demo_assistant/tools.rs"]
+  regression_test_id: null
+  manual_verification: "Perguntar 'tem alguma coisa de comer' não deve mencionar pizza ou qualquer item fora do catálogo real."
+
+- id: BUG-011
+  title: "Busca de produto falhava sem acento ('hamburguer' não achava 'Hambúrguer')"
+  area: [ai-pipeline, backend]
+  service: "ufersin/backend (demo_assistant)"
+  severity: low
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: "Cliente digitando sem acento (comum em teclado de celular) não encontrava o produto."
+  root_cause: "Comparação de string só normalizava maiúscula/minúscula, não removia acento."
+  fix_commit: "ufersin:cec0bfe (branch feat/swagger-completo)"
+  fix_files: ["backend/src/demo_assistant/mod.rs", "backend/src/demo_assistant/tools.rs", "backend/src/demo_assistant/vrtech_catalog.rs"]
+  regression_test_id: null
+  manual_verification: "Buscar 'hamburguer' (sem acento) deve achar 'Hambúrguer Artesanal'."
+
+- id: BUG-012
+  title: "Pipeline de deploy do ufersin-api gerava binário Windows incompatível com o container Linux"
+  area: [railway, backend]
+  service: ufersin-api
+  severity: medium
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: "Dockerfile.fast falhava — não achava o binário no lugar esperado pelo COPY."
+  root_cause: >
+    `cargo build --release` rodado direto no Windows produz um .exe, que
+    não roda no container Debian de produção. Dockerfile.fast espera um
+    binário Linux já compilado. A solução real (e já usada antes,
+    Dockerfile.local) compila DENTRO de um container Linux
+    (rust:1.88-bookworm), evitando o problema de cross-compilation.
+  fix_commit: "N/A (ajuste de processo de deploy, não de código do app)"
+  fix_files: []
+  regression_test_id: null
+  manual_verification: >
+    Sempre usar `docker build -f Dockerfile.local` (não Dockerfile.fast)
+    quando buildando localmente no Windows.
+
+- id: GAP-001
+  title: "IA não conseguia cancelar/editar pedido já com pagamento gerado"
+  area: [ai-pipeline, backend]
+  service: "assistant-ia (a-vrtek-gente)"
+  severity: high
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    Pedido explícito do dono da plataforma: se o cliente mudar de ideia
+    sobre o carrinho DEPOIS de já ter Pix/link gerado, a IA precisa
+    resolver isso sozinha (cancelar + recriar), nunca dizer que precisa
+    de atendente humano.
+  root_cause: >
+    Não era bem um bug — era uma capacidade ausente. Só existia
+    criar_pedido_e_gerar_cobranca, nenhuma ferramenta de cancelamento.
+  fix_commit: "a-vrtek-gente:57053b2"
+  fix_files: ["a-vrtek-gente/backend/src/agents/tools.ts", "a-vrtek-gente/backend/src/agents/pipeline.ts"]
+  regression_test_id: null
+  manual_verification: >
+    NÃO TESTADO AO VIVO ainda (só typecheck + deploy) — pendente: simular
+    conversa completa (compra → pagamento → "mudei de ideia, quero trocar
+    o item" → confirmar que a IA cancela o pedido antigo e gera um novo
+    com o item certo, reaproveitando nome/email).
+
+- id: BUG-013
+  title: "'Novo Chat' parava de criar conversa — start_keywords bloqueava silenciosamente"
+  area: [ai-pipeline, backend]
+  service: "assistant-ia (a-vrtek-gente) + ecommerce-api"
+  severity: high
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    Botão "Novo Chat" em /loja/admin/chat parou de criar qualquer
+    conversa — sem erro nenhum, silenciosamente. Já tinha funcionado antes
+    (com uma mensagem específica).
+  root_cause: >
+    A mensagem simulada passava pelo MESMO filtro que uma mensagem real de
+    WhatsApp usa pra decidir se abre atendimento (`start_keywords`,
+    configurado como só ["inicici"] pra resusu — um valor de teste
+    esquecido). Qualquer primeira mensagem que não fosse literalmente essa
+    palavra era ignorada por completo. Achado relacionado, mais grave:
+    isso também bloqueava CLIENTES REAIS mandando "oi"/"boa tarde" no
+    WhatsApp de verdade, não só o botão de teste.
+  fix_commit: "ufersin:369a0ac / a-vrtek-gente:a932152"
+  fix_files:
+    - "ecommerce/backend/src/routes/webhooks.rs"
+    - "ecommerce/backend/src/routes/admin.rs"
+    - "a-vrtek-gente/backend/src/routes/webhook.ts"
+  regression_test_id: "BUG-013"
+  manual_verification: null
