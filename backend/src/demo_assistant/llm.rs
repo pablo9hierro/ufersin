@@ -97,6 +97,18 @@ fn truncate(s: &str, n: usize) -> String {
     if s.len() <= n { s.to_string() } else { format!("{}…", &s[..n]) }
 }
 
+/// Modelos de raciocínio (gpt-5*, o1*, o3*, o4*) têm uma API de chamada
+/// diferente: rejeitam `max_tokens` (exigem `max_completion_tokens`) e
+/// `temperature` custom (só aceitam o default), e sem `reasoning_effort`
+/// baixo gastam o budget inteiro "pensando" antes de responder — testado ao
+/// vivo: gpt-5-nano com reasoning padrão devolveu conteúdo vazio
+/// (finish_reason "length", 500 reasoning_tokens, 0 de resposta). Com
+/// `reasoning_effort: "minimal"` responde normal e ainda chama tool
+/// corretamente quando o prompt instrui isso.
+fn is_reasoning_model(model: &str) -> bool {
+    model.starts_with("gpt-5") || model.starts_with("o1") || model.starts_with("o3") || model.starts_with("o4")
+}
+
 async fn call_provider(http: &reqwest::Client, model: &DemoAiModel, body: &Value) -> CallOutcome {
     let mut full = body.clone();
     full["model"] = json!(model.model);
@@ -192,9 +204,17 @@ async fn run_turn(
     }
     messages.push(json!({ "role": "user", "content": user_message }));
 
+    let reasoning = is_reasoning_model(&model.model);
     let mut tool_calls_used = 0usize;
     for _round in 0..5 {
-        let mut body = json!({ "messages": messages, "max_tokens": 500, "temperature": 0.3 });
+        let mut body = if reasoning {
+            // Reasoning tokens saem do mesmo orçamento de max_completion_tokens
+            // (invisíveis em `content`) — 800 dá folga real pra resposta de
+            // chat curta mesmo com reasoning_effort minimal.
+            json!({ "messages": messages, "max_completion_tokens": 800, "reasoning_effort": "minimal" })
+        } else {
+            json!({ "messages": messages, "max_completion_tokens": 500, "temperature": 0.3 })
+        };
         if !tools.is_empty() {
             body["tools"] = json!(tools);
         }

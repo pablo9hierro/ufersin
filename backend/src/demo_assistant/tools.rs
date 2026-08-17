@@ -70,14 +70,26 @@ fn norm(s: &str) -> String {
     s.to_lowercase()
 }
 
+/// Casa por PALAVRA, não por substring exata na ordem digitada — testado ao
+/// vivo: a consulta "iphone 12 tela" não batia com "Troca de tela iPhone
+/// 12" porque a ordem das palavras é diferente. Cada palavra da busca
+/// (exceto muito curtas) precisa aparecer em algum lugar do texto alvo.
+fn word_match(target: &str, query: &str) -> bool {
+    let target = norm(target);
+    let words: Vec<&str> = query.split_whitespace().filter(|w| w.len() >= 2).collect();
+    if words.is_empty() {
+        return target.contains(&norm(query));
+    }
+    words.iter().all(|w| target.contains(&norm(w)))
+}
+
 pub fn execute(kind: &str, name: &str, args: &Value) -> String {
     match (kind, name) {
         ("ecommerce", "buscar_produtos") => {
             let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-            let q = norm(query);
             let hits: Vec<String> = mock_data::ecommerce_products()
                 .iter()
-                .filter(|p| norm(p.name).contains(&q) || norm(p.category).contains(&q))
+                .filter(|p| word_match(p.name, query) || word_match(p.category, query))
                 .map(|p| format!("- {} | R$ {:.2} | categoria: {}", p.name, p.price, p.category))
                 .collect();
             if hits.is_empty() {
@@ -95,10 +107,9 @@ pub fn execute(kind: &str, name: &str, args: &Value) -> String {
         }
         ("eletronicos", "buscar_servico") => {
             let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-            let q = norm(query);
             let hits: Vec<String> = mock_data::eletronicos_services()
                 .iter()
-                .filter(|s| norm(s.name).contains(&q))
+                .filter(|s| word_match(s.name, query))
                 .map(|s| match s.price_to {
                     Some(to) => format!("- {} | R$ {:.2} a R$ {:.2} | prazo: {}", s.name, s.price_from, to, s.eta),
                     None => format!("- {} | R$ {:.2} | prazo: {}", s.name, s.price_from, s.eta),
