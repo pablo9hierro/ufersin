@@ -224,6 +224,15 @@ async fn run_turn(
         let is_last_round = round == MAX_ROUNDS - 1;
         if !tools.is_empty() && !is_last_round {
             body["tools"] = json!(tools);
+            // Primeira rodada: força chamar uma ferramenta de verdade em vez
+            // de escrever texto tipo "vou buscar..."/"busca_produtos: query
+            // = ..." como se fosse a resposta final — bug real visto ao vivo
+            // (o modelo às vezes narra a ação em vez de executar). Rodadas
+            // seguintes voltam pro "auto" (já tem resultado de tool, pode
+            // responder em texto normalmente).
+            if round == 0 {
+                body["tool_choice"] = json!("required");
+            }
         }
 
         let outcome = call_provider(http, model, &body).await;

@@ -148,7 +148,7 @@ pub fn tools_for(kind: &str) -> Vec<Value> {
 }
 
 fn norm(s: &str) -> String {
-    s.to_lowercase()
+    super::fold_accents(&s.to_lowercase())
 }
 
 /// ID de pedido/ordem fictício desta sessão de demo — nunca colide com IDs
@@ -216,12 +216,18 @@ pub async fn execute(http: &reqwest::Client, kind: &str, name: &str, args: &Valu
             let hits: Vec<String> = mock_data::ecommerce_products()
                 .iter()
                 .filter(|p| word_match(p.name, query) || word_match(p.category, query))
-                .map(|p| format!("- {} | R$ {:.2} | categoria: {}", p.name, p.price, p.category))
+                .map(|p| {
+                    let estoque = if mock_data::OUT_OF_STOCK.contains(&p.name) { " | SEM ESTOQUE no momento" } else { "" };
+                    format!("- {} | R$ {:.2} | categoria: {}{estoque} | vitrine: {}", p.name, p.price, p.category, mock_data::ECOMMERCE_STOREFRONT_URL)
+                })
                 .collect();
             if hits.is_empty() {
-                format!("Nenhum produto encontrado para \"{query}\" no catálogo de demonstração.")
+                format!("Nenhum produto encontrado para \"{query}\" no catálogo. Vitrine completa: {}", mock_data::ECOMMERCE_STOREFRONT_URL)
             } else {
-                hits.join("\n")
+                format!(
+                    "{}\n\nATENÇÃO: essa é a lista COMPLETA que existe pra essa busca — se o cliente pediu mais itens do que apareceram aqui, mostre só o que existe de verdade, NUNCA invente item extra pra completar a quantidade pedida.",
+                    hits.join("\n")
+                )
             }
         }
         ("ecommerce", "consultar_pedido") => {

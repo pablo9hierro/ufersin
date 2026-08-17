@@ -10,7 +10,7 @@ use serde::Serialize;
 /// mockada que já existe (Demo.tsx/DemoPlano.tsx/DemoPlanoEletronica.tsx),
 /// caminho relativo (mesma origem do site em qualquer ambiente, local ou
 /// produção).
-pub const ECOMMERCE_STOREFRONT_URL: &str = "/demo/essential";
+pub const ECOMMERCE_STOREFRONT_URL: &str = "/demo/vitrine/essential";
 pub const ELETRONICOS_STOREFRONT_URL: &str = "/demo/eletronica/essential";
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,22 +44,40 @@ pub struct DemoServiceOrder {
     pub status: &'static str,
 }
 
+/// Mesmo catálogo EXATO da demo mockada de vitrine já existente
+/// (`ecommerce/frontend/src/lib/localData.ts`, ativada por `/demo-entrar`,
+/// é o que `/demo/vitrine/essential` mostra de verdade) — nomes, preços e
+/// categorias idênticos, pra não divergir do que o visitante vê clicando
+/// na vitrine de verdade. `Batata Frita` está com estoque 0 lá (fora de
+/// estoque), replicado aqui.
 pub fn ecommerce_products() -> &'static [DemoProduct] {
     &[
-        DemoProduct { name: "Combo X-Burger Artesanal", price: 28.90, category: "Lanches" },
-        DemoProduct { name: "Pizza Grande Calabresa", price: 54.90, category: "Pizzas" },
-        DemoProduct { name: "Combo Batata Frita + Refrigerante", price: 22.50, category: "Combos" },
-        DemoProduct { name: "Refrigerante Lata 350ml", price: 6.00, category: "Bebidas" },
-        DemoProduct { name: "Cerveja Long Neck 355ml", price: 8.90, category: "Bebidas" },
-        DemoProduct { name: "Essência para Narguilé 50g", price: 32.00, category: "Tabacaria" },
+        DemoProduct { name: "Refrigerante Lata", price: 6.00, category: "Bebidas" },
+        DemoProduct { name: "Suco Natural", price: 8.50, category: "Bebidas" },
+        DemoProduct { name: "Milk-shake", price: 13.90, category: "Bebidas" },
+        DemoProduct { name: "Sanduíche Natural", price: 14.90, category: "Lanches" },
+        DemoProduct { name: "Hambúrguer Artesanal", price: 24.90, category: "Lanches" },
+        DemoProduct { name: "Pudim de Leite", price: 9.90, category: "Sobremesas" },
+        DemoProduct { name: "Brownie com Sorvete", price: 12.90, category: "Sobremesas" },
     ]
 }
 
+/// Sem estoque na vitrine real (quantity: 0 em localData.ts) — a IA precisa
+/// saber disso pra não vender o que não tem.
+pub const OUT_OF_STOCK: &[&str] = &["Batata Frita"];
+
+/// Mesmos status/produtos/totais dos 5 pedidos de exemplo em localData.ts
+/// (vocabulário de status idêntico ao painel real: pendente, montando_pedido,
+/// pedido_pronto, em_rota_de_entrega, concluido) — só o ID é próprio daqui
+/// (o sistema mockado gera IDs aleatórios por sessão de navegador, sem
+/// correspondência fixa possível).
 pub fn ecommerce_orders() -> &'static [DemoOrder] {
     &[
-        DemoOrder { id: "DEMO-1001", items: "2x Combo X-Burger Artesanal + 1x Refrigerante Lata", status: "em preparo", extra: "bairro Centro" },
-        DemoOrder { id: "DEMO-1002", items: "1x Pizza Grande Calabresa", status: "saiu para entrega", extra: "motoboy João (demo)" },
-        DemoOrder { id: "DEMO-1003", items: "1x Combo Batata Frita + Refrigerante", status: "entregue", extra: "" },
+        DemoOrder { id: "DEMO-1001", items: "2x Hambúrguer Artesanal", status: "pendente", extra: "pagamento Pix pendente" },
+        DemoOrder { id: "DEMO-1002", items: "1x Sanduíche Natural", status: "montando_pedido", extra: "" },
+        DemoOrder { id: "DEMO-1003", items: "3x Refrigerante Lata", status: "pedido_pronto", extra: "pagamento na entrega (dinheiro)" },
+        DemoOrder { id: "DEMO-1004", items: "2x Pudim de Leite", status: "em_rota_de_entrega", extra: "motoboy a caminho" },
+        DemoOrder { id: "DEMO-1005", items: "1x Brownie com Sorvete", status: "concluido", extra: "retirada no local" },
     ]
 }
 
