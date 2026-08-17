@@ -155,7 +155,7 @@ pub async fn chat_with_tools(
     history: &[(String, String)],
     user_message: &str,
     tools: Vec<Value>,
-    execute_tool: impl Fn(&str, &Value) -> String,
+    kind: &str,
 ) -> Result<ChatResult, AppError> {
     if !config.enabled() {
         return Err(AppError::Internal(
@@ -165,7 +165,7 @@ pub async fn chat_with_tools(
 
     let mut last_error = String::new();
     for model in &config.models {
-        match run_turn(http, model, system, history, user_message, &tools, &execute_tool).await {
+        match run_turn(http, model, system, history, user_message, &tools, kind).await {
             Ok(result) => return Ok(result),
             Err(TurnError::Permanent(msg)) => {
                 tracing::warn!("demo_assistant: modelo {} falhou permanentemente: {msg}", model.model);
@@ -196,7 +196,7 @@ async fn run_turn(
     history: &[(String, String)],
     user_message: &str,
     tools: &[Value],
-    execute_tool: &impl Fn(&str, &Value) -> String,
+    kind: &str,
 ) -> Result<ChatResult, TurnError> {
     let mut messages: Vec<Value> = vec![json!({ "role": "system", "content": system })];
     for (role, content) in history {
@@ -243,7 +243,7 @@ async fn run_turn(
                 let name = tc["function"]["name"].as_str().unwrap_or_default().to_string();
                 let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
                 let args: Value = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
-                let output = execute_tool(&name, &args);
+                let output = super::tools::execute(http, kind, &name, &args).await;
                 tool_calls_used += 1;
                 messages.push(json!({ "role": "tool", "tool_call_id": id, "content": output }));
             }

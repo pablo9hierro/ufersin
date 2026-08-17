@@ -117,7 +117,6 @@ pub async fn message(
         .collect();
 
     let tools_for_kind = tools::tools_for(&kind);
-    let kind_for_exec = kind.clone();
     let result = llm::chat_with_tools(
         &state.http,
         &state.demo_ai,
@@ -125,7 +124,7 @@ pub async fn message(
         &history,
         user_message,
         tools_for_kind,
-        move |name, args| tools::execute(&kind_for_exec, name, args),
+        &kind,
     )
     .await?;
 

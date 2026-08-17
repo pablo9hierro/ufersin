@@ -9,6 +9,7 @@ pub mod mock_data;
 pub mod prompts;
 pub mod rate_limit;
 pub mod tools;
+pub mod vrtech_catalog;
 
 pub const VALID_KINDS: &[&str] = &["ecommerce", "eletronicos"];
 

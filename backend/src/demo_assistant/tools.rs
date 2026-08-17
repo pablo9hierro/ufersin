@@ -7,6 +7,7 @@
 use serde_json::{json, Value};
 
 use super::mock_data;
+use super::vrtech_catalog;
 
 pub fn tools_for(kind: &str) -> Vec<Value> {
     match kind {
@@ -208,7 +209,7 @@ fn word_match(target: &str, query: &str) -> bool {
     words.iter().all(|w| target.contains(&norm(w)))
 }
 
-pub fn execute(kind: &str, name: &str, args: &Value) -> String {
+pub async fn execute(http: &reqwest::Client, kind: &str, name: &str, args: &Value) -> String {
     match (kind, name) {
         ("ecommerce", "buscar_produtos") => {
             let query = args.get("query").and_then(Value::as_str).unwrap_or("");
@@ -271,18 +272,11 @@ pub fn execute(kind: &str, name: &str, args: &Value) -> String {
         }
         ("eletronicos", "buscar_servico") => {
             let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-            let hits: Vec<String> = mock_data::eletronicos_services()
-                .iter()
-                .filter(|s| word_match(s.name, query))
-                .map(|s| match s.price_to {
-                    Some(to) => format!("- {} | R$ {:.2} a R$ {:.2} | prazo: {}", s.name, s.price_from, to, s.eta),
-                    None => format!("- {} | R$ {:.2} | prazo: {}", s.name, s.price_from, s.eta),
-                })
-                .collect();
+            let hits = vrtech_catalog::search(http, query).await;
             if hits.is_empty() {
-                format!("Nenhum serviço encontrado para \"{query}\" no catálogo de demonstração.")
+                format!("Nenhum serviço encontrado para \"{query}\" no catálogo de serviços.")
             } else {
-                hits.join("\n")
+                hits.iter().map(|s| format!("- {} | R$ {:.2}", s.label, s.price)).collect::<Vec<_>>().join("\n")
             }
         }
         ("eletronicos", "consultar_ordem_servico") => {
@@ -294,10 +288,10 @@ pub fn execute(kind: &str, name: &str, args: &Value) -> String {
         }
         ("eletronicos", "aprovar_orcamento") => {
             let nome = args.get("nome_servico").and_then(Value::as_str).unwrap_or("");
-            match mock_data::eletronicos_services().iter().find(|s| word_match(s.name, nome)) {
+            match vrtech_catalog::search(http, nome).await.into_iter().next() {
                 Some(s) => format!(
                     "Orçamento aprovado: {} — R$ {:.2}. Pode seguir pra agendar o reparo.",
-                    s.name, s.price_from
+                    s.label, s.price
                 ),
                 None => format!("\"{nome}\" não encontrado no catálogo de serviços — confirme o serviço certo com o cliente antes de aprovar."),
             }
@@ -306,12 +300,12 @@ pub fn execute(kind: &str, name: &str, args: &Value) -> String {
             let nome = args.get("nome_servico").and_then(Value::as_str).unwrap_or("");
             let data = args.get("data").and_then(Value::as_str).unwrap_or("");
             let horario = args.get("horario").and_then(Value::as_str).unwrap_or("");
-            match mock_data::eletronicos_services().iter().find(|s| word_match(s.name, nome)) {
+            match vrtech_catalog::search(http, nome).await.into_iter().next() {
                 Some(s) => {
                     let ordem_id = fake_order_id("OS");
                     format!(
                         "Agendado: {} para {data} às {horario}. Preço: R$ {:.2}. Ordem de serviço: {ordem_id}.",
-                        s.name, s.price_from
+                        s.label, s.price
                     )
                 }
                 None => format!("\"{nome}\" não encontrado no catálogo de serviços — não agende, confirme o serviço certo com o cliente."),
@@ -319,11 +313,11 @@ pub fn execute(kind: &str, name: &str, args: &Value) -> String {
         }
         ("eletronicos", "gerar_pagamento_pix") => {
             let nome = args.get("nome_servico").and_then(Value::as_str).unwrap_or("");
-            match mock_data::eletronicos_services().iter().find(|s| word_match(s.name, nome)) {
+            match vrtech_catalog::search(http, nome).await.into_iter().next() {
                 Some(s) => {
                     let ordem_id = fake_order_id("OS");
-                    let pix = fake_pix_code(&ordem_id, s.price_from);
-                    format!("Valor: R$ {:.2}. Código Pix copia e cola: {pix}", s.price_from)
+                    let pix = fake_pix_code(&ordem_id, s.price);
+                    format!("Valor: R$ {:.2}. Código Pix copia e cola: {pix}", s.price)
                 }
                 None => format!("\"{nome}\" não encontrado no catálogo de serviços — não gere pagamento, confirme o serviço certo com o cliente."),
             }
