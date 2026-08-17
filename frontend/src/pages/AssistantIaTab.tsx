@@ -106,8 +106,9 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
           <h2 className="font-bold text-sm uppercase tracking-wide text-uf-silver-dim">Assistente IA (beta)</h2>
         </div>
         <p className="text-xs text-uf-silver-dim">
-          Responde clientes automaticamente no WhatsApp da loja, usando 3 camadas de IA (interpretação, validação e
-          contexto) + a base de conhecimento abaixo. Desativado por padrão até você configurar e testar.
+          Responde clientes automaticamente no WhatsApp da loja, usando 2 camadas de IA (interpretação + atendimento
+          com ferramentas) e os exemplos de atendimento abaixo pra aprender seu tom de voz. Desativado por padrão até
+          você configurar e testar.
         </p>
 
         <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
@@ -264,9 +265,11 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
       </div>
 
       <div className="uf-glass rounded-2xl p-6 space-y-4">
-        <h2 className="font-bold text-sm uppercase tracking-wide text-uf-silver-dim">Base de conhecimento (RAG)</h2>
+        <h2 className="font-bold text-sm uppercase tracking-wide text-uf-silver-dim">Exemplos de atendimento (treinamento de estilo)</h2>
         <p className="text-xs text-uf-silver-dim">
-          Envie PDFs, TXT, DOCX ou conversas exportadas — o assistente consulta esse material antes de responder.
+          Envie conversas de WhatsApp exportadas (ou outros textos) mostrando como você atende de verdade — a IA
+          aprende o TOM e o JEITO de conduzir a conversa com isso. Nunca é usado como fonte de preço, produto,
+          estoque ou status de pedido — esses dados sempre vêm em tempo real das ferramentas da loja, nunca daqui.
         </p>
         <input
           ref={fileInputRef}
