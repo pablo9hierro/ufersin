@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Loader2, MessageCircle, Plus, Send, Trash2 } from 'lucide-react'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { api } from '../../lib/api'
-import { ASSISTANT_IA_API_URL } from '../../lib/assistantIaBeta'
 
 type Conversation = {
   id: string
@@ -62,14 +61,12 @@ export default function AdminChat() {
   // aqui ficaria "congelado" no valor de quando o efeito rodou.
   const pendingPhoneRef = useRef<string | null>(null)
 
-  const base = tenantSlug ? `${ASSISTANT_IA_API_URL}/api/tenants/${tenantSlug}` : null
-
   const loadConversations = () => {
-    if (!base) return
-    fetch(`${base}/conversations`)
-      .then((r) => r.json())
+    if (!tenantSlug) return
+    api.admin.assistantIa
+      .conversations()
       .then((data) => {
-        const list: Conversation[] = Array.isArray(data) ? data : []
+        const list = Array.isArray(data) ? (data as Conversation[]) : []
         setConversations(list)
         if (pendingPhoneRef.current) {
           const match = list.find((c) => c.phone === pendingPhoneRef.current)
@@ -94,11 +91,11 @@ export default function AdminChat() {
   const selectedId = selected?.id ?? null
 
   const loadMessages = (showSpinner: boolean) => {
-    if (!base || !selectedId) return
+    if (!selectedId) return
     if (showSpinner) setLoadingMessages(true)
-    fetch(`${base}/conversations/${selectedId}/messages`)
-      .then((r) => r.json())
-      .then((data) => setMessages(Array.isArray(data) ? data : []))
+    api.admin.assistantIa
+      .conversationMessages(selectedId)
+      .then((data) => setMessages(Array.isArray(data) ? (data as Message[]) : []))
       .catch(() => {})
       .finally(() => showSpinner && setLoadingMessages(false))
   }
@@ -108,23 +105,21 @@ export default function AdminChat() {
   // referência reiniciaria o polling de mensagens sem necessidade a cada
   // 1.5s.
   useEffect(() => {
-    if (!selectedId || !base) return
+    if (!selectedId) return
     loadMessages(true)
     const interval = setInterval(() => loadMessages(false), 1500)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, base])
+  }, [selectedId])
 
   const toggleAssistant = async (enabled: boolean) => {
-    if (!selected || !base) return
+    if (!selected) return
     setTogglingAssistant(true)
     try {
-      const res = await fetch(`${base}/conversations/${selected.id}/assistant-enabled`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      })
-      const updated = await res.json()
+      const updated = (await api.admin.assistantIa.setConversationEnabled(selected.id, enabled)) as {
+        assistant_enabled: boolean
+        human_override: boolean
+      }
       setSelected((s) => (s ? { ...s, assistant_enabled: updated.assistant_enabled, human_override: updated.human_override } : s))
       setConversations((cs) => cs.map((c) => (c.id === selected.id ? { ...c, ...updated } : c)))
     } finally {
@@ -133,9 +128,8 @@ export default function AdminChat() {
   }
 
   const deleteConversation = async (c: Conversation) => {
-    if (!base) return
     if (!window.confirm(`Apagar todo o histórico da conversa com ${c.customer_name || formatPhone(c.phone)}? Essa ação não pode ser desfeita.`)) return
-    await fetch(`${base}/conversations/${c.id}`, { method: 'DELETE' })
+    await api.admin.assistantIa.deleteConversation(c.id)
     setConversations((cs) => cs.filter((x) => x.id !== c.id))
     setSelected((s) => (s?.id === c.id ? null : s))
   }

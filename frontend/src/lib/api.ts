@@ -470,6 +470,19 @@ export const api = {
     fd.append('file', file)
     return request<{ url: string }>('/api/me/upload-logo', { method: 'POST', body: fd })
   },
+  // Proxies autenticados pro assistant-ia (nunca chamado direto do
+  // navegador — ver ufersin/backend/src/routes/assistant_ia.rs).
+  assistantIaConfig: () => request<unknown>('/api/me/assistant-ia/config'),
+  assistantIaSaveConfig: (config: unknown) =>
+    request<unknown>('/api/me/assistant-ia/config', { method: 'PUT', body: JSON.stringify(config) }),
+  assistantIaRagDocuments: () => request<unknown[]>('/api/me/assistant-ia/rag/documents'),
+  assistantIaUploadRagDocument: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return request<unknown>('/api/me/assistant-ia/rag/documents', { method: 'POST', body: fd })
+  },
+  assistantIaDeleteRagDocument: (id: string) =>
+    request<unknown>(`/api/me/assistant-ia/rag/documents/${id}`, { method: 'DELETE' }),
   /** Após updateUser no Supabase — sincroniza hash Argon2 + admin da loja. */
   mudarSenha: (senha: string) =>
     request<{ synced: boolean; pending_loja: boolean }>('/api/me/senha', {

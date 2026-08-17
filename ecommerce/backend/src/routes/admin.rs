@@ -1917,6 +1917,121 @@ pub async fn simulate_assistant_ia_message(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Resolve o slug do tenant autenticado e monta a base URL do assistant-ia —
+/// usado por todos os proxies abaixo, mesma resolução de
+/// `simulate_assistant_ia_message`.
+async fn assistant_ia_base_and_slug(state: &AppState, tenant_id: &str) -> Result<(String, String), AppError> {
+    let assistant_ia_url = std::env::var("ASSISTANT_IA_URL").unwrap_or_default();
+    if assistant_ia_url.trim().is_empty() {
+        return Err(AppError::Internal("ASSISTANT_IA_URL not configured".to_string()));
+    }
+    let slug: Option<(String,)> = sqlx::query_as("SELECT slug FROM tenants WHERE id = $1")
+        .bind(tenant_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((slug,)) = slug else {
+        return Err(AppError::Internal("tenant sem slug".to_string()));
+    };
+    Ok((assistant_ia_url.trim_end_matches('/').to_string(), slug))
+}
+
+/// Chave compartilhada que só backends conhecem (nunca chega ao navegador)
+/// — assistant-ia recusa qualquer chamada administrativa sem ela. Ver
+/// `internalAuthGate` no lado do assistant-ia (repo `a-vrtek-gente`).
+fn assistant_ia_internal_key() -> Result<String, AppError> {
+    let key = std::env::var("ASSISTANT_IA_INTERNAL_KEY").unwrap_or_default();
+    if key.trim().is_empty() {
+        return Err(AppError::Internal("ASSISTANT_IA_INTERNAL_KEY not configured".to_string()));
+    }
+    Ok(key)
+}
+
+/// Proxies autenticados (AdminTenant) pro inbox `/admin/chat` — o browser
+/// nunca fala com o assistant-ia direto nem conhece a chave interna dele.
+/// `tenant_slug` sempre resolvido a partir do tenant autenticado, nunca do
+/// cliente, então um admin nunca alcança a conversa de outro tenant mesmo
+/// sabendo o id/slug alheio.
+pub async fn assistant_ia_conversations(
+    State(state): State<AppState>,
+    admin: AdminTenant,
+) -> Result<Json<serde_json::Value>, AppError> {
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let (base, slug) = assistant_ia_base_and_slug(&state, &admin.tenant_id).await?;
+    let key = assistant_ia_internal_key()?;
+    let resp = state
+        .http
+        .get(format!("{base}/api/tenants/{slug}/conversations"))
+        .header("x-internal-key", key)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("assistant-ia indisponível: {e}")))?;
+    let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+    Ok(Json(body))
+}
+
+pub async fn assistant_ia_conversation_messages(
+    State(state): State<AppState>,
+    admin: AdminTenant,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let (base, slug) = assistant_ia_base_and_slug(&state, &admin.tenant_id).await?;
+    let key = assistant_ia_internal_key()?;
+    let resp = state
+        .http
+        .get(format!("{base}/api/tenants/{slug}/conversations/{id}/messages"))
+        .header("x-internal-key", key)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("assistant-ia indisponível: {e}")))?;
+    let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+    Ok(Json(body))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetAssistantEnabledInput {
+    pub enabled: bool,
+}
+
+pub async fn assistant_ia_set_conversation_enabled(
+    State(state): State<AppState>,
+    admin: AdminTenant,
+    Path(id): Path<String>,
+    Json(input): Json<SetAssistantEnabledInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let (base, slug) = assistant_ia_base_and_slug(&state, &admin.tenant_id).await?;
+    let key = assistant_ia_internal_key()?;
+    let resp = state
+        .http
+        .put(format!("{base}/api/tenants/{slug}/conversations/{id}/assistant-enabled"))
+        .header("x-internal-key", &key)
+        .json(&serde_json::json!({ "enabled": input.enabled }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("assistant-ia indisponível: {e}")))?;
+    let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+    Ok(Json(body))
+}
+
+pub async fn assistant_ia_delete_conversation(
+    State(state): State<AppState>,
+    admin: AdminTenant,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let (base, slug) = assistant_ia_base_and_slug(&state, &admin.tenant_id).await?;
+    let key = assistant_ia_internal_key()?;
+    state
+        .http
+        .delete(format!("{base}/api/tenants/{slug}/conversations/{id}"))
+        .header("x-internal-key", key)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("assistant-ia indisponível: {e}")))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct OnboardingGateDto {
     pub onboarding_hours_done: bool,

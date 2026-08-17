@@ -431,6 +431,19 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/assistant-ia/simulate-message",
             post(routes::admin::simulate_assistant_ia_message),
         )
+        .route("/api/admin/assistant-ia/conversations", get(routes::admin::assistant_ia_conversations))
+        .route(
+            "/api/admin/assistant-ia/conversations/{id}/messages",
+            get(routes::admin::assistant_ia_conversation_messages),
+        )
+        .route(
+            "/api/admin/assistant-ia/conversations/{id}/assistant-enabled",
+            put(routes::admin::assistant_ia_set_conversation_enabled),
+        )
+        .route(
+            "/api/admin/assistant-ia/conversations/{id}",
+            axum::routing::delete(routes::admin::assistant_ia_delete_conversation),
+        )
         .route("/api/admin/store-status", get(routes::admin::get_store_status))
         .route("/api/admin/store-hours", axum::routing::put(routes::admin::set_store_hours))
         .route(

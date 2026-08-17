@@ -1374,6 +1374,19 @@ const remoteApi = {
           body: JSON.stringify({ phone, text, customer_name: customerName || null }),
           token: adminToken(),
         }),
+      // Proxies autenticados pro assistant-ia (nunca chamado direto do
+      // browser — ver ecommerce/backend/src/routes/admin.rs).
+      conversations: () => request<unknown[]>('/api/admin/assistant-ia/conversations', { token: adminToken() }),
+      conversationMessages: (id: string) =>
+        request<unknown[]>(`/api/admin/assistant-ia/conversations/${id}/messages`, { token: adminToken() }),
+      setConversationEnabled: (id: string, enabled: boolean) =>
+        request<unknown>(`/api/admin/assistant-ia/conversations/${id}/assistant-enabled`, {
+          method: 'PUT',
+          body: JSON.stringify({ enabled }),
+          token: adminToken(),
+        }),
+      deleteConversation: (id: string) =>
+        request<void>(`/api/admin/assistant-ia/conversations/${id}`, { method: 'DELETE', token: adminToken() }),
     },
     onboardingGate: {
       get: () =>

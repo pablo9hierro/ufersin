@@ -206,6 +206,18 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/me/cancelar", post(routes::me::cancelar))
         .route("/api/me/upload-logo", post(routes::me::upload_logo))
         .route(
+            "/api/me/assistant-ia/config",
+            get(routes::assistant_ia::get_config).put(routes::assistant_ia::put_config),
+        )
+        .route(
+            "/api/me/assistant-ia/rag/documents",
+            get(routes::assistant_ia::list_rag_documents).post(routes::assistant_ia::upload_rag_document),
+        )
+        .route(
+            "/api/me/assistant-ia/rag/documents/{id}",
+            axum::routing::delete(routes::assistant_ia::delete_rag_document),
+        )
+        .route(
             "/api/onboarding",
             post(routes::onboarding::onboarding).put(routes::onboarding::editar_onboarding),
         )

@@ -3055,6 +3055,10 @@ export const localApi = {
       simulateMessage: async () => {
         throw new ApiError(400, 'Assistente IA não disponível no modo demonstração.')
       },
+      conversations: async () => [],
+      conversationMessages: async () => [],
+      setConversationEnabled: async () => ({}),
+      deleteConversation: async () => {},
     },
     onboardingGate: {
       get: async () => ({ onboarding_hours_done: true }),

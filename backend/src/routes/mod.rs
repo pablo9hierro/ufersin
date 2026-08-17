@@ -1,4 +1,5 @@
 pub mod assinatura;
+pub mod assistant_ia;
 pub mod auth;
 pub mod contratos;
 pub mod me;

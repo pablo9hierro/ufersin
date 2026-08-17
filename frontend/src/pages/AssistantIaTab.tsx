@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Loader2, Save, Upload, Trash2, Bot } from 'lucide-react'
-import { ASSISTANT_IA_API_URL } from '../lib/assistantIaBeta'
+import { api } from '../lib/api'
 
 type AssistantConfig = {
   tenant_id: string
   enabled: boolean
   prompt_interpreter: string
-  prompt_validator: string
   start_keywords: string[]
   end_keywords: string[]
   window_timeout_minutes: number
@@ -37,18 +36,13 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const base = `${ASSISTANT_IA_API_URL}/api/tenants/${tenantSlug}`
-
   useEffect(() => {
     let cancelled = false
-    Promise.all([
-      fetch(`${base}/config`).then((r) => r.json()),
-      fetch(`${base}/rag/documents`).then((r) => r.json()),
-    ])
+    Promise.all([api.assistantIaConfig(), api.assistantIaRagDocuments()])
       .then(([cfg, docs]) => {
         if (cancelled) return
-        setConfig(cfg)
-        setDocuments(Array.isArray(docs) ? docs : [])
+        setConfig(cfg as AssistantConfig)
+        setDocuments(Array.isArray(docs) ? (docs as RagDocument[]) : [])
       })
       .catch(() => !cancelled && setError('Não foi possível carregar a configuração do assistente.'))
       .finally(() => !cancelled && setLoading(false))
@@ -63,12 +57,7 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
     setSaving(true)
     setError(null)
     try {
-      const res = await fetch(`${base}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      })
-      if (!res.ok) throw new Error()
+      await api.assistantIaSaveConfig(config)
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch {
@@ -82,12 +71,9 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
     setUploading(true)
     setError(null)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await fetch(`${base}/rag/documents`, { method: 'POST', body: formData })
-      if (!res.ok) throw new Error()
-      const docs = await fetch(`${base}/rag/documents`).then((r) => r.json())
-      setDocuments(Array.isArray(docs) ? docs : [])
+      await api.assistantIaUploadRagDocument(file)
+      const docs = await api.assistantIaRagDocuments()
+      setDocuments(Array.isArray(docs) ? (docs as RagDocument[]) : [])
     } catch {
       setError('Falha ao processar o arquivo. Tenta outro formato ou de novo.')
     } finally {
@@ -98,7 +84,7 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
 
   const handleDeleteDoc = async (id: string) => {
     setDocuments((docs) => docs.filter((d) => d.id !== id))
-    await fetch(`${base}/rag/documents/${id}`, { method: 'DELETE' }).catch(() => {})
+    await api.assistantIaDeleteRagDocument(id).catch(() => {})
   }
 
   if (loading) {
@@ -138,21 +124,18 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
         </label>
 
         <div>
-          <label className="label">Prompt da 1ª camada (interpretação de intenção)</label>
+          <label className="label">Prompt do assistente (contexto, tom de voz, regras comerciais)</label>
           <textarea
             className="input-field min-h-24"
             value={config.prompt_interpreter}
             onChange={(e) => setConfig({ ...config, prompt_interpreter: e.target.value })}
             placeholder="Ex: você é o assistente da loja X, vende Y, o tom é..."
           />
-        </div>
-        <div>
-          <label className="label">Prompt da 2ª camada (atendimento, ferramentas e resposta final)</label>
-          <textarea
-            className="input-field min-h-20"
-            value={config.prompt_validator}
-            onChange={(e) => setConfig({ ...config, prompt_validator: e.target.value })}
-          />
+          <p className="text-[10px] text-uf-silver-dim mt-1">
+            Define o tipo de negócio, tom de voz e regras comerciais da sua loja. As regras técnicas de segurança
+            (nunca cobrar sem confirmação, nunca inventar preço/produto etc.) são fixas da plataforma e não ficam
+            aqui.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
