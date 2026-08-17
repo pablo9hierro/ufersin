@@ -1911,6 +1911,7 @@ pub async fn simulate_assistant_ia_message(
         phone,
         text,
         input.customer_name.as_deref(),
+        true,
     )
     .await
     .map_err(|e| AppError::Internal(format!("assistant-ia indisponível: {e}")))?;

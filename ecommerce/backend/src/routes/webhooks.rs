@@ -381,6 +381,7 @@ pub async fn send_to_assistant_ia(
     phone: &str,
     text: &str,
     customer_name: Option<&str>,
+    simulated: bool,
 ) -> anyhow::Result<()> {
     let assistant_ia_url = std::env::var("ASSISTANT_IA_URL")
         .map_err(|_| anyhow::anyhow!("ASSISTANT_IA_URL not configured"))?;
@@ -394,6 +395,7 @@ pub async fn send_to_assistant_ia(
             "phone": phone,
             "text": text,
             "customer_name": customer_name,
+            "simulated": simulated,
         }))
         .send()
         .await?;
@@ -483,6 +485,7 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
             &phone,
             &text,
             customer_name.as_deref(),
+            false,
         )
         .await;
         match result {
