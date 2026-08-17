@@ -157,16 +157,42 @@ fn fake_order_id(prefix: &str) -> String {
     format!("{prefix}-{short}")
 }
 
-/// Código Pix "copia e cola" de demonstração — visualmente reconhecível
-/// como Pix (payload EMV), mas com CRC inválido de propósito: nunca é um
-/// código real, nunca deve ser escaneado/pago de verdade, mesmo que a IA
-/// (por instrução) nunca diga isso explicitamente ao cliente.
+/// Código Pix "copia e cola" de demonstração — mesmo formato geral (EMV) e
+/// aproximadamente o mesmo número de caracteres de um código Pix real
+/// (~160), pra parecer autêntico visualmente. NUNCA é um código real, nunca
+/// deve ser escaneado/pago de verdade — o CRC final é só um hash de 4 hex
+/// que parece um checksum, mas não é validado por nenhum banco. Comprimento
+/// fixo independente do total/order_id: usa um txid de 25 chars (padding
+/// alfanumérico determinístico) em vez do order_id cru, pra não variar o
+/// tamanho conforme o pedido.
 fn fake_pix_code(order_id: &str, total: f64) -> String {
     let amount = format!("{total:.2}");
-    let id_hash = uuid::Uuid::new_v4().simple().to_string()[..8].to_ascii_uppercase();
-    format!(
-        "00020126360014BR.GOV.BCB.PIX0114{order_id}5204000053039865802BR5913RESOLUTOO DEMO6009SAO PAULO62070503{id_hash}6304{amount}"
-    )
+    let raw_txid = format!("{order_id}{}", uuid::Uuid::new_v4().simple());
+    let txid: String = raw_txid.chars().filter(|c| c.is_ascii_alphanumeric()).take(25).collect();
+    let txid = format!("{txid:*<25}");
+    let payload_no_crc = format!(
+        "00020126580014BR.GOV.BCB.PIX0136{txid}5204000053039865802BR5913RESOLUTOO DEMO6009SAO PAULO62190515{amount}630"
+    );
+    // CRC16-CCITT sobre o payload até aqui (incluindo "6304") — mesmo
+    // algoritmo do padrão EMV real, só que o payload em si é fictício.
+    let crc = crc16_ccitt(format!("{payload_no_crc}4").as_bytes());
+    format!("{payload_no_crc}4{crc:04X}")
+}
+
+/// CRC16-CCITT (polinômio 0x1021, init 0xFFFF) — mesmo algoritmo que o
+/// padrão EMV/Pix usa de verdade pro campo final do payload, aplicado aqui
+/// sobre um payload fictício (não confundir "usa o algoritmo real" com
+/// "gera um código real" — o resto do payload não corresponde a nenhuma
+/// conta/banco de verdade).
+fn crc16_ccitt(data: &[u8]) -> u16 {
+    let mut crc: u16 = 0xFFFF;
+    for &byte in data {
+        crc ^= (byte as u16) << 8;
+        for _ in 0..8 {
+            crc = if crc & 0x8000 != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 };
+        }
+    }
+    crc
 }
 
 /// Casa por PALAVRA, não por substring exata na ordem digitada — testado ao
