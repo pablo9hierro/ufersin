@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
-import { Loader2, MessageCircle, Send, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Loader2, MessageCircle, Plus, Send, Trash2 } from 'lucide-react'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { api } from '../../lib/api'
 import { ASSISTANT_IA_API_URL } from '../../lib/assistantIaBeta'
 
 type Conversation = {
@@ -27,6 +28,18 @@ function formatPhone(phone: string) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, digits.length - 4)}-${digits.slice(-4)}`
 }
 
+// Prefixo "5500" nunca corresponde a um DDD brasileiro real (DDD 00 não
+// existe) — garante que uma conversa de teste simulada nunca colida com/
+// personifique a conversa de um cliente de verdade, mesmo por acidente.
+function generateSyntheticPhone(): string {
+  const digits = Math.floor(100000000 + Math.random() * 900000000)
+  return `5500${digits}`
+}
+
+function friendlySimulateError(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback
+}
+
 /** Inbox do Assistente IA (beta) — visível só pra loja no allowlist (ver assistantIaBeta.ts). */
 export default function AdminChat() {
   const tenantConfig = useTenantConfig()
@@ -37,6 +50,17 @@ export default function AdminChat() {
   const [loadingList, setLoadingList] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [togglingAssistant, setTogglingAssistant] = useState(false)
+  const [newChatOpen, setNewChatOpen] = useState(false)
+  const [newChatName, setNewChatName] = useState('')
+  const [newChatMessage, setNewChatMessage] = useState('')
+  const [sendingNewChat, setSendingNewChat] = useState(false)
+  const [messageDraft, setMessageDraft] = useState('')
+  const [sendingMessage, setSendingMessage] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  // Ref (não state) de propósito: lido dentro do polling de `loadConversations`,
+  // que é registrado uma única vez no useEffect abaixo (deps []) — um state
+  // aqui ficaria "congelado" no valor de quando o efeito rodou.
+  const pendingPhoneRef = useRef<string | null>(null)
 
   const base = tenantSlug ? `${ASSISTANT_IA_API_URL}/api/tenants/${tenantSlug}` : null
 
@@ -44,7 +68,18 @@ export default function AdminChat() {
     if (!base) return
     fetch(`${base}/conversations`)
       .then((r) => r.json())
-      .then((data) => setConversations(Array.isArray(data) ? data : []))
+      .then((data) => {
+        const list: Conversation[] = Array.isArray(data) ? data : []
+        setConversations(list)
+        if (pendingPhoneRef.current) {
+          const match = list.find((c) => c.phone === pendingPhoneRef.current)
+          if (match) {
+            pendingPhoneRef.current = null
+            setSendingNewChat(false)
+            setSelected(match)
+          }
+        }
+      })
       .catch(() => {})
       .finally(() => setLoadingList(false))
   }
@@ -96,15 +131,112 @@ export default function AdminChat() {
     setSelected((s) => (s?.id === c.id ? null : s))
   }
 
+  const openNewChat = () => {
+    setNewChatOpen(true)
+    setNewChatName('')
+    setNewChatMessage('')
+    setSendError(null)
+  }
+
+  const cancelNewChat = () => {
+    setNewChatOpen(false)
+    setNewChatName('')
+    setNewChatMessage('')
+  }
+
+  // Injeta a mensagem no MESMO pipeline que uma mensagem real de WhatsApp
+  // aciona (ver ecommerce/backend/src/routes/webhooks.rs::send_to_assistant_ia)
+  // — só a origem muda (painel em vez do WhatsApp de verdade). O `phone`
+  // sintético (nunca um DDD real) é como o assistant-ia identifica essa
+  // conversa de teste como distinta de qualquer cliente real.
+  const submitNewChat = async () => {
+    const text = newChatMessage.trim()
+    if (!text) return
+    setSendingNewChat(true)
+    setSendError(null)
+    const phone = generateSyntheticPhone()
+    try {
+      await api.admin.assistantIa.simulateMessage(phone, text, newChatName.trim() || undefined)
+      pendingPhoneRef.current = phone
+      setNewChatOpen(false)
+      setNewChatName('')
+      setNewChatMessage('')
+      // sendingNewChat só desliga quando loadConversations encontrar a
+      // conversa de verdade (pendingPhoneRef) — evita mostrar "pronto" antes
+      // dela realmente existir.
+    } catch (err) {
+      setSendError(friendlySimulateError(err, 'Não foi possível enviar a mensagem de teste.'))
+      setSendingNewChat(false)
+    }
+  }
+
+  const sendMessage = async () => {
+    const text = messageDraft.trim()
+    if (!text || !selected) return
+    setSendingMessage(true)
+    setSendError(null)
+    try {
+      await api.admin.assistantIa.simulateMessage(selected.phone, text, selected.customer_name || undefined)
+      setMessageDraft('')
+    } catch (err) {
+      setSendError(friendlySimulateError(err, 'Não foi possível enviar a mensagem.'))
+    } finally {
+      setSendingMessage(false)
+    }
+  }
+
   if (!tenantSlug) return null
 
   return (
     <div className="flex h-[calc(100vh-4rem)] md:h-screen -m-4 md:-m-6">
       <div className="w-full md:w-80 shrink-0 border-r border-white/5 bg-son-black overflow-y-auto">
-        <div className="p-4 border-b border-white/5 flex items-center gap-2">
-          <MessageCircle className="w-4 h-4 text-son-pink" />
-          <h1 className="font-bold text-sm">Chat — Assistente IA (beta)</h1>
+        <div className="p-4 border-b border-white/5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="w-4 h-4 text-son-pink" />
+            <h1 className="font-bold text-sm">Chat — Assistente IA (beta)</h1>
+          </div>
+          <button
+            type="button"
+            onClick={openNewChat}
+            title="Simular uma conversa de cliente novo, testando a IA sem precisar de outro WhatsApp"
+            className="flex items-center gap-1 text-xs text-son-pink hover:text-son-pink/80 transition-colors shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Novo Chat
+          </button>
         </div>
+        {newChatOpen && (
+          <div className="p-4 border-b border-white/5 space-y-2 bg-white/5">
+            <input
+              type="text"
+              value={newChatName}
+              onChange={(e) => setNewChatName(e.target.value)}
+              placeholder="Nome do cliente de teste (opcional)"
+              className="input-field w-full text-sm"
+            />
+            <textarea
+              value={newChatMessage}
+              onChange={(e) => setNewChatMessage(e.target.value)}
+              placeholder="Primeira mensagem, como se fosse o cliente escrevendo..."
+              rows={2}
+              className="input-field w-full text-sm resize-none"
+            />
+            {sendError && <p className="error-msg">{sendError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={submitNewChat}
+                disabled={sendingNewChat || !newChatMessage.trim()}
+                className="btn-primary flex-1 text-xs py-1.5"
+              >
+                {sendingNewChat ? <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" /> : 'Enviar'}
+              </button>
+              <button type="button" onClick={cancelNewChat} disabled={sendingNewChat} className="btn-secondary flex-1 text-xs py-1.5">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
         {loadingList ? (
           <div className="flex justify-center py-8">
             <Loader2 className="w-5 h-5 animate-spin text-son-silver-dim" />
@@ -207,9 +339,28 @@ export default function AdminChat() {
                 ))
               )}
             </div>
-            <div className="p-3 border-t border-white/5 flex items-center gap-2 text-xs text-son-silver-dim">
-              <Send className="w-3.5 h-3.5" />
-              Resposta manual direto por aqui ainda não está disponível nesta beta — use o WhatsApp da loja enquanto o assistente estiver interrompido.
+            <div className="p-3 border-t border-white/5 space-y-2">
+              {sendError && <p className="error-msg">{sendError}</p>}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={messageDraft}
+                  onChange={(e) => setMessageDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !sendingMessage && sendMessage()}
+                  placeholder="Mandar mensagem como se fosse este cliente..."
+                  disabled={sendingMessage}
+                  className="input-field flex-1 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={sendMessage}
+                  disabled={sendingMessage || !messageDraft.trim()}
+                  className="btn-secondary shrink-0 px-3 py-2"
+                  title="Enviar"
+                >
+                  {sendingMessage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
           </>
         )}

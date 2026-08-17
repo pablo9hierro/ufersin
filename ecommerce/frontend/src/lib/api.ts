@@ -1362,6 +1362,19 @@ const remoteApi = {
           token: adminToken(),
         }),
     },
+    // Injeta mensagem sintética no MESMO pipeline que uma mensagem real de
+    // WhatsApp aciona (backend Rust repassa pro assistant-ia) — usado pelo
+    // "Novo Chat"/caixa de envio em /admin/chat pra testar a IA sem
+    // precisar de um segundo número de verdade. Nunca chama o assistant-ia
+    // direto do navegador (mesmo motivo do bloco whatsapp acima).
+    assistantIa: {
+      simulateMessage: (phone: string, text: string, customerName?: string) =>
+        request<void>('/api/admin/assistant-ia/simulate-message', {
+          method: 'POST',
+          body: JSON.stringify({ phone, text, customer_name: customerName || null }),
+          token: adminToken(),
+        }),
+    },
     onboardingGate: {
       get: () =>
         railwayAdmin<{ onboarding_hours_done: boolean }>('/api/admin/onboarding-gate'),

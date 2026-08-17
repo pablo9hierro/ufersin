@@ -427,6 +427,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/admin/whatsapp/notify-order-ready", post(routes::admin::notify_order_ready))
         .route("/api/admin/whatsapp/notify-coupon-grant", post(routes::admin::notify_coupon_grant))
+        .route(
+            "/api/admin/assistant-ia/simulate-message",
+            post(routes::admin::simulate_assistant_ia_message),
+        )
         .route("/api/admin/store-status", get(routes::admin::get_store_status))
         .route("/api/admin/store-hours", axum::routing::put(routes::admin::set_store_hours))
         .route(

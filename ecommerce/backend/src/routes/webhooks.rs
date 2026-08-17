@@ -366,6 +366,44 @@ async fn handle_mercadopago(
     Ok(())
 }
 
+/// Faz a chamada HTTP de verdade pro módulo isolado de Assistente IA
+/// (repositório separado `a-vrtek-gente`) — mesmo endpoint/payload usado
+/// tanto por uma mensagem real de WhatsApp (`forward_to_assistant_ia`
+/// abaixo, fire-and-forget) quanto por uma mensagem simulada disparada pelo
+/// admin em `/loja/admin/chat` (`routes::admin::simulate_assistant_ia_message`,
+/// chamada direta com `.await`) — extraído pra cá pra garantir que as duas
+/// origens acionem EXATAMENTE o mesmo pipeline de IA, sem duplicar a lógica
+/// de montagem do payload.
+pub async fn send_to_assistant_ia(
+    state: &AppState,
+    tenant_slug: &str,
+    instance: &str,
+    phone: &str,
+    text: &str,
+    customer_name: Option<&str>,
+) -> anyhow::Result<()> {
+    let assistant_ia_url = std::env::var("ASSISTANT_IA_URL")
+        .map_err(|_| anyhow::anyhow!("ASSISTANT_IA_URL not configured"))?;
+    let resp = state
+        .http
+        .post(format!("{}/webhook/evolution", assistant_ia_url.trim_end_matches('/')))
+        .timeout(std::time::Duration::from_secs(5))
+        .json(&serde_json::json!({
+            "tenant_slug": tenant_slug,
+            "instance": instance,
+            "phone": phone,
+            "text": text,
+            "customer_name": customer_name,
+        }))
+        .send()
+        .await?;
+    let status = resp.status();
+    if !status.is_success() {
+        anyhow::bail!("assistant-ia respondeu {status}");
+    }
+    Ok(())
+}
+
 /// Encaminha mensagens de texto recebidas pra o módulo isolado de
 /// Assistente IA (repositório separado `a-vrtek-gente`), quando
 /// `ASSISTANT_IA_URL` estiver configurada — sem alterar em nada o
@@ -374,10 +412,10 @@ async fn handle_mercadopago(
 /// Só repassa mensagem de texto de cliente (ignora mensagens enviadas pela
 /// própria loja e mensagens sem texto, como localização/mídia).
 fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, data: &Value, message: &Value) {
-    let Ok(assistant_ia_url) = std::env::var("ASSISTANT_IA_URL") else {
+    if std::env::var("ASSISTANT_IA_URL").is_err() {
         tracing::info!("assistant-ia forward: ASSISTANT_IA_URL not set, skipping");
         return;
-    };
+    }
     let from_me = data
         .get("key")
         .and_then(|k| k.get("fromMe"))
@@ -431,29 +469,24 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
         return;
     }
     let customer_name = data.get("pushName").and_then(|v| v.as_str()).map(str::to_string);
-    tracing::info!(
-        "assistant-ia forward: sending tenant_id={tenant_id} instance={instance} phone={phone} url={assistant_ia_url}"
-    );
+    tracing::info!("assistant-ia forward: sending tenant_id={tenant_id} instance={instance} phone={phone}");
 
-    let http = state.http.clone();
+    let state = state.clone();
     let tenant_id = tenant_id.to_string();
     let instance = instance.to_string();
     let text = text.to_string();
     tokio::spawn(async move {
-        let result = http
-            .post(format!("{}/webhook/evolution", assistant_ia_url.trim_end_matches('/')))
-            .timeout(std::time::Duration::from_secs(5))
-            .json(&serde_json::json!({
-                "tenant_slug": tenant_id,
-                "instance": instance,
-                "phone": phone,
-                "text": text,
-                "customer_name": customer_name,
-            }))
-            .send()
-            .await;
+        let result = send_to_assistant_ia(
+            &state,
+            &tenant_id,
+            &instance,
+            &phone,
+            &text,
+            customer_name.as_deref(),
+        )
+        .await;
         match result {
-            Ok(resp) => tracing::info!("assistant-ia forward: response status={}", resp.status()),
+            Ok(()) => tracing::info!("assistant-ia forward: sent ok"),
             Err(e) => tracing::warn!("falha ao encaminhar mensagem pro assistant-ia (ignorado): {e:?}"),
         }
     });

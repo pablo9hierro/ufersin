@@ -1867,6 +1867,56 @@ pub async fn list_whatsapp_connection_events(
     ))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SimulateAssistantIaMessageInput {
+    pub phone: String,
+    pub text: String,
+    #[serde(default)]
+    pub customer_name: Option<String>,
+}
+
+/// Injeta uma mensagem sintética no MESMO pipeline que uma mensagem real de
+/// WhatsApp aciona (`crate::routes::webhooks::send_to_assistant_ia` — mesmo
+/// endpoint, mesmo payload) — usado pelo botão "Novo Chat"/caixa de envio
+/// em /admin/chat pra testar a Assistente IA sem precisar de um segundo
+/// número de WhatsApp de verdade. `tenant_slug`/`instance` NUNCA vêm do
+/// cliente — sempre resolvidos aqui a partir do tenant autenticado, pra um
+/// admin nunca conseguir injetar mensagem na conversa de outro tenant.
+/// Diferente do forward de webhook real (fire-and-forget): aqui é um clique
+/// direto do admin, então aguarda e propaga erro de verdade se o
+/// assistant-ia estiver fora do ar.
+pub async fn simulate_assistant_ia_message(
+    State(state): State<AppState>,
+    admin: AdminTenant,
+    Json(input): Json<SimulateAssistantIaMessageInput>,
+) -> Result<StatusCode, AppError> {
+    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let phone = input.phone.trim();
+    let text = input.text.trim();
+    if phone.is_empty() || text.is_empty() {
+        return Err(AppError::BadRequest("phone e text são obrigatórios".to_string()));
+    }
+    let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
+    let slug: Option<(String,)> = sqlx::query_as("SELECT slug FROM tenants WHERE id = $1")
+        .bind(&admin.tenant_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((slug,)) = slug else {
+        return Err(AppError::Internal("tenant sem slug".to_string()));
+    };
+    crate::routes::webhooks::send_to_assistant_ia(
+        &state,
+        &slug,
+        &store.whatsapp_instance,
+        phone,
+        text,
+        input.customer_name.as_deref(),
+    )
+    .await
+    .map_err(|e| AppError::Internal(format!("assistant-ia indisponível: {e}")))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct OnboardingGateDto {
     pub onboarding_hours_done: bool,

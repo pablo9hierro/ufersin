@@ -3051,6 +3051,11 @@ export const localApi = {
       connectionEvents: async () => [],
       notifyCouponGrant: async () => {},
     },
+    assistantIa: {
+      simulateMessage: async () => {
+        throw new ApiError(400, 'Assistente IA não disponível no modo demonstração.')
+      },
+    },
     onboardingGate: {
       get: async () => ({ onboarding_hours_done: true }),
     },
