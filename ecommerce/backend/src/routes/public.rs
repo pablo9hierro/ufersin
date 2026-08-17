@@ -105,6 +105,13 @@ pub struct PublicOrderStatusDto {
     pub delivery_type: String,
     pub total: f64,
     pub created_at: String,
+    /// Quando o status mudou pela última vez (aproximação de "quando saiu
+    /// pra entrega" pra pedidos em `em_rota_de_entrega` — não existe uma
+    /// coluna dedicada de "despachado em", então isso é a melhor
+    /// referência real disponível). Usado pra calcular ETA restante.
+    pub updated_at: String,
+    pub customer_lat: Option<f64>,
+    pub customer_lng: Option<f64>,
 }
 
 /// Consulta pedidos de um telefone nessa loja — só os campos que o próprio
@@ -120,8 +127,10 @@ pub async fn list_public_orders_by_phone(
     let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
     let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
-    let rows: Vec<(String, String, String, String, String, f64, String)> = sqlx::query_as(
-        "SELECT id, status, payment_status, payment_method, delivery_type, total, created_at::text \
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(String, String, String, String, String, f64, String, String, Option<f64>, Option<f64>)> = sqlx::query_as(
+        "SELECT id, status, payment_status, payment_method, delivery_type, total, created_at::text, \
+                updated_at::text, customer_lat, customer_lng \
          FROM orders WHERE tenant_id = $1 AND customer_whatsapp LIKE '%' || $2 \
          ORDER BY created_at DESC LIMIT 5",
     )
@@ -132,7 +141,7 @@ pub async fn list_public_orders_by_phone(
     tx.commit().await?;
     Ok(Json(
         rows.into_iter()
-            .map(|(id, status, payment_status, payment_method, delivery_type, total, created_at)| {
+            .map(|(id, status, payment_status, payment_method, delivery_type, total, created_at, updated_at, customer_lat, customer_lng)| {
                 PublicOrderStatusDto {
                     short_id: short_id(&id).to_string(),
                     id,
@@ -142,6 +151,9 @@ pub async fn list_public_orders_by_phone(
                     delivery_type,
                     total,
                     created_at,
+                    updated_at,
+                    customer_lat,
+                    customer_lng,
                 }
             })
             .collect(),
@@ -952,6 +964,10 @@ pub struct EstimateDeliveryDto {
     /// /admin/frete — nesse caso `price` ainda vem calculado (pra
     /// referência), mas a loja não deveria aceitar a entrega.
     pub within_range: bool,
+    /// Tempo real de rota (Google Routes, com fallback OSRM) — já calculado
+    /// por `google_routes::calcular_rota` mas descartado antes; exposto
+    /// aqui pra dar ETA real ao cliente (nunca chutado).
+    pub eta_minutes: i64,
 }
 
 /// Calcula o valor de entrega/coleta pro cliente, com o MESMO preço por
@@ -988,7 +1004,7 @@ pub async fn estimate_delivery(
     let within_range = max_km.map(|max| rota.km <= max).unwrap_or(true);
     let price = (rota.km * price_per_km * 100.0).round() / 100.0;
 
-    Ok(Json(EstimateDeliveryDto { km: rota.km, price, within_range }))
+    Ok(Json(EstimateDeliveryDto { km: rota.km, price, within_range, eta_minutes: rota.min }))
 }
 
 #[derive(Debug, Deserialize)]
