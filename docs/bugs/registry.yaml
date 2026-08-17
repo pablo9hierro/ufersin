@@ -372,3 +372,31 @@
     - "a-vrtek-gente/backend/src/routes/webhook.ts"
   regression_test_id: "BUG-013"
   manual_verification: null
+
+- id: BUG-014
+  title: "Cálculo de valor de entrega sempre falhava (OSRM público bloqueava a chamada)"
+  area: [backend, ai-pipeline]
+  service: ecommerce-api
+  severity: critical
+  status: fixed
+  reported_at: "2026-08-17"
+  fixed_at: "2026-08-17"
+  symptom: >
+    Cliente compartilhava localização fixa no chat pedindo entrega, e a
+    Assistente IA respondia "Parece que não consegui calcular o valor da
+    entrega no momento" — reproduzido também no checkout normal da
+    vitrine (mesmo endpoint), não só na IA.
+  root_cause: >
+    Produção não tem GOOGLE_ROUTES_API_KEY configurada, então
+    calcular_rota cai pro fallback OSRM público
+    (router.project-osrm.org). O client reqwest compartilhado
+    (state.http) não mandava header User-Agent nenhum — e esse servidor
+    devolve 403 Forbidden pra qualquer requisição sem User-Agent, tratado
+    pelo código como falha genérica "osrm route failed". Confirmado ao
+    vivo: request sem UA -> 403; com qualquer UA -> 200. Afetava TODA
+    entrega calculada via OSRM em produção (não só resusu), desde que
+    esse client foi criado.
+  fix_commit: "ufersin:9b641a3"
+  fix_files: ["ecommerce/backend/src/main.rs"]
+  regression_test_id: "BUG-014"
+  manual_verification: null

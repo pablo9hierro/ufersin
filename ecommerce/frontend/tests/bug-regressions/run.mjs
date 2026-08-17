@@ -150,6 +150,19 @@ async function main() {
     })
   }
 
+  // ---- BUG-014: cálculo de frete (OSRM público) não pode voltar a devolver 403/"osrm route failed" ----
+  await run('BUG-014: estimate-delivery calcula frete real (OSRM não bloqueia por falta de User-Agent)', async () => {
+    const res = await fetch(`${env.baseUrl}/api/public/catalog/${env.tenant}/estimate-delivery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat: -7.1974421, lng: -34.855651 }),
+    })
+    const body = await res.json().catch(() => ({}))
+    assert(res.status === 200, `esperava 200, recebeu ${res.status} — body: ${JSON.stringify(body)} (OSRM pode estar bloqueando de novo)`)
+    assert(typeof body.price === 'number' && body.price > 0, `price inválido: ${JSON.stringify(body)}`)
+    assert(typeof body.eta_minutes === 'number', `eta_minutes ausente: ${JSON.stringify(body)}`)
+  })
+
   printSummaryAndExit()
 }
 
