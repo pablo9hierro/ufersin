@@ -86,25 +86,34 @@ export default function AdminChat() {
 
   useEffect(() => {
     loadConversations()
-    const interval = setInterval(loadConversations, 3000)
+    const interval = setInterval(loadConversations, 1500)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantSlug])
 
+  const selectedId = selected?.id ?? null
+
+  const loadMessages = (showSpinner: boolean) => {
+    if (!base || !selectedId) return
+    if (showSpinner) setLoadingMessages(true)
+    fetch(`${base}/conversations/${selectedId}/messages`)
+      .then((r) => r.json())
+      .then((data) => setMessages(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => showSpinner && setLoadingMessages(false))
+  }
+
+  // Depende só do id (não do objeto `selected` inteiro) — cada poll de
+  // `loadConversations` cria objetos novos pra mesma conversa, e reagir à
+  // referência reiniciaria o polling de mensagens sem necessidade a cada
+  // 1.5s.
   useEffect(() => {
-    if (!selected || !base) return
-    const loadMessages = (showSpinner: boolean) => {
-      if (showSpinner) setLoadingMessages(true)
-      fetch(`${base}/conversations/${selected.id}/messages`)
-        .then((r) => r.json())
-        .then((data) => setMessages(Array.isArray(data) ? data : []))
-        .catch(() => {})
-        .finally(() => showSpinner && setLoadingMessages(false))
-    }
+    if (!selectedId || !base) return
     loadMessages(true)
-    const interval = setInterval(() => loadMessages(false), 3000)
+    const interval = setInterval(() => loadMessages(false), 1500)
     return () => clearInterval(interval)
-  }, [selected, base])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, base])
 
   const toggleAssistant = async (enabled: boolean) => {
     if (!selected || !base) return
@@ -161,6 +170,10 @@ export default function AdminChat() {
       setNewChatOpen(false)
       setNewChatName('')
       setNewChatMessage('')
+      // Não espera o próximo tick do polling (até 1.5s) — busca já, e o
+      // polling normal cobre o resto caso a conversa ainda não exista no
+      // instante exato desta chamada.
+      loadConversations()
       // sendingNewChat só desliga quando loadConversations encontrar a
       // conversa de verdade (pendingPhoneRef) — evita mostrar "pronto" antes
       // dela realmente existir.
@@ -178,6 +191,10 @@ export default function AdminChat() {
     try {
       await api.admin.assistantIa.simulateMessage(selected.phone, text, selected.customer_name || undefined)
       setMessageDraft('')
+      // Mostra a própria mensagem na hora, sem esperar o próximo tick do
+      // polling (até 1.5s) — a resposta da IA continua chegando via
+      // polling normal assim que o assistant-ia terminar de processar.
+      loadMessages(false)
     } catch (err) {
       setSendError(friendlySimulateError(err, 'Não foi possível enviar a mensagem.'))
     } finally {
