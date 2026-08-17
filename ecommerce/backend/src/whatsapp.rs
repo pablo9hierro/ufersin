@@ -222,6 +222,15 @@ pub async fn connect(state: &AppState, instance: &str) -> Result<serde_json::Val
         }
     }
 
+    // Força a sessão atual (se houver) a encerrar antes de pedir um QR novo —
+    // testado ao vivo: pedir QR com a instância ainda marcada "open" (mesmo
+    // que o socket já esteja morto, ex: WhatsApp deslogou o aparelho) faz o
+    // Evolution API devolver o connect SEM nenhum QR/pairing code, porque
+    // ele acha que não precisa reconectar. Best-effort — erro aqui (ex:
+    // sessão já nem existia) não impede a tentativa de connect logo abaixo.
+    // Nunca chama /instance/delete — não apaga histórico de mensagens.
+    let _ = logout(state, instance).await;
+
     // Best-effort: point this instance's webhook at us so incoming messages
     // (customer sharing their location) reach /api/webhooks/evolution. Not
     // fatal if it fails — connecting still works, just without that feature.
@@ -294,7 +303,28 @@ pub async fn logout(state: &AppState, instance: &str) -> Result<(), crate::error
         .send()
         .await
         .map_err(|e| crate::error::AppError::Internal(format!("evolution api unreachable: {e}")))?;
-    evolution_json(resp).await.map(|_| ())
+
+    let status = resp.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+    // O socket do Baileys pode já estar morto do lado de fora (ex: o próprio
+    // WhatsApp deslogou o aparelho) — nesse caso o Evolution API não
+    // consegue fechar "educadamente" e devolve 500 "Connection Closed"/"not
+    // open" em vez de um logout normal. O resultado prático que o admin
+    // quer (sessão fora do ar) já é verdade nesse caso — testado ao vivo:
+    // era exatamente isso que fazia "Desconectar" nunca funcionar depois de
+    // um logout forçado pelo próprio WhatsApp do lado do celular.
+    let lower = body.to_string().to_lowercase();
+    let already_dead = lower.contains("connection closed")
+        || lower.contains("not open")
+        || lower.contains("no connection")
+        || lower.contains("not connected");
+    if status.as_u16() == 404 || already_dead {
+        return Ok(());
+    }
+    Err(crate::error::AppError::Internal(format!("evolution api returned {status}: {body}")))
 }
 
 /// Desliga de vez a instância Evolution (logout + delete). Usado quando o
