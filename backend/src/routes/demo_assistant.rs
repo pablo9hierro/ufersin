@@ -101,7 +101,7 @@ pub async fn message(
         .map(str::trim)
         .filter(|s| !s.is_empty() && s.len() <= 4000)
         .map(str::to_string)
-        .or_else(|| prompts::default_system_prompt(&kind).map(str::to_string))
+        .or_else(|| prompts::default_system_prompt(&kind))
         .ok_or_else(|| AppError::BadRequest("kind inválido".to_string()))?;
 
     // Últimas 12 mensagens só — limita custo por chamada independente da

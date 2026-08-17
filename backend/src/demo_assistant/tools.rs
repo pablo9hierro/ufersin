@@ -35,6 +35,46 @@ pub fn tools_for(kind: &str) -> Vec<Value> {
                     }
                 }
             }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "adicionar_ao_carrinho",
+                    "description": "Adiciona um item ao carrinho do cliente, confirmando nome e preço reais do catálogo.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "nome_produto": { "type": "string", "description": "Nome ou parte do nome do produto." },
+                            "quantidade": { "type": "integer", "description": "Quantidade desse item." }
+                        },
+                        "required": ["nome_produto", "quantidade"]
+                    }
+                }
+            }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "fechar_pedido",
+                    "description": "Fecha o pedido com os itens já confirmados, calcula o total real e gera o código Pix.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "itens": {
+                                "type": "array",
+                                "description": "Itens do carrinho já confirmados nesta conversa.",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "nome_produto": { "type": "string" },
+                                        "quantidade": { "type": "integer" }
+                                    },
+                                    "required": ["nome_produto", "quantidade"]
+                                }
+                            }
+                        },
+                        "required": ["itens"]
+                    }
+                }
+            }),
         ],
         "eletronicos" => vec![
             json!({
@@ -61,6 +101,46 @@ pub fn tools_for(kind: &str) -> Vec<Value> {
                     }
                 }
             }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "aprovar_orcamento",
+                    "description": "Aprova o orçamento de um serviço já buscado, liberando o agendamento do reparo.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": { "nome_servico": { "type": "string", "description": "Nome ou parte do nome do serviço orçado." } },
+                        "required": ["nome_servico"]
+                    }
+                }
+            }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "agendar_servico",
+                    "description": "Agenda o reparo já orçado (nome do serviço, data e horário), gerando confirmação com número da ordem.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "nome_servico": { "type": "string", "description": "Nome ou parte do nome do serviço já confirmado." },
+                            "data": { "type": "string", "description": "Data desejada, como o cliente disse (ex: amanhã, 20/08)." },
+                            "horario": { "type": "string", "description": "Horário desejado, ex: 14h." }
+                        },
+                        "required": ["nome_servico", "data", "horario"]
+                    }
+                }
+            }),
+            json!({
+                "type": "function",
+                "function": {
+                    "name": "gerar_pagamento_pix",
+                    "description": "Gera o código Pix pra pagar um serviço já orçado, com o valor real do catálogo.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": { "nome_servico": { "type": "string", "description": "Nome ou parte do nome do serviço." } },
+                        "required": ["nome_servico"]
+                    }
+                }
+            }),
         ],
         _ => vec![],
     }
@@ -68,6 +148,25 @@ pub fn tools_for(kind: &str) -> Vec<Value> {
 
 fn norm(s: &str) -> String {
     s.to_lowercase()
+}
+
+/// ID de pedido/ordem fictício desta sessão de demo — nunca colide com IDs
+/// reais (formato DEMO-XXXX/DEMO-5XXX) nem com nada persistido de verdade.
+fn fake_order_id(prefix: &str) -> String {
+    let short = uuid::Uuid::new_v4().simple().to_string()[..6].to_ascii_uppercase();
+    format!("{prefix}-{short}")
+}
+
+/// Código Pix "copia e cola" de demonstração — visualmente reconhecível
+/// como Pix (payload EMV), mas com CRC inválido de propósito: nunca é um
+/// código real, nunca deve ser escaneado/pago de verdade, mesmo que a IA
+/// (por instrução) nunca diga isso explicitamente ao cliente.
+fn fake_pix_code(order_id: &str, total: f64) -> String {
+    let amount = format!("{total:.2}");
+    let id_hash = uuid::Uuid::new_v4().simple().to_string()[..8].to_ascii_uppercase();
+    format!(
+        "00020126360014BR.GOV.BCB.PIX0114{order_id}5204000053039865802BR5913RESOLUTOO DEMO6009SAO PAULO62070503{id_hash}6304{amount}"
+    )
 }
 
 /// Casa por PALAVRA, não por substring exata na ordem digitada — testado ao
@@ -105,6 +204,45 @@ pub fn execute(kind: &str, name: &str, args: &Value) -> String {
                 None => format!("Nenhum pedido de demonstração encontrado com o ID \"{id}\"."),
             }
         }
+        ("ecommerce", "adicionar_ao_carrinho") => {
+            let nome = args.get("nome_produto").and_then(Value::as_str).unwrap_or("");
+            let qty = args.get("quantidade").and_then(Value::as_i64).unwrap_or(1).max(1);
+            match mock_data::ecommerce_products().iter().find(|p| word_match(p.name, nome)) {
+                Some(p) => format!(
+                    "Adicionado: {qty}x {} — R$ {:.2} cada, subtotal R$ {:.2}.",
+                    p.name, p.price, p.price * qty as f64
+                ),
+                None => format!("\"{nome}\" não encontrado no catálogo — não adicione, avise o cliente e pergunte outro item."),
+            }
+        }
+        ("ecommerce", "fechar_pedido") => {
+            let itens = args.get("itens").and_then(Value::as_array).cloned().unwrap_or_default();
+            let mut linhas = Vec::new();
+            let mut total = 0.0_f64;
+            let mut algum_nao_encontrado = false;
+            for item in &itens {
+                let nome = item.get("nome_produto").and_then(Value::as_str).unwrap_or("");
+                let qty = item.get("quantidade").and_then(Value::as_i64).unwrap_or(1).max(1);
+                match mock_data::ecommerce_products().iter().find(|p| word_match(p.name, nome)) {
+                    Some(p) => {
+                        let subtotal = p.price * qty as f64;
+                        total += subtotal;
+                        linhas.push(format!("{qty}x {} — R$ {:.2}", p.name, subtotal));
+                    }
+                    None => algum_nao_encontrado = true,
+                }
+            }
+            if linhas.is_empty() {
+                return "Nenhum item válido pra fechar o pedido — confirme os itens de novo.".to_string();
+            }
+            let pedido_id = fake_order_id("PED");
+            let pix = fake_pix_code(&pedido_id, total);
+            format!(
+                "Pedido {pedido_id} fechado.\n{}\nTotal: R$ {total:.2}\nCódigo Pix copia e cola: {pix}{}",
+                linhas.join("\n"),
+                if algum_nao_encontrado { "\n(um item não foi encontrado e ficou de fora do total)" } else { "" }
+            )
+        }
         ("eletronicos", "buscar_servico") => {
             let query = args.get("query").and_then(Value::as_str).unwrap_or("");
             let hits: Vec<String> = mock_data::eletronicos_services()
@@ -126,6 +264,42 @@ pub fn execute(kind: &str, name: &str, args: &Value) -> String {
             match mock_data::eletronicos_orders().iter().find(|o| o.id.eq_ignore_ascii_case(id)) {
                 Some(o) => format!("Ordem {} — {} ({}) — status: {}", o.id, o.device, o.issue, o.status),
                 None => format!("Nenhuma ordem de serviço de demonstração encontrada com o ID \"{id}\"."),
+            }
+        }
+        ("eletronicos", "aprovar_orcamento") => {
+            let nome = args.get("nome_servico").and_then(Value::as_str).unwrap_or("");
+            match mock_data::eletronicos_services().iter().find(|s| word_match(s.name, nome)) {
+                Some(s) => format!(
+                    "Orçamento aprovado: {} — R$ {:.2}. Pode seguir pra agendar o reparo.",
+                    s.name, s.price_from
+                ),
+                None => format!("\"{nome}\" não encontrado no catálogo de serviços — confirme o serviço certo com o cliente antes de aprovar."),
+            }
+        }
+        ("eletronicos", "agendar_servico") => {
+            let nome = args.get("nome_servico").and_then(Value::as_str).unwrap_or("");
+            let data = args.get("data").and_then(Value::as_str).unwrap_or("");
+            let horario = args.get("horario").and_then(Value::as_str).unwrap_or("");
+            match mock_data::eletronicos_services().iter().find(|s| word_match(s.name, nome)) {
+                Some(s) => {
+                    let ordem_id = fake_order_id("OS");
+                    format!(
+                        "Agendado: {} para {data} às {horario}. Preço: R$ {:.2}. Ordem de serviço: {ordem_id}.",
+                        s.name, s.price_from
+                    )
+                }
+                None => format!("\"{nome}\" não encontrado no catálogo de serviços — não agende, confirme o serviço certo com o cliente."),
+            }
+        }
+        ("eletronicos", "gerar_pagamento_pix") => {
+            let nome = args.get("nome_servico").and_then(Value::as_str).unwrap_or("");
+            match mock_data::eletronicos_services().iter().find(|s| word_match(s.name, nome)) {
+                Some(s) => {
+                    let ordem_id = fake_order_id("OS");
+                    let pix = fake_pix_code(&ordem_id, s.price_from);
+                    format!("Valor: R$ {:.2}. Código Pix copia e cola: {pix}", s.price_from)
+                }
+                None => format!("\"{nome}\" não encontrado no catálogo de serviços — não gere pagamento, confirme o serviço certo com o cliente."),
             }
         }
         _ => format!("Ferramenta desconhecida: {name}"),

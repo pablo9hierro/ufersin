@@ -5,6 +5,14 @@
 
 use serde::Serialize;
 
+/// Links sugeridos nas respostas da demo — de propósito, NÃO são tenants
+/// reais (isso já foi cogitado e descartado): apontam pro fluxo de demo
+/// mockada que já existe (Demo.tsx/DemoPlano.tsx/DemoPlanoEletronica.tsx),
+/// caminho relativo (mesma origem do site em qualquer ambiente, local ou
+/// produção).
+pub const ECOMMERCE_STOREFRONT_URL: &str = "/demo/essential";
+pub const ELETRONICOS_STOREFRONT_URL: &str = "/demo/eletronica/essential";
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DemoProduct {
     pub name: &'static str,

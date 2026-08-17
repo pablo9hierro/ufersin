@@ -205,8 +205,9 @@ async fn run_turn(
     messages.push(json!({ "role": "user", "content": user_message }));
 
     let reasoning = is_reasoning_model(&model.model);
+    const MAX_ROUNDS: usize = 6;
     let mut tool_calls_used = 0usize;
-    for _round in 0..5 {
+    for round in 0..MAX_ROUNDS {
         let mut body = if reasoning {
             // Reasoning tokens saem do mesmo orçamento de max_completion_tokens
             // (invisíveis em `content`) — 800 dá folga real pra resposta de
@@ -215,7 +216,13 @@ async fn run_turn(
         } else {
             json!({ "messages": messages, "max_completion_tokens": 500, "temperature": 0.3 })
         };
-        if !tools.is_empty() {
+        // Última rodada: nunca oferece tools de novo — força uma resposta em
+        // texto de verdade em vez de deixar o loop esgotar e cair na
+        // mensagem engessada "não consegui processar" (testado ao vivo: o
+        // modelo às vezes insiste em tool_calls indefinidamente quando o
+        // pedido do cliente não cabe em nenhuma ferramenta disponível).
+        let is_last_round = round == MAX_ROUNDS - 1;
+        if !tools.is_empty() && !is_last_round {
             body["tools"] = json!(tools);
         }
 
@@ -243,9 +250,17 @@ async fn run_turn(
             continue;
         }
 
-        let reply = choice["content"].as_str().unwrap_or("").to_string();
-        return Ok(ChatResult { reply, tool_calls_used });
+        let reply = choice["content"].as_str().unwrap_or("").trim().to_string();
+        if !reply.is_empty() {
+            return Ok(ChatResult { reply, tool_calls_used });
+        }
+        if is_last_round {
+            break;
+        }
     }
 
-    Ok(ChatResult { reply: "Não consegui processar sua pergunta agora, tente reformular.".to_string(), tool_calls_used })
+    Ok(ChatResult {
+        reply: "Desculpa, pode repetir de outro jeito? Não entendi direito.".to_string(),
+        tool_calls_used,
+    })
 }
