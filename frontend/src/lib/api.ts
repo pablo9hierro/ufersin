@@ -168,7 +168,7 @@ export interface SuperadminCoupon {
 export interface SuperadminAiEngine {
   id: string
   label: string
-  provider: 'anthropic' | 'openai' | 'openrouter'
+  provider: 'openai' | 'openrouter'
   model: string
   priority: number
   enabled: boolean
@@ -477,7 +477,7 @@ export const api = {
   // Motores de IA da plataforma — proxy pro assistant-ia (ver
   // ufersin/backend/src/routes/assistant_ia.rs, seção "Motores de IA").
   superadminAiEngines: () => request<SuperadminAiEngine[]>('/api/superadmin/ai-engines'),
-  superadminCreateAiEngine: (body: { label: string; provider: 'anthropic' | 'openai' | 'openrouter'; model: string }) =>
+  superadminCreateAiEngine: (body: { label: string; provider: 'openai' | 'openrouter'; model: string }) =>
     request<SuperadminAiEngine>('/api/superadmin/ai-engines', { method: 'POST', body: JSON.stringify(body) }),
   superadminUpdateAiEngine: (id: string, body: Partial<{ label: string; model: string; enabled: boolean }>) =>
     request<SuperadminAiEngine>(`/api/superadmin/ai-engines/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

@@ -103,7 +103,7 @@ export default function Dashboard() {
 
   const [aiEngines, setAiEngines] = useState<SuperadminAiEngine[]>([])
   const [newEngineLabel, setNewEngineLabel] = useState('')
-  const [newEngineProvider, setNewEngineProvider] = useState<'anthropic' | 'openai' | 'openrouter'>('openrouter')
+  const [newEngineProvider, setNewEngineProvider] = useState<'openai' | 'openrouter'>('openrouter')
   const [newEngineModel, setNewEngineModel] = useState('')
 
   const [coupons, setCoupons] = useState<SuperadminCoupon[]>([])
@@ -918,9 +918,8 @@ export default function Dashboard() {
                     <select
                       className="input-field"
                       value={newEngineProvider}
-                      onChange={(e) => setNewEngineProvider(e.target.value as 'anthropic' | 'openai' | 'openrouter')}
+                      onChange={(e) => setNewEngineProvider(e.target.value as 'openai' | 'openrouter')}
                     >
-                      <option value="anthropic">Anthropic</option>
                       <option value="openai">OpenAI</option>
                       <option value="openrouter">OpenRouter</option>
                     </select>
