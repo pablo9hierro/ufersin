@@ -379,21 +379,28 @@ pub async fn send_to_assistant_ia(
     tenant_slug: &str,
     instance: &str,
     phone: &str,
-    text: &str,
+    text: Option<&str>,
+    audio: Option<(&str, &str)>, // (base64, mimetype) — mensagem de voz, transcrita do lado do assistant-ia
     customer_name: Option<&str>,
     simulated: bool,
 ) -> anyhow::Result<()> {
     let assistant_ia_url = std::env::var("ASSISTANT_IA_URL")
         .map_err(|_| anyhow::anyhow!("ASSISTANT_IA_URL not configured"))?;
+    let (audio_base64, audio_mimetype) = match audio {
+        Some((b64, mime)) => (Some(b64), Some(mime)),
+        None => (None, None),
+    };
     let resp = state
         .http
         .post(format!("{}/webhook/evolution", assistant_ia_url.trim_end_matches('/')))
-        .timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(20))
         .json(&serde_json::json!({
             "tenant_slug": tenant_slug,
             "instance": instance,
             "phone": phone,
             "text": text,
+            "audio_base64": audio_base64,
+            "audio_mimetype": audio_mimetype,
             "customer_name": customer_name,
             "simulated": simulated,
         }))
@@ -406,13 +413,13 @@ pub async fn send_to_assistant_ia(
     Ok(())
 }
 
-/// Encaminha mensagens de texto recebidas pra o módulo isolado de
-/// Assistente IA (repositório separado `a-vrtek-gente`), quando
+/// Encaminha mensagens de texto (ou áudio) recebidas pra o módulo isolado
+/// de Assistente IA (repositório separado `a-vrtek-gente`), quando
 /// `ASSISTANT_IA_URL` estiver configurada — sem alterar em nada o
 /// processamento normal do webhook da Evolution acima. Fire-and-forget:
 /// nunca bloqueia nem falha esse handler, só loga+ignora qualquer erro.
-/// Só repassa mensagem de texto de cliente (ignora mensagens enviadas pela
-/// própria loja e mensagens sem texto, como localização/mídia).
+/// Ignora mensagens enviadas pela própria loja e mensagens sem texto/áudio
+/// (imagem, sticker, documento, etc — ainda não suportado).
 fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, data: &Value, message: &Value) {
     if std::env::var("ASSISTANT_IA_URL").is_err() {
         tracing::info!("assistant-ia forward: ASSISTANT_IA_URL not set, skipping");
@@ -456,10 +463,27 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
         .as_deref()
         .or_else(|| message.get("conversation").and_then(|v| v.as_str()))
         .or_else(|| message.get("extendedTextMessage").and_then(|m| m.get("text")).and_then(|v| v.as_str()));
-    let Some(text) = text else {
-        tracing::info!("assistant-ia forward: skipping, no text field in message: {message}");
-        return;
+
+    // Mensagem de voz ("ptt") ou áudio comum — sem texto extraível aqui, mas
+    // dá pra baixar o conteúdo (base64) da Evolution API e mandar pro
+    // assistant-ia transcrever (GPT com fallback Gemini) antes de entrar no
+    // pipeline normal, como se fosse uma mensagem de texto qualquer.
+    let audio_key = if text.is_none() {
+        message.get("audioMessage").map(|_| data.get("key").cloned().unwrap_or(Value::Null))
+    } else {
+        None
     };
+    let audio_mimetype_hint = message
+        .get("audioMessage")
+        .and_then(|a| a.get("mimetype"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    if text.is_none() && audio_key.is_none() {
+        tracing::info!("assistant-ia forward: skipping, no text/audio field in message: {message}");
+        return;
+    }
+
     let remote_jid = data
         .get("key")
         .and_then(|k| k.get("remoteJid"))
@@ -476,14 +500,27 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
     let state = state.clone();
     let tenant_id = tenant_id.to_string();
     let instance = instance.to_string();
-    let text = text.to_string();
+    let text = text.map(str::to_string);
     tokio::spawn(async move {
+        let mut audio: Option<(String, String)> = None;
+        if let Some(key) = audio_key {
+            match crate::whatsapp::get_base64_media(&state, &instance, &key).await {
+                Ok((base64, mimetype_from_evolution)) => {
+                    audio = Some((base64, audio_mimetype_hint.unwrap_or(mimetype_from_evolution)))
+                }
+                Err(e) => {
+                    tracing::warn!("assistant-ia forward: falha ao baixar áudio da evolution api (ignorado): {e:?}");
+                    return;
+                }
+            }
+        }
         let result = send_to_assistant_ia(
             &state,
             &tenant_id,
             &instance,
             &phone,
-            &text,
+            text.as_deref(),
+            audio.as_ref().map(|(b64, mime)| (b64.as_str(), mime.as_str())),
             customer_name.as_deref(),
             false,
         )

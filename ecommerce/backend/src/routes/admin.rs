@@ -1909,7 +1909,8 @@ pub async fn simulate_assistant_ia_message(
         &slug,
         &store.whatsapp_instance,
         phone,
-        text,
+        Some(text),
+        None,
         input.customer_name.as_deref(),
         true,
     )

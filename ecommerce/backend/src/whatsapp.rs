@@ -120,6 +120,45 @@ async fn evolution_json(
     Ok(body)
 }
 
+/// Baixa o conteúdo de uma mídia recebida (áudio, imagem, etc) como base64,
+/// dado o `key` da mensagem original (vem de `data.key` no payload do
+/// webhook). Não usa o `webhook_base64` do próprio Evolution API pra isso —
+/// esse flag tem histórico de instabilidade em várias versões (não ativa
+/// consistentemente), então preferimos buscar sob demanda aqui, só quando
+/// realmente precisamos (mensagem de áudio pra transcrição).
+/// Retorna (base64, mimetype).
+pub async fn get_base64_media(
+    state: &AppState,
+    instance: &str,
+    message_key: &serde_json::Value,
+) -> Result<(String, String), crate::error::AppError> {
+    require_configured(state)?;
+    let resp = state
+        .http
+        .post(format!(
+            "{}/chat/getBase64FromMediaMessage/{instance}",
+            state.evolution_api_url.trim_end_matches('/')
+        ))
+        .timeout(Duration::from_secs(20))
+        .header("apikey", state.evolution_api_key.as_str())
+        .json(&json!({ "message": { "key": message_key } }))
+        .send()
+        .await
+        .map_err(|e| crate::error::AppError::Internal(format!("evolution api unreachable: {e}")))?;
+    let body = evolution_json(resp).await?;
+    let base64 = body
+        .get("base64")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| crate::error::AppError::Internal("evolution api: resposta sem campo base64".to_string()))?
+        .to_string();
+    let mimetype = body
+        .get("mimetype")
+        .and_then(|v| v.as_str())
+        .unwrap_or("audio/ogg")
+        .to_string();
+    Ok((base64, mimetype))
+}
+
 /// Current connection state of the given instance
 /// (`{"instance": {"instanceName": "...", "state": "open"|"connecting"|"close"}}`,
 /// exact shape depends on the Evolution API version).
