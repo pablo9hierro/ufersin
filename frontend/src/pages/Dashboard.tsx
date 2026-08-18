@@ -3,10 +3,12 @@ import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react
 import { motion } from 'framer-motion'
 import {
   BarChart3,
+  Bot,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   CreditCard,
   LayoutTemplate,
   Loader2,
@@ -24,6 +26,7 @@ import {
   ApiError,
   type PlatformContentItem,
   type PlatformPlan,
+  type SuperadminAiEngine,
   type SuperadminCost,
   type SuperadminCoupon,
   type SuperadminOverview,
@@ -35,7 +38,7 @@ import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, invalidatePlansCache } from '../lib/plans'
 import LayoutCmsEditor, { defaultPlansSeed } from '../components/cms/LayoutCmsEditor'
 
-type Section = 'relatorios' | 'lojas' | 'layout' | 'cupons' | 'financeiro'
+type Section = 'relatorios' | 'lojas' | 'layout' | 'cupons' | 'financeiro' | 'ia'
 
 const NAV: { id: Section; label: string; icon: typeof BarChart3; path: string }[] = [
   { id: 'relatorios', label: 'Relatórios', icon: BarChart3, path: '/dashboard' },
@@ -43,6 +46,7 @@ const NAV: { id: Section; label: string; icon: typeof BarChart3; path: string }[
   { id: 'layout', label: 'Layout', icon: LayoutTemplate, path: '/layout' },
   { id: 'cupons', label: 'Cupons', icon: Tag, path: '/cupons' },
   { id: 'financeiro', label: 'Financeiro', icon: CreditCard, path: '/financeiro' },
+  { id: 'ia', label: 'Motores de IA', icon: Bot, path: '/motores-ia' },
 ]
 
 const PATH_TO_SECTION: Record<string, Section> = {
@@ -51,6 +55,7 @@ const PATH_TO_SECTION: Record<string, Section> = {
   '/layout': 'layout',
   '/cupons': 'cupons',
   '/financeiro': 'financeiro',
+  '/motores-ia': 'ia',
 }
 
 const SECTION_PATH: Record<Section, string> = {
@@ -59,6 +64,7 @@ const SECTION_PATH: Record<Section, string> = {
   layout: '/layout',
   cupons: '/cupons',
   financeiro: '/financeiro',
+  ia: '/motores-ia',
 }
 
 export default function Dashboard() {
@@ -94,6 +100,11 @@ export default function Dashboard() {
   const [contentMap, setContentMap] = useState<Record<string, string>>({ ...CONTENT_DEFAULTS })
   const [plans, setPlans] = useState<PlatformPlan[]>([])
   const [planPrices, setPlanPrices] = useState<Record<string, string>>({})
+
+  const [aiEngines, setAiEngines] = useState<SuperadminAiEngine[]>([])
+  const [newEngineLabel, setNewEngineLabel] = useState('')
+  const [newEngineProvider, setNewEngineProvider] = useState<'anthropic' | 'openai' | 'openrouter'>('openrouter')
+  const [newEngineModel, setNewEngineModel] = useState('')
 
   const [coupons, setCoupons] = useState<SuperadminCoupon[]>([])
   const [couponForm, setCouponForm] = useState({
@@ -198,6 +209,10 @@ export default function Dashboard() {
     setCoupons(await api.superadminCoupons())
   }, [])
 
+  const loadAiEngines = useCallback(async () => {
+    setAiEngines(await api.superadminAiEngines())
+  }, [])
+
   const handleConnectMp = async () => {
     setError(null)
     setMpConnecting(true)
@@ -235,9 +250,11 @@ export default function Dashboard() {
             ? loadLayout
             : section === 'financeiro'
               ? loadFinanceiro
-              : loadCupons
+              : section === 'ia'
+                ? loadAiEngines
+                : loadCupons
     load().catch((e) => setError(e instanceof ApiError ? e.message : 'Erro ao carregar dados.'))
-  }, [guard, section, loadRelatorios, loadLojas, loadLayout, loadFinanceiro, loadCupons])
+  }, [guard, section, loadRelatorios, loadLojas, loadLayout, loadFinanceiro, loadAiEngines, loadCupons])
 
   if (!ready) {
     return (
@@ -289,6 +306,70 @@ export default function Dashboard() {
       await loadRelatorios()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Erro ao criar custo.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleCreateAiEngine = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newEngineLabel.trim() || !newEngineModel.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.superadminCreateAiEngine({ label: newEngineLabel.trim(), provider: newEngineProvider, model: newEngineModel.trim() })
+      setNewEngineLabel('')
+      setNewEngineModel('')
+      await loadAiEngines()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao criar motor de IA.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleToggleAiEngine = async (id: string, enabled: boolean) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.superadminUpdateAiEngine(id, { enabled })
+      await loadAiEngines()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao atualizar motor de IA.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDeleteAiEngine = async (id: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.superadminDeleteAiEngine(id)
+      await loadAiEngines()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao remover motor de IA.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Sobe/desce o motor no ranking — troca de posição com o vizinho e manda a lista inteira reordenada. */
+  const handleMoveAiEngine = async (id: string, direction: 'up' | 'down') => {
+    const idx = aiEngines.findIndex((e) => e.id === id)
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1
+    if (idx < 0 || swapWith < 0 || swapWith >= aiEngines.length) return
+    const reordered = [...aiEngines]
+    ;[reordered[idx], reordered[swapWith]] = [reordered[swapWith], reordered[idx]]
+    setAiEngines(reordered) // otimista — evita esperar round-trip só pra ver a lista mexer
+    setBusy(true)
+    setError(null)
+    try {
+      await api.superadminReorderAiEngines(reordered.map((e) => e.id))
+      await loadAiEngines()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao reordenar motores de IA.')
+      await loadAiEngines().catch(() => {})
     } finally {
       setBusy(false)
     }
@@ -750,6 +831,114 @@ export default function Dashboard() {
                     </button>
                   </div>
                 )}
+                {error && <p className="error-msg mt-3">{error}</p>}
+              </section>
+            </motion.div>
+          )}
+
+          {section === 'ia' && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              <section className="uf-glass rounded-2xl p-5">
+                <h2 className="font-bold text-sm mb-1">Ranking de motores de IA</h2>
+                <p className="text-xs text-uf-silver-dim mb-4">
+                  Vale pra TODAS as assistentes de IA, de qualquer loja/ramo — não é configuração por tenant. O motor
+                  no topo (#1) responde primeiro; se ele cair ou não responder, cai automaticamente pro próximo
+                  habilitado da lista, sem o cliente perceber. Use as setas pra promover um motor a padrão.
+                </p>
+                <ul className="space-y-2 mb-4">
+                  {aiEngines.map((eng, idx) => (
+                    <li
+                      key={eng.id}
+                      className={`flex items-center gap-3 rounded-xl border p-3 ${
+                        idx === 0 ? 'border-uf-blue/40 bg-uf-blue/5' : 'border-white/10'
+                      } ${!eng.enabled ? 'opacity-50' : ''}`}
+                    >
+                      <div className="flex flex-col gap-0.5 shrink-0">
+                        <button
+                          type="button"
+                          disabled={busy || idx === 0}
+                          onClick={() => handleMoveAiEngine(eng.id, 'up')}
+                          className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20"
+                          aria-label="Subir no ranking"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy || idx === aiEngines.length - 1}
+                          onClick={() => handleMoveAiEngine(eng.id, 'down')}
+                          className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20"
+                          aria-label="Descer no ranking"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <span className="text-xs font-mono text-uf-silver-dim w-5 text-center shrink-0">#{idx + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate">
+                          {eng.label} {idx === 0 && <span className="text-[10px] text-uf-blue ml-1">PADRÃO ATUAL</span>}
+                        </p>
+                        <p className="text-xs text-uf-silver-dim truncate">
+                          {eng.provider} · {eng.model}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => handleToggleAiEngine(eng.id, !eng.enabled)}
+                        className="text-xs px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 shrink-0"
+                      >
+                        {eng.enabled ? 'Habilitado' : 'Desabilitado'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => handleDeleteAiEngine(eng.id)}
+                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400/80 hover:text-red-400 shrink-0"
+                        aria-label="Remover motor"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                  {aiEngines.length === 0 && <li className="text-sm text-uf-silver-dim">Nenhum motor cadastrado.</li>}
+                </ul>
+                <form onSubmit={handleCreateAiEngine} className="flex flex-wrap gap-2 items-end">
+                  <div className="flex-1 min-w-[140px]">
+                    <label className="label text-xs">Nome</label>
+                    <input
+                      className="input-field"
+                      placeholder="Ex: GPT-5.4 Nano"
+                      value={newEngineLabel}
+                      onChange={(e) => setNewEngineLabel(e.target.value)}
+                    />
+                  </div>
+                  <div className="w-36">
+                    <label className="label text-xs">Provedor</label>
+                    <select
+                      className="input-field"
+                      value={newEngineProvider}
+                      onChange={(e) => setNewEngineProvider(e.target.value as 'anthropic' | 'openai' | 'openrouter')}
+                    >
+                      <option value="anthropic">Anthropic</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-[160px]">
+                    <label className="label text-xs">Model id</label>
+                    <input
+                      className="input-field"
+                      placeholder="Ex: openai/gpt-5.4-nano"
+                      value={newEngineModel}
+                      onChange={(e) => setNewEngineModel(e.target.value)}
+                    />
+                  </div>
+                  <button type="submit" disabled={busy} className="btn-primary px-4 py-2.5 text-sm">
+                    <Plus className="w-4 h-4" />
+                    Adicionar
+                  </button>
+                </form>
                 {error && <p className="error-msg mt-3">{error}</p>}
               </section>
             </motion.div>

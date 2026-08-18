@@ -164,6 +164,16 @@ export interface SuperadminCoupon {
   notes: string
 }
 
+/** Motor de IA da plataforma, em ranking de fallback (priority=1 é tentado primeiro por TODAS as assistentes). */
+export interface SuperadminAiEngine {
+  id: string
+  label: string
+  provider: 'anthropic' | 'openai' | 'openrouter'
+  model: string
+  priority: number
+  enabled: boolean
+}
+
 export interface StatusAssinatura {
   /** Runtime may still send EN variants (canceled/cancelled/paused); MeuPlano normalizes. */
   status: string
@@ -463,6 +473,18 @@ export const api = {
   ) => request<{ id: string }>(`/api/superadmin/coupons/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   superadminDeleteCoupon: (id: string) =>
     request<void>(`/api/superadmin/coupons/${id}`, { method: 'DELETE' }),
+
+  // Motores de IA da plataforma — proxy pro assistant-ia (ver
+  // ufersin/backend/src/routes/assistant_ia.rs, seção "Motores de IA").
+  superadminAiEngines: () => request<SuperadminAiEngine[]>('/api/superadmin/ai-engines'),
+  superadminCreateAiEngine: (body: { label: string; provider: 'anthropic' | 'openai' | 'openrouter'; model: string }) =>
+    request<SuperadminAiEngine>('/api/superadmin/ai-engines', { method: 'POST', body: JSON.stringify(body) }),
+  superadminUpdateAiEngine: (id: string, body: Partial<{ label: string; model: string; enabled: boolean }>) =>
+    request<SuperadminAiEngine>(`/api/superadmin/ai-engines/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  superadminDeleteAiEngine: (id: string) => request<void>(`/api/superadmin/ai-engines/${id}`, { method: 'DELETE' }),
+  /** `ids` na ordem de prioridade desejada — índice 0 vira o novo motor padrão (topo do ranking). */
+  superadminReorderAiEngines: (ids: string[]) =>
+    request<SuperadminAiEngine[]>('/api/superadmin/ai-engines/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
 
   me: () => request<MeResponse>('/api/me'),
   uploadLogo: (file: File) => {

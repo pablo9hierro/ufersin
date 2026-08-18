@@ -273,6 +273,15 @@ async fn main() -> anyhow::Result<()> {
             "/api/superadmin/coupons/{id}",
             put(routes::superadmin::update_coupon).delete(routes::superadmin::delete_coupon),
         )
+        .route(
+            "/api/superadmin/ai-engines",
+            get(routes::assistant_ia::list_ai_engines).post(routes::assistant_ia::create_ai_engine),
+        )
+        .route("/api/superadmin/ai-engines/order", put(routes::assistant_ia::reorder_ai_engines))
+        .route(
+            "/api/superadmin/ai-engines/{id}",
+            put(routes::assistant_ia::update_ai_engine).delete(routes::assistant_ia::delete_ai_engine),
+        )
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
