@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import { validate, validateList } from '../validate'
 import {
   AppointmentSchema,
+  MessageTemplateSchema,
   BadgesSettingsSchema,
   BgSettingsSchema,
   CategorySchema,
@@ -160,6 +161,11 @@ export const adminEndpoint = {
     get: async () => validate(ShippingSettingsSchema, await api.admin.shippingSettings.get(), 'admin.shippingSettings.get'),
     update: async (pricePerKm: number, maxKm: number | null) =>
       validate(ShippingSettingsSchema, await api.admin.shippingSettings.update(pricePerKm, maxKm), 'admin.shippingSettings.update'),
+  },
+  messageTemplates: {
+    list: async () => validateList(MessageTemplateSchema, await api.admin.messageTemplates.list(), 'admin.messageTemplates.list'),
+    save: async (key: string, payload: { body: string; enabled: boolean; trigger_delay_minutes: number }) =>
+      validate(MessageTemplateSchema, await api.admin.messageTemplates.save(key, payload), 'admin.messageTemplates.save'),
   },
   appointments: {
     list: async () => validateList(AppointmentSchema, await api.admin.appointments.list(), 'admin.appointments.list'),

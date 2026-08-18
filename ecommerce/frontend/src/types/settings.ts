@@ -106,6 +106,16 @@ export const AppointmentSchema = z.object({
 })
 export type Appointment = z.infer<typeof AppointmentSchema>
 
+// Template de mensagem automática editável em /admin/template — até então
+// todo texto de WhatsApp mandado ao cliente era hardcoded no backend Rust.
+export const MessageTemplateSchema = z.object({
+  template_key: z.string(),
+  body: z.string(),
+  enabled: z.boolean(),
+  trigger_delay_minutes: z.number(),
+})
+export type MessageTemplate = z.infer<typeof MessageTemplateSchema>
+
 export const ShippingEstimateSchema = z.object({
   km: z.number(),
   price: z.number(),

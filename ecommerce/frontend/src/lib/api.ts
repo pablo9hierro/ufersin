@@ -28,6 +28,7 @@ import type {
   Ingredient,
   IngredientPayload,
   Appointment,
+  MessageTemplate,
   Service,
   ServicePayload,
   LucroSummary,
@@ -999,6 +1000,14 @@ const remoteApi = {
               p_price_per_km: pricePerKm,
               p_max_km: maxKm,
             }),
+    },
+    messageTemplates: {
+      list: () => railwayAdmin<MessageTemplate[]>('/api/admin/message-templates'),
+      save: (key: string, payload: { body: string; enabled: boolean; trigger_delay_minutes: number }) =>
+        railwayAdmin<MessageTemplate>(`/api/admin/message-templates/${key}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
     },
     appointments: {
       list: () => railwayAdmin<Appointment[]>('/api/admin/appointments'),

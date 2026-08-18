@@ -1,3 +1,4 @@
+mod appointment_reminders;
 mod auth;
 mod cancel;
 mod error;
@@ -476,6 +477,11 @@ async fn main() -> anyhow::Result<()> {
             get(routes::admin::get_shipping_settings)
                 .put(routes::admin::update_shipping_settings),
         )
+        .route("/api/admin/message-templates", get(routes::admin::list_message_templates))
+        .route(
+            "/api/admin/message-templates/{key}",
+            put(routes::admin::upsert_message_template),
+        )
         .route("/api/admin/appointments", get(routes::admin::list_appointments))
         .route(
             "/api/admin/appointments/{id}/cancel",
@@ -540,12 +546,16 @@ async fn main() -> anyhow::Result<()> {
         // (foto de marketing em boa resolução passa disso fácil, mesmo que a
         // foto de produto raramente passasse). 10MB cobre com folga.
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
-        .with_state(state);
+        .with_state(state.clone());
 
     // Bind to 0.0.0.0 so this also works inside a container (Railway etc, which
     // injects PORT); locally it's still reachable at http://localhost:<port>.
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{port}");
+    // Worker de disparo por atraso em agendamento (um tick por minuto,
+    // cross-tenant) — ver appointment_reminders.rs.
+    appointment_reminders::spawn(state);
+
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("sonset_backend listening on http://{addr}");
     axum::serve(listener, app).await?;

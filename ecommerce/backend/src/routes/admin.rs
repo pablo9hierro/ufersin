@@ -1913,6 +1913,7 @@ pub async fn simulate_assistant_ia_message(
         None,
         input.customer_name.as_deref(),
         true,
+        false,
     )
     .await
     .map_err(|e| AppError::Internal(format!("assistant-ia indisponível: {e}")))?;
@@ -2297,6 +2298,97 @@ pub async fn update_shipping_settings(
     Ok(Json(ShippingSettingsDto {
         price_per_km: body.price_per_km,
         max_km: body.max_km,
+    }))
+}
+
+// ---------- Templates de mensagem automática (/admin/template) ----------
+
+#[derive(Debug, serde::Serialize)]
+pub struct MessageTemplateDto {
+    pub template_key: String,
+    pub body: String,
+    pub enabled: bool,
+    pub trigger_delay_minutes: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpsertMessageTemplateInput {
+    pub body: String,
+    pub enabled: bool,
+    pub trigger_delay_minutes: i32,
+}
+
+pub async fn list_message_templates(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<MessageTemplateDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<(String, String, bool, i32)> = sqlx::query_as(
+        "SELECT template_key, body, enabled, trigger_delay_minutes FROM message_templates          WHERE tenant_id = $1 ORDER BY template_key",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let mut out: Vec<MessageTemplateDto> = rows
+        .into_iter()
+        .map(|(template_key, body, enabled, trigger_delay_minutes)| MessageTemplateDto {
+            template_key,
+            body,
+            enabled,
+            trigger_delay_minutes,
+        })
+        .collect();
+
+    // A loja que nunca abriu essa tela não tem linha nenhuma no banco — devolve
+    // o template de atraso com o texto padrão (desligado) pra tela ter o que
+    // mostrar sem precisar de seed por tenant.
+    if !out.iter().any(|t| t.template_key == crate::appointment_reminders::LATE_TEMPLATE_KEY) {
+        out.push(MessageTemplateDto {
+            template_key: crate::appointment_reminders::LATE_TEMPLATE_KEY.to_string(),
+            body: crate::appointment_reminders::DEFAULT_LATE_TEMPLATE.to_string(),
+            enabled: false,
+            trigger_delay_minutes: 15,
+        });
+    }
+    Ok(Json(out))
+}
+
+pub async fn upsert_message_template(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(template_key): Path<String>,
+    Json(body): Json<UpsertMessageTemplateInput>,
+) -> Result<Json<MessageTemplateDto>, AppError> {
+    if body.body.trim().is_empty() {
+        return Err(AppError::BadRequest("o texto da mensagem não pode ficar vazio".to_string()));
+    }
+    // Limite de baixo: 0 significaria disparar no exato minuto do horário
+    // marcado, sem tolerância nenhuma. Limite de cima evita um disparo
+    // "esquecido" chegando dias depois.
+    if body.trigger_delay_minutes < 1 || body.trigger_delay_minutes > 1440 {
+        return Err(AppError::BadRequest(
+            "a tolerância de atraso deve ficar entre 1 e 1440 minutos".to_string(),
+        ));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let row: (String, String, bool, i32) = sqlx::query_as(
+        "INSERT INTO message_templates (tenant_id, template_key, body, enabled, trigger_delay_minutes, updated_at)          VALUES ($1, $2, $3, $4, $5, now())          ON CONFLICT (tenant_id, template_key) DO UPDATE SET            body = EXCLUDED.body,            enabled = EXCLUDED.enabled,            trigger_delay_minutes = EXCLUDED.trigger_delay_minutes,            updated_at = now()          RETURNING template_key, body, enabled, trigger_delay_minutes",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&template_key)
+    .bind(body.body.trim())
+    .bind(body.enabled)
+    .bind(body.trigger_delay_minutes)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(MessageTemplateDto {
+        template_key: row.0,
+        body: row.1,
+        enabled: row.2,
+        trigger_delay_minutes: row.3,
     }))
 }
 

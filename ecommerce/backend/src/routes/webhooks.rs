@@ -383,6 +383,10 @@ pub async fn send_to_assistant_ia(
     audio: Option<(&str, &str)>, // (base64, mimetype) — mensagem de voz, transcrita do lado do assistant-ia
     customer_name: Option<&str>,
     simulated: bool,
+    // true = mensagem escrita pela PRÓPRIA loja (lojista respondendo na mão
+    // pelo WhatsApp dele). O assistant-ia grava no histórico como
+    // sender_type=humano e NÃO aciona a IA.
+    from_lojista: bool,
 ) -> anyhow::Result<()> {
     let assistant_ia_url = std::env::var("ASSISTANT_IA_URL")
         .map_err(|_| anyhow::anyhow!("ASSISTANT_IA_URL not configured"))?;
@@ -403,6 +407,7 @@ pub async fn send_to_assistant_ia(
             "audio_mimetype": audio_mimetype,
             "customer_name": customer_name,
             "simulated": simulated,
+            "from_lojista": from_lojista,
         }))
         .send()
         .await?;
@@ -418,22 +423,24 @@ pub async fn send_to_assistant_ia(
 /// `ASSISTANT_IA_URL` estiver configurada — sem alterar em nada o
 /// processamento normal do webhook da Evolution acima. Fire-and-forget:
 /// nunca bloqueia nem falha esse handler, só loga+ignora qualquer erro.
-/// Ignora mensagens enviadas pela própria loja e mensagens sem texto/áudio
-/// (imagem, sticker, documento, etc — ainda não suportado).
+/// Mensagem enviada pela PRÓPRIA loja (fromMe) também é encaminhada, com
+/// `from_lojista: true` — o assistant-ia grava no histórico como
+/// `sender_type=humano` SEM acionar a IA. Isso mantém o contexto da
+/// conversa completo mesmo quando o lojista assume o atendimento na mão
+/// (checkbox "interromper IA" em /admin/chat, ou simplesmente respondendo
+/// pelo WhatsApp dele): se a IA for reativada depois, ela enxerga tudo que
+/// foi combinado nesse meio-tempo. Mensagens sem texto/áudio (imagem,
+/// sticker, documento) continuam ignoradas.
 fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, data: &Value, message: &Value) {
     if std::env::var("ASSISTANT_IA_URL").is_err() {
         tracing::info!("assistant-ia forward: ASSISTANT_IA_URL not set, skipping");
         return;
     }
-    let from_me = data
+    let from_lojista = data
         .get("key")
         .and_then(|k| k.get("fromMe"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    if from_me {
-        tracing::info!("assistant-ia forward: skipping, fromMe=true");
-        return;
-    }
     // JID de grupo termina em "@g.us" (contatos 1:1 terminam em
     // "@s.whatsapp.net") — a assistente é uma vendedora/atendente de
     // cliente individual, nunca deve responder dentro de um grupo.
@@ -468,7 +475,9 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
     // dá pra baixar o conteúdo (base64) da Evolution API e mandar pro
     // assistant-ia transcrever (GPT com fallback Gemini) antes de entrar no
     // pipeline normal, como se fosse uma mensagem de texto qualquer.
-    let audio_key = if text.is_none() {
+    // Áudio do PRÓPRIO lojista não é transcrito: transcrição custa chamada de
+    // API e o ganho seria só registrar no histórico o que ele mesmo falou.
+    let audio_key = if text.is_none() && !from_lojista {
         message.get("audioMessage").map(|_| data.get("key").cloned().unwrap_or(Value::Null))
     } else {
         None
@@ -523,6 +532,7 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
             audio.as_ref().map(|(b64, mime)| (b64.as_str(), mime.as_str())),
             customer_name.as_deref(),
             false,
+            from_lojista,
         )
         .await;
         match result {

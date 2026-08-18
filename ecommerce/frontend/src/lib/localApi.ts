@@ -3018,6 +3018,12 @@ export const localApi = {
     },
     shippingSettings: { get: getShippingSettings, update: updateShippingSettings },
     appointments: { list: async () => [], cancel: async () => {} },
+    messageTemplates: {
+      list: async () => [],
+      save: async () => {
+        throw new ApiError(400, 'Templates de mensagem exigem o backend real.')
+      },
+    },
     siteSettings: { updateHeroImage, updateBackground, updateSmoke: updateSmokeSettings, updateBadges, updateCarouselStyle },
     storeStatus: { get: getStoreStatus, setHours: setStoreHours, setManualStatus: setStoreManualStatus },
     financeiro: { get: financeiro, timeseries: financeiroTimeseries, lucro: financeiroLucro },
