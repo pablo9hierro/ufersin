@@ -120,6 +120,16 @@ pub fn build() -> OpenApi {
         ("/api/superadmin/coupons", Post, "Criar cupom", "Superadmin", true, true),
         ("/api/superadmin/coupons/{id}", Put, "Atualizar cupom", "Superadmin", true, true),
         ("/api/superadmin/coupons/{id}", Delete, "Excluir cupom", "Superadmin", true, false),
+        ("/api/me/assistant-ia/config", Get, "Configuração da Assistente IA da loja", "Assistente IA", true, false),
+        ("/api/me/assistant-ia/config", Put, "Salvar configuração da Assistente IA", "Assistente IA", true, true),
+        ("/api/me/assistant-ia/rag/documents", Get, "Listar exemplos de atendimento (RAG)", "Assistente IA", true, false),
+        ("/api/me/assistant-ia/rag/documents", Post, "Enviar exemplo de atendimento (RAG, multipart)", "Assistente IA", true, true),
+        ("/api/me/assistant-ia/rag/documents/{id}", Delete, "Excluir exemplo de atendimento (RAG)", "Assistente IA", true, false),
+        ("/api/superadmin/ai-engines", Get, "Ranking de motores de IA da plataforma", "Superadmin", true, false),
+        ("/api/superadmin/ai-engines", Post, "Adicionar motor de IA ao ranking", "Superadmin", true, true),
+        ("/api/superadmin/ai-engines/order", Put, "Reordenar ranking de motores de IA", "Superadmin", true, true),
+        ("/api/superadmin/ai-engines/{id}", Put, "Atualizar motor de IA", "Superadmin", true, true),
+        ("/api/superadmin/ai-engines/{id}", Delete, "Remover motor de IA do ranking", "Superadmin", true, false),
     ];
 
     for (path, method, summary, tag, auth, body) in routes {
@@ -172,6 +182,7 @@ pub fn build() -> OpenApi {
             Tag::new("Contratos"),
             Tag::new("Webhooks"),
             Tag::new("Público"),
+            Tag::new("Assistente IA"),
             Tag::new("Superadmin"),
             Tag::new("Sistema"),
         ]))

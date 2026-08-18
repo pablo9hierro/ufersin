@@ -285,13 +285,21 @@ async fn main() -> anyhow::Result<()> {
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
-    // Swagger só em ambiente local — RAILWAY_ENVIRONMENT só existe quando
-    // rodando na Railway (produção). Evita expor a doc publicamente até
-    // decisão explícita de subir pra produção.
-    let app = if std::env::var("RAILWAY_ENVIRONMENT").is_err() {
-        app.merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", openapi::build()))
-    } else {
+    // Swagger em produção também — decisão explícita do dono da plataforma
+    // (antes era só local, via RAILWAY_ENVIRONMENT, justamente esperando essa
+    // decisão). Doc é só a superfície da API (paths/tags), nunca dado de
+    // tenant: as rotas com cadeado continuam exigindo o mesmo Bearer JWT, e
+    // publicar o contrato não afrouxa nenhuma autorização.
+    // SWAGGER_DISABLED=true desliga na hora pela env da Railway, sem esperar
+    // os ~45min de rebuild da imagem Docker deste serviço.
+    let swagger_off = std::env::var("SWAGGER_DISABLED")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false);
+    let app = if swagger_off {
+        tracing::info!("SWAGGER_DISABLED — /api/docs não montado");
         app
+    } else {
+        app.merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", openapi::build()))
     };
     let app = app.with_state(state);
 
