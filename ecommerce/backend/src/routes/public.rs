@@ -755,6 +755,7 @@ pub async fn create_pix_payment(
         "UPDATE orders SET pix_payment_id = $1, pix_qr_base64 = $2, pix_copia_cola = $3, \
          pix_provider = $4, \
          payment_status = CASE WHEN payment_status = 'pago' THEN payment_status ELSE 'pendente' END, \
+         payment_expires_at = now() + interval '30 minutes', \
          updated_at = now()::text \
          WHERE tenant_id = $5 AND id = $6",
     )
@@ -829,7 +830,8 @@ pub async fn create_card_link(
     .await?;
 
     sqlx::query(
-        "UPDATE orders SET card_payment_mode = 'link', card_payment_link_url = $1, updated_at = now()::text \
+        "UPDATE orders SET card_payment_mode = 'link', card_payment_link_url = $1, \
+         payment_expires_at = now() + interval '30 minutes', updated_at = now()::text \
          WHERE tenant_id = $2 AND id = $3",
     )
     .bind(&link.init_point)

@@ -9,6 +9,7 @@ mod google_routes;
 mod mercadopago;
 mod mercadopago_link;
 mod models;
+mod order_expiration;
 mod orders_common;
 mod routes;
 mod seed;
@@ -554,7 +555,10 @@ async fn main() -> anyhow::Result<()> {
     let addr = format!("0.0.0.0:{port}");
     // Worker de disparo por atraso em agendamento (um tick por minuto,
     // cross-tenant) — ver appointment_reminders.rs.
-    appointment_reminders::spawn(state);
+    appointment_reminders::spawn(state.clone());
+    // Worker de expiração de pagamento (Pix/link gerado e não pago em 30min
+    // é cancelado sozinho) — ver order_expiration.rs.
+    order_expiration::spawn(state);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("sonset_backend listening on http://{addr}");
