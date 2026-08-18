@@ -282,6 +282,22 @@ async fn main() -> anyhow::Result<()> {
             post(routes::public::estimate_delivery),
         )
         .route(
+            "/api/public/catalog/{slug}/appointments",
+            post(routes::public::create_appointment),
+        )
+        .route(
+            "/api/public/catalog/{slug}/appointments/by-phone/{phone}",
+            get(routes::public::list_appointments_by_phone),
+        )
+        .route(
+            "/api/public/catalog/{slug}/appointments/{id}",
+            put(routes::public::update_appointment),
+        )
+        .route(
+            "/api/public/catalog/{slug}/appointments/{id}/cancel",
+            post(routes::public::cancel_appointment),
+        )
+        .route(
             "/api/public/catalog/{slug}/sitemap.xml",
             get(routes::public::get_public_sitemap),
         )
@@ -459,6 +475,11 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/shipping-settings",
             get(routes::admin::get_shipping_settings)
                 .put(routes::admin::update_shipping_settings),
+        )
+        .route("/api/admin/appointments", get(routes::admin::list_appointments))
+        .route(
+            "/api/admin/appointments/{id}/cancel",
+            post(routes::admin::admin_cancel_appointment),
         )
         .route("/api/admin/onboarding-gate", get(routes::admin::get_onboarding_gate))
         // motoboy

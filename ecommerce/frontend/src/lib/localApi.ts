@@ -3017,6 +3017,7 @@ export const localApi = {
       notifyReady: async () => {},
     },
     shippingSettings: { get: getShippingSettings, update: updateShippingSettings },
+    appointments: { list: async () => [], cancel: async () => {} },
     siteSettings: { updateHeroImage, updateBackground, updateSmoke: updateSmokeSettings, updateBadges, updateCarouselStyle },
     storeStatus: { get: getStoreStatus, setHours: setStoreHours, setManualStatus: setStoreManualStatus },
     financeiro: { get: financeiro, timeseries: financeiroTimeseries, lucro: financeiroLucro },

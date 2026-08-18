@@ -1,6 +1,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
+use chrono::{Datelike, Timelike};
 use serde::Deserialize;
 
 use crate::cancel;
@@ -1005,6 +1006,206 @@ pub async fn estimate_delivery(
     let price = (rota.km * price_per_km * 100.0).round() / 100.0;
 
     Ok(Json(EstimateDeliveryDto { km: rota.km, price, within_range, eta_minutes: rota.min }))
+}
+
+// ---------- Agendamento (marcar/desmarcar/editar horário) ----------
+//
+// Sem login, mesmo modelo de autorização de list_public_orders_by_phone
+// acima (conhecer o telefone já é o limite razoável — é o mesmo telefone
+// que a Evolution API confirma dono da conversa). Usado pelas tools
+// agendar_horario/desmarcar_horario/editar_horario/consultar_agendamentos
+// do Assistente IA (a-vrtek-gente).
+
+#[derive(Debug, serde::Serialize)]
+pub struct AppointmentDto {
+    pub id: String,
+    pub customer_name: Option<String>,
+    pub scheduled_at: String,
+    pub reason: String,
+    pub status: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateAppointmentInput {
+    pub customer_phone: String,
+    #[serde(default)]
+    pub customer_name: Option<String>,
+    /// ISO 8601 com offset (ex: "2026-08-20T14:00:00-03:00") — sem offset
+    /// explícito, assume horário de Brasília (mesmo fuso usado pra validar
+    /// contra store_hours abaixo).
+    pub scheduled_at: String,
+    #[serde(default)]
+    pub reason: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateAppointmentInput {
+    pub scheduled_at: String,
+}
+
+fn parse_scheduled_at(raw: &str) -> Result<chrono::DateTime<chrono::Utc>, AppError> {
+    chrono::DateTime::parse_from_rfc3339(raw)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .map_err(|_| AppError::BadRequest("scheduled_at inválido — use ISO 8601 (ex: 2026-08-20T14:00:00-03:00)".to_string()))
+}
+
+/// Confere se `when` cai dentro do horário de funcionamento cadastrado
+/// (mesma lógica de isScheduledOpenNow do frontend, só que validando uma
+/// data/hora futura em vez de "agora"). Fuso fixo -03:00 (Brasília, sem
+/// horário de verão desde 2019) — não depende de chrono-tz.
+async fn validate_within_business_hours(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    when: chrono::DateTime<chrono::Utc>,
+) -> Result<(), AppError> {
+    let brasilia = chrono::FixedOffset::west_opt(3 * 3600).expect("fixed offset válido");
+    let local = when.with_timezone(&brasilia);
+    let day_of_week = local.weekday().num_days_from_sunday() as i16;
+    let minutes_of_day = local.hour() as i32 * 60 + local.minute() as i32;
+
+    let row: Option<(bool, serde_json::Value)> = sqlx::query_as(
+        "SELECT is_open, intervals FROM store_hours WHERE tenant_id = $1 AND day_of_week = $2",
+    )
+    .bind(tenant_id)
+    .bind(day_of_week)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let Some((is_open, intervals)) = row else {
+        return Err(AppError::BadRequest("loja ainda não cadastrou o horário de funcionamento".to_string()));
+    };
+    if !is_open {
+        return Err(AppError::BadRequest("a loja não funciona nesse dia da semana".to_string()));
+    }
+    let intervals: Vec<StoreHourInterval> = serde_json::from_value(intervals).unwrap_or_default();
+    let within = intervals.iter().any(|iv| {
+        let parse = |s: &str| -> Option<i32> {
+            let (h, m) = s.split_once(':')?;
+            Some(h.parse::<i32>().ok()? * 60 + m.parse::<i32>().ok()?)
+        };
+        match (parse(&iv.opens_at), parse(&iv.closes_at)) {
+            (Some(open), Some(close)) => minutes_of_day >= open && minutes_of_day < close,
+            _ => false,
+        }
+    });
+    if !within {
+        return Err(AppError::BadRequest("esse horário está fora do funcionamento da loja".to_string()));
+    }
+    Ok(())
+}
+
+pub async fn create_appointment(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(input): Json<CreateAppointmentInput>,
+) -> Result<Json<AppointmentDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let phone: String = input.customer_phone.chars().filter(char::is_ascii_digit).collect();
+    if phone.is_empty() {
+        return Err(AppError::BadRequest("customer_phone é obrigatório".to_string()));
+    }
+    let scheduled_at = parse_scheduled_at(&input.scheduled_at)?;
+    if scheduled_at <= chrono::Utc::now() {
+        return Err(AppError::BadRequest("scheduled_at precisa ser no futuro".to_string()));
+    }
+
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    validate_within_business_hours(&mut tx, &store.id, scheduled_at).await?;
+
+    let row: (String, Option<String>, String, String, String) = sqlx::query_as(
+        "INSERT INTO service_appointments (tenant_id, customer_phone, customer_name, scheduled_at, reason)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, customer_name, scheduled_at::text, reason, status",
+    )
+    .bind(&store.id)
+    .bind(&phone)
+    .bind(&input.customer_name)
+    .bind(scheduled_at)
+    .bind(&input.reason)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok(Json(AppointmentDto { id: row.0, customer_name: row.1, scheduled_at: row.2, reason: row.3, status: row.4 }))
+}
+
+pub async fn list_appointments_by_phone(
+    State(state): State<AppState>,
+    Path((slug, phone)): Path<(String, String)>,
+) -> Result<Json<Vec<AppointmentDto>>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let rows: Vec<(String, Option<String>, String, String, String)> = sqlx::query_as(
+        "SELECT id, customer_name, scheduled_at::text, reason, status FROM service_appointments \
+         WHERE tenant_id = $1 AND customer_phone = $2 AND status = 'agendado' \
+         ORDER BY scheduled_at ASC",
+    )
+    .bind(&store.id)
+    .bind(&digits)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, customer_name, scheduled_at, reason, status)| AppointmentDto { id, customer_name, scheduled_at, reason, status })
+            .collect(),
+    ))
+}
+
+pub async fn update_appointment(
+    State(state): State<AppState>,
+    Path((slug, id)): Path<(String, String)>,
+    Json(input): Json<UpdateAppointmentInput>,
+) -> Result<Json<AppointmentDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let scheduled_at = parse_scheduled_at(&input.scheduled_at)?;
+    if scheduled_at <= chrono::Utc::now() {
+        return Err(AppError::BadRequest("scheduled_at precisa ser no futuro".to_string()));
+    }
+
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    validate_within_business_hours(&mut tx, &store.id, scheduled_at).await?;
+
+    let row: Option<(String, Option<String>, String, String, String)> = sqlx::query_as(
+        "UPDATE service_appointments SET scheduled_at = $3, updated_at = now()
+         WHERE tenant_id = $1 AND id = $2 AND status = 'agendado'
+         RETURNING id, customer_name, scheduled_at::text, reason, status",
+    )
+    .bind(&store.id)
+    .bind(&id)
+    .bind(scheduled_at)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    match row {
+        Some((id, customer_name, scheduled_at, reason, status)) => {
+            Ok(Json(AppointmentDto { id, customer_name, scheduled_at, reason, status }))
+        }
+        None => Err(AppError::NotFound("agendamento não encontrado (ou já cancelado)".to_string())),
+    }
+}
+
+pub async fn cancel_appointment(
+    State(state): State<AppState>,
+    Path((slug, id)): Path<(String, String)>,
+) -> Result<StatusCode, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let result = sqlx::query(
+        "UPDATE service_appointments SET status = 'cancelado', updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2 AND status = 'agendado'",
+    )
+    .bind(&store.id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("agendamento não encontrado (ou já cancelado)".to_string()));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Debug, Deserialize)]

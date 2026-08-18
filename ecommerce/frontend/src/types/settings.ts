@@ -93,6 +93,19 @@ export const StoreStatusSchema = z.object({
 })
 export type StoreStatus = z.infer<typeof StoreStatusSchema>
 
+// Agendamento marcado pelo cliente (via Assistente IA) — CRUD real vive
+// nas rotas públicas (ver ecommerce/backend/src/routes/public.rs); admin
+// só lista e cancela.
+export const AppointmentSchema = z.object({
+  id: z.string(),
+  customer_phone: z.string(),
+  customer_name: z.string().nullable(),
+  scheduled_at: z.string(),
+  reason: z.string(),
+  status: z.enum(['agendado', 'cancelado', 'concluido']),
+})
+export type Appointment = z.infer<typeof AppointmentSchema>
+
 export const ShippingEstimateSchema = z.object({
   km: z.number(),
   price: z.number(),

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { api } from '../../lib/api'
 import { validate, validateList } from '../validate'
 import {
+  AppointmentSchema,
   BadgesSettingsSchema,
   BgSettingsSchema,
   CategorySchema,
@@ -159,6 +160,10 @@ export const adminEndpoint = {
     get: async () => validate(ShippingSettingsSchema, await api.admin.shippingSettings.get(), 'admin.shippingSettings.get'),
     update: async (pricePerKm: number, maxKm: number | null) =>
       validate(ShippingSettingsSchema, await api.admin.shippingSettings.update(pricePerKm, maxKm), 'admin.shippingSettings.update'),
+  },
+  appointments: {
+    list: async () => validateList(AppointmentSchema, await api.admin.appointments.list(), 'admin.appointments.list'),
+    cancel: async (id: string) => api.admin.appointments.cancel(id),
   },
   financeiro: {
     get: async () => validate(FinanceiroSummarySchema, await api.admin.financeiro.get(), 'admin.financeiro.get'),

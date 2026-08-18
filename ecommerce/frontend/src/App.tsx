@@ -30,6 +30,7 @@ const AdminPedidos = lazy(() => import('./pages/admin/AdminPedidos'))
 const AdminPdv = lazy(() => import('./pages/admin/AdminPdv'))
 const AdminProdutos = lazy(() => import('./pages/admin/AdminProdutos'))
 const AdminProdutosXml = lazy(() => import('./pages/admin/AdminProdutosXml'))
+const AdminAgendamentos = lazy(() => import('./pages/admin/AdminAgendamentos'))
 const AdminEstoque = lazy(() => import('./pages/admin/AdminEstoque'))
 const AdminEstoqueXml = lazy(() => import('./pages/admin/AdminEstoqueXml'))
 const AdminProdutosServicos = lazy(() => import('./pages/admin/AdminProdutosServicos'))
@@ -307,6 +308,7 @@ export default function App() {
             <Route path="motoboys" element={<AdminMotoboys />} />
             <Route path="crm" element={<AdminCrm />} />
             <Route path="chat" element={<AdminChat />} />
+            <Route path="agendamentos" element={<AdminAgendamentos />} />
             <Route path="promocoes" element={<AdminPromocoes />} />
             <Route path="layout-cliente" element={<AdminLayoutCliente />} />
             <Route path="relatorios" element={<AdminFinanceiro />} />

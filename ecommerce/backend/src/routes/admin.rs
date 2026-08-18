@@ -2299,3 +2299,68 @@ pub async fn update_shipping_settings(
         max_km: body.max_km,
     }))
 }
+
+// ---------- Agendamentos (visão do lojista) ----------
+//
+// Criação/edição real acontece só pelas rotas públicas (Assistente IA/
+// cliente, ver public.rs) — aqui é só leitura + cancelamento manual, pro
+// lojista acompanhar o que foi marcado.
+
+#[derive(Debug, serde::Serialize)]
+pub struct AdminAppointmentDto {
+    pub id: String,
+    pub customer_phone: String,
+    pub customer_name: Option<String>,
+    pub scheduled_at: String,
+    pub reason: String,
+    pub status: String,
+}
+
+pub async fn list_appointments(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<AdminAppointmentDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<(String, String, Option<String>, String, String, String)> = sqlx::query_as(
+        "SELECT id, customer_phone, customer_name, scheduled_at::text, reason, status \
+         FROM service_appointments WHERE tenant_id = $1 \
+         ORDER BY (status = 'agendado') DESC, scheduled_at ASC LIMIT 200",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, customer_phone, customer_name, scheduled_at, reason, status)| AdminAppointmentDto {
+                id,
+                customer_phone,
+                customer_name,
+                scheduled_at,
+                reason,
+                status,
+            })
+            .collect(),
+    ))
+}
+
+pub async fn admin_cancel_appointment(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let result = sqlx::query(
+        "UPDATE service_appointments SET status = 'cancelado', updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2 AND status = 'agendado'",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("agendamento não encontrado (ou já cancelado)".to_string()));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}

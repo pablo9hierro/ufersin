@@ -27,6 +27,7 @@ import type {
   FormulatedProductPayload,
   Ingredient,
   IngredientPayload,
+  Appointment,
   Service,
   ServicePayload,
   LucroSummary,
@@ -998,6 +999,10 @@ const remoteApi = {
               p_price_per_km: pricePerKm,
               p_max_km: maxKm,
             }),
+    },
+    appointments: {
+      list: () => railwayAdmin<Appointment[]>('/api/admin/appointments'),
+      cancel: (id: string) => railwayAdmin<void>(`/api/admin/appointments/${id}/cancel`, { method: 'POST' }),
     },
     financeiro: {
       get: () =>

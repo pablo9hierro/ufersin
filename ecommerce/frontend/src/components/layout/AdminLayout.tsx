@@ -2,6 +2,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Boxes,
+  Calendar,
   ClipboardList,
   Loader2,
   LogOut,
@@ -60,6 +61,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/estoque', label: 'Estoque', icon: Boxes, requiredPlan: 'essential' },
   { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'essential', hideAtOrAbove: 'management' },
   { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
+  { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar, requiredPlan: 'essential' },
   { href: '/admin/motoboys', label: 'Funcionários', icon: Truck, requiredPlan: 'management' },
   { href: '/admin/crm', label: 'CRM', icon: Users, requiredPlan: 'premium' },
   { href: '/admin/promocoes', label: 'Promoções', icon: Megaphone, requiredPlan: 'management' },
