@@ -20,6 +20,8 @@ chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "9"
 argon2 = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
+utoipa = "5"
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 tower = "0.5"
 dotenvy = "0.15"
 reqwest = { version = "0.12", features = ["json"] }

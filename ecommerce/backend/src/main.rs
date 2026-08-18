@@ -9,6 +9,7 @@ mod google_routes;
 mod mercadopago;
 mod mercadopago_link;
 mod models;
+mod openapi;
 mod order_expiration;
 mod orders_common;
 mod routes;
@@ -29,6 +30,7 @@ use axum::Router;
 use rand::Rng;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use utoipa_swagger_ui::SwaggerUi;
 use tower_http::trace::TraceLayer;
 
 use state::AppState;
@@ -548,6 +550,21 @@ async fn main() -> anyhow::Result<()> {
         // foto de produto raramente passasse). 10MB cobre com folga.
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
         .with_state(state.clone());
+
+    // Swagger em /api/docs — mesmo padrão (e mesma escotilha SWAGGER_DISABLED)
+    // do ufersin-api. Documenta só a superfície da API: rota com cadeado
+    // continua exigindo o mesmo Bearer JWT de admin/motoboy, e rota pública
+    // continua resolvendo tenant pelo slug — publicar o contrato não afrouxa
+    // autorização nenhuma.
+    let swagger_off = std::env::var("SWAGGER_DISABLED")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false);
+    let app = if swagger_off {
+        tracing::info!("SWAGGER_DISABLED — /api/docs não montado");
+        app
+    } else {
+        app.merge(SwaggerUi::new("/api/docs").url("/api/docs/openapi.json", openapi::build()))
+    };
 
     // Bind to 0.0.0.0 so this also works inside a container (Railway etc, which
     // injects PORT); locally it's still reachable at http://localhost:<port>.
