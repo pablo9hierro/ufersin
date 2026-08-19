@@ -28,7 +28,9 @@ export default function Uiux3Landing() {
   const headline = tenantConfig?.landing_headline?.trim() || name
   const sub =
     tenantConfig?.landing_sub?.trim() ||
-    'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.'
+    (tenantConfig?.vertical === 'eletronicos'
+      ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
+      : 'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.')
   const essential = isEssentialStorefront(tenantConfig?.plano)
 
   return (

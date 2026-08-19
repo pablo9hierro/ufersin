@@ -14,10 +14,19 @@ import StoreHoursToggle from '../../components/landing/StoreHoursToggle'
 import ShareButton from '../../components/landing/ShareButton'
 import { isEssentialStorefront } from '../../lib/demoMode'
 
-const DESTAQUES = [
+// Os 3 temas de layout hoje (ufersin/burgerbite/burgerhouse) nasceram pra
+// food-delivery — sem tema dedicado pro ramo eletrônicos ainda, então o
+// copy padrão (usado só quando o lojista não personalizou landing_*) tem
+// que pelo menos não falar de comida numa loja de assistência técnica.
+const DESTAQUES_ECOMMERCE = [
   { icon: Truck, title: 'Entrega rápida', desc: 'Pedido pronto em até 20 minutos' },
   { icon: Wallet, title: 'Pague com Pix', desc: 'Aprovação na hora, sem complicação' },
   { icon: Star, title: '4,9 de avaliação', desc: 'O point mais pedido da cidade' },
+]
+const DESTAQUES_ELETRONICOS = [
+  { icon: Wrench, title: 'Assistência rápida', desc: 'Diagnóstico e orçamento na hora' },
+  { icon: Wallet, title: 'Pague com Pix', desc: 'Aprovação na hora, sem complicação' },
+  { icon: Star, title: '4,9 de avaliação', desc: 'Confiança de quem já foi atendido' },
 ]
 
 export default function Uiux2Landing() {
@@ -30,11 +39,15 @@ export default function Uiux2Landing() {
   const openState = storeStatus ? getStoreOpenState(storeStatus) : null
   const closed = !!openState && !openState.open
   const closedMsg = storeStatus && closed ? closedStoreMessage(storeStatus) : ''
-  const badge = tenantConfig?.landing_badge?.trim() || 'Feito na hora, todo dia'
-  const headline = tenantConfig?.landing_headline?.trim() || 'Fome? A gente entrega em minutos'
+  const isEletronicos = tenantConfig?.vertical === 'eletronicos'
+  const badge = tenantConfig?.landing_badge?.trim() || (isEletronicos ? 'Assistência técnica de confiança' : 'Feito na hora, todo dia')
+  const headline = tenantConfig?.landing_headline?.trim() || (isEletronicos ? 'Seu aparelho no melhor cuidado' : 'Fome? A gente entrega em minutos')
   const sub =
     tenantConfig?.landing_sub?.trim() ||
-    'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.'
+    (isEletronicos
+      ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
+      : 'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.')
+  const DESTAQUES = isEletronicos ? DESTAQUES_ELETRONICOS : DESTAQUES_ECOMMERCE
   const essential = isEssentialStorefront(tenantConfig?.plano)
 
   return (

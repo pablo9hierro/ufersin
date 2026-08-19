@@ -889,6 +889,10 @@ pub struct TenantConfigResponse {
     /// de verdade antes de liberar o painel.
     pub plataforma_oauth: bool,
     pub layout_style: String,
+    /// "ecommerce" ou "eletronicos" — a vitrine usa isso pra evitar copy
+    /// padrão de comida/delivery (as 3 temas de layout hoje são todos
+    /// voltados pra food-delivery) num negócio de outro ramo.
+    pub vertical: String,
     pub cor_principal: Option<String>,
     /// Checkout deve exigir consentimento mais18 além da compra normal.
     pub vende_mais_18: bool,
@@ -924,6 +928,7 @@ struct TenantConfigRow {
     plataforma_pagamento: Option<String>,
     plataforma_oauth: bool,
     layout_style: String,
+    vertical: String,
     cor_principal: Option<String>,
     vende_mais_18: bool,
     apenas_retirada: bool,
@@ -957,7 +962,7 @@ pub async fn tenant_config(
         "SELECT loja_nome, plan_code, vender_externamente, whatsapp_habilitado, whatsapp, \
          forma_pagamento, plataforma_pagamento, \
          COALESCE(plataforma_credenciais->>'source' = 'oauth', false) as plataforma_oauth, \
-         COALESCE(layout_style, 'ufersin') as layout_style, cor_principal, \
+         COALESCE(layout_style, 'ufersin') as layout_style, vertical, cor_principal, \
          COALESCE(vende_mais_18, false) as vende_mais_18, \
          COALESCE(apenas_retirada, false) as apenas_retirada, \
          COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada, \
@@ -990,6 +995,7 @@ pub async fn tenant_config(
             "burgerbite" | "burgerhouse" | "ufersin" => row.layout_style,
             _ => "ufersin".to_string(),
         },
+        vertical: row.vertical,
         cor_principal: row.cor_principal,
         vende_mais_18: row.vende_mais_18,
         apenas_retirada: row.apenas_retirada,

@@ -24,11 +24,14 @@ export default function Uiux4Landing() {
   const openState = storeStatus ? getStoreOpenState(storeStatus) : null
   const closed = !!openState && !openState.open
   const closedMsg = storeStatus && closed ? closedStoreMessage(storeStatus) : ''
-  const badge = tenantConfig?.landing_badge?.trim() || 'Feito na hora, todo dia'
-  const headline = tenantConfig?.landing_headline?.trim() || 'Fome\nagora'
+  const isEletronicos = tenantConfig?.vertical === 'eletronicos'
+  const badge = tenantConfig?.landing_badge?.trim() || (isEletronicos ? 'Assistência técnica de confiança' : 'Feito na hora, todo dia')
+  const headline = tenantConfig?.landing_headline?.trim() || (isEletronicos ? 'Conserto\nrápido' : 'Fome\nagora')
   const sub =
     tenantConfig?.landing_sub?.trim() ||
-    'Lanches, bebidas e sobremesas prontos em minutos. Peça pelo site ou chama a gente no WhatsApp.'
+    (isEletronicos
+      ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
+      : 'Lanches, bebidas e sobremesas prontos em minutos. Peça pelo site ou chama a gente no WhatsApp.')
   const headlineLines = headline.split(/\n|\\n/)
   const essential = isEssentialStorefront(tenantConfig?.plano)
 

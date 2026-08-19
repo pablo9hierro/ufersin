@@ -29,6 +29,10 @@ export interface TenantConfig {
    * decidir se o gate de "Mercado Pago desconectado" fica bloqueando. */
   plataforma_oauth: boolean
   layout_style: 'ufersin' | 'burgerbite' | 'burgerhouse'
+  /** "ecommerce" ou "eletronicos" — os 3 layout_style hoje são todos temas
+   * de food-delivery; usado pra evitar mostrar copy padrão de comida numa
+   * loja de outro ramo enquanto não existe tema dedicado (ver Landing.tsx). */
+  vertical: 'ecommerce' | 'eletronicos'
   cor_principal: string | null
   /** Checkout exige consentimento 18+ além da compra normal. */
   vende_mais_18: boolean
@@ -114,6 +118,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   plataforma_pagamento: null,
   plataforma_oauth: false,
   layout_style: 'ufersin',
+  vertical: 'ecommerce',
   cor_principal: null,
   vende_mais_18: false,
   apenas_retirada: false,
@@ -313,6 +318,7 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     instagram: String(data.instagram ?? '').trim(),
     facebook: String(data.facebook ?? '').trim(),
     layout_style: normalizeLayoutStyle(data.layout_style),
+    vertical: data.vertical === 'eletronicos' ? 'eletronicos' : 'ecommerce',
     vende_mais_18: Boolean(data.vende_mais_18),
     apenas_retirada: Boolean(data.apenas_retirada),
     pagamento_na_retirada: Boolean(data.pagamento_na_retirada),
