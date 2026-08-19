@@ -152,7 +152,10 @@ export default function AdminLayout() {
   useEffect(() => {
     if (demo || !tenantReady) return
     if (tenantConfig?.vertical === 'eletronicos' && !window.location.pathname.startsWith('/loja/eletronica-admin')) {
-      window.location.href = '/loja/eletronica-admin/dashboard'
+      // Bare (sem /dashboard) — o rewrite em vercel.json já mapeia
+      // /loja/eletronica-admin -> https://vrtech-jp.vercel.app/dashboard;
+      // sufixar /dashboard aqui duplicava o caminho (dashboard/dashboard, 404).
+      window.location.href = '/loja/eletronica-admin'
     }
   }, [demo, tenantReady, tenantConfig?.vertical])
 
