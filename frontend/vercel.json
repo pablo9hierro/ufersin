@@ -3,6 +3,10 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    { "source": "/loja/eletronica-admin", "destination": "https://vrtech-jp.vercel.app/dashboard" },
+    { "source": "/loja/eletronica-admin/:path*", "destination": "https://vrtech-jp.vercel.app/dashboard/:path*" },
+    { "source": "/loja/eletronica-loja", "destination": "https://vrtech-jp.vercel.app/loja" },
+    { "source": "/loja/eletronica-loja/:path*", "destination": "https://vrtech-jp.vercel.app/loja/:path*" },
     { "source": "/loja", "destination": "/loja/index.html" },
     { "source": "/loja/(.*)", "destination": "/loja/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }

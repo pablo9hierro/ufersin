@@ -207,6 +207,16 @@ function StyleLoading() {
   )
 }
 
+/** Mesma URL do :path* preservado (ex: /loja/produto/xyz?tenant=vrtech -> /loja/eletronica-loja/produto/xyz), pro proxy da Vercel achar a página certa do vrtech. */
+function EletronicaStorefrontRedirect({ slug }: { slug: string }) {
+  useEffect(() => {
+    const afterLoja = window.location.pathname.replace(/^\/loja\/?/, '')
+    const target = `/loja/eletronica-loja${afterLoja ? `/${afterLoja}` : ''}${window.location.search}`
+    window.location.replace(target)
+  }, [slug])
+  return <StyleLoading />
+}
+
 function resolveStorefrontStyle(demoStyle: LayoutStyle, tenantStyle: string | undefined): LayoutStyle {
   // Tenant real: layout_style do onboarding/Meu plano manda — nunca o zustand da demo.
   if (resolveTenantSlug()) {
@@ -254,6 +264,10 @@ function StyleAware({
   if (!slug) return <LojaSemTenant />
   // Não aplicar ufersin por padrão enquanto a config (com layout_style) não chega.
   if (!tenantConfig) return <StyleLoading />
+  // Ramo eletrônicos tem vitrine PRÓPRIA (app real do vrtech, proxiado via
+  // /loja/eletronica-loja no vercel.json — ver AdminLayout.tsx pro mesmo
+  // padrão do lado do painel) — nunca os 3 temas de ecommerce daqui.
+  if (tenantConfig.vertical === 'eletronicos') return <EletronicaStorefrontRedirect slug={slug} />
   if (tenantConfig.vender_externamente === false && !skipVenderExternamenteGate) return <LojaSemVendaExterna />
 
   const style = resolveStorefrontStyle(demoStyle, tenantConfig.layout_style)
