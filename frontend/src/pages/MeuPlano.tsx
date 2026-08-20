@@ -705,7 +705,7 @@ export default function MeuPlano() {
     { id: 'layout', label: 'Layout', path: TAB_PATH.layout },
     { id: 'financeiro', label: 'Financeiro', path: TAB_PATH.financeiro },
     { id: 'redes', label: 'Redes sociais', path: TAB_PATH.redes },
-    ...(isAssistantIaBetaTenant(me.slug) ? [{ id: 'assistente-ia' as const, label: 'Assistente IA', path: TAB_PATH['assistente-ia'] }] : []),
+    ...(isAssistantIaBetaTenant(me.slug, me.vertical) ? [{ id: 'assistente-ia' as const, label: 'Assistente IA', path: TAB_PATH['assistente-ia'] }] : []),
   ]
 
   return (
@@ -1344,7 +1344,7 @@ export default function MeuPlano() {
               </button>
             </form>
           )}
-          {tab === 'assistente-ia' && isAssistantIaBetaTenant(me.slug) && me.slug && <AssistantIaTab tenantSlug={me.slug} />}
+          {tab === 'assistente-ia' && isAssistantIaBetaTenant(me.slug, me.vertical) && me.slug && <AssistantIaTab tenantSlug={me.slug} />}
           <Outlet />
         </motion.div>
       </div>
