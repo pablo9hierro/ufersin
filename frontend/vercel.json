@@ -3,10 +3,15 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
+    { "source": "/loja/eletronica-admin/_debug", "destination": "https://vrtech-jp.vercel.app/api/debug-headers" },
+    { "source": "/loja/eletronica-admin-login", "destination": "https://vrtech-jp.vercel.app/login" },
     { "source": "/loja/eletronica-admin", "destination": "https://vrtech-jp.vercel.app/dashboard" },
     { "source": "/loja/eletronica-admin/:path*", "destination": "https://vrtech-jp.vercel.app/dashboard/:path*" },
-    { "source": "/loja/eletronica-loja", "destination": "https://vrtech-jp.vercel.app/loja" },
-    { "source": "/loja/eletronica-loja/:path*", "destination": "https://vrtech-jp.vercel.app/loja/:path*" },
+    { "source": "/loja/eletronica-loja", "destination": "https://vrtech-jp.vercel.app/" },
+    { "source": "/loja/eletronica-loja/catalogo", "destination": "https://vrtech-jp.vercel.app/loja" },
+    { "source": "/loja/eletronica-loja/catalogo/:path*", "destination": "https://vrtech-jp.vercel.app/loja/:path*" },
+    { "source": "/loja/eletronica-loja/servicos", "destination": "https://vrtech-jp.vercel.app/catalogo-servico" },
+    { "source": "/loja/eletronica-loja/consultar", "destination": "https://vrtech-jp.vercel.app/consultar" },
     { "source": "/loja", "destination": "/loja/index.html" },
     { "source": "/loja/(.*)", "destination": "/loja/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }
