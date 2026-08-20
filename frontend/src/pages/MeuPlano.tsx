@@ -330,6 +330,29 @@ export default function MeuPlano() {
   const panelUrl = storeSlug ? storeAdminLoginUrl(storeSlug, me.email) : null
   const publicUrl = storeSlug ? storePublicUrl(storeSlug) : null
 
+  /**
+   * Painel do ramo eletrônicos é o app vrtech de verdade, proxiado em
+   * /loja/eletronica-admin — sessão dele é validada por cookie (SSR), mas o
+   * login do lojista aqui é uma SPA com sessão só em localStorage (nunca
+   * cookie). Sem ponte, o painel nunca vê sessão e cai sempre no /login da
+   * própria plataforma. Manda access+refresh token na querystring só nesse
+   * primeiro request — o middleware do vrtech troca por cookie e limpa a
+   * URL antes de renderizar.
+   */
+  const handleOpenPainel = async (e: React.MouseEvent) => {
+    if (me.vertical !== 'eletronicos' || !storeSlug) return
+    e.preventDefault()
+    const { data } = await supabase.auth.getSession()
+    const at = data.session?.access_token
+    const rt = data.session?.refresh_token
+    const base = `${window.location.origin}/loja/eletronica-admin`
+    const url =
+      at && rt
+        ? `${base}?b=${btoa(JSON.stringify({ at, rt })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`
+        : base
+    window.open(url, '_blank', 'noreferrer')
+  }
+
   const handleLogout = async () => {
     try {
       await authStore.signOut('lojista')
@@ -731,6 +754,7 @@ export default function MeuPlano() {
               {panelUrl && (
                 <a
                   href={panelUrl}
+                  onClick={handleOpenPainel}
                   target="_blank"
                   rel="noreferrer"
                   className="btn-secondary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"
@@ -815,6 +839,7 @@ export default function MeuPlano() {
                     {panelUrl && (
                       <a
                         href={panelUrl}
+                        onClick={handleOpenPainel}
                         target="_blank"
                         rel="noreferrer"
                         className="btn-secondary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"

@@ -3,7 +3,6 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/loja/eletronica-admin/_debug", "destination": "https://vrtech-jp.vercel.app/api/debug-headers" },
     { "source": "/loja/eletronica-admin-login", "destination": "https://vrtech-jp.vercel.app/login" },
     { "source": "/loja/eletronica-admin", "destination": "https://vrtech-jp.vercel.app/dashboard" },
     { "source": "/loja/eletronica-admin/:path*", "destination": "https://vrtech-jp.vercel.app/dashboard/:path*" },
