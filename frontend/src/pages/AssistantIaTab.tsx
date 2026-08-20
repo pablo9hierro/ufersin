@@ -38,6 +38,18 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
     Promise.all([api.assistantIaConfig(), api.assistantIaRagDocuments()])
       .then(([cfg, docs]) => {
         if (cancelled) return
+        // O proxy repassa o corpo do assistant-ia mesmo quando ele responde
+        // erro (ex: acesso negado, serviço fora do ar) -- sem essa checagem,
+        // um objeto tipo {error: "..."} vira "config" e quebra o formulário
+        // (start_keywords/end_keywords indefinidos).
+        const isValidConfig =
+          cfg && typeof cfg === 'object' &&
+          Array.isArray((cfg as Partial<AssistantConfig>).start_keywords) &&
+          Array.isArray((cfg as Partial<AssistantConfig>).end_keywords)
+        if (!isValidConfig) {
+          setError('Não foi possível carregar a configuração do assistente agora. Tente novamente em instantes.')
+          return
+        }
         setConfig(cfg as AssistantConfig)
         setDocuments(Array.isArray(docs) ? (docs as RagDocument[]) : [])
       })
@@ -92,7 +104,7 @@ export default function AssistantIaTab({ tenantSlug }: { tenantSlug: string }) {
     )
   }
   if (!config) {
-    return <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">Não foi possível carregar.</p>
+    return <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{error ?? 'Não foi possível carregar.'}</p>
   }
 
   return (
