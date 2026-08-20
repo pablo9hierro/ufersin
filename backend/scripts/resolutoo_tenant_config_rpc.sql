@@ -37,6 +37,7 @@ AS $$
     'plataforma_pagamento', plataforma_pagamento,
     'plataforma_oauth', coalesce(plataforma_credenciais->>'source' = 'oauth', false),
     'layout_style', coalesce(nullif(layout_style, ''), 'ufersin'),
+    'vertical', coalesce(nullif(vertical, ''), 'ecommerce'),
     'cor_principal', cor_principal,
     'instagram', instagram,
     'facebook', facebook,

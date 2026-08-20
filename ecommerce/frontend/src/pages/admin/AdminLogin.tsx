@@ -12,6 +12,7 @@ import {
   resetTenantConfigCache,
   takeLojaOfflineMessage,
 } from '../../lib/tenantConfig'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 // Login exclusivo do admin — não tenta mais vendedor/motoboy em cascata
 // (isso causava logins acidentais na conta admin: o campo de e-mail vinha
@@ -52,6 +53,19 @@ export default function AdminLogin() {
     const stashed = takeLojaOfflineMessage()
     if (fromState || stashed) setError(fromState || stashed)
   }, [location.state])
+
+  // Ramo eletrônicos nunca loga aqui — o painel dele é o app real do
+  // vrtech, proxiado via /loja/eletronica-admin (ver AdminLayout.tsx pro
+  // mesmo padrão pós-login). Sem isso, um tenant eletronicos com deep
+  // link ?tenant=vrtech caía nesta tela genérica de ecommerce e via
+  // "invalid credentials" pra sempre (credencial daqui nunca existiu/foi
+  // removida — o login de verdade é o próprio do vrtech).
+  const tenantConfigForRedirect = useTenantConfig()
+  useEffect(() => {
+    if (tenantFromUrl && tenantConfigForRedirect?.vertical === 'eletronicos') {
+      window.location.href = '/loja/eletronica-admin'
+    }
+  }, [tenantFromUrl, tenantConfigForRedirect?.vertical])
 
   // Demo ativa nesta aba: pular o formulário (nunca pedir senha / autofill).
   if (isDemoModeActive()) {
