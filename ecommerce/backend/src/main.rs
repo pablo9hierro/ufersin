@@ -495,6 +495,11 @@ async fn main() -> anyhow::Result<()> {
             post(routes::admin::admin_cancel_appointment),
         )
         .route("/api/admin/onboarding-gate", get(routes::admin::get_onboarding_gate))
+        .route("/api/admin/pdv/pix", post(routes::admin::create_pdv_pix))
+        .route(
+            "/api/admin/pdv/pix/{payment_id}/status",
+            get(routes::admin::get_pdv_pix_status),
+        )
         // motoboy
         // Otimiza a ordem de entrega do lote via Google Routes (distância
         // real de rua) antes de chamar sunset.motoboy_start_run — quando

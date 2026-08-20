@@ -14,6 +14,7 @@ use crate::models::{
     SetStoreManualStatusInput, StatusCount, StoreHourDay, StoreHourInterval, StoreStatusDto,
     TopProduct, UpdateStatusInput,
 };
+use crate::mercadopago;
 use crate::orders_common::{self, row_to_dto};
 use crate::state::AppState;
 use crate::status_flow;
@@ -2455,4 +2456,90 @@ pub async fn admin_cancel_appointment(
         return Err(AppError::NotFound("agendamento não encontrado (ou já cancelado)".to_string()));
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------- PDV (venda presencial no painel) ----------
+//
+// O PDV do vrtech (Next.js, ecommerce/produto/serviço) reaproveita a MESMA
+// integração Mercado Pago já usada no checkout da vitrine -- credencial do
+// lojista (tenants.plataforma_credenciais), nunca uma segunda integração
+// duplicada. A venda em si (carrinho, split payment, baixa de estoque)
+// continua vivendo no banco do vrtech (Supabase); aqui só entra a geração
+// e a consulta de status da cobrança Pix, que dependem do token que só
+// este backend tem acesso.
+
+#[derive(Debug, Deserialize)]
+pub struct CreatePdvPixInput {
+    pub amount: f64,
+    pub customer_name: String,
+    pub customer_email: Option<String>,
+    /// ID da venda/pagamento do lado do vrtech -- vira o external_reference
+    /// da cobrança, pra rastrear de volta qual pdv_payments isso conclui.
+    pub external_reference: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct PdvPixDto {
+    pub payment_id: String,
+    pub qr_code: String,
+    pub qr_code_base64: String,
+}
+
+/// POST /api/admin/pdv/pix — gera cobrança Pix pro PDV, usando a credencial
+/// Mercado Pago já conectada pelo lojista (mesma de Meu Plano → Financeiro).
+pub async fn create_pdv_pix(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<CreatePdvPixInput>,
+) -> Result<Json<PdvPixDto>, AppError> {
+    if !(input.amount > 0.0) {
+        return Err(AppError::BadRequest("valor precisa ser maior que zero".to_string()));
+    }
+    let tenant_row = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
+    let payment_cfg = tenant::load_tenant_payment(&state.pool, &claims.tenant_id).await?;
+    let token = payment_cfg.mp_access_token().ok_or_else(|| {
+        AppError::BadRequest(
+            "Esta loja não tem Mercado Pago conectado -- conecte em Meu plano → Financeiro antes de gerar Pix no PDV."
+                .to_string(),
+        )
+    })?;
+    let payer_email = match input.customer_email.as_deref().map(str::trim) {
+        Some(email) if email.contains('@') => Some(email.to_string()),
+        _ => tenant::organization_email_for_tenant(&state.pool, &claims.tenant_id).await?,
+    };
+    let pix = mercadopago::create_pix_charge(
+        &state,
+        token,
+        &tenant_row.name,
+        input.amount,
+        &input.customer_name,
+        payer_email.as_deref(),
+        &input.external_reference,
+    )
+    .await?;
+    Ok(Json(PdvPixDto {
+        payment_id: pix.payment_id,
+        qr_code: pix.qr_code,
+        qr_code_base64: pix.qr_code_base64,
+    }))
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct PdvPixStatusDto {
+    pub status: String,
+}
+
+/// GET /api/admin/pdv/pix/{payment_id}/status — pro frontend do PDV fazer
+/// polling enquanto o cliente escaneia o QR.
+pub async fn get_pdv_pix_status(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(payment_id): Path<String>,
+) -> Result<Json<PdvPixStatusDto>, AppError> {
+    let payment_cfg = tenant::load_tenant_payment(&state.pool, &claims.tenant_id).await?;
+    let token = payment_cfg
+        .mp_access_token()
+        .ok_or_else(|| AppError::BadRequest("Mercado Pago não conectado.".to_string()))?;
+    let status = mercadopago::get_payment_status(&state, token, &payment_id).await?;
+    Ok(Json(PdvPixStatusDto { status }))
 }
