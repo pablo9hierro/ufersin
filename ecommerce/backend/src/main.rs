@@ -270,6 +270,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::public::get_public_store_status),
         )
         .route(
+            "/api/public/tenant-vertical/{slug}",
+            get(routes::public::get_public_tenant_vertical),
+        )
+        .route(
             "/api/public/catalog/{slug}/mp-public-key",
             get(routes::public::get_public_mp_key),
         )

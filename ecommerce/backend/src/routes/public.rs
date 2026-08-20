@@ -1700,3 +1700,29 @@ async fn create_customer_reset_code(state: &AppState, whatsapp_raw: &str, tenant
 }
 
 // rebuild-marker PDV Pix force 2026-08-01T17:20:00.6543400-03:00
+
+#[derive(Debug, serde::Serialize)]
+pub struct TenantVerticalDto {
+    pub slug: String,
+    pub vertical: String,
+}
+
+/// Registro público mínimo de "qual ramo esse tenant assinou" — usado por
+/// serviços externos ao motor de e-commerce (ex.: a-vrtek-gente, que
+/// atende WhatsApp de vários ramos e precisa saber qual adapter de dados
+/// usar pra cada loja) sem precisar de acesso a nenhuma outra tabela.
+/// Nunca expõe nada além do slug/vertical — sem dado de negócio real.
+pub async fn get_public_tenant_vertical(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<TenantVerticalDto>, AppError> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT vertical FROM tenants WHERE slug = $1")
+            .bind(&slug)
+            .fetch_optional(&state.pool)
+            .await?;
+    let Some((vertical,)) = row else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+    Ok(Json(TenantVerticalDto { slug, vertical }))
+}
