@@ -4,6 +4,8 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/loja/eletronica-admin-login", "destination": "https://vrtech-jp.vercel.app/login" },
+    { "source": "/loja/eletronica-admin/api/:path*", "destination": "https://vrtech-jp.vercel.app/api/:path*" },
+    { "source": "/loja/eletronica-loja/api/:path*", "destination": "https://vrtech-jp.vercel.app/api/:path*" },
     { "source": "/loja/eletronica-admin", "destination": "https://vrtech-jp.vercel.app/dashboard" },
     { "source": "/loja/eletronica-admin/:path*", "destination": "https://vrtech-jp.vercel.app/dashboard/:path*" },
     { "source": "/loja/eletronica-loja", "destination": "https://vrtech-jp.vercel.app/" },
