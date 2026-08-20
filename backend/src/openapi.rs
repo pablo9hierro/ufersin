@@ -130,6 +130,53 @@ pub fn build() -> OpenApi {
         ("/api/superadmin/ai-engines/order", Put, "Reordenar ranking de motores de IA", "Superadmin", true, true),
         ("/api/superadmin/ai-engines/{id}", Put, "Atualizar motor de IA", "Superadmin", true, true),
         ("/api/superadmin/ai-engines/{id}", Delete, "Remover motor de IA do ranking", "Superadmin", true, false),
+
+        // ── Ramo eletrônicos (tenant vrtech) ─────────────────────────────
+        // App Next.js separado (não roda neste backend — repo
+        // pablo9hierro/safari, deploy Vercel), proxiado por trás de
+        // resolutoo.com via rewrite. Documentado aqui, no MESMO Swagger da
+        // plataforma, porque é o padrão pedido: um só lugar pra ver a API
+        // inteira do Resolutoo, mesmo com backends fisicamente diferentes.
+        // Selecione o server "https://resolutoo.com" (dropdown acima) pra
+        // testar estas rotas — os outros servers não têm essas rotas.
+        // Autenticação: cookie de sessão (Supabase, mesma sessão da
+        // plataforma) em vez de Bearer JWT — "Try it out" só funciona
+        // logado no navegador em resolutoo.com, não author aqui no Swagger.
+        ("/loja/eletronica-admin/api/agenda/day", Get, "[Eletrônicos] Slots disponíveis/ocupados de um dia", "Eletrônicos — Agenda", true, false),
+        ("/loja/eletronica-admin/api/agenda/blocks", Get, "[Eletrônicos] Listar bloqueios de horário de um dia", "Eletrônicos — Agenda", true, false),
+        ("/loja/eletronica-admin/api/agenda/blocks", Post, "[Eletrônicos] Bloquear um intervalo de horário", "Eletrônicos — Agenda", true, true),
+        ("/loja/eletronica-admin/api/agenda/blocks/{id}", Delete, "[Eletrônicos] Remover bloqueio de horário", "Eletrônicos — Agenda", true, false),
+        ("/loja/eletronica-admin/api/agenda/settings", Get, "[Eletrônicos] Configuração da agenda (horários de funcionamento, duração padrão)", "Eletrônicos — Agenda", true, false),
+        ("/loja/eletronica-admin/api/agenda/settings", Put, "[Eletrônicos] Atualizar configuração da agenda", "Eletrônicos — Agenda", true, true),
+        ("/loja/eletronica-admin/api/appointments", Get, "[Eletrônicos] Listar agendamentos de um dia", "Eletrônicos — Agenda", true, false),
+        ("/loja/eletronica-admin/api/appointments", Post, "[Eletrônicos] Criar agendamento (admin)", "Eletrônicos — Agenda", true, true),
+        ("/loja/eletronica-admin/api/appointments/{id}", Get, "[Eletrônicos] Detalhe de um agendamento + histórico de eventos", "Eletrônicos — Agenda", true, false),
+        ("/loja/eletronica-admin/api/appointments/{id}/reschedule", Patch, "[Eletrônicos] Remarcar agendamento — dispara WhatsApp (padrão ou personalizado) via fila Redis", "Eletrônicos — Agenda", true, true),
+        ("/loja/eletronica-admin/api/appointments/{id}/cancel", Post, "[Eletrônicos] Cancelar agendamento — dispara WhatsApp (padrão ou personalizado) via fila Redis", "Eletrônicos — Agenda", true, true),
+        ("/loja/eletronica-admin/api/appointments/{id}/complete", Post, "[Eletrônicos] Concluir atendimento antes do horário previsto", "Eletrônicos — Agenda", true, false),
+        ("/loja/eletronica-loja/api/agenda/public/availability", Get, "[Eletrônicos] Disponibilidade pública de horários (sem login)", "Eletrônicos — Agenda", false, false),
+        ("/loja/eletronica-loja/api/agenda/public/appointments", Post, "[Eletrônicos] Agendar publicamente (cliente final, sem login)", "Eletrônicos — Agenda", false, true),
+
+        ("/loja/eletronica-admin/api/assistant/config", Get, "[Eletrônicos] Configuração da Assistente IA (prompt, tom, RAG habilitado)", "Eletrônicos — Assistente IA", true, false),
+        ("/loja/eletronica-admin/api/assistant/config", Put, "[Eletrônicos] Salvar configuração da Assistente IA", "Eletrônicos — Assistente IA", true, true),
+        ("/loja/eletronica-admin/api/assistant/rag", Get, "[Eletrônicos] Listar exemplos de atendimento (RAG)", "Eletrônicos — Assistente IA", true, false),
+        ("/loja/eletronica-admin/api/assistant/rag", Post, "[Eletrônicos] Enviar exemplo de atendimento (RAG, multipart)", "Eletrônicos — Assistente IA", true, true),
+        ("/loja/eletronica-admin/api/assistant/rag", Delete, "[Eletrônicos] Excluir exemplo de atendimento (RAG)", "Eletrônicos — Assistente IA", true, false),
+        ("/loja/eletronica-admin/api/assistant/ai-models", Get, "[Eletrônicos] Listar modelos de IA configurados", "Eletrônicos — Assistente IA", true, false),
+        ("/loja/eletronica-admin/api/assistant/ai-models", Post, "[Eletrônicos] Adicionar modelo de IA", "Eletrônicos — Assistente IA", true, true),
+        ("/loja/eletronica-admin/api/assistant/ai-models/{id}", Put, "[Eletrônicos] Atualizar/reordenar modelo de IA", "Eletrônicos — Assistente IA", true, true),
+        ("/loja/eletronica-admin/api/assistant/ai-models/{id}", Delete, "[Eletrônicos] Remover modelo de IA", "Eletrônicos — Assistente IA", true, false),
+        ("/loja/eletronica-loja/api/assistant/message", Post, "[Eletrônicos] Webhook de mensagem recebida — dispara o atendimento da Assistente IA no WhatsApp", "Eletrônicos — Assistente IA", false, true),
+
+        ("/loja/eletronica-admin/api/templates", Get, "[Eletrônicos] Listar templates de mensagem WhatsApp (Template Zap)", "Eletrônicos — Template Zap", true, false),
+        ("/loja/eletronica-admin/api/templates/{key}", Put, "[Eletrônicos] Editar conteúdo de um template", "Eletrônicos — Template Zap", true, true),
+
+        ("/loja/eletronica-loja/api/service-requests", Post, "[Eletrônicos] Criar solicitação de assistência técnica (formulário público)", "Eletrônicos — Solicitações", false, true),
+        ("/loja/eletronica-loja/api/consultar", Get, "[Eletrônicos] Consultar status de solicitações por telefone (link público)", "Eletrônicos — Solicitações", false, false),
+        ("/loja/eletronica-admin/api/whatsapp/notify", Post, "[Eletrônicos] Disparar notificação de mudança de status ao cliente (fila Redis, prioridade alta em pagamento/conclusão)", "Eletrônicos — WhatsApp", true, true),
+        ("/loja/eletronica-loja/api/whatsapp/notify-store-order", Post, "[Eletrônicos] Notificar novo pedido da vitrine (dono + cliente, fila Redis)", "Eletrônicos — WhatsApp", false, true),
+        ("/loja/eletronica-admin/api/whatsapp/connect", Post, "[Eletrônicos] Gerar QR code de conexão da instância Evolution API", "Eletrônicos — WhatsApp", true, false),
+        ("/loja/eletronica-loja/api/whatsapp/webhook", Post, "[Eletrônicos] Webhook de eventos da Evolution API (mensagens, status de conexão)", "Eletrônicos — WhatsApp", false, true),
     ];
 
     for (path, method, summary, tag, auth, body) in routes {
@@ -171,6 +218,11 @@ pub fn build() -> OpenApi {
         .servers(Some(vec![
             Server::new("https://ufersin-api-production.up.railway.app"),
             Server::new("http://localhost:8081"),
+            // Único server que serve as rotas "Eletrônicos — *" abaixo — são
+            // proxiadas (Vercel rewrite) por trás do domínio da plataforma,
+            // não deste backend. Selecione este server no dropdown do
+            // Swagger UI antes de dar "Try it out" nelas.
+            Server::new("https://resolutoo.com"),
         ]))
         .paths(paths)
         .tags(Some(vec![
@@ -185,6 +237,11 @@ pub fn build() -> OpenApi {
             Tag::new("Assistente IA"),
             Tag::new("Superadmin"),
             Tag::new("Sistema"),
+            Tag::new("Eletrônicos — Agenda"),
+            Tag::new("Eletrônicos — Assistente IA"),
+            Tag::new("Eletrônicos — Template Zap"),
+            Tag::new("Eletrônicos — Solicitações"),
+            Tag::new("Eletrônicos — WhatsApp"),
         ]))
         .components(Some(components))
         .build()
