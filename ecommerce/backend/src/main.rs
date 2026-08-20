@@ -543,6 +543,10 @@ async fn main() -> anyhow::Result<()> {
             "/internal/sync-pickup-address",
             post(routes::internal::sync_pickup_address),
         )
+        .route(
+            "/internal/mint-admin-token",
+            post(routes::internal::mint_admin_token),
+        )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         // Axum's próprio default é 2MB — baixo demais pra banner de campanha

@@ -4,6 +4,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::auth::make_token;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -252,6 +253,65 @@ pub async fn sync_pickup_address(
 
 pub async fn health() -> StatusCode {
     StatusCode::OK
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MintAdminTokenInput {
+    pub tenant_slug: String,
+    pub admin_email: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MintAdminTokenOutput {
+    pub token: String,
+    pub name: String,
+}
+
+/// Chamado pelo middleware do vrtech (Next.js) na ponte de sessão vinda do
+/// hub da plataforma: a sessão do lojista lá é validada via Supabase JWT
+/// (já verificado antes de chegar aqui), não senha — então não dá pra usar
+/// o /api/auth/admin/login normal, que exige senha em texto que nunca
+/// trafega além do primeiro login. Confia na chamada backend-a-backend
+/// (INTERNAL_API_KEY) igual as outras rotas deste arquivo: quem já provou
+/// que é o lojista dono da sessão (verificação feita no Next.js, que só
+/// conhece o tenant "vrtech") ganha o token normal de AdminUser, idêntico
+/// ao que o formulário de login sempre emitiu.
+pub async fn mint_admin_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<MintAdminTokenInput>,
+) -> Result<Json<MintAdminTokenOutput>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+
+    let slug = input.tenant_slug.trim().to_lowercase();
+    let email = input.admin_email.trim();
+    if slug.is_empty() || email.is_empty() {
+        return Err(AppError::BadRequest(
+            "tenant_slug e admin_email são obrigatórios".to_string(),
+        ));
+    }
+
+    let tenant: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((tenant_id,)) = tenant else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    let admin: Option<(String, String)> = sqlx::query_as(
+        "SELECT id, name FROM admins WHERE tenant_id = $1 AND lower(email) = lower($2)",
+    )
+    .bind(&tenant_id)
+    .bind(email)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((admin_id, name)) = admin else {
+        return Err(AppError::NotFound("admin not found for this tenant".to_string()));
+    };
+
+    let token = make_token(&state.jwt_secret, &admin_id, &tenant_id, "admin", &name);
+    Ok(Json(MintAdminTokenOutput { token, name }))
 }
 
 #[derive(Debug, Deserialize)]
