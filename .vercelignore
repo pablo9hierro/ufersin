@@ -1,0 +1,12 @@
+node_modules
+backend/target
+backend/.cargo-build-docker.log
+ecommerce/backend/target
+ecommerce/node_modules
+ecommerce/frontend/node_modules
+ecommerce/backend/node_modules
+.migration-tmp
+.git
+*.log
+.tmp-*
+.tmp-e2e-report

@@ -3,7 +3,10 @@
 # pra a demo da Resolutoo abrir as vitrines mockadas no mesmo domínio
 # de produção (…/loja/demo-entrar), sem depender de localhost:5173.
 # Também é o painel real do assinante (…/loja/admin/login?tenant=…).
-set -euo pipefail
+set -eu
+# (sem pipefail: alguns ambientes de build do Vercel resolvem `bash` pra um
+# shell minimalista que não reconhece a opção; o script não usa pipes onde
+# isso importaria, então a proteção não faz falta aqui.)
 # Resolvido a partir do caminho do próprio script (não do cwd) pra
 # funcionar tanto invocado como `bash scripts/embed-loja-demo.sh` de
 # dentro de frontend/ (GitHub Actions) quanto de qualquer outro lugar.
