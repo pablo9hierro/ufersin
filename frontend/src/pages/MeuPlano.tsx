@@ -547,7 +547,9 @@ export default function MeuPlano() {
         fields.entrega_somente_pix != null ||
         fields.pagamento_manual != null ||
         fields.vende_mais_18 != null ||
-        fields.vender_externamente != null
+        fields.vender_externamente != null ||
+        fields.coleta_gratis != null ||
+        fields.entrega_reparado_gratis != null
       ) {
         const { error: prefsErr } = await supabase.schema('resolutoo').rpc('set_my_sale_prefs', {
           p_apenas_retirada: fields.apenas_retirada ?? null,
@@ -556,6 +558,8 @@ export default function MeuPlano() {
           p_pagamento_na_retirada: fields.pagamento_na_retirada ?? null,
           p_entrega_somente_pix: fields.entrega_somente_pix ?? null,
           p_pagamento_manual: fields.pagamento_manual ?? null,
+          p_coleta_gratis: fields.coleta_gratis ?? null,
+          p_entrega_reparado_gratis: fields.entrega_reparado_gratis ?? null,
         })
         if (prefsErr) console.warn('set_my_sale_prefs:', prefsErr.message)
       }
