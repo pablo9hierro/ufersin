@@ -35,6 +35,9 @@ pub struct ProductRow {
     /// cliente em create/update normal; só é setado por
     /// `create_formulated_product`/mudado nunca depois.
     pub origin_type: String,
+    /// Tags de busca (palavras/frases-chave) geradas por IA -- exibidas num
+    /// accordion recolhido no card, nunca soltas/escondidas via CSS.
+    pub tags: Vec<String>,
     /// Marca/modelo do aparelho — só usado pelo ramo eletrônicos, NULL pra
     /// qualquer outro tenant. Ver módulo eletrônicos (VR Tech).
     pub phone_brand: Option<String>,
@@ -56,6 +59,7 @@ pub struct ProductDto {
     pub low_stock_threshold: Option<i64>,
     pub barcode: Option<String>,
     pub origin_type: String,
+    pub tags: Vec<String>,
     pub phone_brand: Option<String>,
     pub phone_model: Option<String>,
 }
@@ -76,6 +80,7 @@ impl From<ProductRow> for ProductDto {
             low_stock_threshold: r.low_stock_threshold,
             barcode: r.barcode,
             origin_type: r.origin_type,
+            tags: r.tags,
             phone_brand: r.phone_brand,
             phone_model: r.phone_model,
         }
