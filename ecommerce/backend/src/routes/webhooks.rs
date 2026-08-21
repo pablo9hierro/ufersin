@@ -66,6 +66,12 @@ async fn handle(state: &AppState, payload: &Value) -> anyhow::Result<()> {
         return Ok(());
     };
 
+    let event = payload.get("event").and_then(|v| v.as_str()).unwrap_or("");
+    if event == "presence.update" {
+        forward_presence_to_assistant_ia(state, &tenant_id, payload.get("data").unwrap_or(&Value::Null));
+        return Ok(());
+    }
+
     let data = payload.get("data").unwrap_or(&Value::Null);
     // Some Evolution API versions nest messages.upsert events under
     // data.messages[0] instead of putting key/message directly on data —
@@ -431,6 +437,52 @@ pub async fn send_to_assistant_ia(
 /// pelo WhatsApp dele): se a IA for reativada depois, ela enxerga tudo que
 /// foi combinado nesse meio-tempo. Mensagens sem texto/áudio (imagem,
 /// sticker, documento) continuam ignoradas.
+/// Cliente digitando/gravando áudio no WhatsApp -- repassa pro assistant-ia
+/// pra ele segurar a resposta da IA até a folga de tolerância acabar (ver
+/// `message_batch_window_seconds`), mesma ideia de `forward_to_assistant_ia`
+/// mas sem nada de mensagem/texto envolvido. Fire-and-forget, mesmo padrão.
+fn forward_presence_to_assistant_ia(state: &AppState, tenant_id: &str, data: &Value) {
+    if std::env::var("ASSISTANT_IA_URL").is_err() {
+        return;
+    }
+    let remote_jid = data.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let phone: String = remote_jid.chars().take_while(char::is_ascii_digit).collect();
+    if phone.is_empty() {
+        return;
+    }
+    let presence = data
+        .get("presences")
+        .and_then(|p| p.get(remote_jid))
+        .and_then(|p| p.get("lastKnownPresence"))
+        .and_then(|v| v.as_str())
+        .or_else(|| data.get("presence").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .to_string();
+    if presence != "composing" && presence != "recording" {
+        return;
+    }
+
+    let state = state.clone();
+    let tenant_id = tenant_id.to_string();
+    tokio::spawn(async move {
+        let Ok(assistant_ia_url) = std::env::var("ASSISTANT_IA_URL") else { return };
+        let Ok(Some((slug,))) = sqlx::query_as::<_, (String,)>("SELECT slug FROM tenants WHERE id = $1")
+            .bind(&tenant_id)
+            .fetch_optional(&state.pool)
+            .await
+        else {
+            return;
+        };
+        let _ = state
+            .http
+            .post(format!("{}/webhook/presence", assistant_ia_url.trim_end_matches('/')))
+            .timeout(std::time::Duration::from_secs(10))
+            .json(&serde_json::json!({ "tenant_slug": slug, "phone": phone, "presence": presence }))
+            .send()
+            .await;
+    });
+}
+
 fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, data: &Value, message: &Value) {
     if std::env::var("ASSISTANT_IA_URL").is_err() {
         tracing::info!("assistant-ia forward: ASSISTANT_IA_URL not set, skipping");
