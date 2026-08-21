@@ -330,7 +330,13 @@ export default function MeuPlano() {
     me.slug?.trim() ||
     me.dominio?.match(/[?&]tenant=([^&]+)/i)?.[1]?.trim() ||
     null
-  const storeReady = Boolean(storeSlug && me.tenant_id)
+  // Achado real: exigir `me.tenant_id` aqui escondia TODA a seção de
+  // Preferências de venda (incluindo o apenas_retirada que já existia)
+  // numa loja real, ativa e 100% funcional -- Vitrine/Painel (linhas
+  // abaixo) já dependem só de `storeSlug`, e continuavam habilitados
+  // normalmente com `tenant_id` nulo. Alinhado ao mesmo critério: `storeSlug`
+  // sozinho já prova que a loja foi provisionada.
+  const storeReady = Boolean(storeSlug)
   const needsStoreOnboarding =
     !storeSlug &&
     (me.onboarding_status === 'aguardando_onboarding' ||
@@ -698,7 +704,7 @@ export default function MeuPlano() {
 
   const handleSavePreferenciasVenda = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!storeSlug || !me.tenant_id) {
+    if (!storeSlug) {
       setError('Conclua o cadastro da loja (Access Token do Mercado Pago incluso) antes de salvar preferências.')
       return
     }
