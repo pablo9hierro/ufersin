@@ -143,6 +143,8 @@ export default function MeuPlano() {
   const [facebook, setFacebook] = useState('')
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
+  const [coletaGratis, setColetaGratis] = useState(false)
+  const [entregaReparadoGratis, setEntregaReparadoGratis] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
   // Regra fixa do plano essential — entrega só sai com pagamento prévio
   // (Pix/cartão), dinheiro só na retirada/PDV. Sem toggle: sempre true.
@@ -217,6 +219,8 @@ export default function MeuPlano() {
         setFacebook(m.facebook ?? '')
         setVendeMais18(!!m.vende_mais_18)
         setApenasRetirada(!!m.apenas_retirada)
+        setColetaGratis(!!m.coleta_gratis)
+        setEntregaReparadoGratis(!!m.entrega_reparado_gratis)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
         setPagamentoManual(!!m.pagamento_manual)
         setVenderExternamente(m.vender_externamente !== false)
@@ -237,6 +241,8 @@ export default function MeuPlano() {
             if (pub && typeof pub === 'object') {
               const row = pub as {
                 apenas_retirada?: boolean
+                coleta_gratis?: boolean
+                entrega_reparado_gratis?: boolean
                 pagamento_na_retirada?: boolean
                 entrega_somente_pix?: boolean
                 pagamento_manual?: boolean
@@ -244,6 +250,8 @@ export default function MeuPlano() {
                 vender_externamente?: boolean
               }
               if (typeof row.apenas_retirada === 'boolean') setApenasRetirada(row.apenas_retirada)
+              if (typeof row.coleta_gratis === 'boolean') setColetaGratis(row.coleta_gratis)
+              if (typeof row.entrega_reparado_gratis === 'boolean') setEntregaReparadoGratis(row.entrega_reparado_gratis)
               if (typeof row.pagamento_na_retirada === 'boolean') setPagamentoNaRetirada(row.pagamento_na_retirada)
               if (typeof row.pagamento_manual === 'boolean') setPagamentoManual(row.pagamento_manual)
               if (typeof row.vende_mais_18 === 'boolean') setVendeMais18(row.vende_mais_18)
@@ -697,6 +705,10 @@ export default function MeuPlano() {
       pagamento_na_retirada: pagamentoNaRetirada,
       entrega_somente_pix: entregaSomentePix,
       pagamento_manual: pagamentoManual,
+      // Loja sem deslocamento não tem cortesia de deslocamento (o backend
+      // também normaliza, isto só mantém a UI e o payload coerentes).
+      coleta_gratis: !apenasRetirada && coletaGratis,
+      entrega_reparado_gratis: !apenasRetirada && entregaReparadoGratis,
     })
   }
 
@@ -918,11 +930,51 @@ export default function MeuPlano() {
                     />
                     <span className="text-xs text-uf-silver-dim">
                       <span className="block text-uf-silver font-semibold mb-0.5">
-                        Não ofereço serviço de entrega — retirada obrigatória na loja
+                        {me.vertical === 'eletronicos'
+                          ? 'Apenas retirada/local — não ofereço serviço de deslocamento'
+                          : 'Não ofereço serviço de entrega — retirada obrigatória na loja'}
                       </span>
-                      A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.
+                      {me.vertical === 'eletronicos'
+                        ? 'Sem coleta de aparelho, sem entrega de produto e sem entrega de aparelho reparado. O cliente leva e retira na loja.'
+                        : 'A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.'}
                     </span>
                   </label>
+                  {/* Cortesia de deslocamento só existe pra quem FAZ deslocamento —
+                      marcar "apenas retirada" esconde (e o backend zera as duas). */}
+                  {me.vertical === 'eletronicos' && !apenasRetirada && (
+                    <>
+                      <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={coletaGratis}
+                          onChange={(e) => setColetaGratis(e.target.checked)}
+                          className="w-4 h-4 mt-0.5"
+                          data-testid="pref-coleta-gratis"
+                        />
+                        <span className="text-xs text-uf-silver-dim">
+                          <span className="block text-uf-silver font-semibold mb-0.5">
+                            Coleta de aparelho grátis
+                          </span>
+                          Buscar o aparelho pra diagnóstico/reparo não é cobrado do cliente. A entrega do aparelho pronto continua sendo cobrada normalmente (frete por distância).
+                        </span>
+                      </label>
+                      <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={entregaReparadoGratis}
+                          onChange={(e) => setEntregaReparadoGratis(e.target.checked)}
+                          className="w-4 h-4 mt-0.5"
+                          data-testid="pref-entrega-reparado-gratis"
+                        />
+                        <span className="text-xs text-uf-silver-dim">
+                          <span className="block text-uf-silver font-semibold mb-0.5">
+                            Entrega do aparelho reparado grátis
+                          </span>
+                          Devolver o aparelho pronto na casa do cliente não é cobrado. A coleta continua sendo cobrada normalmente (frete por distância).
+                        </span>
+                      </label>
+                    </>
+                  )}
                   </>
                   )}
                   <button type="submit" disabled={saving} className="btn-primary w-full py-3" data-testid="salvar-preferencias">

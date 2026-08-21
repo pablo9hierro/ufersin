@@ -215,6 +215,10 @@ export interface MeResponse {
   vende_mais_18: boolean
   /** Vitrine: só aceita retirada no local (sem entrega). */
   apenas_retirada: boolean
+  /** Ramo eletrônica: coleta do aparelho a reparar é cortesia. */
+  coleta_gratis?: boolean
+  /** Ramo eletrônica: entrega do aparelho reparado é cortesia. */
+  entrega_reparado_gratis?: boolean
   /** Pagamento de pedidos de retirada só no ato da retirada na loja. */
   pagamento_na_retirada: boolean
   /** Entrega só com Pix já pago no checkout. */
@@ -285,6 +289,8 @@ export interface OnboardingInput {
   vender_externamente: boolean
   vende_mais_18?: boolean
   apenas_retirada?: boolean
+  coleta_gratis?: boolean
+  entrega_reparado_gratis?: boolean
   pagamento_na_retirada?: boolean
   entrega_somente_pix?: boolean
   pagamento_manual?: boolean
@@ -316,6 +322,8 @@ export interface EditOnboardingInput {
   vender_externamente?: boolean
   vende_mais_18?: boolean
   apenas_retirada?: boolean
+  coleta_gratis?: boolean
+  entrega_reparado_gratis?: boolean
   pagamento_na_retirada?: boolean
   entrega_somente_pix?: boolean
   pagamento_manual?: boolean

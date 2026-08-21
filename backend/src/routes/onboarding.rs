@@ -38,6 +38,12 @@ pub struct OnboardingInput {
     /// Vitrine: só aceita retirada no local (sem entrega/frete/motoboy).
     #[serde(default)]
     pub apenas_retirada: bool,
+    /// Ramo eletrônica: coleta do aparelho a reparar é cortesia (não cobra frete de ida).
+    #[serde(default)]
+    pub coleta_gratis: bool,
+    /// Ramo eletrônica: entrega do aparelho já reparado é cortesia (não cobra frete de volta).
+    #[serde(default)]
+    pub entrega_reparado_gratis: bool,
     /// Pagamento de pedidos de retirada só no ato da retirada na loja.
     #[serde(default)]
     pub pagamento_na_retirada: bool,
@@ -242,7 +248,8 @@ pub async fn onboarding(
          plataforma_credenciais = COALESCE($17, plataforma_credenciais), \
          layout_style = $18, instagram = $19, endereco_numero = $20, vende_mais_18 = $21, \
          facebook = $22, apenas_retirada = $23, pagamento_na_retirada = $24, \
-         entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, updated_at = now() \
+         entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, \
+         coleta_gratis = $28, entrega_reparado_gratis = $29, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -272,6 +279,12 @@ pub async fn onboarding(
     .bind(body.entrega_somente_pix)
     .bind(body.pagamento_manual)
     .bind(&body.vertical)
+    // Cortesia de deslocamento só existe se a loja faz deslocamento --
+    // `apenas_retirada` marcado zera as duas, senão ficaria gravado um
+    // "grátis" que nunca é consultado e reaparece confuso se o lojista
+    // desmarcar "apenas retirada" depois.
+    .bind(!body.apenas_retirada && body.coleta_gratis)
+    .bind(!body.apenas_retirada && body.entrega_reparado_gratis)
     .execute(&state.pool)
     .await?;
 
@@ -411,6 +424,10 @@ pub struct EditOnboardingInput {
     pub vende_mais_18: Option<bool>,
     #[serde(default)]
     pub apenas_retirada: Option<bool>,
+    #[serde(default)]
+    pub coleta_gratis: Option<bool>,
+    #[serde(default)]
+    pub entrega_reparado_gratis: Option<bool>,
     #[serde(default)]
     pub pagamento_na_retirada: Option<bool>,
     #[serde(default)]
@@ -556,6 +573,8 @@ pub async fn editar_onboarding(
            WHEN $28::text IS NULL THEN landing_hero_image_url \
            WHEN NULLIF($28, '') IS NULL THEN NULL \
            ELSE $28 END, \
+         coleta_gratis = COALESCE($30, coleta_gratis), \
+         entrega_reparado_gratis = COALESCE($31, entrega_reparado_gratis), \
          onboarding_status = CASE \
            WHEN onboarding_status = 'aguardando_onboarding' THEN 'provisionado' \
            ELSE onboarding_status END, \
@@ -591,6 +610,17 @@ pub async fn editar_onboarding(
     .bind(body.pagamento_manual)
     .bind(body.landing_hero_image_url.as_ref().map(|s| s.trim().to_string()))
     .bind(&claims.sub)
+    // Marcar "apenas retirada" nesta mesma edição zera as cortesias de
+    // deslocamento (não há deslocamento pra ser cortesia). Se o campo não
+    // veio na edição, COALESCE preserva o valor atual.
+    .bind(match (body.apenas_retirada, body.coleta_gratis) {
+        (Some(true), _) => Some(false),
+        (_, v) => v,
+    })
+    .bind(match (body.apenas_retirada, body.entrega_reparado_gratis) {
+        (Some(true), _) => Some(false),
+        (_, v) => v,
+    })
     .execute(&state.pool)
     .await?;
 
@@ -898,6 +928,10 @@ pub struct TenantConfigResponse {
     pub vende_mais_18: bool,
     /// Vitrine: só retirada no local (sem entrega).
     pub apenas_retirada: bool,
+    /// Ramo eletrônica: coleta do aparelho a reparar é cortesia.
+    pub coleta_gratis: bool,
+    /// Ramo eletrônica: entrega do aparelho reparado é cortesia.
+    pub entrega_reparado_gratis: bool,
     /// Pagamento de pedidos de retirada só no ato da retirada.
     pub pagamento_na_retirada: bool,
     /// Entrega só com Pix já pago no checkout.
@@ -932,6 +966,8 @@ struct TenantConfigRow {
     cor_principal: Option<String>,
     vende_mais_18: bool,
     apenas_retirada: bool,
+    coleta_gratis: bool,
+    entrega_reparado_gratis: bool,
     pagamento_na_retirada: bool,
     entrega_somente_pix: bool,
     pagamento_manual: bool,
@@ -965,6 +1001,8 @@ pub async fn tenant_config(
          COALESCE(layout_style, 'ufersin') as layout_style, vertical, cor_principal, \
          COALESCE(vende_mais_18, false) as vende_mais_18, \
          COALESCE(apenas_retirada, false) as apenas_retirada, \
+         COALESCE(coleta_gratis, false) as coleta_gratis, \
+         COALESCE(entrega_reparado_gratis, false) as entrega_reparado_gratis, \
          COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada, \
          COALESCE(entrega_somente_pix, false) as entrega_somente_pix, \
          COALESCE(pagamento_manual, false) as pagamento_manual, \
@@ -999,6 +1037,11 @@ pub async fn tenant_config(
         cor_principal: row.cor_principal,
         vende_mais_18: row.vende_mais_18,
         apenas_retirada: row.apenas_retirada,
+        // Loja sem deslocamento nenhum não tem "grátis" a oferecer — força
+        // false na leitura também, pra um dado legado inconsistente no banco
+        // nunca fazer o vrtech oferecer coleta/entrega numa loja de retirada.
+        coleta_gratis: !row.apenas_retirada && row.coleta_gratis,
+        entrega_reparado_gratis: !row.apenas_retirada && row.entrega_reparado_gratis,
         pagamento_na_retirada: row.pagamento_na_retirada,
         entrega_somente_pix: row.entrega_somente_pix,
         pagamento_manual: row.pagamento_manual,

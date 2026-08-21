@@ -47,6 +47,8 @@ struct SubscriberRow {
     endereco_numero: Option<String>,
     vende_mais_18: bool,
     apenas_retirada: bool,
+    coleta_gratis: bool,
+    entrega_reparado_gratis: bool,
     pagamento_na_retirada: bool,
     entrega_somente_pix: bool,
     pagamento_manual: bool,
@@ -101,6 +103,10 @@ pub struct MeResponse {
     pub endereco_numero: Option<String>,
     pub vende_mais_18: bool,
     pub apenas_retirada: bool,
+    /// Ramo eletrônica: coleta do aparelho a reparar é cortesia.
+    pub coleta_gratis: bool,
+    /// Ramo eletrônica: entrega do aparelho reparado é cortesia.
+    pub entrega_reparado_gratis: bool,
     pub pagamento_na_retirada: bool,
     pub entrega_somente_pix: bool,
     /// Preferência /meu-plano: força confirmação manual (sem QR Pix online).
@@ -142,6 +148,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 COALESCE(layout_style, 'ufersin') as layout_style, instagram, facebook, endereco_numero,
                 COALESCE(vende_mais_18, false) as vende_mais_18,
                 COALESCE(apenas_retirada, false) as apenas_retirada,
+                COALESCE(coleta_gratis, false) as coleta_gratis,
+                COALESCE(entrega_reparado_gratis, false) as entrega_reparado_gratis,
                 COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada,
                 COALESCE(entrega_somente_pix, false) as entrega_somente_pix,
                 COALESCE(pagamento_manual, false) as pagamento_manual, coupon_code,
@@ -219,6 +227,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         endereco_numero: row.endereco_numero,
         vende_mais_18: row.vende_mais_18,
         apenas_retirada: row.apenas_retirada,
+        coleta_gratis: !row.apenas_retirada && row.coleta_gratis,
+        entrega_reparado_gratis: !row.apenas_retirada && row.entrega_reparado_gratis,
         pagamento_na_retirada: row.pagamento_na_retirada,
         entrega_somente_pix: row.entrega_somente_pix,
         pagamento_manual: row.pagamento_manual,
