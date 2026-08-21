@@ -1,3 +1,6 @@
 # Keep SQL migrations byte-stable across Windows/Linux (sqlx checksums).
 ecommerce/backend/migrations/*.sql text eol=lf
 backend/migrations/*.sql text eol=lf
+# Shell scripts run inside Linux build containers (Vercel/Railway) --
+# CRLF from a Windows checkout breaks the shebang/parser there.
+*.sh text eol=lf
