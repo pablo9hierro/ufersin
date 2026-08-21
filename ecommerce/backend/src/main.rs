@@ -556,6 +556,10 @@ async fn main() -> anyhow::Result<()> {
             "/internal/mint-admin-token",
             post(routes::internal::mint_admin_token),
         )
+        .route(
+            "/internal/pdv-order-sync",
+            post(routes::internal::pdv_order_sync),
+        )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         // Axum's próprio default é 2MB — baixo demais pra banner de campanha

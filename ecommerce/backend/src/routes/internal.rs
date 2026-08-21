@@ -552,3 +552,120 @@ pub async fn sync_admin_password(
         updated: false,
     }))
 }
+
+#[derive(Debug, Deserialize)]
+pub struct PdvOrderSyncItem {
+    pub item_id: String,
+    pub label: String,
+    pub unit_price: f64,
+    pub quantity: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PdvOrderSyncInput {
+    pub tenant_slug: String,
+    /// ID da venda no banco do vrtech (pdv_sales.id) -- vira o próprio ID
+    /// do pedido aqui, o que torna a sincronização idempotente: reenviar a
+    /// mesma venda esbarra na PK e é tratado como já sincronizado, sem
+    /// duplicar no Financeiro.
+    pub sale_id: String,
+    pub customer_name: String,
+    #[serde(default)]
+    pub customer_whatsapp: Option<String>,
+    /// orders.payment_method só aceita um valor único -- em venda com
+    /// múltiplas formas de pagamento (split), o vrtech manda a de maior
+    /// valor como principal.
+    pub payment_method: String,
+    pub total: f64,
+    pub items: Vec<PdvOrderSyncItem>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PdvOrderSyncOutput {
+    pub order_id: String,
+    pub already_synced: bool,
+}
+
+/// Espelha uma venda de balcão concluída no vrtech pra dentro de
+/// `orders`/`order_items` (delivery_type='balcao') -- é o mesmo lugar que
+/// `/api/admin/financeiro` já lê pra "Vendas PDV" (`list_orders` filtra
+/// `delivery_type != 'balcao'`, então balcão nunca aparece misturado com
+/// pedido de vitrine). Vrtech continua sendo a fonte de verdade da venda
+/// em si (estoque, split payment); isso aqui é só o espelho pro relatório
+/// financeiro da plataforma enxergar a venda.
+pub async fn pdv_order_sync(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<PdvOrderSyncInput>,
+) -> Result<Json<PdvOrderSyncOutput>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+
+    if input.items.is_empty() {
+        return Err(AppError::BadRequest("venda sem itens".to_string()));
+    }
+    let slug = input.tenant_slug.trim().to_lowercase();
+    let tenant: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((tenant_id,)) = tenant else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    let existing: Option<(String,)> = sqlx::query_as("SELECT id FROM orders WHERE id = $1")
+        .bind(&input.sale_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    if existing.is_some() {
+        return Ok(Json(PdvOrderSyncOutput {
+            order_id: input.sale_id,
+            already_synced: true,
+        }));
+    }
+
+    let whatsapp = input
+        .customer_whatsapp
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("00000000000")
+        .to_string();
+
+    let mut tx = state.pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO orders \
+           (id, customer_id, customer_name, customer_whatsapp, delivery_type, \
+            payment_method, payment_status, status, shipping_price, total, discount_amount, tenant_id) \
+         VALUES ($1, NULL, $2, $3, 'balcao', $4, 'pago', 'concluido', 0, $5, 0, $6)",
+    )
+    .bind(&input.sale_id)
+    .bind(&input.customer_name)
+    .bind(&whatsapp)
+    .bind(&input.payment_method)
+    .bind(input.total)
+    .bind(&tenant_id)
+    .execute(&mut *tx)
+    .await?;
+
+    for item in &input.items {
+        sqlx::query(
+            "INSERT INTO order_items (id, order_id, product_id, product_name, unit_price, quantity, tenant_id) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&input.sale_id)
+        .bind(&item.item_id)
+        .bind(&item.label)
+        .bind(item.unit_price)
+        .bind(item.quantity)
+        .bind(&tenant_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
+    Ok(Json(PdvOrderSyncOutput {
+        order_id: input.sale_id,
+        already_synced: false,
+    }))
+}
