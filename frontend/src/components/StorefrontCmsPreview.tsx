@@ -25,11 +25,16 @@ export default function StorefrontCmsPreview({
   onChange,
   publicUrl,
   reloadToken,
+  vertical,
 }: {
   values: StorefrontCmsValues
   onChange: (patch: Partial<StorefrontCmsValues>) => void
   publicUrl: string | null
   reloadToken: number
+  /** Ramo eletrônica tem UMA vitrine só (o próprio vrtech) -- não faz
+   * sentido oferecer os 3 estilos do motor genérico (todos voltados pra
+   * comida/delivery). Sem essa prop, assume ecommerce (comportamento atual). */
+  vertical?: string
 }) {
   const frameRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(0.7)
@@ -54,24 +59,33 @@ export default function StorefrontCmsPreview({
         <p className="text-[11px] text-uf-silver-dim mb-3 leading-snug">
           Como seus clientes vão ver a vitrine.
         </p>
-        <div className="grid grid-cols-2 gap-2.5">
-          {STOREFRONT_STYLES.map((s) => {
-            const selected = s.key === values.layoutStyle
-            return (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => onChange({ layoutStyle: s.key })}
-                className={`rounded-xl px-2.5 py-2.5 text-left border transition-all ${
-                  selected ? 'border-uf-blue bg-uf-blue/10' : 'border-white/10 bg-white/[0.03] hover:border-white/20'
-                }`}
-              >
-                <span className="block text-xs font-bold text-uf-silver leading-tight">{s.label}</span>
-                <span className="block text-[10px] text-uf-silver-dim mt-0.5 leading-snug">{s.desc}</span>
-              </button>
-            )
-          })}
-        </div>
+        {vertical === 'eletronicos' ? (
+          <div className="rounded-xl px-2.5 py-2.5 text-left border border-uf-blue bg-uf-blue/10">
+            <span className="block text-xs font-bold text-uf-silver leading-tight">Eletrônica</span>
+            <span className="block text-[10px] text-uf-silver-dim mt-0.5 leading-snug">
+              Vitrine dedicada de assistência técnica -- sem opção de troca.
+            </span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2.5">
+            {STOREFRONT_STYLES.map((s) => {
+              const selected = s.key === values.layoutStyle
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => onChange({ layoutStyle: s.key })}
+                  className={`rounded-xl px-2.5 py-2.5 text-left border transition-all ${
+                    selected ? 'border-uf-blue bg-uf-blue/10' : 'border-white/10 bg-white/[0.03] hover:border-white/20'
+                  }`}
+                >
+                  <span className="block text-xs font-bold text-uf-silver leading-tight">{s.label}</span>
+                  <span className="block text-[10px] text-uf-silver-dim mt-0.5 leading-snug">{s.desc}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div>
