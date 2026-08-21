@@ -553,6 +553,146 @@ pub async fn sync_admin_password(
     }))
 }
 
+async fn resolve_category_id(
+    pool: &sqlx::PgPool,
+    tenant_id: &str,
+    name: Option<&str>,
+) -> Result<Option<String>, AppError> {
+    let Some(name) = name.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM categories WHERE tenant_id = $1 AND name = $2")
+            .bind(tenant_id)
+            .bind(name)
+            .fetch_optional(pool)
+            .await?;
+    if let Some((id,)) = existing {
+        return Ok(Some(id));
+    }
+    let id = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO categories (id, tenant_id, name) VALUES ($1, $2, $3)")
+        .bind(&id)
+        .bind(tenant_id)
+        .bind(name)
+        .execute(pool)
+        .await?;
+    Ok(Some(id))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CatalogSyncInput {
+    pub tenant_slug: String,
+    pub kind: String, // "product" | "service"
+    /// ID de origem (vrtech) -- vira o próprio ID aqui também, tornando a
+    /// sincronização idempotente (reenviar o mesmo item não duplica).
+    pub source_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub price: f64,
+    #[serde(default)]
+    pub quantity: Option<i64>,
+    #[serde(default)]
+    pub image_url: Option<String>,
+    #[serde(default)]
+    pub category_name: Option<String>,
+    #[serde(default)]
+    pub phone_brand: Option<String>,
+    #[serde(default)]
+    pub phone_model: Option<String>,
+    #[serde(default)]
+    pub model_name: Option<String>,
+    #[serde(default)]
+    pub repair_type: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CatalogSyncOutput {
+    pub id: String,
+    pub already_synced: bool,
+}
+
+/// Espelha um produto/serviço cadastrado no painel do vrtech (Supabase
+/// próprio) pra dentro do catálogo público real (products/services deste
+/// backend, que /api/public/catalog/{slug}/* lê) -- sem isso o item nunca
+/// aparece na vitrine nem no WhatsApp/link de pedido. Chamado logo após o
+/// INSERT no Supabase, junto da geração de tags (mesma chamada de origem).
+pub async fn catalog_sync(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<CatalogSyncInput>,
+) -> Result<Json<CatalogSyncOutput>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+
+    let slug = input.tenant_slug.trim().to_lowercase();
+    let tenant: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((tenant_id,)) = tenant else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    let table = match input.kind.as_str() {
+        "product" => "products",
+        "service" => "services",
+        _ => return Err(AppError::BadRequest("kind deve ser 'product' ou 'service'".to_string())),
+    };
+
+    let existing: Option<String> = sqlx::query_scalar(&format!("SELECT id FROM {table} WHERE id = $1"))
+        .bind(&input.source_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    if existing.is_some() {
+        return Ok(Json(CatalogSyncOutput { id: input.source_id, already_synced: true }));
+    }
+
+    let category_id = resolve_category_id(&state.pool, &tenant_id, input.category_name.as_deref()).await?;
+
+    if table == "products" {
+        sqlx::query(
+            "INSERT INTO products \
+               (id, tenant_id, name, description, price, quantity, image_url, category_id, active, phone_brand, phone_model, tags) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $11)",
+        )
+        .bind(&input.source_id)
+        .bind(&tenant_id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(input.price)
+        .bind(input.quantity.unwrap_or(0))
+        .bind(&input.image_url)
+        .bind(&category_id)
+        .bind(&input.phone_brand)
+        .bind(&input.phone_model)
+        .bind(&input.tags)
+        .execute(&state.pool)
+        .await?;
+    } else {
+        sqlx::query(
+            "INSERT INTO services \
+               (id, tenant_id, name, description, category_id, price, active, model_name, repair_type, tags) \
+             VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9)",
+        )
+        .bind(&input.source_id)
+        .bind(&tenant_id)
+        .bind(&input.name)
+        .bind(input.description.as_deref().unwrap_or(""))
+        .bind(&category_id)
+        .bind(input.price)
+        .bind(&input.model_name)
+        .bind(&input.repair_type)
+        .bind(&input.tags)
+        .execute(&state.pool)
+        .await?;
+    }
+
+    Ok(Json(CatalogSyncOutput { id: input.source_id, already_synced: false }))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct PdvOrderSyncItem {
     pub item_id: String,

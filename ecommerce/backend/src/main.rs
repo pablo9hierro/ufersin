@@ -560,6 +560,10 @@ async fn main() -> anyhow::Result<()> {
             "/internal/pdv-order-sync",
             post(routes::internal::pdv_order_sync),
         )
+        .route(
+            "/internal/catalog-sync",
+            post(routes::internal::catalog_sync),
+        )
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         // Axum's próprio default é 2MB — baixo demais pra banner de campanha
