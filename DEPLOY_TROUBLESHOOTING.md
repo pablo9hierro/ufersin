@@ -184,6 +184,32 @@ investigar por que um deploy "não pegou".**
 
 ---
 
+## 9. vrtech (`caralho`) — o mesmo crash "Invalid supabaseUrl" volta mesmo com env var correta e sem `.vercel/output` local
+
+**Sintoma:** depois de reescrever a env var certinha (item 1) e confirmar
+que o build LOCAL (`npm run build`, checar `.next/server/`) tem a URL
+inlinada corretamente, o deploy remoto ainda serve o crash. Redeployar de
+novo (mesmo comando, nenhuma mudança) resolve.
+
+**Causa:** aparenta ser flakiness genuína do build remoto do Vercel — às
+vezes ele resolve a env var errado numa passada específica, sem relação
+com cache local (já confirmado ausente) nem com o valor real da env var
+(já confirmado correto via `vercel env pull` + checagem do bundle local).
+Não achei uma causa determinística ainda.
+
+**Mitigação:** depois de QUALQUER deploy de `caralho`, sempre confirmar
+com curl antes de considerar terminado:
+```bash
+curl -sD - -o /dev/null "https://vrtech-jp.vercel.app/dashboard"
+# Esperado: HTTP/1.1 307 (redirect pro login, sessão ausente = normal)
+# Se vier 200 com "crash"/"Invalid supabaseUrl" no body -> redeployar de novo:
+rm -rf .vercel/output && npx vercel --prod --yes --force
+```
+Nunca declarar um deploy de `caralho` concluído só porque o comando
+retornou sucesso — **sempre** curl o `/dashboard` depois.
+
+---
+
 ## Checklist rápido antes de declarar "deploy não funciona"
 
 1. O código foi **pushado** pro GitHub? (`git status`, `git log origin/main..HEAD`)
