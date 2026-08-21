@@ -709,8 +709,10 @@ export default function MeuPlano() {
       return
     }
     saveOnboarding({
-      vende_mais_18: vendeMais18,
-      vender_externamente: venderExternamente,
+      // Eletrônica não tem o checkbox +18/venda-externa (não se aplicam);
+      // manda os valores fixos corretos em vez do que ficou em memória.
+      vende_mais_18: me.vertical === 'eletronicos' ? false : vendeMais18,
+      vender_externamente: me.vertical === 'eletronicos' ? true : venderExternamente,
       apenas_retirada: apenasRetirada,
       pagamento_na_retirada: pagamentoNaRetirada,
       entrega_somente_pix: entregaSomentePix,
@@ -918,7 +920,11 @@ export default function MeuPlano() {
                     </span>
                   </label>
                   )}
-                  {venderExternamente && (
+                  {/* Eletrônica: venda externa é sempre obrigatória (não há
+                      checkbox pra desligar), então este gate nunca deve
+                      esconder o resto do form nesse ramo -- só depende do
+                      valor real do toggle pro ramo ecommerce (opcional). */}
+                  {(me.vertical === 'eletronicos' || venderExternamente) && (
                   <>
                   {me.vertical !== 'eletronicos' && (
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
