@@ -13,6 +13,7 @@
     { "source": "/loja/eletronica-loja/catalogo/:path*", "destination": "https://vrtech-jp.vercel.app/loja/:path*" },
     { "source": "/loja/eletronica-loja/servicos", "destination": "https://vrtech-jp.vercel.app/catalogo-servico" },
     { "source": "/loja/eletronica-loja/consultar", "destination": "https://vrtech-jp.vercel.app/consultar" },
+    { "source": "/loja/eletronica-loja/consultar/:path*", "destination": "https://vrtech-jp.vercel.app/consultar/:path*" },
     { "source": "/loja", "destination": "/loja/index.html" },
     { "source": "/loja/(.*)", "destination": "/loja/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }
