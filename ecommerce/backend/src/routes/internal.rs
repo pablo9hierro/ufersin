@@ -646,11 +646,56 @@ pub async fn catalog_sync(
         .bind(&input.source_id)
         .fetch_optional(&state.pool)
         .await?;
-    if existing.is_some() {
-        return Ok(Json(CatalogSyncOutput { id: input.source_id, already_synced: true }));
-    }
 
     let category_id = resolve_category_id(&state.pool, &tenant_id, input.category_name.as_deref()).await?;
+
+    if existing.is_some() {
+        // Reenvio (item editado no painel do vrtech depois do 1º sync) --
+        // atualiza os dados exibidos/pesquisáveis na vitrine (nome, preço,
+        // descrição, imagem, categoria, compatibilidade, tags). NUNCA toca
+        // em `quantity`: esse número aqui é o estoque real já vendido pela
+        // vitrine/checkout deste backend, decrementado pelos pedidos de
+        // verdade -- sobrescrever com o estoque local do vrtech (contagem
+        // separada, do PDV/balcão) apagaria venda online já registrada e
+        // permitiria overselling.
+        if table == "products" {
+            sqlx::query(
+                "UPDATE products SET name = $1, description = $2, price = $3, image_url = $4, \
+                   category_id = $5, phone_brand = $6, phone_model = $7, tags = $8 \
+                 WHERE id = $9 AND tenant_id = $10",
+            )
+            .bind(&input.name)
+            .bind(&input.description)
+            .bind(input.price)
+            .bind(&input.image_url)
+            .bind(&category_id)
+            .bind(&input.phone_brand)
+            .bind(&input.phone_model)
+            .bind(&input.tags)
+            .bind(&input.source_id)
+            .bind(&tenant_id)
+            .execute(&state.pool)
+            .await?;
+        } else {
+            sqlx::query(
+                "UPDATE services SET name = $1, description = $2, category_id = $3, price = $4, \
+                   model_name = $5, repair_type = $6, tags = $7 \
+                 WHERE id = $8 AND tenant_id = $9",
+            )
+            .bind(&input.name)
+            .bind(input.description.as_deref().unwrap_or(""))
+            .bind(&category_id)
+            .bind(input.price)
+            .bind(&input.model_name)
+            .bind(&input.repair_type)
+            .bind(&input.tags)
+            .bind(&input.source_id)
+            .bind(&tenant_id)
+            .execute(&state.pool)
+            .await?;
+        }
+        return Ok(Json(CatalogSyncOutput { id: input.source_id, already_synced: true }));
+    }
 
     if table == "products" {
         sqlx::query(
