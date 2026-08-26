@@ -193,13 +193,14 @@ export default function EletronicaNovoServicoDialog({ onClose, onDone }: { onClo
       })
       await eletronicosAdmin.appointments.create({
         service_label: service.label || 'Atendimento',
+        service_id: service.id ?? undefined,
         customer_name: customerName,
         customer_phone: customerPhone,
         date: dia,
         time: horario,
         notes: notes || undefined,
+        service_request_id: request.id,
       })
-      void request
       onDone()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Falha ao registrar o serviço.')

@@ -115,12 +115,14 @@ export const eletronicosAdmin = {
     list: () => req<AppointmentDto[]>(`${BASE}/appointments`),
     create: (input: {
       service_label: string
+      service_id?: string
       customer_name: string
       customer_phone: string
       date: string
       time: string
       duration_minutes?: number
       notes?: string
+      service_request_id?: string
     }) => req<AppointmentDto>(`${BASE}/appointments`, { method: 'POST', body: JSON.stringify(input) }),
     cancel: (id: string, justification?: string) =>
       req<AppointmentDto>(`${BASE}/appointments/${id}/cancel`, {
