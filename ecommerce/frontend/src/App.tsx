@@ -266,7 +266,9 @@ function StyleAware({
   if (!tenantConfig) return <StyleLoading />
   // Ramo eletrônicos tem vitrine PRÓPRIA (app real do vrtech, proxiado via
   // /loja/eletronica-loja no vercel.json — ver AdminLayout.tsx pro mesmo
-  // padrão do lado do painel) — nunca os 3 temas de ecommerce daqui.
+  // padrão do lado do painel) — nunca os 3 temas de ecommerce daqui: são
+  // identidade visual de e-commerce, misturar com o ramo eletrônica é
+  // exatamente o que não pode acontecer entre ramos hospedados na Resolutoo.
   if (tenantConfig.vertical === 'eletronicos') return <EletronicaStorefrontRedirect slug={slug} />
   if (tenantConfig.vender_externamente === false && !skipVenderExternamenteGate) return <LojaSemVendaExterna />
 
