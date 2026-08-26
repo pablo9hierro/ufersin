@@ -1,6 +1,15 @@
-import { Navigate, Outlet, useNavigate } from 'react-router-dom'
+import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { LogOut, Wrench } from 'lucide-react'
 import { useAdminAuth } from '../../store/adminAuth'
+import { withTenantSearch } from '../../lib/tenantConfig'
+
+const TABS = [
+  { to: '', label: 'Solicitações' },
+  { to: 'agenda', label: 'Agenda' },
+  { to: 'estoque', label: 'Estoque' },
+  { to: 'pdv', label: 'PDV' },
+  { to: 'mensagens', label: 'Mensagens' },
+]
 
 // Painel admin nativo do ramo eletrônica -- identidade visual própria
 // (slate/emerald), nunca a chrome de admin de ecommerce. Auth reaproveita
@@ -38,6 +47,22 @@ export default function EletronicaAdminLayout() {
           </button>
         </div>
       </header>
+      <nav className="flex gap-1 px-5 pt-3 border-b border-slate-800 overflow-x-auto">
+        {TABS.map((tab) => (
+          <NavLink
+            key={tab.to}
+            to={withTenantSearch(`/admin-eletronica${tab.to ? `/${tab.to}` : ''}`)}
+            end={tab.to === ''}
+            className={({ isActive }) =>
+              `whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                isActive ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`
+            }
+          >
+            {tab.label}
+          </NavLink>
+        ))}
+      </nav>
       <main className="p-5">
         <Outlet />
       </main>
