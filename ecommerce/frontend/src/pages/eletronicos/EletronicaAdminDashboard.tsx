@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Loader2, X } from 'lucide-react'
+import { FileText, Loader2, X } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { ServiceRequestDto } from '../../lib/eletronicosApi'
 import { STATUS_LABEL } from '../../lib/eletronicosApi'
+import { generateServiceOrderPdf } from '../../lib/eletronicosPdf'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 // Colunas do kanban-lite (agrupamento visual, sem drag-drop por ora --
 // mudança de status acontece no painel de detalhe, mais previsível que
@@ -118,6 +120,8 @@ function DetailPanel({
   const [error, setError] = useState<string | null>(null)
   const [completing, setCompleting] = useState(false)
   const [completedServices, setCompletedServices] = useState('')
+  const [generatingPdf, setGeneratingPdf] = useState(false)
+  const tenantConfig = useTenantConfig()
 
   async function transitionTo(status: string) {
     setSaving(true)
@@ -152,6 +156,22 @@ function DetailPanel({
       setError(e instanceof Error ? e.message : 'erro ao concluir')
     } finally {
       setCompleting(false)
+    }
+  }
+
+  async function handleGeneratePdf() {
+    setGeneratingPdf(true)
+    setError(null)
+    try {
+      const order = await eletronicosAdmin.serviceOrders.getOrCreate(request.id)
+      const blob = generateServiceOrderPdf(request, order, tenantConfig?.loja_nome || 'Assistência técnica')
+      const url = await eletronicosAdmin.uploadMedia(blob, `os-${request.id}.pdf`)
+      await eletronicosAdmin.serviceOrders.setPdf(order.id, url)
+      window.open(url, '_blank')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'erro ao gerar PDF')
+    } finally {
+      setGeneratingPdf(false)
     }
   }
 
@@ -245,6 +265,18 @@ function DetailPanel({
                 Marcar como pronto
               </button>
             </div>
+          )}
+
+          {['completed', 'em_pagamento', 'delivered', 'finished'].includes(request.status) && (
+            <button
+              type="button"
+              disabled={generatingPdf}
+              onClick={handleGeneratePdf}
+              className="w-full rounded-xl border border-slate-800 py-2.5 text-sm flex items-center justify-center gap-2 hover:border-emerald-500"
+            >
+              {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+              Gerar / baixar PDF da OS
+            </button>
           )}
         </div>
       </div>

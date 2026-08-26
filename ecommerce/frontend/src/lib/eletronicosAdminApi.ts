@@ -56,6 +56,26 @@ export const eletronicosAdmin = {
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    setPdf: (id: string, pdfUrl: string) =>
+      req<ServiceOrderDto>(`${BASE}/service-orders/${id}/pdf`, {
+        method: 'POST',
+        body: JSON.stringify({ pdf_url: pdfUrl }),
+      }),
+  },
+  uploadMedia: async (file: Blob, filename: string): Promise<string> => {
+    const form = new FormData()
+    form.append('file', file, filename)
+    const res = await fetch(`${API_BASE}${BASE}/upload`, {
+      method: 'POST',
+      headers: token() ? { Authorization: `Bearer ${token()}` } : {},
+      body: form,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      throw new ApiError(res.status, (body && (body.error || body.message)) || `erro ${res.status}`)
+    }
+    const out = (await res.json()) as { url: string }
+    return out.url
   },
   appointments: {
     list: () => req<AppointmentDto[]>(`${BASE}/appointments`),

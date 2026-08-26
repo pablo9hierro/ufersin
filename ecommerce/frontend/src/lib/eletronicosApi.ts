@@ -95,6 +95,17 @@ export async function createServiceRequestPublic(
   return parseOrThrow(res)
 }
 
+export async function uploadPublicMedia(slug: string, file: File): Promise<string> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API_BASE}/api/public/eletronicos/${encodeURIComponent(slug)}/upload`, {
+    method: 'POST',
+    body: form,
+  })
+  const body = await parseOrThrow<{ url: string }>(res)
+  return body.url
+}
+
 export async function consultarPorTelefone(slug: string, phone: string): Promise<ConsultarResponse> {
   const digits = phone.replace(/\D/g, '')
   const res = await fetch(
