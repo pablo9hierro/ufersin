@@ -62,12 +62,14 @@ const Uiux2Checkout = lazy(() => import('./uiux2/pages/Checkout'))
 const Uiux2Consultar = lazy(() => import('./uiux2/pages/Consultar'))
 const EletronicaHome = lazy(() => import('./pages/eletronicos/EletronicaHome'))
 const EletronicaConsultar = lazy(() => import('./pages/eletronicos/EletronicaConsultar'))
+const EletronicaCatalogoServico = lazy(() => import('./pages/eletronicos/EletronicaCatalogoServico'))
 const EletronicaAdminLayout = lazy(() => import('./pages/eletronicos/EletronicaAdminLayout'))
 const EletronicaAdminDashboard = lazy(() => import('./pages/eletronicos/EletronicaAdminDashboard'))
 const EletronicaAdminEstoque = lazy(() => import('./pages/eletronicos/EletronicaAdminEstoque'))
 const EletronicaAdminAgenda = lazy(() => import('./pages/eletronicos/EletronicaAdminAgenda'))
 const EletronicaAdminPdv = lazy(() => import('./pages/eletronicos/EletronicaAdminPdv'))
 const EletronicaAdminTemplates = lazy(() => import('./pages/eletronicos/EletronicaAdminTemplates'))
+const EletronicaAdminEmBreve = lazy(() => import('./pages/eletronicos/EletronicaAdminEmBreve'))
 const Uiux2RecuperarSenha = lazy(() => import('./uiux2/pages/RecuperarSenha'))
 const Uiux2Favoritos = lazy(() => import('./uiux2/pages/Favoritos'))
 const Uiux2Cupons = lazy(() => import('./uiux2/pages/Cupons'))
@@ -335,6 +337,7 @@ export default function App() {
             path="/consultar"
             element={<StyleAware ufersin={Uiux2Consultar} burgerbite={Uiux3Consultar} burgerhouse={Uiux4Consultar} eletronica={EletronicaConsultar} />}
           />
+          <Route path="/catalogo-servico" element={<EletronicaCatalogoServico />} />
           <Route path="/recuperar-senha" element={<StyleAware ufersin={Uiux2RecuperarSenha} burgerbite={Uiux3RecuperarSenha} burgerhouse={Uiux4RecuperarSenha} />} />
           <Route path="/cliente/favoritos" element={<StyleAware ufersin={Uiux2Favoritos} burgerbite={Uiux3Favoritos} burgerhouse={Uiux4Favoritos} />} />
           <Route path="/cliente/cupons" element={<StyleAware ufersin={Uiux2Cupons} burgerbite={Uiux3Cupons} burgerhouse={Uiux4Cupons} />} />
@@ -344,10 +347,14 @@ export default function App() {
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin-eletronica" element={<EletronicaAdminLayout />}>
             <Route index element={<EletronicaAdminDashboard />} />
-            <Route path="estoque" element={<EletronicaAdminEstoque />} />
-            <Route path="agenda" element={<EletronicaAdminAgenda />} />
+            <Route path="chat" element={<EletronicaAdminEmBreve title="Chat" />} />
             <Route path="pdv" element={<EletronicaAdminPdv />} />
-            <Route path="mensagens" element={<EletronicaAdminTemplates />} />
+            <Route path="agenda" element={<EletronicaAdminAgenda />} />
+            <Route path="produtos" element={<EletronicaAdminEstoque />} />
+            <Route path="servicodeslocamento" element={<EletronicaAdminEmBreve title="Serviço de deslocamento" />} />
+            <Route path="relatorios" element={<EletronicaAdminEmBreve title="Relatórios" />} />
+            <Route path="template-zap" element={<EletronicaAdminTemplates />} />
+            <Route path="conta" element={<EletronicaAdminEmBreve title="Conta" />} />
           </Route>
           <Route path="/funcionarios/login" element={<FuncionarioLogin />} />
           <Route path="/admin" element={<AdminLayout />}>

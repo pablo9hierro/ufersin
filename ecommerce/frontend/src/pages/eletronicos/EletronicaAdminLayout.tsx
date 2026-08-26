@@ -1,20 +1,24 @@
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LogOut, Wrench } from 'lucide-react'
+import { CalendarDays, ClipboardList, LogOut, MessageCircle, MessageSquare, Package, ShoppingCart, Truck, UserCog, Wallet } from 'lucide-react'
 import { useAdminAuth } from '../../store/adminAuth'
 import { withTenantSearch } from '../../lib/tenantConfig'
 
-const TABS = [
-  { to: '', label: 'Solicitações' },
-  { to: 'agenda', label: 'Agenda' },
-  { to: 'estoque', label: 'Estoque' },
-  { to: 'pdv', label: 'PDV' },
-  { to: 'mensagens', label: 'Mensagens' },
+// Port 1:1 de src/components/dashboard/DashboardSidebar.tsx do vrtech --
+// mesmos 9 itens, mesmos ícones, mesma ordem. AdminLink (Next Link) vira
+// NavLink do react-router; auth reaproveita o mesmo login/JWT de /admin
+// (o backend não distingue vertical no JWT, já tenant-scoped).
+const NAV_ITEMS = [
+  { to: '', label: 'Solicitações', icon: ClipboardList },
+  { to: 'chat', label: 'Chat', icon: MessageCircle },
+  { to: 'pdv', label: 'PDV', icon: ShoppingCart },
+  { to: 'agenda', label: 'Agenda', icon: CalendarDays },
+  { to: 'produtos', label: 'Produtos/Serviços', icon: Package },
+  { to: 'servicodeslocamento', label: 'Serviço de deslocamento', icon: Truck },
+  { to: 'relatorios', label: 'Relatórios', icon: Wallet },
+  { to: 'template-zap', label: 'Template Zap', icon: MessageSquare },
+  { to: 'conta', label: 'Conta', icon: UserCog },
 ]
 
-// Painel admin nativo do ramo eletrônica -- identidade visual própria
-// (slate/emerald), nunca a chrome de admin de ecommerce. Auth reaproveita
-// o MESMO login/token de /admin (o backend não distingue vertical no JWT,
-// só o tenant_id embutido nele já resolve tudo tenant-scoped).
 export default function EletronicaAdminLayout() {
   const { token, name, logout } = useAdminAuth()
   const navigate = useNavigate()
@@ -27,45 +31,68 @@ export default function EletronicaAdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 px-5 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
-            <Wrench className="w-4 h-4" />
-          </div>
-          <span className="font-semibold text-sm">Painel — Assistência técnica</span>
+    <div className="min-h-screen bg-[#0a0a0b] md:flex">
+      <aside className="hidden md:flex md:flex-col w-56 shrink-0 bg-[#161618] border-r border-white/5 min-h-screen sticky top-0">
+        <div className="px-5 py-5 border-b border-white/5">
+          <span className="font-black text-white">{name || 'VR Tech'}</span>
         </div>
-        <div className="flex items-center gap-3 text-sm text-slate-400">
-          <span>{name}</span>
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={`/admin-eletronica${to ? `/${to}` : ''}${withTenantSearch()}`}
+              end={to === ''}
+              className={({ isActive }) =>
+                `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  isActive ? 'bg-[#e0211a] text-white' : 'text-[#d4d4d8]/70 hover:bg-[#232327] hover:text-white'
+                }`
+              }
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="px-3 py-4 border-t border-white/5">
           <button
             type="button"
             onClick={handleLogout}
-            className="flex items-center gap-1 text-slate-400 hover:text-white transition-colors"
+            className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-[#d4d4d8]/70 hover:text-[#e0211a] transition-colors w-full"
           >
             <LogOut className="w-4 h-4" />
             Sair
           </button>
         </div>
+      </aside>
+
+      <header className="md:hidden bg-[#161618] border-b border-white/5 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
+        <span className="font-black text-white">{name || 'VR Tech'}</span>
+        <button type="button" onClick={handleLogout} className="flex items-center gap-1.5 text-[#d4d4d8]/70 hover:text-[#e0211a] text-sm transition-colors">
+          <LogOut className="w-4 h-4" />
+          Sair
+        </button>
       </header>
-      <nav className="flex gap-1 px-5 pt-3 border-b border-slate-800 overflow-x-auto">
-        {TABS.map((tab) => (
+      <nav className="md:hidden flex gap-2 overflow-x-auto px-4 py-3 bg-[#0a0a0b] border-b border-white/5 sticky top-[65px] z-10">
+        {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
           <NavLink
-            key={tab.to}
-            to={`/admin-eletronica${tab.to ? `/${tab.to}` : ''}${withTenantSearch()}`}
-            end={tab.to === ''}
+            key={to}
+            to={`/admin-eletronica${to ? `/${to}` : ''}${withTenantSearch()}`}
+            end={to === ''}
             className={({ isActive }) =>
-              `whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                isActive ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-500 hover:text-slate-300'
+              `shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                isActive ? 'bg-[#e0211a] text-white' : 'bg-[#161618] border border-white/5 text-[#d4d4d8] hover:bg-[#232327]'
               }`
             }
           >
-            {tab.label}
+            <Icon className="w-3.5 h-3.5" />
+            {label}
           </NavLink>
         ))}
       </nav>
-      <main className="p-5">
+
+      <div className="flex-1 min-w-0 p-5">
         <Outlet />
-      </main>
+      </div>
     </div>
   )
 }
