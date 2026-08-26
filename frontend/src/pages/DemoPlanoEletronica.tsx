@@ -3,17 +3,18 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, ShoppingBag, Users2 } from 'lucide-react'
 import type { PlanoCode } from '../lib/api'
 import { PLAN_NAMES } from '../lib/plans'
+import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium', 'eletronica']
 
-// Módulo eletrônicos é um app separado (vrtech) — nunca embutido via
-// /demo/{role}/{plano} do motor de e-commerce (esse mecanismo só existe pro
-// ramo 'ecommerce'). Aqui é sempre navegação de página cheia pro domínio
-// real do módulo.
-function vrtechUrl(path: string) {
-  const base = window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://vrtech-jp.vercel.app'
-  return `${base}${path}`
-}
+// Demo do ramo eletrônica roda 100% dentro do Resolutoo, nativa (mesmo
+// motor Rust + o frontend do /loja) -- nunca mais um domínio externo
+// (vrtech-jp.vercel.app foi descontinuado). Usa o tenant real "vrtech" já
+// migrado/seedado (dono: pablohierro01@gmail.com) como vitrine/dados de
+// demonstração -- é o único tenant real do ramo hoje, e é o próprio dono
+// da Resolutoo, então serve como showcase ao vivo do produto.
+const DEMO_TENANT_SLUG = 'vrtech'
+const DEMO_TENANT_EMAIL = 'pablohierro01@gmail.com'
 
 interface AreaDef {
   key: 'vitrine' | 'admin'
@@ -29,14 +30,14 @@ const AREAS: AreaDef[] = [
     label: 'Vitrine (loja do cliente)',
     desc: 'Catálogo de produtos, catálogo de serviços de reparo e checkout que o cliente final vê.',
     icon: ShoppingBag,
-    url: vrtechUrl('/'),
+    url: storePublicUrl(DEMO_TENANT_SLUG),
   },
   {
     key: 'admin',
     label: 'Área logada (admin)',
-    desc: 'Solicitações, produtos/serviços, pedidos, financeiro — o painel completo do lojista.',
+    desc: 'Solicitações, agenda, estoque, PDV, mensagens — o painel completo do lojista.',
     icon: Users2,
-    url: vrtechUrl('/login'),
+    url: storeAdminLoginUrl(DEMO_TENANT_SLUG, DEMO_TENANT_EMAIL),
   },
 ]
 
