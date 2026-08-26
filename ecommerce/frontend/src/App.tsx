@@ -62,6 +62,8 @@ const Uiux2Checkout = lazy(() => import('./uiux2/pages/Checkout'))
 const Uiux2Consultar = lazy(() => import('./uiux2/pages/Consultar'))
 const EletronicaHome = lazy(() => import('./pages/eletronicos/EletronicaHome'))
 const EletronicaConsultar = lazy(() => import('./pages/eletronicos/EletronicaConsultar'))
+const EletronicaAdminLayout = lazy(() => import('./pages/eletronicos/EletronicaAdminLayout'))
+const EletronicaAdminDashboard = lazy(() => import('./pages/eletronicos/EletronicaAdminDashboard'))
 const Uiux2RecuperarSenha = lazy(() => import('./uiux2/pages/RecuperarSenha'))
 const Uiux2Favoritos = lazy(() => import('./uiux2/pages/Favoritos'))
 const Uiux2Cupons = lazy(() => import('./uiux2/pages/Cupons'))
@@ -333,6 +335,9 @@ export default function App() {
           <Route path="/cliente/historico" element={<StyleAware ufersin={Uiux2Historico} burgerbite={Uiux3Historico} burgerhouse={Uiux4Historico} />} />
 
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin-eletronica" element={<EletronicaAdminLayout />}>
+            <Route index element={<EletronicaAdminDashboard />} />
+          </Route>
           <Route path="/funcionarios/login" element={<FuncionarioLogin />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="/admin/pedidos" replace />} />

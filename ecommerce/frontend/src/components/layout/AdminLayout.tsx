@@ -33,6 +33,7 @@ import {
   LOJA_OFFLINE_MSG,
   resolveTenantSlug,
   stashLojaOfflineMessage,
+  withTenantSearch,
 } from '../../lib/tenantConfig'
 import { adminService } from '../../services/adminService'
 import { platformOrigin } from '../../lib/platformUrl'
@@ -132,32 +133,18 @@ export default function AdminLayout() {
     logout()
   }, [lojaOffline, logout])
 
-  // Ramo eletrônicos tem painel PRÓPRIO e dedicado (app separado "vrtech",
-  // código real dele — não uma cópia/porta pra este stack, que é Rust +
-  // Vite enquanto o vrtech é Next.js). BUG CRÍTICO relatado: um tenant
-  // eletronicos acessando /loja/admin caía neste painel de produto/
-  // pedido/PDV, que não é o dele.
-  //
-  // A URL nunca sai de resolutoo.com: navega pra um caminho interno
-  // (/loja/eletronica-admin) que o vercel.json da raiz do monorepo
-  // reescreve (rewrite, proxy reverso — não redirect) pro deploy real do
-  // vrtech na Vercel. Cliente nunca vê outro domínio; o código servido é
-  // 100% o do vrtech, sem porte nenhum.
-  //
-  // Sem `?tenant=` confiável em toda navegação pós-login (a identidade
-  // vem da sessão, não da URL), essa checagem só é possível depois que
-  // tenantConfig carrega — daí ser feita aqui, não uma regra de rota
-  // estática. window.location (não useNavigate) porque cruza fora do
-  // React Router — é a fronteira do rewrite.
+  // Ramo eletrônicos tem painel PRÓPRIO (visual dedicado, nunca a chrome de
+  // ecommerce deste layout) -- migrado de app externo (vrtech-jp.vercel.app,
+  // via proxy /loja/eletronica-admin) pro nativo /admin-eletronica dentro
+  // deste mesmo app React. BUG CRÍTICO original que essa checagem evita
+  // continua valendo: um tenant eletronicos acessando /loja/admin caía
+  // neste painel de produto/pedido/PDV, que não é o dele.
   useEffect(() => {
     if (demo || !tenantReady) return
-    if (tenantConfig?.vertical === 'eletronicos' && !window.location.pathname.startsWith('/loja/eletronica-admin')) {
-      // Bare (sem /dashboard) — o rewrite em vercel.json já mapeia
-      // /loja/eletronica-admin -> https://vrtech-jp.vercel.app/dashboard;
-      // sufixar /dashboard aqui duplicava o caminho (dashboard/dashboard, 404).
-      window.location.href = '/loja/eletronica-admin'
+    if (tenantConfig?.vertical === 'eletronicos' && !window.location.pathname.startsWith('/loja/admin-eletronica')) {
+      navigate(withTenantSearch('/admin-eletronica'), { replace: true })
     }
-  }, [demo, tenantReady, tenantConfig?.vertical])
+  }, [demo, tenantReady, tenantConfig?.vertical, navigate])
 
   // null = ainda checando; true = gate ativo; false = liberado
   const [gateLocked, setGateLocked] = useState<boolean | null>(() => {
