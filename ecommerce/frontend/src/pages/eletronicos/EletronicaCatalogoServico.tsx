@@ -1,18 +1,35 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Battery, Camera, ChevronDown, Search, Smartphone, Stethoscope, Wrench, Zap } from 'lucide-react'
+import {
+  ArrowLeft,
+  Battery,
+  Camera,
+  Check,
+  ChevronDown,
+  Search,
+  ShoppingCart,
+  Smartphone,
+  Stethoscope,
+  Wrench,
+  Zap,
+} from 'lucide-react'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { resolveTenantSlug, withTenantSearch } from '../../lib/tenantConfig'
 import { fetchCatalog, type CatalogCategory, type CatalogItem } from '../../lib/eletronicosApi'
 import EletronicaServiceRequestForm from './EletronicaServiceRequestForm'
 
-// Port 1:1 de src/app/catalogo-servico/page.tsx + DiagnosticoToggle.tsx do
-// vrtech: header simples, título "Serviços e orçamento", o toggle
-// "Quebrou o aparelho e não sabe onde exatamente ele quebrou?" (abre o
-// mesmo wizard em modo diagnóstico) e a tabela de preços por marca/modelo
-// (src/app/catalogo-servico/CatalogoClient.tsx) -- aqui sem "adicionar ao
-// carrinho" porque o carrinho de serviços ainda não existe no motor novo,
-// só a consulta de preço, que é o uso real desta página.
+// Port 1:1 de src/app/catalogo-servico/page.tsx + DiagnosticoToggle.tsx +
+// CatalogoClient.tsx do vrtech: header, título "Serviços e orçamento", o
+// toggle "Quebrou o aparelho..." e a listagem completa por marca/modelo
+// (banner com foto, filtro de tipo de reparo, busca, card com foto/tags).
+//
+// Única adaptação real: "Adicionar ao carrinho" do original manda pra um
+// carrinho genérico (useCart) que finaliza como pedido de produto -- esse
+// carrinho não existe pra serviço no motor novo (é um sistema à parte, não
+// construído ainda). Em vez de fingir um carrinho que não leva a lugar
+// nenhum, o clique abre o formulário de solicitação já com aparelho e
+// serviço escolhidos (mesmo resultado prático: o cliente termina pedindo
+// o orçamento desse serviço, só sem a etapa de carrinho no meio).
 
 const REPAIR_ICONS: Record<string, React.ReactNode> = {
   'Troca de tela': <Smartphone className="w-4 h-4" />,
@@ -23,11 +40,52 @@ const REPAIR_ICONS: Record<string, React.ReactNode> = {
 }
 const repairIcon = (rt: string) => REPAIR_ICONS[rt] ?? <Wrench className="w-4 h-4" />
 
-function DiagnosticoToggle() {
+function AccordionTags({ tags }: { tags?: string[] | null }) {
   const [open, setOpen] = useState(false)
+  if (!tags || tags.length === 0) return null
+  return (
+    <div className="border-t border-white/5 mt-1 pt-1">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setOpen((v) => !v)
+        }}
+        className="w-full flex items-center justify-between text-[10px] py-1 text-[#d4d4d8]/40 hover:text-[#d4d4d8]/70 transition-colors"
+      >
+        <span>Detalhes</span>
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="flex flex-wrap gap-1 pb-1.5">
+          {tags.map((tag) => (
+            <span key={tag} className="text-[10px] rounded-full px-2 py-0.5 text-[#d4d4d8]/60 bg-white/5">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DiagnosticoToggle({
+  open,
+  onOpenChange,
+  selection,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  selection: React.ComponentProps<typeof EletronicaServiceRequestForm>['initialSelection']
+}) {
   return (
     <div className="bg-[#161618] border border-white/5 rounded-2xl overflow-hidden mb-10">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-4 p-6 text-left hover:bg-white/[0.02] transition-colors">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        className="w-full flex items-center gap-4 p-6 text-left hover:bg-white/[0.02] transition-colors"
+      >
         <div className="w-12 h-12 rounded-xl bg-[#e0211a]/10 text-[#e0211a] flex items-center justify-center shrink-0">
           <Stethoscope className="w-6 h-6" />
         </div>
@@ -42,7 +100,7 @@ function DiagnosticoToggle() {
       {open && (
         <div className="p-6 pt-0">
           <div className="border-t border-white/5 pt-6">
-            <EletronicaServiceRequestForm diagnosisOnly />
+            <EletronicaServiceRequestForm diagnosisOnly={!selection} initialSelection={selection} />
           </div>
         </div>
       )}
@@ -57,6 +115,12 @@ export default function EletronicaCatalogoServico() {
   const [items, setItems] = useState<CatalogItem[]>([])
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [selectedRepairTypes, setSelectedRepairTypes] = useState<Set<string>>(new Set())
+  const [toggleOpen, setToggleOpen] = useState(false)
+  const [addedSelection, setAddedSelection] = useState<
+    React.ComponentProps<typeof EletronicaServiceRequestForm>['initialSelection']
+  >(null)
+  const [recentlyAdded, setRecentlyAdded] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!slug) return
@@ -74,16 +138,40 @@ export default function EletronicaCatalogoServico() {
     [items, activeCategory],
   )
 
+  const allRepairTypes = useMemo(() => {
+    const types = new Set<string>()
+    for (const i of categoryItems) types.add(i.repair_type)
+    return Array.from(types).sort()
+  }, [categoryItems])
+
+  function handleBrandChange(slugKey: string) {
+    setActiveSlug(slugKey)
+    setSelectedRepairTypes(new Set())
+    setSearch('')
+  }
+
+  function toggleRepairType(rt: string) {
+    setSelectedRepairTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(rt)) next.delete(rt)
+      else next.add(rt)
+      return next
+    })
+  }
+
   const filtered = useMemo(() => {
+    let base = categoryItems
+    if (selectedRepairTypes.size > 0) base = base.filter((i) => selectedRepairTypes.has(i.repair_type))
     const q = search.trim().toLowerCase()
-    if (!q) return categoryItems
-    return categoryItems.filter(
+    if (!q) return base
+    return base.filter(
       (i) =>
         (i.model_name ?? '').toLowerCase().includes(q) ||
         i.repair_type.toLowerCase().includes(q) ||
-        (i.description ?? '').toLowerCase().includes(q),
+        (i.description ?? '').toLowerCase().includes(q) ||
+        (i.tags ?? []).some((t) => t.toLowerCase().includes(q)),
     )
-  }, [categoryItems, search])
+  }, [categoryItems, selectedRepairTypes, search])
 
   const byModel = useMemo(() => {
     const map = new Map<string, CatalogItem[]>()
@@ -95,6 +183,24 @@ export default function EletronicaCatalogoServico() {
     }
     return map
   }, [filtered])
+
+  function handleAdd(item: CatalogItem) {
+    if (!activeCategory) return
+    setAddedSelection({
+      deviceType: activeCategory.device_type as 'celular' | 'tablet' | 'notebook' | 'computador',
+      brandId: activeCategory.id,
+      modelName: item.model_name ?? 'Universal',
+      serviceId: item.id,
+    })
+    setToggleOpen(true)
+    setRecentlyAdded((prev) => {
+      const next = new Set(prev)
+      next.add(item.id)
+      setTimeout(() => setRecentlyAdded((p) => { const n = new Set(p); n.delete(item.id); return n }), 1500)
+      return next
+    })
+    document.getElementById('diagnostico-toggle')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <main className="min-h-screen bg-[#0a0a0b] text-white">
@@ -116,7 +222,9 @@ export default function EletronicaCatalogoServico() {
           Consulte os valores por modelo de celular e tipo de reparo. Preços sujeitos a alteração — confirme no orçamento.
         </p>
 
-        <DiagnosticoToggle />
+        <div id="diagnostico-toggle">
+          <DiagnosticoToggle open={toggleOpen} onOpenChange={setToggleOpen} selection={addedSelection} />
+        </div>
 
         {categories.length === 0 ? (
           <div className="text-center py-16 text-[#d4d4d8]/40">
@@ -124,53 +232,154 @@ export default function EletronicaCatalogoServico() {
             <p>Catálogo em construção. Em breve!</p>
           </div>
         ) : (
-          <>
-            <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
-              {categories.map((c) => (
+          <div className="space-y-6">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {categories.map((cat) => (
                 <button
-                  key={c.id}
+                  key={cat.slug}
                   type="button"
-                  onClick={() => setActiveSlug(c.slug)}
-                  className={`shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                    activeSlug === c.slug ? 'bg-[#e0211a] text-white' : 'bg-[#161618] border border-white/5 text-[#d4d4d8] hover:border-[#e0211a]/40'
+                  onClick={() => handleBrandChange(cat.slug)}
+                  className={`shrink-0 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                    activeSlug === cat.slug
+                      ? 'bg-[#e0211a] text-white shadow-lg shadow-[#e0211a]/20'
+                      : 'bg-[#161618] border border-white/5 text-[#d4d4d8] hover:border-[#e0211a]/30'
                   }`}
                 >
-                  {c.name}
+                  {cat.name}
                 </button>
               ))}
             </div>
 
-            <div className="relative mb-6">
+            {activeCategory?.image_url && (
+              <div className="relative w-full h-36 rounded-2xl overflow-hidden">
+                <img src={activeCategory.image_url} alt={activeCategory.name} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0b]/80 via-[#0a0a0b]/40 to-transparent" />
+                <div className="absolute inset-0 flex items-center px-6">
+                  <div>
+                    <p className="text-xs font-semibold text-[#e0211a] uppercase tracking-widest mb-1">Reparos</p>
+                    <h2 className="text-2xl font-black text-white">{activeCategory.name}</h2>
+                    <p className="text-[#d4d4d8]/60 text-xs mt-0.5">{categoryItems.length} serviços disponíveis</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {allRepairTypes.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {allRepairTypes.map((rt) => {
+                  const sel = selectedRepairTypes.has(rt)
+                  return (
+                    <button
+                      key={rt}
+                      type="button"
+                      onClick={() => toggleRepairType(rt)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                        sel ? 'bg-[#e0211a]/20 border-[#e0211a] text-[#e0211a]' : 'bg-transparent border-white/10 text-[#d4d4d8]/60 hover:border-white/30 hover:text-white'
+                      }`}
+                    >
+                      {sel && <Check className="w-3 h-3" />}
+                      {rt}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="relative">
               <Search className="w-4 h-4 text-[#d4d4d8]/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar modelo ou tipo de reparo..."
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/10 bg-[#161618] text-white placeholder-white/25 focus:border-[#e0211a]/60 outline-none transition-all"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#161618] border border-white/5 text-white placeholder-[#d4d4d8]/40 text-sm outline-none focus:border-[#e0211a]/40 transition-colors"
               />
             </div>
 
-            <div className="space-y-6">
-              {Array.from(byModel.entries()).map(([model, list]) => (
-                <div key={model}>
-                  <h3 className="text-sm font-bold text-[#d4d4d8]/70 mb-2">{model}</h3>
-                  <div className="grid sm:grid-cols-2 gap-2.5">
-                    {list.map((item) => (
-                      <div key={item.id} className="bg-[#161618] border border-white/5 rounded-2xl p-3.5">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="text-[#e0211a] shrink-0">{repairIcon(item.repair_type)}</span>
-                          <span className="text-sm font-bold text-white">{item.repair_type}</span>
+            {byModel.size === 0 ? (
+              <div className="text-center py-12 text-[#d4d4d8]/40">
+                <p>Nenhum serviço encontrado.</p>
+              </div>
+            ) : (
+              <div className="space-y-10">
+                {Array.from(byModel.entries()).map(([modelName, modelItems]) => {
+                  const modelImage = modelItems[0]?.image_url
+                  return (
+                    <section key={modelName}>
+                      <div className="flex items-center gap-3 mb-4">
+                        {modelImage ? (
+                          <div className="w-14 h-14 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-[#161618]">
+                            <img src={modelImage} alt={modelName} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-14 h-14 rounded-xl bg-[#161618] border border-white/10 shrink-0 flex items-center justify-center">
+                            <Smartphone className="w-6 h-6 text-[#d4d4d8]/30" />
+                          </div>
+                        )}
+                        <div>
+                          <h3 className="text-white font-bold text-base">{modelName}</h3>
+                          <p className="text-[#d4d4d8]/40 text-xs">
+                            {modelItems.length} serviço{modelItems.length !== 1 ? 's' : ''}
+                          </p>
                         </div>
-                        {item.description && <p className="text-xs text-[#d4d4d8]/55 mb-2">{item.description}</p>}
-                        <span className="text-[#e0211a] font-black text-sm">R$ {Number(item.price).toFixed(2).replace('.', ',')}</span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {filtered.length === 0 && <p className="text-center text-[#d4d4d8]/40 text-sm py-8">Nenhum serviço encontrado.</p>}
-            </div>
-          </>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {modelItems.map((item) => {
+                          const added = recentlyAdded.has(item.id)
+                          return (
+                            <div key={item.id} className="bg-[#161618] border border-white/5 rounded-2xl overflow-hidden hover:border-[#e0211a]/20 transition-all group">
+                              {modelImage && (
+                                <div className="h-24 overflow-hidden relative">
+                                  <img
+                                    src={modelImage}
+                                    alt={modelName}
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                  />
+                                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#161618]" />
+                                </div>
+                              )}
+                              <div className="p-4">
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-[#e0211a] shrink-0">{repairIcon(item.repair_type)}</span>
+                                    <span className="text-sm font-bold text-white leading-tight">{item.repair_type}</span>
+                                  </div>
+                                  <span className="text-[#e0211a] font-black text-base whitespace-nowrap shrink-0">
+                                    R$ {Number(item.price).toFixed(2).replace('.', ',')}
+                                  </span>
+                                </div>
+                                {item.description && <p className="text-xs text-[#d4d4d8]/55 leading-relaxed mb-3">{item.description}</p>}
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdd(item)}
+                                  className={`w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                                    added
+                                      ? 'bg-green-600 text-white'
+                                      : 'bg-[#0a0a0b] border border-white/10 text-[#d4d4d8] hover:border-[#e0211a]/40 hover:text-white'
+                                  }`}
+                                >
+                                  {added ? (
+                                    <>
+                                      <Check className="w-3.5 h-3.5" /> Adicionado!
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ShoppingCart className="w-3.5 h-3.5" /> Solicitar orçamento
+                                    </>
+                                  )}
+                                </button>
+                                <AccordionTags tags={item.tags} />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         )}
       </section>
     </main>

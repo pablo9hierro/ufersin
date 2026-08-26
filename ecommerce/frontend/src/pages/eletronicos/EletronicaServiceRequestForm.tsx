@@ -72,10 +72,21 @@ function formatPhone(value: string) {
 export default function EletronicaServiceRequestForm({
   apenasRetirada: apenasRetiradaProp = false,
   diagnosisOnly = false,
+  initialSelection = null,
 }: {
   apenasRetirada?: boolean
   coletaGratis?: boolean
   diagnosisOnly?: boolean
+  /** Vem da vitrine de catálogo (EletronicaCatalogoServico) quando o
+   * cliente clica "Adicionar" num serviço já visível ali -- pula o wizard
+   * de tipo/marca/modelo/serviço direto pra etapa de descrição já com o
+   * serviço escolhido. */
+  initialSelection?: {
+    deviceType: DeviceType
+    brandId: string
+    modelName: string
+    serviceId: string
+  } | null
 }) {
   const tenantConfig = useTenantConfig()
   const slug = resolveTenantSlug()
@@ -123,7 +134,8 @@ export default function EletronicaServiceRequestForm({
   }, [diagnosisOnly])
 
   useEffect(() => {
-    if (step !== 2 || !slug || brands.length > 0) return
+    if (!slug || brands.length > 0) return
+    if (step !== 2 && !initialSelection) return
     setLoadingCatalog(true)
     fetchCatalog(slug)
       .then((res) => {
@@ -132,7 +144,18 @@ export default function EletronicaServiceRequestForm({
       })
       .catch(() => {})
       .finally(() => setLoadingCatalog(false))
-  }, [step, slug, brands.length])
+  }, [step, slug, brands.length, initialSelection])
+
+  useEffect(() => {
+    if (!initialSelection || catalogItems.length === 0) return
+    setSelectedDeviceType(initialSelection.deviceType)
+    setSelectedBrandId(initialSelection.brandId)
+    setSelectedModelName(initialSelection.modelName)
+    setSelectedServiceIds([initialSelection.serviceId])
+    setPhoneModel(initialSelection.modelName)
+    setDiagnosisMode(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogItems.length])
 
   const brandsForType = useMemo(
     () => brands.filter((b) => b.device_type === selectedDeviceType),

@@ -31,6 +31,7 @@ export interface CatalogCategory {
   slug: string
   sort_order: number
   device_type: string
+  image_url: string | null
 }
 
 export interface CatalogItem {
@@ -40,6 +41,8 @@ export interface CatalogItem {
   repair_type: string
   price: number
   description: string | null
+  image_url: string | null
+  tags: string[]
 }
 
 export interface CatalogResponse {
