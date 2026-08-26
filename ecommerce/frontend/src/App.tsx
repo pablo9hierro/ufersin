@@ -71,6 +71,7 @@ const EletronicaAdminAgenda = lazy(() => import('./pages/eletronicos/EletronicaA
 const EletronicaAdminPdv = lazy(() => import('./pages/eletronicos/EletronicaAdminPdv'))
 const EletronicaAdminTemplates = lazy(() => import('./pages/eletronicos/EletronicaAdminTemplates'))
 const EletronicaAdminEmBreve = lazy(() => import('./pages/eletronicos/EletronicaAdminEmBreve'))
+const EletronicaAdminConta = lazy(() => import('./pages/eletronicos/EletronicaAdminConta'))
 const Uiux2RecuperarSenha = lazy(() => import('./uiux2/pages/RecuperarSenha'))
 const Uiux2Favoritos = lazy(() => import('./uiux2/pages/Favoritos'))
 const Uiux2Cupons = lazy(() => import('./uiux2/pages/Cupons'))
@@ -351,14 +352,14 @@ export default function App() {
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin-eletronica" element={<EletronicaAdminLayout />}>
             <Route index element={<EletronicaAdminDashboard />} />
-            <Route path="chat" element={<EletronicaAdminEmBreve title="Chat" />} />
+            <Route path="chat" element={<AdminChat />} />
             <Route path="pdv" element={<EletronicaAdminPdv />} />
             <Route path="agenda" element={<EletronicaAdminAgenda />} />
             <Route path="produtos" element={<EletronicaAdminEstoque />} />
             <Route path="servicodeslocamento" element={<EletronicaAdminEmBreve title="Serviço de deslocamento" />} />
             <Route path="relatorios" element={<EletronicaAdminEmBreve title="Relatórios" />} />
             <Route path="template-zap" element={<EletronicaAdminTemplates />} />
-            <Route path="conta" element={<EletronicaAdminEmBreve title="Conta" />} />
+            <Route path="conta" element={<EletronicaAdminConta />} />
           </Route>
           <Route path="/funcionarios/login" element={<FuncionarioLogin />} />
           <Route path="/admin" element={<AdminLayout />}>
