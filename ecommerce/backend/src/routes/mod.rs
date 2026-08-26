@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod auth;
 pub mod demo;
+pub mod eletronicos;
 pub mod internal;
 pub mod motoboy;
 pub mod pdv;

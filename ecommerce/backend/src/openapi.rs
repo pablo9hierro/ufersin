@@ -182,6 +182,32 @@ pub fn build() -> OpenApi {
         ("/api/webhooks/mercadopago", Get, "Webhook Mercado Pago (verificacao)", "Webhooks", false, false),
         ("/api/webhooks/mercadopago", Post, "Webhook Mercado Pago (evento)", "Webhooks", false, true),
         ("/api/webhooks/evolution", Post, "Webhook Evolution API (WhatsApp recebido)", "Webhooks", false, true),
+        // Vertical eletronicos (assistencia tecnica) -- schema `eletronicos`
+        // proprio (ver migrations/0022_eletronicos_module.sql), so serve
+        // tenants com vertical='eletronicos'. Ver src/routes/eletronicos.rs.
+        ("/api/admin/eletronicos/service-requests", Get, "Listar solicitacoes de servico", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/service-requests", Post, "Criar solicitacao de servico", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/service-requests/{id}", Get, "Detalhe da solicitacao", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/service-requests/{id}/status", Post, "Avancar status da solicitacao", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/service-requests/{request_id}/service-order", Get, "Ordem de servico do atendimento (cria se nao existir)", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/service-orders/{id}/checklist", Post, "Salvar checklist da OS", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/service-orders/{id}/updates", Get, "Timeline de atualizacoes da OS", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/service-orders/{id}/updates", Post, "Registrar atualizacao na OS", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/service-orders/{id}/complete", Post, "Concluir OS (calcula valor, baixa estoque, garantia)", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/service-orders/{id}/reopen", Post, "Reabrir OS ja concluida", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/agenda/settings", Get, "Configuracao da agenda (duracao, buffer, antecedencia)", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/agenda/business-hours", Get, "Horario de funcionamento por dia da semana", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/appointments", Get, "Listar agendamentos", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/appointments", Post, "Criar agendamento (valida conflito e expediente)", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/appointments/{id}/cancel", Post, "Cancelar agendamento", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/stock-items", Get, "Listar itens de estoque (pecas)", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/stock-items", Post, "Cadastrar item de estoque", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/stock-items/{id}/entry", Post, "Entrada de estoque (compra de pecas)", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/pdv/sales", Post, "Abrir venda no PDV", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/pdv/sales/{id}", Get, "Detalhe da venda (itens + pagamentos)", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/pdv/sales/{id}/items", Post, "Adicionar item a venda (decrementa estoque se aplicavel)", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/pdv/sales/{id}/payments", Post, "Registrar pagamento (Pix ja gerado via /api/admin/pdv/pix, ou manual)", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/pdv/sales/{sale_id}/payments/{payment_id}/confirm", Post, "Confirmar pagamento (fecha a venda se cobrir o total)", "Admin - Eletronicos", true, false),
     ];
 
     for (path, method, summary, tag, auth, body) in routes {

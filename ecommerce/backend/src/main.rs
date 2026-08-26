@@ -495,6 +495,90 @@ async fn main() -> anyhow::Result<()> {
             post(routes::admin::admin_cancel_appointment),
         )
         .route("/api/admin/onboarding-gate", get(routes::admin::get_onboarding_gate))
+        // Vertical eletronicos (assistência técnica) -- fase 4.1 da
+        // migração vrtech, ver docs/bugs/registry.yaml. CRUD + status de
+        // service_requests; demais entidades (OS, agenda, PDV, templates,
+        // assistente) entram em fases seguintes.
+        .route(
+            "/api/admin/eletronicos/service-requests",
+            get(routes::eletronicos::list_service_requests).post(routes::eletronicos::create_service_request),
+        )
+        .route(
+            "/api/admin/eletronicos/service-requests/{id}",
+            get(routes::eletronicos::get_service_request),
+        )
+        .route(
+            "/api/admin/eletronicos/service-requests/{id}/status",
+            post(routes::eletronicos::update_service_request_status),
+        )
+        // Fase 4.2: ordem de servico (checklist/garantia/conclusao)
+        .route(
+            "/api/admin/eletronicos/service-requests/{request_id}/service-order",
+            get(routes::eletronicos::get_or_create_service_order),
+        )
+        .route(
+            "/api/admin/eletronicos/service-orders/{id}/checklist",
+            post(routes::eletronicos::update_checklist),
+        )
+        .route(
+            "/api/admin/eletronicos/service-orders/{id}/updates",
+            get(routes::eletronicos::list_service_order_updates)
+                .post(routes::eletronicos::add_service_order_update),
+        )
+        .route(
+            "/api/admin/eletronicos/service-orders/{id}/complete",
+            post(routes::eletronicos::complete_service_order),
+        )
+        .route(
+            "/api/admin/eletronicos/service-orders/{id}/reopen",
+            post(routes::eletronicos::reopen_service_order),
+        )
+        // Fase 4.3: agenda/appointments
+        .route(
+            "/api/admin/eletronicos/agenda/settings",
+            get(routes::eletronicos::get_agenda_settings),
+        )
+        .route(
+            "/api/admin/eletronicos/agenda/business-hours",
+            get(routes::eletronicos::list_business_hours),
+        )
+        .route(
+            "/api/admin/eletronicos/appointments",
+            get(routes::eletronicos::list_appointments).post(routes::eletronicos::create_appointment),
+        )
+        .route(
+            "/api/admin/eletronicos/appointments/{id}/cancel",
+            post(routes::eletronicos::cancel_appointment),
+        )
+        // Fase 4.4: estoque + PDV (Pix reaproveita /api/admin/pdv/pix, generico)
+        .route(
+            "/api/admin/eletronicos/stock-items",
+            get(routes::eletronicos::list_stock_items).post(routes::eletronicos::create_stock_item),
+        )
+        .route(
+            "/api/admin/eletronicos/stock-items/{id}/entry",
+            post(routes::eletronicos::stock_entry),
+        )
+        .route(
+            "/api/admin/eletronicos/pdv/sales",
+            post(routes::eletronicos::create_pdv_sale),
+        )
+        .route(
+            "/api/admin/eletronicos/pdv/sales/{id}",
+            get(routes::eletronicos::get_pdv_sale),
+        )
+        .route(
+            "/api/admin/eletronicos/pdv/sales/{id}/items",
+            post(routes::eletronicos::add_sale_item),
+        )
+        .route(
+            "/api/admin/eletronicos/pdv/sales/{id}/payments",
+            post(routes::eletronicos::add_payment),
+        )
+        .route(
+            "/api/admin/eletronicos/pdv/sales/{sale_id}/payments/{payment_id}/confirm",
+            post(routes::eletronicos::confirm_payment),
+        )
         .route("/api/admin/pdv/pix", post(routes::admin::create_pdv_pix))
         .route(
             "/api/admin/pdv/pix/{payment_id}/status",
