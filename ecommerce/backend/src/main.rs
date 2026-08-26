@@ -362,6 +362,19 @@ async fn main() -> anyhow::Result<()> {
             get(routes::eletronicos::get_diagnostic).put(routes::eletronicos::save_diagnostic),
         )
         .route(
+            "/api/admin/eletronicos/appointments/{id}/complete",
+            post(routes::eletronicos::complete_appointment),
+        )
+        .route("/api/admin/eletronicos/agenda/day", get(routes::eletronicos::get_agenda_day))
+        .route(
+            "/api/admin/eletronicos/agenda/blocks",
+            get(routes::eletronicos::list_agenda_blocks).post(routes::eletronicos::create_agenda_block),
+        )
+        .route(
+            "/api/admin/eletronicos/agenda/blocks/{id}",
+            axum::routing::delete(routes::eletronicos::delete_agenda_block),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )

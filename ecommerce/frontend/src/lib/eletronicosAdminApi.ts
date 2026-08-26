@@ -137,7 +137,13 @@ export const eletronicosAdmin = {
     return out.url
   },
   appointments: {
-    list: () => req<AppointmentDto[]>(`${BASE}/appointments`),
+    list: (range?: { from?: string; to?: string }) => {
+      const params = new URLSearchParams()
+      if (range?.from) params.set('from', range.from)
+      if (range?.to) params.set('to', range.to)
+      const qs = params.toString() ? `?${params.toString()}` : ''
+      return req<AppointmentDto[]>(`${BASE}/appointments${qs}`)
+    },
     create: (input: {
       service_label: string
       service_id?: string
@@ -154,6 +160,25 @@ export const eletronicosAdmin = {
         method: 'POST',
         body: JSON.stringify({ justification }),
       }),
+    complete: (id: string) => req<AppointmentDto>(`${BASE}/appointments/${id}/complete`, { method: 'POST' }),
+  },
+  agenda: {
+    day: (date: string) =>
+      req<{ starts_at: string; ends_at: string; available: boolean; reason: string | null }[]>(
+        `${BASE}/agenda/day?date=${encodeURIComponent(date)}`,
+      ),
+    blocks: {
+      list: (date: string) =>
+        req<{ id: string; starts_at: string; ends_at: string; reason: string | null }[]>(
+          `${BASE}/agenda/blocks?date=${encodeURIComponent(date)}`,
+        ),
+      create: (input: { data: string; hora_inicio: string; hora_fim: string; motivo: string }) =>
+        req<{ id: string; starts_at: string; ends_at: string; reason: string | null }>(`${BASE}/agenda/blocks`, {
+          method: 'POST',
+          body: JSON.stringify(input),
+        }),
+      delete: (id: string) => req<void>(`${BASE}/agenda/blocks/${id}`, { method: 'DELETE' }),
+    },
   },
   stockItems: {
     list: () =>
@@ -227,23 +252,24 @@ export const eletronicosAdmin = {
     }) => req(`${BASE}/shipping-settings`, { method: 'PUT', body: JSON.stringify(input) }),
   },
   templates: {
-    list: () =>
-      req<
-        {
-          id: string
-          template_key: string
-          section: string
-          label: string
-          description: string | null
-          content: string
-          required_variables: string[]
-          editable: boolean
-          enabled: boolean
-        }[]
-      >(`${BASE}/templates`),
+    list: () => req<EletronicaTemplate[]>(`${BASE}/templates`),
     updateContent: (key: string, content: string) =>
-      req(`${BASE}/templates/${key}`, { method: 'PUT', body: JSON.stringify({ content }) }),
+      req<EletronicaTemplate>(`${BASE}/templates/${key}`, { method: 'PUT', body: JSON.stringify({ content }) }),
     toggle: (key: string, enabled: boolean) =>
-      req(`${BASE}/templates/${key}/toggle`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+      req<EletronicaTemplate>(`${BASE}/templates/${key}/toggle`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
   },
+}
+
+export type EletronicaTemplate = {
+  id: string
+  template_key: string
+  section: string
+  label: string
+  description: string | null
+  content: string
+  required_variables: string[]
+  available_variables: string[]
+  editable: boolean
+  enabled: boolean
+  sort_order: number
 }

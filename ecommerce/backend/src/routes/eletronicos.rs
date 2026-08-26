@@ -11,6 +11,7 @@
 //! docs/bugs/registry.yaml pro estado atual desta migração.
 
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::Json;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -1488,6 +1489,261 @@ pub async fn cancel_appointment(
     .await?;
     tx.commit().await?;
     Ok(Json(row))
+}
+
+pub async fn complete_appointment(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<Json<AppointmentDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query(
+        "UPDATE eletronicos.appointments SET status = 'concluido', updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2::uuid AND status IN ('agendado','remarcado')",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("agendamento não encontrado ou já não está mais ativo".to_string()));
+    }
+    sqlx::query(
+        "INSERT INTO eletronicos.appointment_events (id, tenant_id, appointment_id, action, actor_type) \
+         VALUES ($1::uuid, $2, $3::uuid, 'completed', 'admin')",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+    let row: AppointmentDto = sqlx::query_as(&format!(
+        "SELECT {APPT_COLUMNS} FROM eletronicos.appointments WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+// ============================================================================
+// Grade de disponibilidade do dia + bloqueios -- port de agenda/slots.ts +
+// agenda_blocks do vrtech.
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct DaySlotDto {
+    pub starts_at: String,
+    pub ends_at: String,
+    pub available: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DayQuery {
+    pub date: String,
+}
+
+pub async fn get_agenda_day(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Query(q): Query<DayQuery>,
+) -> Result<Json<Vec<DaySlotDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let naive_date = NaiveDate::parse_from_str(&q.date, "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest("data inválida, use AAAA-MM-DD".to_string()))?;
+
+    let settings: AgendaSettingsDto = sqlx::query_as(
+        "SELECT appointment_ai_enabled, default_duration_minutes, lead_time_minutes, \
+         max_advance_days, buffer_minutes FROM eletronicos.agenda_settings WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let brasilia = chrono::FixedOffset::west_opt(3 * 3600).expect("offset válido");
+    let weekday_num = match naive_date.weekday() {
+        Weekday::Sun => 0,
+        Weekday::Mon => 1,
+        Weekday::Tue => 2,
+        Weekday::Wed => 3,
+        Weekday::Thu => 4,
+        Weekday::Fri => 5,
+        Weekday::Sat => 6,
+    };
+    let hours: Option<(NaiveTime, NaiveTime)> = sqlx::query_as(
+        "SELECT open_time, close_time FROM eletronicos.agenda_business_hours WHERE tenant_id = $1 AND weekday = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(weekday_num)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((open_time, close_time)) = hours else {
+        tx.commit().await?;
+        return Ok(Json(vec![]));
+    };
+
+    let duration = ChronoDuration::minutes(settings.default_duration_minutes as i64);
+    let step = ChronoDuration::minutes(15);
+    let buffer = ChronoDuration::minutes(settings.buffer_minutes as i64);
+    let now = Utc::now().with_timezone(&brasilia);
+    let lead = ChronoDuration::minutes(settings.lead_time_minutes as i64);
+
+    let day_start = brasilia.from_local_datetime(&naive_date.and_time(open_time)).single().unwrap();
+    let day_end = brasilia.from_local_datetime(&naive_date.and_time(close_time)).single().unwrap();
+
+    let appts: Vec<(DateTime<chrono::FixedOffset>, DateTime<chrono::FixedOffset>)> = sqlx::query_as(
+        "SELECT starts_at, ends_at FROM eletronicos.appointments \
+         WHERE tenant_id = $1 AND status IN ('agendado','remarcado') AND starts_at < $3 AND ends_at > $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(day_start)
+    .bind(day_end)
+    .fetch_all(&mut *tx)
+    .await?;
+    let blocks: Vec<(DateTime<chrono::FixedOffset>, DateTime<chrono::FixedOffset>)> = sqlx::query_as(
+        "SELECT starts_at, ends_at FROM eletronicos.agenda_blocks \
+         WHERE tenant_id = $1 AND starts_at < $3 AND ends_at > $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(day_start)
+    .bind(day_end)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let mut slots = Vec::new();
+    let mut cursor = day_start;
+    while cursor + duration <= day_end {
+        let slot_end = cursor + duration;
+        let window_start = cursor - buffer;
+        let window_end = slot_end + buffer;
+        let reason = if cursor < now + lead {
+            Some("muito_em_cima")
+        } else if blocks.iter().any(|(s, e)| *s < window_end && *e > window_start) {
+            Some("bloqueado")
+        } else if appts.iter().any(|(s, e)| *s < window_end && *e > window_start) {
+            Some("ocupado")
+        } else {
+            None
+        };
+        slots.push(DaySlotDto {
+            starts_at: cursor.to_rfc3339(),
+            ends_at: slot_end.to_rfc3339(),
+            available: reason.is_none(),
+            reason: reason.map(str::to_string),
+        });
+        cursor += step;
+    }
+
+    Ok(Json(slots))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct AgendaBlockDto {
+    pub id: String,
+    pub starts_at: String,
+    pub ends_at: String,
+    pub reason: Option<String>,
+}
+
+const BLOCK_COLUMNS: &str = "id::text, starts_at::text, ends_at::text, reason";
+
+pub async fn list_agenda_blocks(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Query(q): Query<DayQuery>,
+) -> Result<Json<Vec<AgendaBlockDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let naive_date = NaiveDate::parse_from_str(&q.date, "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest("data inválida, use AAAA-MM-DD".to_string()))?;
+    let brasilia = chrono::FixedOffset::west_opt(3 * 3600).expect("offset válido");
+    let day_start = brasilia.from_local_datetime(&naive_date.and_hms_opt(0, 0, 0).unwrap()).single().unwrap();
+    let day_end = day_start + ChronoDuration::days(1);
+    let rows: Vec<AgendaBlockDto> = sqlx::query_as(&format!(
+        "SELECT {BLOCK_COLUMNS} FROM eletronicos.agenda_blocks \
+         WHERE tenant_id = $1 AND starts_at < $3 AND ends_at > $2 ORDER BY starts_at"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(day_start)
+    .bind(day_end)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateAgendaBlockInput {
+    pub data: String,
+    pub hora_inicio: String,
+    pub hora_fim: String,
+    pub motivo: String,
+}
+
+pub async fn create_agenda_block(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<CreateAgendaBlockInput>,
+) -> Result<Json<AgendaBlockDto>, AppError> {
+    if input.motivo.trim().len() < 10 {
+        return Err(AppError::BadRequest("motivo precisa ter pelo menos 10 caracteres".to_string()));
+    }
+    let naive_date = NaiveDate::parse_from_str(&input.data, "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest("data inválida, use AAAA-MM-DD".to_string()))?;
+    let start_time = NaiveTime::parse_from_str(&input.hora_inicio, "%H:%M")
+        .map_err(|_| AppError::BadRequest("horário de início inválido".to_string()))?;
+    let end_time = NaiveTime::parse_from_str(&input.hora_fim, "%H:%M")
+        .map_err(|_| AppError::BadRequest("horário de fim inválido".to_string()))?;
+    if end_time <= start_time {
+        return Err(AppError::BadRequest("horário de fim precisa ser depois do início".to_string()));
+    }
+    let brasilia = chrono::FixedOffset::west_opt(3 * 3600).expect("offset válido");
+    let starts_at = brasilia.from_local_datetime(&naive_date.and_time(start_time)).single().unwrap();
+    let ends_at = brasilia.from_local_datetime(&naive_date.and_time(end_time)).single().unwrap();
+
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO eletronicos.agenda_blocks (id, tenant_id, starts_at, ends_at, reason, created_by) \
+         VALUES ($1::uuid, $2, $3, $4, $5, 'admin')",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(starts_at)
+    .bind(ends_at)
+    .bind(input.motivo.trim())
+    .execute(&mut *tx)
+    .await?;
+    let row: AgendaBlockDto = sqlx::query_as(&format!(
+        "SELECT {BLOCK_COLUMNS} FROM eletronicos.agenda_blocks WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+pub async fn delete_agenda_block(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let deleted = sqlx::query("DELETE FROM eletronicos.agenda_blocks WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(AppError::NotFound("bloqueio não encontrado".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ============================================================================
