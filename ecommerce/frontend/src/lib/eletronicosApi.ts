@@ -64,6 +64,7 @@ export interface ServiceRequestDto {
   estimated_quote_value: number | null
   owner_notes: string | null
   discount_percent: number | null
+  payment_methods: { method: string; value: number }[]
   self_pickup: boolean
   shipping_price: number | null
   diagnosis_requested: boolean

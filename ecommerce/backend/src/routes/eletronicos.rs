@@ -103,6 +103,8 @@ pub struct UpdateStatusInput {
     pub status: String,
     pub quote_value: Option<f64>,
     pub owner_notes: Option<String>,
+    pub discount_percent: Option<i32>,
+    pub payment_methods: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -282,7 +284,9 @@ pub async fn update_service_request_status(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let updated = sqlx::query(
         "UPDATE eletronicos.service_requests \
-         SET status = $3, quote_value = COALESCE($4, quote_value), owner_notes = COALESCE($5, owner_notes) \
+         SET status = $3, quote_value = COALESCE($4, quote_value), owner_notes = COALESCE($5, owner_notes), \
+             discount_percent = COALESCE($6, discount_percent), \
+             payment_methods = COALESCE($7, payment_methods) \
          WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
@@ -290,6 +294,8 @@ pub async fn update_service_request_status(
     .bind(&input.status)
     .bind(input.quote_value)
     .bind(input.owner_notes.as_deref())
+    .bind(input.discount_percent)
+    .bind(&input.payment_methods)
     .execute(&mut *tx)
     .await?;
     if updated.rows_affected() == 0 {
@@ -302,6 +308,33 @@ pub async fn update_service_request_status(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
+
+    // Avisa o cliente por WhatsApp usando o template `status_<novo_status>`
+    // (mesmo texto que o lojista edita em Template Zap) -- só dispara se
+    // existir e estiver habilitado (render_whatsapp_template retorna None
+    // nesses casos). Fire-and-forget, nunca bloqueia nem falha a resposta.
+    let template_key = format!("status_{}", input.status);
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("nome".to_string(), row.customer_name.clone());
+    vars.insert("aparelho".to_string(), row.phone_model.clone().unwrap_or_default());
+    vars.insert(
+        "valor".to_string(),
+        row.quote_value.map(|v| format!("R$ {v:.2}")).unwrap_or_default(),
+    );
+    vars.insert("endereco".to_string(), row.address_label.clone().unwrap_or_default());
+    vars.insert(
+        "mapa".to_string(),
+        match (row.address_lat, row.address_lng) {
+            (Some(lat), Some(lng)) => format!("https://www.google.com/maps/search/?api=1&query={lat},{lng}"),
+            _ => String::new(),
+        },
+    );
+    if let Some(message) = render_whatsapp_template(&mut *tx, &claims.tenant_id, &template_key, &vars).await? {
+        let tenant = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
+        let digits: String = row.customer_phone.chars().filter(char::is_ascii_digit).collect();
+        crate::whatsapp::notify(&state, &tenant.whatsapp_instance, &digits, &message);
+    }
+
     tx.commit().await?;
     Ok(Json(row))
 }

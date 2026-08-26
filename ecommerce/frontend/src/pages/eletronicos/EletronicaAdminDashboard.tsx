@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, Clock, FileText, Loader2, MapPin, Package, Smartphone, Wrench, X } from 'lucide-react'
+import { ChevronRight, Clock, FileText, Loader2, MapPin, Package, Smartphone, Wrench } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { ServiceRequestDto } from '../../lib/eletronicosApi'
-import { generateServiceOrderPdf } from '../../lib/eletronicosPdf'
-import { useTenantConfig } from '../../hooks/useTenantConfig'
+import EletronicaRequestDetailModal from './EletronicaRequestDetailModal'
 
 // Port 1:1 de src/app/dashboard/DashboardClient.tsx do vrtech: mesmo
 // STATUS_CONFIG (14 status, mesma cor/label), mesmos 7 baldes de
 // STATUS_GROUP (ver serviceLifecycle/types.ts), mesmos stats/filtros/lista
-// de cards. A aba "Vendas" (pedidos da vitrine de produtos) e o dialog
-// "Registrar serviço" do vrtech ainda não foram portados -- ficam de fora
-// por ora, não inventados.
+// de cards. O detalhe/edição usa EletronicaRequestDetailModal.tsx (port do
+// RequestDetailModal.tsx real: fluxo guiado de status, pagamento com
+// desconto/Pix, PDF). A aba "Vendas" (pedidos da vitrine de produtos) e o
+// dialog "Registrar serviço" do vrtech ainda não foram portados -- ficam de
+// fora por ora, não inventados.
 
 type ServiceStatus =
   | 'pending' | 'accepted' | 'rejected' | 'retirada_local' | 'em_busca' | 'in_progress'
@@ -208,7 +209,7 @@ export default function EletronicaAdminDashboard() {
       </div>
 
       {selected && (
-        <DetailPanel
+        <EletronicaRequestDetailModal
           request={selected}
           onClose={() => setSelected(null)}
           onUpdated={(r) => {
@@ -217,205 +218,6 @@ export default function EletronicaAdminDashboard() {
           }}
         />
       )}
-    </div>
-  )
-}
-
-const NEXT_STATUS: Record<string, string[]> = {
-  pending: ['aguardando_diagnostico', 'accepted', 'rejected', 'cancelled'],
-  aguardando_diagnostico: ['diagnostico_enviado', 'cancelled'],
-  diagnostico_enviado: ['accepted', 'rejected'],
-  accepted: ['retirada_local', 'em_busca', 'in_progress'],
-  retirada_local: ['in_progress'],
-  em_busca: ['in_progress'],
-  in_progress: ['completed'],
-  completed: ['em_pagamento', 'delivered'],
-  em_pagamento: ['delivered'],
-  delivered: ['finished'],
-  finished: [],
-  rejected: [],
-  cancelled: [],
-}
-
-// Painel de detalhe/edição -- ainda a versão simplificada minha (não o
-// RequestDetailModal.tsx real de 1066 linhas do vrtech, com checklist
-// item a item, dialog de pagamento com Pix e timeline de mensagens
-// WhatsApp). Cobre o essencial (ver status, avançar, orçamento, concluir,
-// gerar PDF), mas o port fiel do modal completo ainda está pendente.
-function DetailPanel({
-  request,
-  onClose,
-  onUpdated,
-}: {
-  request: ServiceRequestDto
-  onClose: () => void
-  onUpdated: (r: ServiceRequestDto) => void
-}) {
-  const [quote, setQuote] = useState(String(request.quote_value ?? request.estimated_quote_value ?? ''))
-  const [notes, setNotes] = useState(request.owner_notes ?? '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [completing, setCompleting] = useState(false)
-  const [completedServices, setCompletedServices] = useState('')
-  const [generatingPdf, setGeneratingPdf] = useState(false)
-  const tenantConfig = useTenantConfig()
-
-  async function transitionTo(status: string) {
-    setSaving(true)
-    setError(null)
-    try {
-      const quoteNum = quote.trim() ? Number(quote.replace(',', '.')) : undefined
-      const updated = await eletronicosAdmin.serviceRequests.updateStatus(request.id, {
-        status,
-        quote_value: quoteNum,
-        owner_notes: notes.trim() || undefined,
-      })
-      onUpdated(updated)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'erro ao atualizar')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleComplete() {
-    setCompleting(true)
-    setError(null)
-    try {
-      const order = await eletronicosAdmin.serviceOrders.getOrCreate(request.id)
-      await eletronicosAdmin.serviceOrders.complete(order.id, {
-        checklist: [],
-        completed_services: completedServices.trim() || undefined,
-      })
-      const updated = await eletronicosAdmin.serviceRequests.updateStatus(request.id, { status: 'completed' })
-      onUpdated(updated)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'erro ao concluir')
-    } finally {
-      setCompleting(false)
-    }
-  }
-
-  async function handleGeneratePdf() {
-    setGeneratingPdf(true)
-    setError(null)
-    try {
-      const order = await eletronicosAdmin.serviceOrders.getOrCreate(request.id)
-      const blob = generateServiceOrderPdf(request, order, tenantConfig?.loja_nome || 'Assistência técnica')
-      const url = await eletronicosAdmin.uploadMedia(blob, `os-${request.id}.pdf`)
-      await eletronicosAdmin.serviceOrders.setPdf(order.id, url)
-      window.open(url, '_blank')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'erro ao gerar PDF')
-    } finally {
-      setGeneratingPdf(false)
-    }
-  }
-
-  const nextOptions = NEXT_STATUS[request.status] ?? []
-  const sc = STATUS_CONFIG[request.status as ServiceStatus]
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-0 sm:px-4">
-      <div className="w-full sm:max-w-md bg-[#0a0a0b] border border-white/10 rounded-t-2xl sm:rounded-2xl p-5 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <p className="font-bold text-white">{request.customer_name}</p>
-            <p className="text-xs text-[#d4d4d8]/50">{request.customer_phone}</p>
-          </div>
-          <button type="button" onClick={onClose} className="text-[#d4d4d8]/50 hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="space-y-3 text-sm text-[#d4d4d8]">
-          <div>
-            <p className="text-xs text-[#d4d4d8]/50">Aparelho</p>
-            <p className="text-white">{request.phone_model || '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-[#d4d4d8]/50">Problema</p>
-            <p className="text-white">{request.problem_description || '—'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-[#d4d4d8]/50 mb-1">Status atual</p>
-            <p className={`inline-flex rounded-full text-xs font-medium px-3 py-1 ${sc.bg} ${sc.color}`}>{sc.label}</p>
-          </div>
-
-          <div>
-            <label className="block text-xs text-[#d4d4d8]/50 mb-1">Valor do orçamento (R$)</label>
-            <input
-              value={quote}
-              onChange={(e) => setQuote(e.target.value)}
-              placeholder="0.00"
-              className="w-full rounded-xl border border-white/10 bg-[#161618] text-white px-3 py-2 text-sm outline-none focus:border-[#e0211a]"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-[#d4d4d8]/50 mb-1">Observações internas</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              className="w-full rounded-xl border border-white/10 bg-[#161618] text-white px-3 py-2 text-sm outline-none focus:border-[#e0211a] resize-none"
-            />
-          </div>
-
-          {error && <p className="text-red-400 text-xs">{error}</p>}
-
-          {nextOptions.length > 0 && (
-            <div>
-              <p className="text-xs text-[#d4d4d8]/50 mb-2">Avançar status</p>
-              <div className="flex flex-wrap gap-2">
-                {nextOptions.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => transitionTo(s)}
-                    className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-[#d4d4d8] hover:border-[#e0211a] hover:text-[#e0211a] transition-colors disabled:opacity-50"
-                  >
-                    {STATUS_CONFIG[s as ServiceStatus]?.label ?? s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {request.status === 'in_progress' && (
-            <div className="pt-2 border-t border-white/10">
-              <label className="block text-xs text-[#d4d4d8]/50 mb-1">Resumo do serviço realizado</label>
-              <input
-                value={completedServices}
-                onChange={(e) => setCompletedServices(e.target.value)}
-                placeholder="ex: troca de tela"
-                className="w-full rounded-xl border border-white/10 bg-[#161618] text-white px-3 py-2 text-sm outline-none focus:border-[#e0211a] mb-2"
-              />
-              <button
-                type="button"
-                disabled={completing}
-                onClick={handleComplete}
-                className="w-full rounded-xl bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-50 text-white font-semibold py-2.5 flex items-center justify-center gap-2 transition-all"
-              >
-                {completing && <Loader2 className="w-4 h-4 animate-spin" />}
-                Marcar como pronto
-              </button>
-            </div>
-          )}
-
-          {['completed', 'em_pagamento', 'delivered', 'finished'].includes(request.status) && (
-            <button
-              type="button"
-              disabled={generatingPdf}
-              onClick={handleGeneratePdf}
-              className="w-full rounded-xl border border-white/10 py-2.5 text-sm text-[#d4d4d8] flex items-center justify-center gap-2 hover:border-[#e0211a] hover:text-[#e0211a] transition-colors"
-            >
-              {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-              Gerar / baixar PDF da OS
-            </button>
-          )}
-        </div>
-      </div>
     </div>
   )
 }
