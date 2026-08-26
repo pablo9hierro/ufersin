@@ -176,6 +176,233 @@ pub async fn get_service_request(
         .ok_or_else(|| AppError::NotFound("solicitação não encontrada".to_string()))
 }
 
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct CredentialDto {
+    pub kind: String,
+    pub value: String,
+}
+
+/// Senha do cliente (PIN/padrão) pro aparelho -- nunca exposta em endpoint
+/// público, só admin autenticado do próprio tenant.
+pub async fn get_credential(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(request_id): Path<String>,
+) -> Result<Json<Option<CredentialDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let row: Option<CredentialDto> = sqlx::query_as(
+        "SELECT kind, value FROM eletronicos.service_request_credentials \
+         WHERE tenant_id = $1 AND service_request_id = $2::uuid",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&request_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetCredentialInput {
+    pub kind: String,
+    pub value: String,
+}
+
+pub async fn set_credential(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(request_id): Path<String>,
+    Json(input): Json<SetCredentialInput>,
+) -> Result<Json<CredentialDto>, AppError> {
+    if input.kind != "pin" && input.kind != "pattern" {
+        return Err(AppError::BadRequest("kind precisa ser 'pin' ou 'pattern'".to_string()));
+    }
+    if input.value.trim().is_empty() {
+        return Err(AppError::BadRequest("value não pode ser vazio".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    sqlx::query(
+        "INSERT INTO eletronicos.service_request_credentials (id, service_request_id, tenant_id, kind, value) \
+         VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4) \
+         ON CONFLICT (service_request_id) DO UPDATE SET kind = $3, value = $4, updated_at = now()",
+    )
+    .bind(&request_id)
+    .bind(&claims.tenant_id)
+    .bind(&input.kind)
+    .bind(&input.value)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(CredentialDto { kind: input.kind, value: input.value }))
+}
+
+// ============================================================================
+// Diagnóstico físico (aguardando_diagnostico -> diagnostico_enviado/in_progress)
+// -- port de DiagnosticSection.tsx do vrtech.
+// ============================================================================
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct DiagnosticDto {
+    pub id: String,
+    pub services_selected: serde_json::Value,
+    pub notes: Option<String>,
+    pub pdf_url: Option<String>,
+    pub quote_confirmed: Option<f64>,
+    pub media_urls: Vec<String>,
+    pub finalized: bool,
+}
+
+const DIAG_COLUMNS: &str =
+    "id::text, services_selected, notes, pdf_url, quote_confirmed::float8, media_urls, finalized";
+
+pub async fn get_diagnostic(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(request_id): Path<String>,
+) -> Result<Json<Option<DiagnosticDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let row: Option<DiagnosticDto> = sqlx::query_as(&format!(
+        "SELECT {DIAG_COLUMNS} FROM eletronicos.service_diagnostics \
+         WHERE tenant_id = $1 AND service_request_id = $2::uuid \
+         ORDER BY created_at DESC LIMIT 1"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&request_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SaveDiagnosticInput {
+    pub services_selected: serde_json::Value,
+    pub notes: Option<String>,
+    pub pdf_url: Option<String>,
+    pub quote_confirmed: Option<f64>,
+    pub media_urls: Vec<String>,
+    pub finalized: bool,
+}
+
+/// Salva (upsert por service_request_id, sem UNIQUE constraint na tabela
+/// real -- então checa manualmente) o diagnóstico. Quando `finalized=true`,
+/// também decide e aplica o próximo status: orçamento real <= estimado ->
+/// avança sozinho pro reparo (in_progress); maior -> fica em
+/// diagnostico_enviado esperando aprovação do cliente. Mesma regra de
+/// decideQuoteOutcome do vrtech. O aviso por WhatsApp já sai sozinho (ver
+/// update_service_request_status), não precisa disparar aqui de novo.
+pub async fn save_diagnostic(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(request_id): Path<String>,
+    Json(input): Json<SaveDiagnosticInput>,
+) -> Result<Json<ServiceRequestDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+
+    let existing_id: Option<(String,)> = sqlx::query_as(
+        "SELECT id::text FROM eletronicos.service_diagnostics \
+         WHERE tenant_id = $1 AND service_request_id = $2::uuid ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&request_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    if let Some((id,)) = existing_id {
+        sqlx::query(
+            "UPDATE eletronicos.service_diagnostics \
+             SET services_selected = $3, notes = $4, pdf_url = $5, quote_confirmed = $6, \
+                 media_urls = $7, finalized = $8, updated_at = now() \
+             WHERE tenant_id = $1 AND id = $2::uuid",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(&input.services_selected)
+        .bind(input.notes.as_deref())
+        .bind(input.pdf_url.as_deref())
+        .bind(input.quote_confirmed)
+        .bind(&input.media_urls)
+        .bind(input.finalized)
+        .execute(&mut *tx)
+        .await?;
+    } else {
+        sqlx::query(
+            "INSERT INTO eletronicos.service_diagnostics \
+               (id, tenant_id, service_request_id, services_selected, notes, pdf_url, quote_confirmed, media_urls, finalized) \
+             VALUES (gen_random_uuid(), $1, $2::uuid, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&request_id)
+        .bind(&input.services_selected)
+        .bind(input.notes.as_deref())
+        .bind(input.pdf_url.as_deref())
+        .bind(input.quote_confirmed)
+        .bind(&input.media_urls)
+        .bind(input.finalized)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    let row: ServiceRequestDto = if input.finalized {
+        let estimated: Option<f64> = sqlx::query_scalar(
+            "SELECT estimated_quote_value::float8 FROM eletronicos.service_requests \
+             WHERE tenant_id = $1 AND id = $2::uuid",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&request_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let final_value = input.quote_confirmed.unwrap_or(0.0);
+        let auto_advance = estimated.is_some_and(|e| final_value <= e);
+        let next_status = if auto_advance { "in_progress" } else { "diagnostico_enviado" };
+        sqlx::query(
+            "UPDATE eletronicos.service_requests SET status = $3, quote_value = $4 \
+             WHERE tenant_id = $1 AND id = $2::uuid",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&request_id)
+        .bind(next_status)
+        .bind(final_value)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query_as(&format!(
+            "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2::uuid"
+        ))
+        .bind(&claims.tenant_id)
+        .bind(&request_id)
+        .fetch_one(&mut *tx)
+        .await?
+    } else {
+        sqlx::query_as(&format!(
+            "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2::uuid"
+        ))
+        .bind(&claims.tenant_id)
+        .bind(&request_id)
+        .fetch_one(&mut *tx)
+        .await?
+    };
+
+    // Avisa por WhatsApp na transição final (mesmo template status_<status>
+    // já usado em update_service_request_status) -- aqui é um caso à parte
+    // porque a mudança de status acontece dentro desta mesma transação, não
+    // por aquele endpoint.
+    if input.finalized {
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("nome".to_string(), row.customer_name.clone());
+        vars.insert("aparelho".to_string(), row.phone_model.clone().unwrap_or_default());
+        vars.insert("valor".to_string(), row.quote_value.map(|v| format!("R$ {v:.2}")).unwrap_or_default());
+        let template_key = format!("status_{}", row.status);
+        if let Some(message) = render_whatsapp_template(&mut *tx, &claims.tenant_id, &template_key, &vars).await? {
+            let tenant = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
+            let digits: String = row.customer_phone.chars().filter(char::is_ascii_digit).collect();
+            crate::whatsapp::notify(&state, &tenant.whatsapp_instance, &digits, &message);
+        }
+    }
+
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
 pub async fn create_service_request(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,

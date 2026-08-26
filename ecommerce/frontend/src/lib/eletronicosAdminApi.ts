@@ -42,6 +42,30 @@ export const eletronicosAdmin = {
     list: (status?: string) =>
       req<ServiceRequestDto[]>(`${BASE}/service-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`),
     get: (id: string) => req<ServiceRequestDto>(`${BASE}/service-requests/${id}`),
+    getCredential: (id: string) => req<{ kind: string; value: string } | null>(`${BASE}/service-requests/${id}/credential`),
+    setCredential: (id: string, input: { kind: 'pin' | 'pattern'; value: string }) =>
+      req<{ kind: string; value: string }>(`${BASE}/service-requests/${id}/credential`, { method: 'PUT', body: JSON.stringify(input) }),
+    getDiagnostic: (id: string) =>
+      req<{
+        id: string
+        services_selected: { id: string; repair_type: string; price: number }[]
+        notes: string | null
+        pdf_url: string | null
+        quote_confirmed: number | null
+        media_urls: string[]
+        finalized: boolean
+      } | null>(`${BASE}/service-requests/${id}/diagnostic`),
+    saveDiagnostic: (
+      id: string,
+      input: {
+        services_selected: { id: string; repair_type: string; price: number }[]
+        notes?: string
+        pdf_url?: string
+        quote_confirmed?: number
+        media_urls: string[]
+        finalized: boolean
+      },
+    ) => req<ServiceRequestDto>(`${BASE}/service-requests/${id}/diagnostic`, { method: 'PUT', body: JSON.stringify(input) }),
     create: (input: {
       customer_name: string
       customer_phone: string

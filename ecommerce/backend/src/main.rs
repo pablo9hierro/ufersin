@@ -354,6 +354,14 @@ async fn main() -> anyhow::Result<()> {
             get(routes::eletronicos::get_shipping_settings).put(routes::eletronicos::update_shipping_settings),
         )
         .route(
+            "/api/admin/eletronicos/service-requests/{id}/credential",
+            get(routes::eletronicos::get_credential).put(routes::eletronicos::set_credential),
+        )
+        .route(
+            "/api/admin/eletronicos/service-requests/{id}/diagnostic",
+            get(routes::eletronicos::get_diagnostic).put(routes::eletronicos::save_diagnostic),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )

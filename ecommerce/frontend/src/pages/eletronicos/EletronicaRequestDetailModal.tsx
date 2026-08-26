@@ -19,6 +19,8 @@ import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { ServiceRequestDto } from '../../lib/eletronicosApi'
 import { generateServiceOrderPdf } from '../../lib/eletronicosPdf'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import EletronicaDiagnosticSection from './EletronicaDiagnosticSection'
+import PatternLockInput from '../../components/PatternLockInput'
 
 // Port 1:1 (adaptado) de src/components/RequestDetailModal.tsx do vrtech --
 // mesmo STATUS_LABELS/getAdvanceConfig (fluxo guiado single/choice em vez
@@ -221,6 +223,11 @@ export default function EletronicaRequestDetailModal({
   const [quoteValue, setQuoteValue] = useState(request.quote_value?.toString() ?? '')
   const [estimatedQuoteValue, setEstimatedQuoteValue] = useState(request.estimated_quote_value?.toString() ?? '')
   const [savingEstimate, setSavingEstimate] = useState(false)
+  const [credentialsOpen, setCredentialsOpen] = useState(false)
+  const [credentialKind, setCredentialKind] = useState<'pin' | 'pattern'>('pin')
+  const [credentialValue, setCredentialValue] = useState('')
+  const [credentialSaved, setCredentialSaved] = useState(false)
+  const [savingCredential, setSavingCredential] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -356,6 +363,33 @@ export default function EletronicaRequestDetailModal({
     }
   }
 
+  useEffect(() => {
+    eletronicosAdmin.serviceRequests
+      .getCredential(request.id)
+      .then((cred) => {
+        if (!cred) return
+        setCredentialKind(cred.kind === 'pattern' ? 'pattern' : 'pin')
+        setCredentialValue(cred.value)
+        setCredentialSaved(true)
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request.id])
+
+  async function saveCredential() {
+    if (!credentialValue.trim()) return
+    setSavingCredential(true)
+    setError(null)
+    try {
+      await eletronicosAdmin.serviceRequests.setCredential(request.id, { kind: credentialKind, value: credentialValue.trim() })
+      setCredentialSaved(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao salvar senha do cliente')
+    } finally {
+      setSavingCredential(false)
+    }
+  }
+
   async function handleAdvance(next: string) {
     setError(null)
     setLoading(true)
@@ -465,6 +499,16 @@ export default function EletronicaRequestDetailModal({
             </div>
           </section>
 
+          {advance.type === 'diagnostic' && (
+            <EletronicaDiagnosticSection
+              request={request}
+              onSaved={(newStatus) => {
+                setStatus(newStatus)
+                onUpdated({ ...request, status: newStatus })
+              }}
+            />
+          )}
+
           <section className="space-y-2">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Endereço</h3>
             <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
@@ -518,6 +562,72 @@ export default function EletronicaRequestDetailModal({
                   <p className="text-xs text-amber-600 mt-1.5">
                     Frete (coleta): R$ {Number(request.shipping_price).toFixed(2)} — será somado automaticamente ao total.
                   </p>
+                )}
+              </div>
+
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setCredentialsOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-3.5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">🔒 Senha do cliente (PIN ou padrão)</span>
+                  <span className="text-gray-400 text-xs">{credentialsOpen ? '▲' : '▼'}</span>
+                </button>
+                {credentialsOpen && (
+                  <div className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-gray-100">
+                    {credentialSaved ? (
+                      <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-gray-500">{credentialKind === 'pin' ? 'PIN' : 'Padrão'} cadastrado</p>
+                          <button type="button" onClick={() => setCredentialSaved(false)} className="text-xs text-gray-400 hover:text-gray-600">
+                            Editar
+                          </button>
+                        </div>
+                        {credentialKind === 'pin' ? (
+                          <p className="text-sm font-mono font-semibold text-gray-900">{credentialValue}</p>
+                        ) : (
+                          <PatternLockInput value={credentialValue} readOnly />
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex gap-2">
+                          {(['pin', 'pattern'] as const).map((k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onClick={() => setCredentialKind(k)}
+                              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                credentialKind === k ? 'border-[#e0211a] bg-red-50 text-[#e0211a]' : 'border-gray-200 text-gray-500'
+                              }`}
+                            >
+                              {k === 'pin' ? 'PIN numérico' : 'Padrão de desenho'}
+                            </button>
+                          ))}
+                        </div>
+                        {credentialKind === 'pin' ? (
+                          <input
+                            type="text"
+                            value={credentialValue}
+                            onChange={(e) => setCredentialValue(e.target.value)}
+                            placeholder="Ex: 1234"
+                            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#e0211a]"
+                          />
+                        ) : (
+                          <PatternLockInput value={credentialValue} onChange={setCredentialValue} />
+                        )}
+                        <button
+                          type="button"
+                          onClick={saveCredential}
+                          disabled={savingCredential || !credentialValue.trim()}
+                          className="w-full py-2 rounded-xl text-sm font-semibold bg-gray-900 text-white disabled:opacity-50"
+                        >
+                          {savingCredential ? 'Salvando...' : 'Salvar senha'}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             </section>
@@ -724,29 +834,6 @@ export default function EletronicaRequestDetailModal({
 
             {advance.type !== 'terminal' && advance.type !== 'diagnostic' && !advance.ready && advance.blockedMessage && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2.5">{advance.blockedMessage}</p>
-            )}
-
-            {advance.type === 'diagnostic' && (
-              <div className="space-y-2">
-                <label className="block text-xs text-gray-500 mb-1">Valor final do orçamento (R$)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={quoteValue}
-                  onChange={(e) => setQuoteValue(e.target.value)}
-                  placeholder="0,00"
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#e0211a]"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleAdvance('diagnostico_enviado')}
-                  disabled={loading || !quoteValue}
-                  className="w-full rounded-xl bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-50 text-white font-semibold py-2.5 flex items-center justify-center gap-2 transition-all"
-                >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ArrowRight className="w-4 h-4" /> Enviar orçamento pro cliente</>}
-                </button>
-              </div>
             )}
 
             {advance.type === 'single' && (
