@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Loader2 } from 'lucide-react'
 import { CmsText } from '../../lib/cms'
-import { fetchPlans, SEMESTRAL_DISCOUNT } from '../../lib/plans'
+import { fetchPlans, getPlansByVertical, SEMESTRAL_DISCOUNT } from '../../lib/plans'
 import type { BillingCycle } from '../../lib/api'
 import PlanCardsGrid, { BillingCycleToggle } from '../PlanCardsGrid'
 
@@ -13,6 +13,10 @@ export default function Pricing() {
   useEffect(() => {
     fetchPlans().finally(() => setReady(true))
   }, [])
+
+  // Só renderiza a seção de assistência técnica se o ramo tiver plano ativo
+  // cadastrado -- sem isso a landing mostraria um bloco vazio.
+  const eletronicaPlans = ready ? getPlansByVertical('eletronicos') : []
 
   return (
     <section id="planos" className="uf-section">
@@ -51,14 +55,52 @@ export default function Pricing() {
             <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
           </div>
         ) : (
-          <PlanCardsGrid
-            ciclo={ciclo}
-            showDemo
-            cta={{
-              kind: 'link',
-              to: (code, c) => `/cadastro?plano=${code}&ciclo=${c}`,
-            }}
-          />
+          <>
+            <PlanCardsGrid
+              ciclo={ciclo}
+              showDemo
+              vertical="ecommerce"
+              cta={{
+                kind: 'link',
+                to: (code, c) => `/cadastro?plano=${code}&ciclo=${c}`,
+              }}
+            />
+
+            {/* Assistência técnica é um ramo à parte -- painel, vitrine e
+                features próprios. Fica numa seção separada de propósito:
+                no mesmo grid o cliente compararia preço de coisas que não
+                competem entre si e poderia assinar o ramo errado. */}
+            {eletronicaPlans.length > 0 && (
+              <div className="mt-16">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: '-80px' }}
+                  transition={{ duration: 0.6 }}
+                  className="text-center mb-8"
+                >
+                  <span className="uf-eyebrow mb-4">Assistência técnica</span>
+                  <h3 className="text-2xl sm:text-3xl font-black mt-4">
+                    Tem uma loja de conserto de eletrônicos?
+                  </h3>
+                  <p className="mt-3 text-uf-silver-dim max-w-xl mx-auto">
+                    Plano com ordem de serviço, diagnóstico, agenda de coleta e entrega — feito pro
+                    seu ramo, não adaptado do ecommerce.
+                  </p>
+                </motion.div>
+                <PlanCardsGrid
+                  ciclo={ciclo}
+                  vertical="eletronicos"
+                  columns={1}
+                  testId="planos-assinar-cards-eletronica"
+                  cta={{
+                    kind: 'link',
+                    to: (code, c) => `/cadastro?plano=${code}&ciclo=${c}`,
+                  }}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>

@@ -2,9 +2,9 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, ShoppingBag, Users2 } from 'lucide-react'
 import type { PlanoCode } from '../lib/api'
+import { PLAN_NAMES } from '../lib/plans'
 
-const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
-const PLAN_NAMES: Record<PlanoCode, string> = { essential: 'Essential', management: 'Management', premium: 'Premium' }
+const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium', 'eletronica']
 
 // Módulo eletrônicos é um app separado (vrtech) — nunca embutido via
 // /demo/{role}/{plano} do motor de e-commerce (esse mecanismo só existe pro

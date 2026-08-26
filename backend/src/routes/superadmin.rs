@@ -167,9 +167,28 @@ pub struct CreatePlanInput {
     pub highlight: bool,
     #[serde(default)]
     pub sort_order: i32,
+    /// Ramo do plano -- decide o vertical do tenant de quem assinar (ver
+    /// migration 0022 + plans::vertical_for). Default 'ecommerce' preserva
+    /// o comportamento de todo plano já cadastrado.
+    #[serde(default = "default_plan_vertical")]
+    pub vertical: String,
 }
 fn default_features() -> serde_json::Value {
     serde_json::json!([])
+}
+fn default_plan_vertical() -> String {
+    "ecommerce".to_string()
+}
+
+/// Códigos aceitos por ramo. Cada ramo tem sua própria escada de planos --
+/// um código nunca pertence aos dois (é o que impede um assinante de
+/// eletrônica cair na escada de upgrade do ecommerce e vice-versa).
+fn plan_code_allowed(code: &str, vertical: &str) -> bool {
+    match vertical {
+        "ecommerce" => matches!(code, "essential" | "management" | "premium"),
+        "eletronicos" => matches!(code, "eletronica"),
+        _ => false,
+    }
 }
 
 /// Superadmin cadastra planos (não há seed automático de planos).
@@ -179,21 +198,27 @@ pub async fn create_plan(
     Json(body): Json<CreatePlanInput>,
 ) -> Result<Json<plans::PlanRow>, AppError> {
     let code = body.code.trim().to_lowercase();
-    if !matches!(code.as_str(), "essential" | "management" | "premium") {
+    let vertical = body.vertical.trim().to_lowercase();
+    if !matches!(vertical.as_str(), "ecommerce" | "eletronicos") {
         return Err(AppError::BadRequest(
-            "code deve ser essential, management ou premium".to_string(),
+            "vertical deve ser ecommerce ou eletronicos".to_string(),
         ));
+    }
+    if !plan_code_allowed(&code, &vertical) {
+        return Err(AppError::BadRequest(format!(
+            "code '{code}' não é válido para o ramo '{vertical}' (ecommerce: essential/management/premium; eletronicos: eletronica)"
+        )));
     }
     if body.name.trim().is_empty() || body.price_monthly <= 0.0 {
         return Err(AppError::BadRequest("name e price_monthly obrigatórios".to_string()));
     }
     sqlx::query(
-        "INSERT INTO platform_plans (code, name, price_monthly, tagline, features, highlight, sort_order) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7) \
+        "INSERT INTO platform_plans (code, name, price_monthly, tagline, features, highlight, sort_order, vertical) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) \
          ON CONFLICT (code) DO UPDATE SET \
            name = EXCLUDED.name, price_monthly = EXCLUDED.price_monthly, tagline = EXCLUDED.tagline, \
            features = EXCLUDED.features, highlight = EXCLUDED.highlight, sort_order = EXCLUDED.sort_order, \
-           active = true, updated_at = now()",
+           vertical = EXCLUDED.vertical, active = true, updated_at = now()",
     )
     .bind(&code)
     .bind(body.name.trim())
@@ -202,11 +227,12 @@ pub async fn create_plan(
     .bind(&body.features)
     .bind(body.highlight)
     .bind(body.sort_order)
+    .bind(&vertical)
     .execute(&state.pool)
     .await?;
 
     let row = sqlx::query_as::<_, plans::PlanRow>(
-        "SELECT code, name, price_monthly, tagline, features, highlight, active, sort_order \
+        "SELECT code, name, price_monthly, tagline, features, highlight, active, sort_order, vertical \
          FROM platform_plans WHERE code = $1",
     )
     .bind(&code)

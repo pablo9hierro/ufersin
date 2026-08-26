@@ -1,4 +1,4 @@
-import { api, type PlatformPlan, type PlanoCode } from './api'
+import { api, type PlatformPlan, type PlanoCode, type Vertical } from './api'
 import type { BillingCycle } from './api'
 
 export interface PlanInfo {
@@ -8,6 +8,8 @@ export interface PlanInfo {
   tagline: string
   features: string[]
   highlight?: boolean
+  /** Ramo do plano -- é ele que decide o vertical do tenant ao assinar. */
+  vertical: Vertical
 }
 
 /** Desconto aplicado no total do semestre (6 × mensal). */
@@ -21,6 +23,7 @@ export const FALLBACK_PLANS: PlanInfo[] = [
     price: 60,
     tagline: 'Pra começar a vender online',
     features: ['Catálogo', 'Checkout', 'Pix', 'WhatsApp', 'Pedidos'],
+    vertical: 'ecommerce',
   },
   {
     code: 'management',
@@ -29,6 +32,7 @@ export const FALLBACK_PLANS: PlanInfo[] = [
     tagline: 'Pra quem já tem equipe e entrega',
     features: ['Tudo do Essential', 'Funcionários', 'Motoboy', 'Banner promocional', 'Comissões'],
     highlight: true,
+    vertical: 'ecommerce',
   },
   {
     code: 'premium',
@@ -36,6 +40,22 @@ export const FALLBACK_PLANS: PlanInfo[] = [
     price: 350,
     tagline: 'Pra escalar com CRM e campanhas',
     features: ['Tudo do Management', 'CRM completo', 'Segmentações', 'Automações', 'Cupons', 'Campanhas', 'Relatórios'],
+    vertical: 'ecommerce',
+  },
+  {
+    code: 'eletronica',
+    name: 'Eletrônica',
+    price: 250,
+    tagline: 'Pra assistência técnica de celulares e eletrônicos',
+    features: [
+      'Ordem de serviço',
+      'Diagnóstico e orçamento',
+      'Agenda de coleta e entrega',
+      'Estoque de peças com garantia',
+      'PDV e Pix',
+      'Assistente de IA no WhatsApp',
+    ],
+    vertical: 'eletronicos',
   },
 ]
 
@@ -47,6 +67,7 @@ export const PLAN_NAMES: Record<PlanoCode, string> = {
   essential: 'Essential',
   management: 'Management',
   premium: 'Premium',
+  eletronica: 'Eletrônica',
 }
 
 let loadedPlans: PlanInfo[] | null = null
@@ -62,6 +83,9 @@ function rowToPlanInfo(row: PlatformPlan): PlanInfo {
     tagline: row.tagline,
     features,
     highlight: row.highlight,
+    // Plano vindo de um backend antigo (sem a coluna) é de ecommerce --
+    // mesmo default da migration 0022.
+    vertical: row.vertical ?? 'ecommerce',
   }
 }
 
@@ -94,6 +118,21 @@ export async function fetchPlans(): Promise<PlanInfo[]> {
 export function getPlans(): PlanInfo[] {
   if (publicFetchOk) return loadedPlans ?? []
   return loadedPlans ?? FALLBACK_PLANS
+}
+
+/** Planos de um ramo só. A landing mostra cada ramo na sua própria seção --
+ * misturar as duas escadas num grid só faria o cliente comparar preço de
+ * coisas que não competem entre si (e assinar o ramo errado sem perceber). */
+export function getPlansByVertical(vertical: Vertical): PlanInfo[] {
+  return getPlans().filter((p) => p.vertical === vertical)
+}
+
+/** Ramo de um código de plano -- usado pra decidir pra onde mandar o lojista
+ * depois de assinar. Desconhecido cai em ecommerce (mesmo default do banco). */
+export function verticalForPlan(code: string): Vertical {
+  return getPlans().find((p) => p.code === code)?.vertical
+    ?? FALLBACK_PLANS.find((p) => p.code === code)?.vertical
+    ?? 'ecommerce'
 }
 
 /**

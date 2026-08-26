@@ -76,9 +76,10 @@ pub async fn assinar_plano(
         Option<String>,
         Option<String>,
         Option<String>,
+        Option<String>,
     )> = sqlx::query_as(
         "SELECT loja_nome, email, status, valor_mensal, mp_preapproval_id, gateway, \
-         onboarding_status, tenant_id, plan_code, slug, documento FROM subscribers WHERE id = $1",
+         onboarding_status, tenant_id, plan_code, slug, documento, vertical FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
     .fetch_optional(&state.pool)
@@ -95,9 +96,30 @@ pub async fn assinar_plano(
         old_plan,
         slug,
         documento,
+        vertical_atual,
     ) = row.ok_or_else(|| AppError::NotFound("conta não encontrada — finalize o cadastro primeiro".to_string()))?;
     if matches!(status.as_str(), "ativo" | "pausado") {
         return Err(AppError::BadRequest("essa conta já tem uma assinatura ativa".to_string()));
+    }
+
+    // Ramo é irreversível depois que a loja existe: cada vertical tem seu
+    // próprio painel, vitrine e conjunto de features, e o dado de um não faz
+    // sentido no outro. Sem esta trava, um tenant de assistência técnica
+    // podia reassinar num plano de ecommerce (ou o contrário) e acabar com
+    // as features erradas liberadas e telas do ramo errado no painel.
+    // Assinatura nova (ainda sem tenant) segue livre -- o ramo vai ser o do
+    // plano escolhido, resolvido no onboarding por plans::vertical_for.
+    if tenant_id.is_some() {
+        if let Some(atual) = vertical_atual.as_deref().filter(|v| !v.trim().is_empty()) {
+            let novo = plans::vertical_for(&state.pool, &body.plano).await?;
+            if novo != atual {
+                return Err(AppError::BadRequest(
+                    "esse plano é de outro ramo — a loja já foi criada e o ramo não pode ser trocado. \
+                     Escolha um plano do mesmo ramo da sua loja."
+                        .to_string(),
+                ));
+            }
+        }
     }
 
     // Reuse pending subscription when switching Pix ↔ cartão (same plan pricing).

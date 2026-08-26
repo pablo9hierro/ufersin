@@ -51,7 +51,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export type PlanoCode = 'essential' | 'management' | 'premium'
+/** Ramo do negócio. Cada um tem sua própria escada de planos, seu painel e
+ * sua vitrine -- um assinante nunca enxerga o do outro. */
+export type Vertical = 'ecommerce' | 'eletronicos'
+
+/** Códigos de plano. `eletronica` é o único do ramo de assistência técnica;
+ * os outros três formam a escada do ecommerce (ver `plan_code_allowed` no
+ * backend, que impede um código pertencer aos dois ramos). */
+export type PlanoCode = 'essential' | 'management' | 'premium' | 'eletronica'
 export type MetodoPagamento = 'pix' | 'cartao' | 'cartao_parcelado'
 export type BillingCycle = 'mensal' | 'semestral'
 
@@ -98,6 +105,9 @@ export interface PlatformPlan {
   highlight: boolean
   active: boolean
   sort_order: number
+  /** Ramo a que o plano pertence -- assinar este plano é o que define o
+   * vertical do tenant (resolvido server-side, ver plans::vertical_for). */
+  vertical: Vertical
 }
 
 export interface PlatformContentItem {

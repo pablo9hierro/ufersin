@@ -2,10 +2,10 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Lock, ShoppingBag, Truck, Users, Users2 } from 'lucide-react'
 import type { PlanoCode } from '../lib/api'
+import { PLAN_NAMES } from '../lib/plans'
 import { demoExperienceUrl, type DemoRole } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
-const PLAN_NAMES: Record<PlanoCode, string> = { essential: 'Essential', management: 'Management', premium: 'Premium' }
 
 interface AreaDef {
   key: DemoRole

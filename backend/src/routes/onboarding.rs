@@ -66,10 +66,12 @@ pub struct OnboardingInput {
     /// Estilo de vitrine: ufersin | burgerbite | burgerhouse
     #[serde(default = "default_layout_style")]
     pub layout_style: String,
-    /// "ecommerce" (padrão) | "eletronicos" — escolhido logo no início do
-    /// fluxo de assinatura (antes deste formulário), decide se o lojista
-    /// recebe o motor genérico ou o módulo isolado de assistência técnica.
+    /// Aceito no corpo só por compatibilidade com clientes antigos, mas
+    /// IGNORADO: o ramo real vem do plano assinado (`plans::vertical_for`).
+    /// Ver comentário no handler -- deixar o cliente escolher aqui permitia
+    /// assinar um ramo e receber o outro.
     #[serde(default = "default_vertical")]
+    #[allow(dead_code)]
     pub vertical: String,
 }
 fn default_color() -> String {
@@ -165,13 +167,18 @@ pub async fn onboarding(
     if body.endereco.trim().is_empty() {
         return Err(AppError::BadRequest("endereço é obrigatório".to_string()));
     }
-    if !matches!(body.vertical.as_str(), "ecommerce" | "eletronicos") {
-        return Err(AppError::BadRequest("vertical deve ser ecommerce ou eletronicos".to_string()));
-    }
+    // O RAMO VEM DO PLANO ASSINADO, nunca do corpo da requisição. Antes o
+    // vertical era campo livre, escolhido num seletor solto do onboarding
+    // sem relação nenhuma com o plano comprado -- dava pra assinar o plano
+    // de assistência técnica e terminar com uma loja de ecommerce (e
+    // vice-versa), exatamente a mistura que não pode existir: cada ramo tem
+    // seu painel, sua vitrine e suas features. `vertical_for` já rejeita
+    // plano inexistente/inativo, então isso nunca cai num default calado.
+    let vertical = crate::plans::vertical_for(&state.pool, &plan_code).await?;
     // Módulo eletrônicos não usa o sistema de temas do motor genérico —
     // só valida layout_style pro ramo que realmente usa (evita exigir um
     // campo sem sentido no onboarding do outro ramo).
-    if body.vertical == "ecommerce" && !matches!(body.layout_style.as_str(), "ufersin" | "burgerbite" | "burgerhouse") {
+    if vertical == "ecommerce" && !matches!(body.layout_style.as_str(), "ufersin" | "burgerbite" | "burgerhouse") {
         return Err(AppError::BadRequest(
             "layout_style deve ser ufersin, burgerbite ou burgerhouse".to_string(),
         ));
@@ -215,7 +222,7 @@ pub async fn onboarding(
         admin_email: email.trim(),
         admin_password_hash: &password_hash,
         admin_name: responsavel_nome.trim(),
-        vertical: &body.vertical,
+        vertical: &vertical,
     };
 
     let resp = state
@@ -278,7 +285,7 @@ pub async fn onboarding(
     .bind(body.pagamento_na_retirada)
     .bind(body.entrega_somente_pix)
     .bind(body.pagamento_manual)
-    .bind(&body.vertical)
+    .bind(&vertical)
     // Cortesia de deslocamento só existe se a loja faz deslocamento --
     // `apenas_retirada` marcado zera as duas, senão ficaria gravado um
     // "grátis" que nunca é consultado e reaparece confuso se o lojista
@@ -480,7 +487,7 @@ pub async fn editar_onboarding(
     .bind(&claims.sub)
     .fetch_optional(&state.pool)
     .await?;
-    let (tenant_id, status, slug_opt, was_whatsapp_on, has_existing_creds) =
+    let (_tenant_id, status, slug_opt, was_whatsapp_on, has_existing_creds) =
         row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
     let slug = slug_opt
         .as_deref()
@@ -488,15 +495,26 @@ pub async fn editar_onboarding(
         .filter(|s| !s.is_empty())
         .unwrap_or("")
         .to_string();
-    if tenant_id.is_none() || slug.is_empty() {
+    // Só slug prova que a loja foi provisionada -- tenant_id é preenchido
+    // pelo mesmo UPDATE do onboarding() de hoje, mas lojas legadas
+    // (vrtech/sunset/juete, anteriores ao modelo tenant-per-store) nunca
+    // passaram por ali e ficam com tenant_id NULL pra sempre, mesmo ativas
+    // e servindo tráfego real. subscriber_has_store() já trata slug-ou-
+    // tenant_id como equivalentes; exigir os dois aqui bloqueava CADA
+    // edição de preferência (layout, endereço, etc.) dessas lojas legadas.
+    if slug.is_empty() {
         return Err(AppError::BadRequest(
-            "conclua o cadastro da loja em /onboarding (incluindo Access Token do Mercado Pago) antes de editar preferências"
-                .to_string(),
+            "conclua o cadastro da loja em /onboarding antes de editar preferências".to_string(),
         ));
     }
     if status != "ativo" {
         return Err(AppError::BadRequest("assinatura não está ativa".to_string()));
     }
+    // Access Token do Mercado Pago NUNCA bloqueia a request inteira aqui --
+    // editar layout/endereço/redes sociais não depende disso. Faltando
+    // token, forma_pagamento="plataforma" já cai sozinho pra "manual" mais
+    // abaixo (ver new_token_ok/has_existing_creds), sem impedir o resto da
+    // edição de ser salvo.
     if let Some(td) = &body.tipo_documento {
         if !matches!(td.as_str(), "cnpj" | "cpf") {
             return Err(AppError::BadRequest("tipo_documento deve ser 'cnpj' ou 'cpf'".to_string()));

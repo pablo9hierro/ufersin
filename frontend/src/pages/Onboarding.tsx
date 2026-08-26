@@ -6,7 +6,7 @@ import { api, ApiError, type MeResponse, type TipoDocumento } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import AddressField from '../components/AddressField'
 import { isValidDocumento, onlyDigits } from '../lib/documento'
-import { planDisplayName } from '../lib/plans'
+import { planDisplayName, verticalForPlan } from '../lib/plans'
 import { needsOnboardingLock, storeAlreadyExists } from '../lib/postPayRedirect'
 import type { StorefrontStyle } from '../lib/storefrontStyles'
 
@@ -184,6 +184,11 @@ export default function Onboarding() {
         if (cancelled) return
 
         setPlanLabel(me.plano ? planDisplayName(me.plano) : null)
+        // Ramo vem do PLANO assinado, nunca de uma escolha solta aqui. O
+        // backend resolve de novo server-side (plans::vertical_for) e
+        // ignora o que mandarmos -- isto é só pra UI já montar o formulário
+        // certo (eletrônicos não usa o seletor de tema de vitrine).
+        if (me.plano) setVertical(verticalForPlan(me.plano))
         const pre = applyMePrefill(me)
         setNomeLoja(pre.nomeLoja)
         setTipoDocumento(pre.tipoDocumento)
@@ -422,53 +427,15 @@ export default function Onboarding() {
     }
   }
 
-  // Loja nova, ainda sem ramo escolhido — pergunta antes de mostrar
-  // qualquer campo do formulário (o formulário abaixo varia conforme a
-  // resposta: eletrônicos não mostra o seletor de tema de vitrine).
+  // O ramo NÃO é mais perguntado aqui: ele vem do plano que o lojista
+  // assinou (card exclusivo de assistência técnica na landing), e o backend
+  // o resolve de novo server-side. Perguntar de novo permitia assinar um
+  // ramo e receber o outro. `vertical` só fica null enquanto /api/me não
+  // respondeu -- nesse instante o formulário ainda não deve renderizar.
   if (mode === 'full' && vertical === null) {
     return (
-      <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 py-16 relative">
-        <div className="uf-mesh" />
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative z-10 max-w-lg w-full text-center"
-        >
-          <div className="flex justify-end mb-2">
-            <button type="button" onClick={handleLogout} className="btn-ghost text-sm">
-              <LogOut className="w-4 h-4" />
-              Sair
-            </button>
-          </div>
-          <span className="uf-eyebrow mb-4">Onboarding</span>
-          <h1 className="text-2xl sm:text-3xl font-black mt-4 mb-2">Qual é o ramo da sua loja?</h1>
-          <p className="text-sm text-uf-silver-dim mb-8">
-            Isso decide qual site e painel você vai receber — escolha com atenção, não dá pra trocar depois.
-          </p>
-          <div className="grid gap-4">
-            <button
-              type="button"
-              onClick={() => setVertical('ecommerce')}
-              className="uf-glass uf-glass-hover text-left rounded-2xl p-5"
-            >
-              <p className="font-bold text-sm">Ecommerce</p>
-              <p className="text-xs text-uf-silver-dim mt-1">
-                Lanchonete, pizzaria, tabacaria, conveniência e afins — catálogo, checkout e entrega.
-              </p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setVertical('eletronicos')}
-              className="uf-glass uf-glass-hover text-left rounded-2xl p-5"
-            >
-              <p className="font-bold text-sm">Manutenção e venda de eletrônicos</p>
-              <p className="text-xs text-uf-silver-dim mt-1">
-                Assistência técnica e loja de equipamentos — catálogo de produtos e serviços de reparo.
-              </p>
-            </button>
-          </div>
-        </motion.div>
+      <main className="min-h-screen bg-uf-black text-uf-silver flex items-center justify-center px-5 py-16">
+        <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
       </main>
     )
   }

@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { Check, MousePointerClick } from 'lucide-react'
-import { formatBRL, getPlans, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
-import type { BillingCycle, PlanoCode } from '../lib/api'
+import { formatBRL, getPlans, getPlansByVertical, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
+import type { BillingCycle, PlanoCode, Vertical } from '../lib/api'
 
 export type PlanCardsCta =
   | { kind: 'link'; to: (code: PlanoCode, ciclo: BillingCycle) => string; label?: (name: string) => string }
@@ -16,6 +16,17 @@ type Props = {
   /** Animate on mount instead of whileInView (logged-in pages). */
   animateOnMount?: boolean
   testId?: string
+  /** Mostra só os planos deste ramo. Omitido = todos (compatível com as
+   * telas logadas, que já filtram pelo ramo do próprio assinante). */
+  vertical?: Vertical
+  /** Colunas do grid -- ramo com um plano só não deve esticar em 3 colunas. */
+  columns?: 1 | 2 | 3
+}
+
+const GRID_COLS: Record<1 | 2 | 3, string> = {
+  1: 'md:grid-cols-1 max-w-sm mx-auto',
+  2: 'md:grid-cols-2 max-w-3xl mx-auto',
+  3: 'md:grid-cols-3',
 }
 
 export default function PlanCardsGrid({
@@ -24,13 +35,15 @@ export default function PlanCardsGrid({
   showDemo = false,
   animateOnMount = false,
   testId = 'planos-assinar-cards',
+  vertical,
+  columns = 3,
 }: Props) {
-  const plans = getPlans()
+  const plans = vertical ? getPlansByVertical(vertical) : getPlans()
   const ctaLabel = (name: string) =>
     (cta.kind === 'link' ? cta.label?.(name) : cta.label?.(name)) ?? `Assinar ${name}`
 
   return (
-    <div className="grid md:grid-cols-3 gap-5" data-testid={testId}>
+    <div className={`grid ${GRID_COLS[columns]} gap-5`} data-testid={testId}>
       {plans.map((plan, i) => {
         const charged = priceForCycle(plan.price, ciclo)
         return (
