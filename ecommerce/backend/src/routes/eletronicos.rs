@@ -381,6 +381,43 @@ pub struct ServiceOrderDto {
 const SO_COLUMNS: &str = "id::text, request_id::text, created_at::text, updated_at::text, checklist, \
     completed_services, warranty, final_value::float8, pdf_url, closed_at::text, used_parts";
 
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ClosedServiceOrderDto {
+    pub id: String,
+    pub request_id: String,
+    pub closed_at: Option<String>,
+    pub final_value: Option<f64>,
+    pub customer_name: String,
+    pub customer_phone: String,
+    pub phone_model: Option<String>,
+    pub payment_methods: serde_json::Value,
+    pub shipping_price: Option<f64>,
+}
+
+/// Ordens de serviço já fechadas (com valor final) -- alimenta a aba
+/// "Manutenção" de Relatórios (RelatoriosClient.tsx do vrtech). Só as
+/// fechadas importam pra faturamento; em aberto não teve valor cobrado
+/// ainda.
+pub async fn list_closed_service_orders(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<ClosedServiceOrderDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ClosedServiceOrderDto> = sqlx::query_as(
+        "SELECT so.id::text, so.request_id::text, so.closed_at::text, so.final_value::float8, \
+                sr.customer_name, sr.customer_phone, sr.phone_model, sr.payment_methods, sr.shipping_price::float8 \
+         FROM eletronicos.service_orders so \
+         JOIN eletronicos.service_requests sr ON sr.id = so.request_id AND sr.tenant_id = so.tenant_id \
+         WHERE so.tenant_id = $1 AND so.closed_at IS NOT NULL AND so.final_value IS NOT NULL \
+         ORDER BY so.closed_at DESC",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
 /// Busca a OS de um atendimento, criando uma vazia na primeira vez (mesmo
 /// padrao do vrtech: a OS nasce junto com o card entrando em "em reparo",
 /// nao precisa de um passo de criacao separado no front).

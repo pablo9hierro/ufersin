@@ -72,6 +72,7 @@ const EletronicaAdminPdv = lazy(() => import('./pages/eletronicos/EletronicaAdmi
 const EletronicaAdminTemplates = lazy(() => import('./pages/eletronicos/EletronicaAdminTemplates'))
 const EletronicaAdminEmBreve = lazy(() => import('./pages/eletronicos/EletronicaAdminEmBreve'))
 const EletronicaAdminConta = lazy(() => import('./pages/eletronicos/EletronicaAdminConta'))
+const EletronicaRelatorios = lazy(() => import('./pages/eletronicos/EletronicaRelatorios'))
 const Uiux2RecuperarSenha = lazy(() => import('./uiux2/pages/RecuperarSenha'))
 const Uiux2Favoritos = lazy(() => import('./uiux2/pages/Favoritos'))
 const Uiux2Cupons = lazy(() => import('./uiux2/pages/Cupons'))
@@ -357,7 +358,7 @@ export default function App() {
             <Route path="agenda" element={<EletronicaAdminAgenda />} />
             <Route path="produtos" element={<EletronicaAdminEstoque />} />
             <Route path="servicodeslocamento" element={<EletronicaAdminEmBreve title="Serviço de deslocamento" />} />
-            <Route path="relatorios" element={<EletronicaAdminEmBreve title="Relatórios" />} />
+            <Route path="relatorios" element={<EletronicaRelatorios />} />
             <Route path="template-zap" element={<EletronicaAdminTemplates />} />
             <Route path="conta" element={<EletronicaAdminConta />} />
           </Route>

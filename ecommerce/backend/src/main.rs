@@ -346,6 +346,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::eletronicos::set_service_order_pdf),
         )
         .route(
+            "/api/admin/eletronicos/service-orders-closed",
+            get(routes::eletronicos::list_closed_service_orders),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )

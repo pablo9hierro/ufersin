@@ -70,6 +70,20 @@ export const eletronicosAdmin = {
         method: 'POST',
         body: JSON.stringify({ pdf_url: pdfUrl }),
       }),
+    listClosed: () =>
+      req<
+        {
+          id: string
+          request_id: string
+          closed_at: string | null
+          final_value: number | null
+          customer_name: string
+          customer_phone: string
+          phone_model: string | null
+          payment_methods: { method: string; value: number }[]
+          shipping_price: number | null
+        }[]
+      >(`${BASE}/service-orders-closed`),
   },
   uploadMedia: async (file: Blob, filename: string): Promise<string> => {
     const form = new FormData()
