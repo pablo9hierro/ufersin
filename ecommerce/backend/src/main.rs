@@ -579,6 +579,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/eletronicos/pdv/sales/{sale_id}/payments/{payment_id}/confirm",
             post(routes::eletronicos::confirm_payment),
         )
+        .route(
+            "/api/admin/eletronicos/templates",
+            get(routes::eletronicos::list_whatsapp_templates),
+        )
+        .route(
+            "/api/admin/eletronicos/templates/{key}",
+            axum::routing::put(routes::eletronicos::update_whatsapp_template_content),
+        )
+        .route(
+            "/api/admin/eletronicos/templates/{key}/toggle",
+            axum::routing::patch(routes::eletronicos::toggle_whatsapp_template),
+        )
         .route("/api/admin/pdv/pix", post(routes::admin::create_pdv_pix))
         .route(
             "/api/admin/pdv/pix/{payment_id}/status",

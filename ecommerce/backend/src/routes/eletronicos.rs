@@ -1516,3 +1516,199 @@ pub async fn confirm_payment(
     tx.commit().await?;
     get_pdv_sale(State(state), AdminUser(claims), Path(sale_id)).await
 }
+
+// ============================================================================
+// Templates WhatsApp -- fase 4.5
+//
+// Porta o admin de "Template Zap" do vrtech (src/app/dashboard/template-zap)
+// 1:1: mesmas colunas, mesma semantica de `editable` (trava edicao de
+// conteudo -- usado pelo template de link de pagamento, que e' montado pelo
+// sistema) vs `enabled` (liga/desliga o disparo, independente de editable).
+// O renderer (variaveis `/nome`) e' reaproveitado tanto pelo preview do
+// admin quanto pelo envio de verdade feito pelo pipeline do assistente.
+// ============================================================================
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct WhatsappTemplateDto {
+    pub id: String,
+    pub template_key: String,
+    pub section: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub content: String,
+    pub required_variables: Vec<String>,
+    pub available_variables: Vec<String>,
+    pub editable: bool,
+    pub enabled: bool,
+    pub sort_order: i32,
+}
+
+const TEMPLATE_COLUMNS: &str = "id, template_key, section, label, description, content, \
+     required_variables, available_variables, editable, enabled, sort_order";
+
+pub async fn list_whatsapp_templates(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<WhatsappTemplateDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<WhatsappTemplateDto> = sqlx::query_as(&format!(
+        "SELECT {TEMPLATE_COLUMNS} FROM eletronicos.whatsapp_templates \
+         WHERE tenant_id = $1 ORDER BY section, sort_order"
+    ))
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateTemplateContentInput {
+    pub content: String,
+}
+
+/// Só o `content` é editável pelo admin -- as colunas de metadado (label,
+/// section, variáveis) nascem via migration/seed e não têm rota de edição,
+/// mesma superfície do vrtech original.
+pub async fn update_whatsapp_template_content(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(key): Path<String>,
+    Json(input): Json<UpdateTemplateContentInput>,
+) -> Result<Json<WhatsappTemplateDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let editable: Option<bool> = sqlx::query_scalar(
+        "SELECT editable FROM eletronicos.whatsapp_templates WHERE tenant_id = $1 AND template_key = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&key)
+    .fetch_optional(&mut *tx)
+    .await?;
+    match editable {
+        None => return Err(AppError::NotFound("template não encontrado".to_string())),
+        Some(false) => {
+            return Err(AppError::BadRequest(
+                "este template é gerado pelo sistema e não pode ser editado".to_string(),
+            ))
+        }
+        Some(true) => {}
+    }
+
+    let missing: Vec<String> = {
+        let required: Vec<String> = sqlx::query_scalar(
+            "SELECT unnest(required_variables) FROM eletronicos.whatsapp_templates \
+             WHERE tenant_id = $1 AND template_key = $2",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&key)
+        .fetch_all(&mut *tx)
+        .await?;
+        required
+            .into_iter()
+            .filter(|v| !input.content.contains(&format!("/{v}")))
+            .collect()
+    };
+    if !missing.is_empty() {
+        return Err(AppError::BadRequest(format!(
+            "faltam variáveis obrigatórias no conteúdo: {}",
+            missing.iter().map(|v| format!("/{v}")).collect::<Vec<_>>().join(", ")
+        )));
+    }
+
+    sqlx::query(
+        "UPDATE eletronicos.whatsapp_templates SET content = $3, updated_at = now() \
+         WHERE tenant_id = $1 AND template_key = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&key)
+    .bind(&input.content)
+    .execute(&mut *tx)
+    .await?;
+
+    let row: WhatsappTemplateDto = sqlx::query_as(&format!(
+        "SELECT {TEMPLATE_COLUMNS} FROM eletronicos.whatsapp_templates \
+         WHERE tenant_id = $1 AND template_key = $2"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&key)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ToggleTemplateInput {
+    pub enabled: bool,
+}
+
+pub async fn toggle_whatsapp_template(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(key): Path<String>,
+    Json(input): Json<ToggleTemplateInput>,
+) -> Result<Json<WhatsappTemplateDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query(
+        "UPDATE eletronicos.whatsapp_templates SET enabled = $3, updated_at = now() \
+         WHERE tenant_id = $1 AND template_key = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&key)
+    .bind(input.enabled)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("template não encontrado".to_string()));
+    }
+    let row: WhatsappTemplateDto = sqlx::query_as(&format!(
+        "SELECT {TEMPLATE_COLUMNS} FROM eletronicos.whatsapp_templates \
+         WHERE tenant_id = $1 AND template_key = $2"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&key)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+/// Interpola variáveis no formato `/nome` (mesma sintaxe do vrtech). Usado
+/// tanto pelo preview do admin quanto pelo disparo de verdade no pipeline do
+/// assistente/notificações -- porta 1:1 de `src/lib/templates/renderer.ts`.
+pub fn render_template(content: &str, vars: &std::collections::HashMap<String, String>) -> String {
+    let mut out = content.to_string();
+    // ordena por tamanho de chave decrescente pra evitar que `/nome` capture
+    // um prefixo antes de `/nome_completo` ser substituído.
+    let mut keys: Vec<&String> = vars.keys().collect();
+    keys.sort_by_key(|k| std::cmp::Reverse(k.len()));
+    for k in keys {
+        out = out.replace(&format!("/{k}"), vars.get(k).map(String::as_str).unwrap_or(""));
+    }
+    out
+}
+
+/// Busca o template no banco; se ausente/vazio ou desabilitado, retorna
+/// `None` (chamador decide se usa fallback hardcoded ou não envia nada) --
+/// mesma semântica de `isTemplateEnabled` + `renderMessage` do vrtech.
+pub async fn render_whatsapp_template(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    key: &str,
+    vars: &std::collections::HashMap<String, String>,
+) -> Result<Option<String>, AppError> {
+    let row: Option<(String, bool)> = sqlx::query_as(
+        "SELECT content, enabled FROM eletronicos.whatsapp_templates \
+         WHERE tenant_id = $1 AND template_key = $2",
+    )
+    .bind(tenant_id)
+    .bind(key)
+    .fetch_optional(tx)
+    .await?;
+    match row {
+        Some((content, true)) if !content.trim().is_empty() => {
+            Ok(Some(render_template(&content, vars)))
+        }
+        _ => Ok(None),
+    }
+}

@@ -208,6 +208,9 @@ pub fn build() -> OpenApi {
         ("/api/admin/eletronicos/pdv/sales/{id}/items", Post, "Adicionar item a venda (decrementa estoque se aplicavel)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/pdv/sales/{id}/payments", Post, "Registrar pagamento (Pix ja gerado via /api/admin/pdv/pix, ou manual)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/pdv/sales/{sale_id}/payments/{payment_id}/confirm", Post, "Confirmar pagamento (fecha a venda se cobrir o total)", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/templates", Get, "Listar templates de WhatsApp (Template Zap)", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/templates/{key}", Put, "Editar conteudo de um template (valida variaveis obrigatorias)", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/templates/{key}/toggle", Patch, "Ligar/desligar disparo de um template", "Admin - Eletronicos", true, true),
     ];
 
     for (path, method, summary, tag, auth, body) in routes {
