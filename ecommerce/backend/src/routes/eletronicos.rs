@@ -1947,6 +1947,7 @@ pub struct CatalogCategoryDto {
     pub slug: String,
     pub sort_order: i32,
     pub device_type: String,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -1957,6 +1958,8 @@ pub struct CatalogItemDto {
     pub repair_type: String,
     pub price: f64,
     pub description: Option<String>,
+    pub image_url: Option<String>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1973,7 +1976,7 @@ pub async fn get_public_catalog(
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
 
     let categories: Vec<CatalogCategoryDto> = sqlx::query_as(
-        "SELECT id::text, name, slug, sort_order, device_type \
+        "SELECT id::text, name, slug, sort_order, device_type, image_url \
          FROM eletronicos.service_catalog_categories \
          WHERE tenant_id = $1 AND slug NOT LIKE 'servicos-%' ORDER BY sort_order",
     )
@@ -1982,7 +1985,8 @@ pub async fn get_public_catalog(
     .await?;
 
     let items: Vec<CatalogItemDto> = sqlx::query_as(
-        "SELECT id::text, category_id::text, model_name, repair_type, price::float8, description \
+        "SELECT id::text, category_id::text, model_name, repair_type, price::float8, description, image_url, \
+                COALESCE(tags, '{}') \
          FROM eletronicos.service_catalog_items \
          WHERE tenant_id = $1 AND active = true ORDER BY sort_order",
     )
