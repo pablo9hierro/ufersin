@@ -2378,7 +2378,7 @@ pub async fn get_public_catalog(
 
     let items: Vec<CatalogItemDto> = sqlx::query_as(
         "SELECT id::text, category_id::text, model_name, repair_type, price::float8, description, image_url, \
-                COALESCE(tags, '{}') \
+                COALESCE(tags, '{}') AS tags \
          FROM eletronicos.service_catalog_items \
          WHERE tenant_id = $1 AND active = true ORDER BY sort_order",
     )
