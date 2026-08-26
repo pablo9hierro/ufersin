@@ -19,9 +19,9 @@ import {
   Wrench,
   XCircle,
 } from 'lucide-react'
-import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { resolveTenantSlug, withTenantSearch } from '../../lib/tenantConfig'
 import { consultarPorTelefone, type ConsultarResponse, type ServiceRequestDto } from '../../lib/eletronicosApi'
+import EletronicaLogo from './EletronicaLogo'
 
 // Port 1:1 de src/app/consultar/ConsultarView.tsx do vrtech -- mesmo tema
 // (gradiente vr-graphite->vr-black, card branco, timeline com etapas
@@ -183,9 +183,7 @@ function googleMapsLink(lat: number, lng: number) {
 }
 
 export default function EletronicaConsultar() {
-  const tenantConfig = useTenantConfig()
   const slug = resolveTenantSlug()
-  const lojaNome = tenantConfig?.loja_nome || 'VR Tech'
 
   const [phone, setPhone] = useState('')
   const [loading, setLoading] = useState(false)
@@ -222,7 +220,7 @@ export default function EletronicaConsultar() {
         <Link to={`/${withTenantSearch()}`} className="flex items-center gap-1.5 text-[#d4d4d8] hover:text-white text-sm mb-5 w-fit transition-colors">
           <ChevronLeft className="w-4 h-4" /> Início
         </Link>
-        <span className="font-black text-lg block mb-3">{lojaNome}</span>
+        <EletronicaLogo size="sm" className="mb-3" />
         <h1 className="text-2xl font-bold">Minhas solicitações</h1>
         <p className="text-[#d4d4d8]/70 text-sm mt-1">Digite seu WhatsApp cadastrado pra ver o status dos seus pedidos</p>
       </header>
