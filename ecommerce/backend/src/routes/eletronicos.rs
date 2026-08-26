@@ -118,7 +118,7 @@ fn validate_status(status: &str) -> Result<(), AppError> {
     }
 }
 
-const SELECT_COLUMNS: &str = "id, created_at::text, customer_name, customer_phone, customer_email, \
+const SELECT_COLUMNS: &str = "id::text, created_at::text, customer_name, customer_phone, customer_email, \
     phone_model, problem_description, image_url, address_cep, address_street, address_number, \
     address_reference, address_neighborhood, address_city, address_state, address_lat, address_lng, \
     address_label, status, quote_value, estimated_quote_value, owner_notes, discount_percent, \
@@ -160,7 +160,7 @@ pub async fn get_service_request(
 ) -> Result<Json<ServiceRequestDto>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let row: Option<ServiceRequestDto> = sqlx::query_as(&format!(
-        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -215,7 +215,7 @@ async fn insert_service_request(
           image_url, self_pickup, address_cep, address_street, address_number, address_reference, \
           address_neighborhood, address_city, address_state, address_lat, address_lng, \
           diagnosis_requested, status, source) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)",
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)",
     )
     .bind(&id)
     .bind(tenant_id)
@@ -242,7 +242,7 @@ async fn insert_service_request(
     .await?;
 
     let row: ServiceRequestDto = sqlx::query_as(&format!(
-        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(tenant_id)
     .bind(&id)
@@ -279,7 +279,7 @@ pub async fn update_service_request_status(
     let updated = sqlx::query(
         "UPDATE eletronicos.service_requests \
          SET status = $3, quote_value = COALESCE($4, quote_value), owner_notes = COALESCE($5, owner_notes) \
-         WHERE tenant_id = $1 AND id = $2",
+         WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -292,7 +292,7 @@ pub async fn update_service_request_status(
         return Err(AppError::NotFound("solicitação não encontrada".to_string()));
     }
     let row: ServiceRequestDto = sqlx::query_as(&format!(
-        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -341,7 +341,7 @@ pub struct ServiceOrderDto {
     pub used_parts: serde_json::Value,
 }
 
-const SO_COLUMNS: &str = "id, request_id, created_at::text, updated_at::text, checklist, \
+const SO_COLUMNS: &str = "id::text, request_id::text, created_at::text, updated_at::text, checklist, \
     completed_services, warranty, final_value, pdf_url, closed_at::text, used_parts";
 
 /// Busca a OS de um atendimento, criando uma vazia na primeira vez (mesmo
@@ -355,7 +355,7 @@ pub async fn get_or_create_service_order(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
 
     let owner: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2",
+        "SELECT id::text FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&request_id)
@@ -366,7 +366,7 @@ pub async fn get_or_create_service_order(
     }
 
     let existing: Option<ServiceOrderDto> = sqlx::query_as(&format!(
-        "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND request_id = $2"
+        "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND request_id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&request_id)
@@ -378,7 +378,7 @@ pub async fn get_or_create_service_order(
     } else {
         let id = Uuid::new_v4().to_string();
         sqlx::query(
-            "INSERT INTO eletronicos.service_orders (id, tenant_id, request_id) VALUES ($1, $2, $3)",
+            "INSERT INTO eletronicos.service_orders (id, tenant_id, request_id) VALUES ($1::uuid, $2, $3::uuid)",
         )
         .bind(&id)
         .bind(&claims.tenant_id)
@@ -386,7 +386,7 @@ pub async fn get_or_create_service_order(
         .execute(&mut *tx)
         .await?;
         sqlx::query_as(&format!(
-            "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2"
+            "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid"
         ))
         .bind(&claims.tenant_id)
         .bind(&id)
@@ -416,7 +416,7 @@ pub async fn update_checklist(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let updated = sqlx::query(
         "UPDATE eletronicos.service_orders SET checklist = $3, updated_at = now() \
-         WHERE tenant_id = $1 AND id = $2",
+         WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -427,7 +427,7 @@ pub async fn update_checklist(
         return Err(AppError::NotFound("ordem de servico nao encontrada".to_string()));
     }
     let row: ServiceOrderDto = sqlx::query_as(&format!(
-        "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -449,7 +449,7 @@ pub struct ServiceOrderUpdateDto {
 }
 
 const SOU_COLUMNS: &str =
-    "id, service_order_id, created_at::text, message, media_urls, action_type, component";
+    "id::text, service_order_id::text, created_at::text, message, media_urls, action_type, component";
 
 pub async fn list_service_order_updates(
     State(state): State<AppState>,
@@ -459,7 +459,7 @@ pub async fn list_service_order_updates(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<ServiceOrderUpdateDto> = sqlx::query_as(&format!(
         "SELECT {SOU_COLUMNS} FROM eletronicos.service_order_updates \
-         WHERE tenant_id = $1 AND service_order_id = $2 ORDER BY created_at"
+         WHERE tenant_id = $1 AND service_order_id = $2::uuid ORDER BY created_at"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -486,7 +486,7 @@ pub async fn add_service_order_update(
     let owner: Option<(String,)> = {
         let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
         let row = sqlx::query_as(
-            "SELECT id FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2",
+            "SELECT id::text FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid",
         )
         .bind(&claims.tenant_id)
         .bind(&id)
@@ -504,7 +504,7 @@ pub async fn add_service_order_update(
     sqlx::query(
         "INSERT INTO eletronicos.service_order_updates \
          (id, tenant_id, service_order_id, message, media_urls, action_type, component) \
-         VALUES ($1, $2, $3, $4, $5, 'update', $6)",
+         VALUES ($1::uuid, $2, $3::uuid, $4, $5, 'update', $6)",
     )
     .bind(&new_id)
     .bind(&claims.tenant_id)
@@ -515,7 +515,7 @@ pub async fn add_service_order_update(
     .execute(&mut *tx)
     .await?;
     let row: ServiceOrderUpdateDto = sqlx::query_as(&format!(
-        "SELECT {SOU_COLUMNS} FROM eletronicos.service_order_updates WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SOU_COLUMNS} FROM eletronicos.service_order_updates WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&new_id)
@@ -552,7 +552,7 @@ pub async fn complete_service_order(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
 
     let existing: Option<(String, serde_json::Value)> = sqlx::query_as(
-        "SELECT request_id, checklist FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2",
+        "SELECT request_id::text, checklist FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -582,7 +582,7 @@ pub async fn complete_service_order(
                 sqlx::query(
                     "INSERT INTO eletronicos.stock_movements \
                      (id, tenant_id, item_id, type, quantity, unit) \
-                     VALUES ($1, $2, $3, 'saida', 1, 'unidade')",
+                     VALUES ($1::uuid, $2, $3::uuid, 'saida', 1, 'unidade')",
                 )
                 .bind(Uuid::new_v4().to_string())
                 .bind(&claims.tenant_id)
@@ -591,7 +591,7 @@ pub async fn complete_service_order(
                 .await?;
                 sqlx::query(
                     "UPDATE eletronicos.stock_items SET quantity = quantity - 1, updated_at = now() \
-                     WHERE tenant_id = $1 AND id = $2",
+                     WHERE tenant_id = $1 AND id = $2::uuid",
                 )
                 .bind(&claims.tenant_id)
                 .bind(stock_item_id)
@@ -611,7 +611,7 @@ pub async fn complete_service_order(
     // Frete de coleta so entra na 1a conclusao -- reabertura nunca duplica.
     let request_row: (bool, Option<f64>, Option<f64>) = sqlx::query_as(
         "SELECT self_pickup, shipping_price, quote_value FROM eletronicos.service_requests \
-         WHERE tenant_id = $1 AND id = $2",
+         WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&request_id)
@@ -625,7 +625,7 @@ pub async fn complete_service_order(
     };
 
     let previous_final: (Option<f64>,) =
-        sqlx::query_as("SELECT final_value FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2")
+        sqlx::query_as("SELECT final_value FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid")
             .bind(&claims.tenant_id)
             .bind(&id)
             .fetch_one(&mut *tx)
@@ -652,7 +652,7 @@ pub async fn complete_service_order(
         "UPDATE eletronicos.service_orders \
          SET checklist = $3, completed_services = $4, warranty = $5, final_value = $6, \
              closed_at = now(), updated_at = now() \
-         WHERE tenant_id = $1 AND id = $2",
+         WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -664,7 +664,7 @@ pub async fn complete_service_order(
     .await?;
 
     sqlx::query(
-        "UPDATE eletronicos.service_requests SET quote_value = $3 WHERE tenant_id = $1 AND id = $2",
+        "UPDATE eletronicos.service_requests SET quote_value = $3 WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&request_id)
@@ -675,7 +675,7 @@ pub async fn complete_service_order(
     sqlx::query(
         "INSERT INTO eletronicos.service_order_updates \
          (id, tenant_id, service_order_id, message, action_type) \
-         VALUES ($1, $2, $3, $4, 'completed')",
+         VALUES ($1::uuid, $2, $3::uuid, $4, 'completed')",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(&claims.tenant_id)
@@ -690,7 +690,7 @@ pub async fn complete_service_order(
     .await?;
 
     let row: ServiceOrderDto = sqlx::query_as(&format!(
-        "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -712,7 +712,7 @@ pub async fn reopen_service_order(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let updated = sqlx::query(
         "UPDATE eletronicos.service_orders SET closed_at = NULL, updated_at = now() \
-         WHERE tenant_id = $1 AND id = $2",
+         WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -724,7 +724,7 @@ pub async fn reopen_service_order(
     sqlx::query(
         "INSERT INTO eletronicos.service_order_updates \
          (id, tenant_id, service_order_id, message, action_type) \
-         VALUES ($1, $2, $3, $4, 'reopened')",
+         VALUES ($1::uuid, $2, $3::uuid, $4, 'reopened')",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(&claims.tenant_id)
@@ -736,7 +736,7 @@ pub async fn reopen_service_order(
     .execute(&mut *tx)
     .await?;
     let row: ServiceOrderDto = sqlx::query_as(&format!(
-        "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -816,8 +816,8 @@ pub struct AppointmentDto {
     pub service_request_id: Option<String>,
 }
 
-const APPT_COLUMNS: &str = "id, service_id, service_label, customer_name, customer_phone, \
-    starts_at::text, ends_at::text, status, notes, created_by, appointment_type, service_request_id";
+const APPT_COLUMNS: &str = "id::text, service_id::text, service_label, customer_name, customer_phone, \
+    starts_at::text, ends_at::text, status, notes, created_by, appointment_type, service_request_id::text";
 
 #[derive(Debug, Deserialize)]
 pub struct ListAppointmentsQuery {
@@ -835,7 +835,7 @@ pub async fn list_appointments(
     let rows: Vec<AppointmentDto> = if let Some(rid) = &q.service_request_id {
         sqlx::query_as(&format!(
             "SELECT {APPT_COLUMNS} FROM eletronicos.appointments \
-             WHERE tenant_id = $1 AND service_request_id = $2 ORDER BY starts_at"
+             WHERE tenant_id = $1 AND service_request_id = $2::uuid ORDER BY starts_at"
         ))
         .bind(&claims.tenant_id)
         .bind(rid)
@@ -973,7 +973,7 @@ pub async fn create_appointment(
     let window_end = ends_at + buffer;
 
     let conflict: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM eletronicos.appointments \
+        "SELECT id::text FROM eletronicos.appointments \
          WHERE tenant_id = $1 AND status = 'agendado' \
            AND starts_at < $3 AND ends_at > $2 LIMIT 1",
     )
@@ -989,7 +989,7 @@ pub async fn create_appointment(
         ));
     }
     let blocked: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM eletronicos.agenda_blocks \
+        "SELECT id::text FROM eletronicos.agenda_blocks \
          WHERE tenant_id = $1 AND starts_at < $3 AND ends_at > $2 LIMIT 1",
     )
     .bind(&claims.tenant_id)
@@ -1006,7 +1006,7 @@ pub async fn create_appointment(
         "INSERT INTO eletronicos.appointments \
          (id, tenant_id, service_id, service_label, customer_name, customer_phone, starts_at, ends_at, \
           status, notes, created_by, appointment_type, service_request_id) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'agendado',$9,$10,$11,$12)",
+         VALUES ($1::uuid,$2,$3::uuid,$4,$5,$6,$7,$8,'agendado',$9,$10,$11,$12::uuid)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -1026,7 +1026,7 @@ pub async fn create_appointment(
     sqlx::query(
         "INSERT INTO eletronicos.appointment_events \
          (id, tenant_id, appointment_id, action, actor_type, new_starts_at, new_ends_at) \
-         VALUES ($1, $2, $3, 'created', 'admin', $4, $5)",
+         VALUES ($1::uuid, $2, $3::uuid, 'created', 'admin', $4, $5)",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(&claims.tenant_id)
@@ -1037,7 +1037,7 @@ pub async fn create_appointment(
     .await?;
 
     let row: AppointmentDto = sqlx::query_as(&format!(
-        "SELECT {APPT_COLUMNS} FROM eletronicos.appointments WHERE tenant_id = $1 AND id = $2"
+        "SELECT {APPT_COLUMNS} FROM eletronicos.appointments WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -1061,7 +1061,7 @@ pub async fn cancel_appointment(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let updated = sqlx::query(
         "UPDATE eletronicos.appointments SET status = 'cancelado', updated_at = now() \
-         WHERE tenant_id = $1 AND id = $2 AND status = 'agendado'",
+         WHERE tenant_id = $1 AND id = $2::uuid AND status = 'agendado'",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -1075,7 +1075,7 @@ pub async fn cancel_appointment(
     sqlx::query(
         "INSERT INTO eletronicos.appointment_events \
          (id, tenant_id, appointment_id, action, actor_type, justification) \
-         VALUES ($1, $2, $3, 'cancelled', 'admin', $4)",
+         VALUES ($1::uuid, $2, $3::uuid, 'cancelled', 'admin', $4)",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(&claims.tenant_id)
@@ -1084,7 +1084,7 @@ pub async fn cancel_appointment(
     .execute(&mut *tx)
     .await?;
     let row: AppointmentDto = sqlx::query_as(&format!(
-        "SELECT {APPT_COLUMNS} FROM eletronicos.appointments WHERE tenant_id = $1 AND id = $2"
+        "SELECT {APPT_COLUMNS} FROM eletronicos.appointments WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -1111,7 +1111,7 @@ pub struct StockItemDto {
 }
 
 const STOCK_COLUMNS: &str =
-    "id, name, unit, quantity, price, warranty_days, units_per_box, low_stock_threshold";
+    "id::text, name, unit, quantity, price, warranty_days, units_per_box, low_stock_threshold";
 
 pub async fn list_stock_items(
     State(state): State<AppState>,
@@ -1152,7 +1152,7 @@ pub async fn create_stock_item(
     sqlx::query(
         "INSERT INTO eletronicos.stock_items \
          (id, tenant_id, name, unit, quantity, price, warranty_days, units_per_box, low_stock_threshold) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -1166,7 +1166,7 @@ pub async fn create_stock_item(
     .execute(&mut *tx)
     .await?;
     let row: StockItemDto = sqlx::query_as(&format!(
-        "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2"
+        "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -1195,7 +1195,7 @@ pub async fn stock_entry(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let updated = sqlx::query(
         "UPDATE eletronicos.stock_items SET quantity = quantity + $3, updated_at = now() \
-         WHERE tenant_id = $1 AND id = $2",
+         WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -1207,7 +1207,7 @@ pub async fn stock_entry(
     }
     sqlx::query(
         "INSERT INTO eletronicos.stock_movements (id, tenant_id, item_id, type, quantity, unit) \
-         SELECT $1, $2, $3, 'entrada', $4, unit FROM eletronicos.stock_items WHERE tenant_id = $2 AND id = $3",
+         SELECT $1::uuid, $2, $3::uuid, 'entrada', $4, unit FROM eletronicos.stock_items WHERE tenant_id = $2 AND id = $3::uuid",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(&claims.tenant_id)
@@ -1216,7 +1216,7 @@ pub async fn stock_entry(
     .execute(&mut *tx)
     .await?;
     let row: StockItemDto = sqlx::query_as(&format!(
-        "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2"
+        "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -1244,7 +1244,7 @@ pub struct PdvSaleDto {
     pub concluded_at: Option<String>,
 }
 
-const SALE_COLUMNS: &str = "id, status, total_value, notes, created_at::text, concluded_at::text";
+const SALE_COLUMNS: &str = "id::text, status, total_value, notes, created_at::text, concluded_at::text";
 
 pub async fn create_pdv_sale(
     State(state): State<AppState>,
@@ -1253,14 +1253,14 @@ pub async fn create_pdv_sale(
     let id = Uuid::new_v4().to_string();
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     sqlx::query(
-        "INSERT INTO eletronicos.pdv_sales (id, tenant_id, status, total_value) VALUES ($1, $2, 'aberta', 0)",
+        "INSERT INTO eletronicos.pdv_sales (id, tenant_id, status, total_value) VALUES ($1::uuid, $2, 'aberta', 0)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
     .execute(&mut *tx)
     .await?;
     let row: PdvSaleDto = sqlx::query_as(&format!(
-        "SELECT {SALE_COLUMNS} FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SALE_COLUMNS} FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -1310,7 +1310,7 @@ pub async fn add_sale_item(
     }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let sale: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2 AND status = 'aberta'",
+        "SELECT id::text FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2::uuid AND status = 'aberta'",
     )
     .bind(&claims.tenant_id)
     .bind(&sale_id)
@@ -1325,7 +1325,7 @@ pub async fn add_sale_item(
     sqlx::query(
         "INSERT INTO eletronicos.pdv_sale_items \
          (id, tenant_id, sale_id, item_type, product_id, service_id, label, quantity, unit_price, stock_deducted) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+         VALUES ($1::uuid,$2,$3::uuid,$4,$5::uuid,$6::uuid,$7,$8,$9,$10)",
     )
     .bind(&item_id)
     .bind(&claims.tenant_id)
@@ -1342,7 +1342,7 @@ pub async fn add_sale_item(
 
     if let Some(stock_item_id) = &input.stock_item_id {
         let stock: Option<(f64,)> = sqlx::query_as(
-            "SELECT quantity FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2",
+            "SELECT quantity FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid",
         )
         .bind(&claims.tenant_id)
         .bind(stock_item_id)
@@ -1358,7 +1358,7 @@ pub async fn add_sale_item(
         }
         sqlx::query(
             "UPDATE eletronicos.stock_items SET quantity = quantity - $3, updated_at = now() \
-             WHERE tenant_id = $1 AND id = $2",
+             WHERE tenant_id = $1 AND id = $2::uuid",
         )
         .bind(&claims.tenant_id)
         .bind(stock_item_id)
@@ -1367,7 +1367,7 @@ pub async fn add_sale_item(
         .await?;
         sqlx::query(
             "INSERT INTO eletronicos.stock_movements (id, tenant_id, item_id, type, quantity, unit) \
-             SELECT $1, $2, $3, 'saida', $4, unit FROM eletronicos.stock_items WHERE tenant_id = $2 AND id = $3",
+             SELECT $1::uuid, $2, $3::uuid, 'saida', $4, unit FROM eletronicos.stock_items WHERE tenant_id = $2 AND id = $3::uuid",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&claims.tenant_id)
@@ -1380,8 +1380,8 @@ pub async fn add_sale_item(
     sqlx::query(
         "UPDATE eletronicos.pdv_sales SET total_value = ( \
            SELECT COALESCE(SUM(quantity * unit_price), 0) FROM eletronicos.pdv_sale_items \
-           WHERE tenant_id = $1 AND sale_id = $2 \
-         ), updated_at = now() WHERE tenant_id = $1 AND id = $2",
+           WHERE tenant_id = $1 AND sale_id = $2::uuid \
+         ), updated_at = now() WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&sale_id)
@@ -1389,7 +1389,7 @@ pub async fn add_sale_item(
     .await?;
 
     let row: PdvSaleDto = sqlx::query_as(&format!(
-        "SELECT {SALE_COLUMNS} FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SALE_COLUMNS} FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&sale_id)
@@ -1413,7 +1413,7 @@ pub async fn get_pdv_sale(
 ) -> Result<Json<PdvSaleDetailDto>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let sale: Option<PdvSaleDto> = sqlx::query_as(&format!(
-        "SELECT {SALE_COLUMNS} FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2"
+        "SELECT {SALE_COLUMNS} FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -1423,15 +1423,15 @@ pub async fn get_pdv_sale(
         return Err(AppError::NotFound("venda não encontrada".to_string()));
     };
     let items: Vec<PdvSaleItemDto> = sqlx::query_as(
-        "SELECT id, sale_id, item_type, product_id, service_id, label, quantity, unit_price, stock_deducted \
-         FROM eletronicos.pdv_sale_items WHERE tenant_id = $1 AND sale_id = $2 ORDER BY id",
+        "SELECT id::text, sale_id::text, item_type, product_id::text, service_id::text, label, quantity, unit_price, stock_deducted \
+         FROM eletronicos.pdv_sale_items WHERE tenant_id = $1 AND sale_id = $2::uuid ORDER BY id",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
     .fetch_all(&mut *tx)
     .await?;
     let payments: Vec<PdvPaymentDto> = sqlx::query_as(&format!(
-        "SELECT {PAYMENT_COLUMNS} FROM eletronicos.pdv_payments WHERE tenant_id = $1 AND sale_id = $2 ORDER BY created_at"
+        "SELECT {PAYMENT_COLUMNS} FROM eletronicos.pdv_payments WHERE tenant_id = $1 AND sale_id = $2::uuid ORDER BY created_at"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -1454,7 +1454,7 @@ pub struct PdvPaymentDto {
 }
 
 const PAYMENT_COLUMNS: &str =
-    "id, sale_id, method, amount, status, installments, change_amount, mp_payment_id";
+    "id::text, sale_id::text, method, amount, status, installments, change_amount, mp_payment_id";
 
 #[derive(Debug, Deserialize)]
 pub struct AddPaymentInput {
@@ -1486,7 +1486,7 @@ pub async fn add_payment(
     sqlx::query(
         "INSERT INTO eletronicos.pdv_payments \
          (id, tenant_id, sale_id, method, amount, status, installments, change_amount, mp_payment_id) \
-         VALUES ($1,$2,$3,$4,$5,'pendente',$6,$7,$8)",
+         VALUES ($1::uuid,$2,$3::uuid,$4,$5,'pendente',$6,$7,$8)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -1513,7 +1513,7 @@ pub async fn confirm_payment(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let updated = sqlx::query(
         "UPDATE eletronicos.pdv_payments SET status = 'confirmado', confirmed_at = now() \
-         WHERE tenant_id = $1 AND id = $2 AND sale_id = $3",
+         WHERE tenant_id = $1 AND id = $2::uuid AND sale_id = $3::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&payment_id)
@@ -1525,9 +1525,9 @@ pub async fn confirm_payment(
     }
 
     let sums: (Option<f64>, Option<f64>) = sqlx::query_as(
-        "SELECT (SELECT total_value FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2), \
+        "SELECT (SELECT total_value FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2::uuid), \
                 (SELECT COALESCE(SUM(amount), 0) FROM eletronicos.pdv_payments \
-                 WHERE tenant_id = $1 AND sale_id = $2 AND status = 'confirmado')",
+                 WHERE tenant_id = $1 AND sale_id = $2::uuid AND status = 'confirmado')",
     )
     .bind(&claims.tenant_id)
     .bind(&sale_id)
@@ -1537,7 +1537,7 @@ pub async fn confirm_payment(
     if paid + 0.01 >= total {
         sqlx::query(
             "UPDATE eletronicos.pdv_sales SET status = 'concluida', concluded_at = now(), updated_at = now() \
-             WHERE tenant_id = $1 AND id = $2",
+             WHERE tenant_id = $1 AND id = $2::uuid",
         )
         .bind(&claims.tenant_id)
         .bind(&sale_id)
@@ -1574,7 +1574,7 @@ pub struct WhatsappTemplateDto {
     pub sort_order: i32,
 }
 
-const TEMPLATE_COLUMNS: &str = "id, template_key, section, label, description, content, \
+const TEMPLATE_COLUMNS: &str = "id::text, template_key, section, label, description, content, \
      required_variables, available_variables, editable, enabled, sort_order";
 
 pub async fn list_whatsapp_templates(
@@ -1797,7 +1797,7 @@ pub async fn consultar_por_telefone(
     let mut out = Vec::with_capacity(requests.len());
     for request in requests {
         let service_order: Option<ServiceOrderDto> = sqlx::query_as(&format!(
-            "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND request_id = $2"
+            "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND request_id = $2::uuid"
         ))
         .bind(&store.id)
         .bind(&request.id)
