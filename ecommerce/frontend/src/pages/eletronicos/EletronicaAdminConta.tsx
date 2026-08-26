@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Clock, Loader2, MessageCircle } from 'lucide-react'
+import { Loader2, MessageCircle } from 'lucide-react'
 import { adminService } from '../../services/adminService'
 import WhatsAppConnection from '../../components/ui/WhatsAppConnection'
-import StoreHoursCard from '../../components/admin/StoreHoursCard'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { classifyWaHistoryError, formatWaEventLabel, formatWaEventTime, type WaHistoryEvent } from '../../lib/whatsappHistory'
 
-// Port 1:1 (adaptado pro visual do painel eletrônica) de
-// src/app/dashboard/conta/page.tsx do vrtech (WhatsAppPanel). Reaproveita
-// os componentes REAIS já existentes no motor (StoreHoursCard,
-// WhatsAppConnection, adminService.whatsapp) -- mesmo mecanismo de
-// pareamento/QR que já funciona pra qualquer tenant, não inventado.
+// src/app/dashboard/conta/page.tsx do vrtech só tem <WhatsAppPanel/> (nada
+// de horário de funcionamento -- isso não existe na página real, não
+// inventar). O WhatsAppPanel real é auto-connect (dispara /api/whatsapp/
+// connect sozinho, sem botão manual, QR renovando via polling+realtime na
+// tabela whatsapp_state) -- esse motor não tem esse endpoint de auto-
+// provisionamento, então aqui reaproveita o WhatsAppConnection genérico
+// (pareamento manual via botão Conectar/Desconectar, mesmo mecanismo já
+// usado por qualquer tenant do motor) como substituto funcional
+// disclosed, não uma cópia visual 1:1 do painel original.
 
 export default function EletronicaAdminConta() {
   const tenantConfig = useTenantConfig()
@@ -43,18 +46,10 @@ export default function EletronicaAdminConta() {
   }, [whatsappHabilitado])
 
   return (
-    <div className="max-w-2xl mx-auto space-y-10">
+    <div className="max-w-2xl mx-auto space-y-6">
       <h1 className="text-lg font-bold text-white">Conta</h1>
 
-      <div>
-        <h2 className="text-base font-bold text-white mb-1 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-[#e0211a]" /> Horário de funcionamento
-        </h2>
-        <p className="text-[#d4d4d8]/60 text-sm mb-4">Defina quando a loja aceita solicitações.</p>
-        <StoreHoursCard />
-      </div>
-
-      {whatsappHabilitado && (
+      {whatsappHabilitado ? (
         <div>
           <h2 className="text-base font-bold text-white mb-1 flex items-center gap-2">
             <MessageCircle className="w-4 h-4 text-[#e0211a]" /> WhatsApp
@@ -97,6 +92,8 @@ export default function EletronicaAdminConta() {
             </div>
           </div>
         </div>
+      ) : (
+        <p className="text-[#d4d4d8]/50 text-sm">WhatsApp não habilitado pra essa loja.</p>
       )}
     </div>
   )
