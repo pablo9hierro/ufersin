@@ -142,7 +142,7 @@ export default function AdminLayout() {
   useEffect(() => {
     if (demo || !tenantReady) return
     if (tenantConfig?.vertical === 'eletronicos' && !window.location.pathname.startsWith('/loja/admin-eletronica')) {
-      navigate(withTenantSearch('/admin-eletronica'), { replace: true })
+      navigate(`/admin-eletronica${withTenantSearch()}`, { replace: true })
     }
   }, [demo, tenantReady, tenantConfig?.vertical, navigate])
 

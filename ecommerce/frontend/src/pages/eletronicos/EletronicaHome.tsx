@@ -87,7 +87,7 @@ export default function EletronicaHome() {
             qualquer momento.
           </p>
           <Link
-            to={withTenantSearch('/consultar')}
+            to={`/consultar${withTenantSearch()}`}
             className="inline-block w-full rounded-xl bg-emerald-500 text-slate-950 font-semibold py-3 hover:bg-emerald-400 transition-colors"
           >
             Acompanhar status
@@ -259,7 +259,7 @@ export default function EletronicaHome() {
 
         <p className="text-center text-xs text-slate-500 mt-4">
           Já enviou uma solicitação?{' '}
-          <Link to={withTenantSearch('/consultar')} className="text-emerald-400 hover:underline">
+          <Link to={`/consultar${withTenantSearch()}`} className="text-emerald-400 hover:underline">
             Acompanhar status
           </Link>
         </p>

@@ -19,7 +19,7 @@ export default function EletronicaAdminLayout() {
   const { token, name, logout } = useAdminAuth()
   const navigate = useNavigate()
 
-  if (!token) return <Navigate to="/admin/login" replace />
+  if (!token) return <Navigate to={`/admin/login${withTenantSearch()}`} replace />
 
   function handleLogout() {
     logout()
@@ -51,7 +51,7 @@ export default function EletronicaAdminLayout() {
         {TABS.map((tab) => (
           <NavLink
             key={tab.to}
-            to={withTenantSearch(`/admin-eletronica${tab.to ? `/${tab.to}` : ''}`)}
+            to={`/admin-eletronica${tab.to ? `/${tab.to}` : ''}${withTenantSearch()}`}
             end={tab.to === ''}
             className={({ isActive }) =>
               `whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 transition-colors ${

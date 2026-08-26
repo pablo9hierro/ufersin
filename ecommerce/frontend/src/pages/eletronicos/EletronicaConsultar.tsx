@@ -114,7 +114,7 @@ export default function EletronicaConsultar() {
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-6">
-          <Link to={withTenantSearch('/')} className="text-emerald-400 hover:underline">
+          <Link to={`/${withTenantSearch()}`} className="text-emerald-400 hover:underline">
             Nova solicitação
           </Link>
         </p>
