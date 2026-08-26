@@ -60,6 +60,8 @@ const Uiux4ServicosCatalogo = lazy(() => import('./uiux4/pages/ServicosCatalogo'
 const Uiux2Carrinho = lazy(() => import('./uiux2/pages/Carrinho'))
 const Uiux2Checkout = lazy(() => import('./uiux2/pages/Checkout'))
 const Uiux2Consultar = lazy(() => import('./uiux2/pages/Consultar'))
+const EletronicaHome = lazy(() => import('./pages/eletronicos/EletronicaHome'))
+const EletronicaConsultar = lazy(() => import('./pages/eletronicos/EletronicaConsultar'))
 const Uiux2RecuperarSenha = lazy(() => import('./uiux2/pages/RecuperarSenha'))
 const Uiux2Favoritos = lazy(() => import('./uiux2/pages/Favoritos'))
 const Uiux2Cupons = lazy(() => import('./uiux2/pages/Cupons'))
@@ -233,11 +235,18 @@ function StyleAware({
   ufersin: Ufersin,
   burgerbite: Burgerbite,
   burgerhouse: Burgerhouse,
+  eletronica,
   skipVenderExternamenteGate = false,
 }: {
   ufersin: LazyPage
   burgerbite: LazyPage
   burgerhouse: LazyPage
+  /** Página nativa própria do ramo eletrônica pra esta rota (identidade
+   * visual própria, nunca um dos 3 temas de ecommerce acima). Enquanto uma
+   * rota não tem página nativa ainda, `undefined` mantém o redirect pro
+   * app antigo do vrtech (ver EletronicaStorefrontRedirect) — migração
+   * rota por rota, sem quebrar o que ainda não foi portado. */
+  eletronica?: LazyPage
   /** `/pagamento/:orderId` completa uma venda que JÁ existe (PDV mandou o
    * link pro WhatsApp do cliente) — "loja sem venda externa" bloqueia
    * navegação/catálogo público, não o pagamento de um pedido específico já
@@ -269,7 +278,15 @@ function StyleAware({
   // padrão do lado do painel) — nunca os 3 temas de ecommerce daqui: são
   // identidade visual de e-commerce, misturar com o ramo eletrônica é
   // exatamente o que não pode acontecer entre ramos hospedados na Resolutoo.
-  if (tenantConfig.vertical === 'eletronicos') return <EletronicaStorefrontRedirect slug={slug} />
+  if (tenantConfig.vertical === 'eletronicos') {
+    if (!eletronica) return <EletronicaStorefrontRedirect slug={slug} />
+    const Eletronica = eletronica
+    return (
+      <Suspense fallback={<StyleLoading />}>
+        <Eletronica />
+      </Suspense>
+    )
+  }
   if (tenantConfig.vender_externamente === false && !skipVenderExternamenteGate) return <LojaSemVendaExterna />
 
   const style = resolveStorefrontStyle(demoStyle, tenantConfig.layout_style)
@@ -291,7 +308,10 @@ export default function App() {
       <CustomerPageDecorations />
       <Suspense fallback={<StyleLoading />}>
         <Routes>
-          <Route path="/" element={<StyleAware ufersin={Uiux2Landing} burgerbite={Uiux3Landing} burgerhouse={Uiux4Landing} />} />
+          <Route
+            path="/"
+            element={<StyleAware ufersin={Uiux2Landing} burgerbite={Uiux3Landing} burgerhouse={Uiux4Landing} eletronica={EletronicaHome} />}
+          />
           <Route path="/demo-entrar" element={<DemoEntrar />} />
           <Route path="/catalogo" element={<StyleAware ufersin={Uiux2Catalogo} burgerbite={Uiux3Catalogo} burgerhouse={Uiux4Catalogo} />} />
           <Route path="/produto/:id" element={<StyleAware ufersin={Uiux2ProdutoDetalhe} burgerbite={Uiux3ProdutoDetalhe} burgerhouse={Uiux4ProdutoDetalhe} />} />
@@ -302,7 +322,10 @@ export default function App() {
           <Route path="/banner" element={<StyleAware ufersin={Uiux2Banner} burgerbite={Uiux3Banner} burgerhouse={Uiux4Banner} />} />
           <Route path="/banner/checkout" element={<StyleAware ufersin={Uiux2BannerCheckout} burgerbite={Uiux3BannerCheckout} burgerhouse={Uiux4BannerCheckout} />} />
           <Route path="/pagamento/:orderId" element={<StyleAware ufersin={Uiux2Pagamento} burgerbite={Uiux3Pagamento} burgerhouse={Uiux4Pagamento} skipVenderExternamenteGate />} />
-          <Route path="/consultar" element={<StyleAware ufersin={Uiux2Consultar} burgerbite={Uiux3Consultar} burgerhouse={Uiux4Consultar} />} />
+          <Route
+            path="/consultar"
+            element={<StyleAware ufersin={Uiux2Consultar} burgerbite={Uiux3Consultar} burgerhouse={Uiux4Consultar} eletronica={EletronicaConsultar} />}
+          />
           <Route path="/recuperar-senha" element={<StyleAware ufersin={Uiux2RecuperarSenha} burgerbite={Uiux3RecuperarSenha} burgerhouse={Uiux4RecuperarSenha} />} />
           <Route path="/cliente/favoritos" element={<StyleAware ufersin={Uiux2Favoritos} burgerbite={Uiux3Favoritos} burgerhouse={Uiux4Favoritos} />} />
           <Route path="/cliente/cupons" element={<StyleAware ufersin={Uiux2Cupons} burgerbite={Uiux3Cupons} burgerhouse={Uiux4Cupons} />} />
