@@ -334,6 +334,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::eletronicos::upload_public_media),
         )
         .route(
+            "/api/public/eletronicos/{slug}/catalog",
+            get(routes::eletronicos::get_public_catalog),
+        )
+        .route(
             "/api/admin/eletronicos/upload",
             post(routes::eletronicos::upload_admin_media),
         )

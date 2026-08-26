@@ -88,6 +88,9 @@ pub struct CreateServiceRequestInput {
     pub address_lat: Option<f64>,
     pub address_lng: Option<f64>,
     pub diagnosis_requested: Option<bool>,
+    /// Soma dos serviços de catálogo escolhidos no wizard da vitrine --
+    /// estimativa, o valor final ainda depende do diagnóstico.
+    pub estimated_quote_value: Option<f64>,
     /// pending (padrão) = fluxo normal de aceite; sunset/PDV entram como
     /// 'accepted' (orçamento já acordado no balcão) — mesma semântica do
     /// vrtech (ver ensureServiceRequestForAppointment no código antigo).
@@ -214,8 +217,8 @@ async fn insert_service_request(
          (id, tenant_id, customer_name, customer_phone, customer_email, phone_model, problem_description, \
           image_url, self_pickup, address_cep, address_street, address_number, address_reference, \
           address_neighborhood, address_city, address_state, address_lat, address_lng, \
-          diagnosis_requested, status, source) \
-         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)",
+          diagnosis_requested, estimated_quote_value, status, source) \
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)",
     )
     .bind(&id)
     .bind(tenant_id)
@@ -236,6 +239,7 @@ async fn insert_service_request(
     .bind(input.address_lat)
     .bind(input.address_lng)
     .bind(input.diagnosis_requested.unwrap_or(false))
+    .bind(input.estimated_quote_value)
     .bind(status)
     .bind(input.source.as_deref().unwrap_or(default_source))
     .execute(&mut *tx)
@@ -1924,4 +1928,68 @@ pub async fn set_service_order_pdf(
     .await?;
     tx.commit().await?;
     Ok(Json(row))
+}
+
+// ============================================================================
+// Catalogo de servicos (vitrine publica) -- fase 4.10
+//
+// Porta o wizard tipo->marca->modelo->servico do ServiceRequestForm.tsx do
+// vrtech: categorias == "marcas" (cada uma amarrada a um device_type),
+// itens == servicos de reparo (por modelo, ou universais quando
+// model_name e' null). Publico/sem login, mesmo padrao dos outros
+// endpoints da vitrine.
+// ============================================================================
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct CatalogCategoryDto {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub sort_order: i32,
+    pub device_type: String,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct CatalogItemDto {
+    pub id: String,
+    pub category_id: String,
+    pub model_name: Option<String>,
+    pub repair_type: String,
+    pub price: f64,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CatalogResponse {
+    pub categories: Vec<CatalogCategoryDto>,
+    pub items: Vec<CatalogItemDto>,
+}
+
+pub async fn get_public_catalog(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<CatalogResponse>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+
+    let categories: Vec<CatalogCategoryDto> = sqlx::query_as(
+        "SELECT id::text, name, slug, sort_order, device_type \
+         FROM eletronicos.service_catalog_categories \
+         WHERE tenant_id = $1 AND slug NOT LIKE 'servicos-%' ORDER BY sort_order",
+    )
+    .bind(&store.id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let items: Vec<CatalogItemDto> = sqlx::query_as(
+        "SELECT id::text, category_id::text, model_name, repair_type, price::float8, description \
+         FROM eletronicos.service_catalog_items \
+         WHERE tenant_id = $1 AND active = true ORDER BY sort_order",
+    )
+    .bind(&store.id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Json(CatalogResponse { categories, items }))
 }

@@ -216,6 +216,7 @@ pub fn build() -> OpenApi {
         ("/api/public/eletronicos/{slug}/upload", Post, "Vitrine: upload de foto/video do aparelho (multipart, campo file)", "Publico - Eletronicos", false, true),
         ("/api/admin/eletronicos/upload", Post, "Admin: upload de foto/video/pdf (multipart, campo file)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/service-orders/{id}/pdf", Post, "Salva a URL do PDF gerado da OS", "Admin - Eletronicos", true, true),
+        ("/api/public/eletronicos/{slug}/catalog", Get, "Vitrine: catalogo de marcas/modelos/servicos pro wizard de solicitacao", "Publico - Eletronicos", false, false),
     ];
 
     for (path, method, summary, tag, auth, body) in routes {
