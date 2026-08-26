@@ -1,42 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Check, Loader2, Lock, ShoppingBag, Smartphone, X } from 'lucide-react'
-import type { PlanoCode } from '../lib/api'
+import { motion } from 'framer-motion'
+import { ArrowLeft, Check, Loader2 } from 'lucide-react'
 import { CmsEditProvider, CmsText, usePlatformContent } from '../lib/cms'
-import { fetchPlans, formatBRL, getPlans, planDisplayName } from '../lib/plans'
-
-type RamoCode = 'ecommerce' | 'eletronica'
-
-interface RamoDef {
-  code: RamoCode
-  label: string
-  desc: string
-  icon: typeof ShoppingBag
-  comingSoon: boolean
-  buildPath: (plano: PlanoCode) => string
-}
-
-const RAMOS: RamoDef[] = [
-  {
-    code: 'ecommerce',
-    label: 'Ecommerce',
-    desc: 'Lanchonete, pizzaria, tabacaria, conveniência e afins — catálogo, checkout e entrega.',
-    icon: ShoppingBag,
-    comingSoon: false,
-    buildPath: (plano) => `/demo/${plano}`,
-  },
-  {
-    code: 'eletronica',
-    label: 'Manutenção e venda de eletrônicos',
-    desc: 'Assistência técnica e loja de equipamentos — catálogo de produtos e serviços de reparo.',
-    icon: Smartphone,
-    comingSoon: false,
-    // Página própria de escolha de área (vitrine/admin do vrtech) — mesmo
-    // padrão do ramo ecommerce (DemoPlano), nunca o motor genérico.
-    buildPath: (plano) => `/demo/eletronica/${plano}`,
-  },
-]
+import { fetchPlans, formatBRL, getPlans } from '../lib/plans'
 
 interface DemoProps {
   /** When true, skip auth chrome wrappers and use outer CmsEditProvider. */
@@ -44,11 +11,15 @@ interface DemoProps {
 }
 
 /**
- * Passo 1 da demo pública: escolher plano + ramo do negócio.
+ * Demo pública: cada plano já sabe o próprio ramo (`plan.vertical`), então
+ * "Ver demonstração" navega direto -- sem perguntar ramo de novo. Antes
+ * existia um modal "Qual é o ramo do seu negócio?" aqui porque o grid
+ * misturava planos de ecommerce e eletrônica sem saber pra qual demo
+ * mandar; virou redundante desde que o plano eletrônica ganhou card
+ * exclusivo (Pricing.tsx) e cada `PlanInfo` carrega `vertical`.
  */
 export default function Demo({ cmsPreview = false }: DemoProps) {
   const navigate = useNavigate()
-  const [pendingPlano, setPendingPlano] = useState<PlanoCode | null>(null)
   const [plansReady, setPlansReady] = useState(false)
   const { content, ready: contentReady } = usePlatformContent()
 
@@ -56,18 +27,9 @@ export default function Demo({ cmsPreview = false }: DemoProps) {
     fetchPlans().finally(() => setPlansReady(true))
   }, [])
 
-  useEffect(() => {
+  const handleVerDemo = (plano: string, vertical: string) => {
     if (cmsPreview) return
-    document.body.style.overflow = pendingPlano ? 'hidden' : ''
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [pendingPlano, cmsPreview])
-
-  const handleEscolherRamo = (ramo: RamoDef) => {
-    if (cmsPreview || ramo.comingSoon || !pendingPlano) return
-    navigate(ramo.buildPath(pendingPlano))
-    setPendingPlano(null)
+    navigate(vertical === 'eletronicos' ? `/demo/eletronica/${plano}` : `/demo/${plano}`)
   }
 
   const plans = getPlans()
@@ -120,7 +82,7 @@ export default function Demo({ cmsPreview = false }: DemoProps) {
                   </ul>
                   <button
                     type="button"
-                    onClick={() => !cmsPreview && setPendingPlano(plan.code)}
+                    onClick={() => handleVerDemo(plan.code, plan.vertical)}
                     className="btn-primary w-full py-3 text-sm mt-7"
                   >
                     Ver demonstração
@@ -131,76 +93,6 @@ export default function Demo({ cmsPreview = false }: DemoProps) {
           </div>
         )}
       </div>
-
-      {!cmsPreview && (
-        <AnimatePresence>
-          {pendingPlano && (
-            <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center px-5 bg-black/70 backdrop-blur-sm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setPendingPlano(null)}
-            >
-              <motion.div
-                role="dialog"
-                aria-modal="true"
-                aria-label="Escolher ramo do negócio"
-                className="uf-glass rounded-3xl p-7 w-full max-w-md relative"
-                style={{ background: 'var(--color-uf-surface)' }}
-                initial={{ opacity: 0, y: 16, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 16, scale: 0.97 }}
-                transition={{ duration: 0.2 }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={() => setPendingPlano(null)}
-                  aria-label="Fechar"
-                  className="absolute top-5 right-5 text-uf-silver-dim hover:text-uf-silver"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-
-                <span className="uf-eyebrow mb-4">Plano {planDisplayName(pendingPlano)}</span>
-                <h2 className="text-xl font-black mt-4 mb-1">Qual é o ramo do seu negócio?</h2>
-                <p className="text-sm text-uf-silver-dim mb-6">A demonstração muda conforme o tipo de loja.</p>
-
-                <div className="space-y-3">
-                  {RAMOS.map((ramo) => (
-                    <button
-                      key={ramo.code}
-                      type="button"
-                      onClick={() => handleEscolherRamo(ramo)}
-                      disabled={ramo.comingSoon}
-                      className={`w-full text-left rounded-2xl p-4 flex items-start gap-3.5 border transition-colors ${
-                        ramo.comingSoon
-                          ? 'border-white/5 opacity-50 cursor-not-allowed'
-                          : 'border-white/10 hover:border-white/20 hover:bg-white/[0.04] cursor-pointer'
-                      }`}
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
-                        <ramo.icon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm">{ramo.label}</p>
-                        <p className="text-xs text-uf-silver-dim mt-1">{ramo.desc}</p>
-                        {ramo.comingSoon && (
-                          <p className="text-[11px] text-uf-silver-dim/70 mt-2 flex items-center gap-1">
-                            <Lock className="w-3 h-3" />
-                            Em breve
-                          </p>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      )}
     </main>
   )
 
