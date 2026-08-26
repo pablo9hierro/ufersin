@@ -891,11 +891,11 @@ pub async fn update_shipping_settings(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     sqlx::query(
         "INSERT INTO eletronicos.shipping_settings \
-           (tenant_id, price_per_km, minutes_per_km, store_lat, store_lng, store_address, max_km, cobrar_coleta, cobrar_entrega, updated_at) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now()) \
+           (tenant_id, price_per_km, minutes_per_km, store_lat, store_lng, store_address, max_km, cobrar_coleta, cobrar_entrega) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) \
          ON CONFLICT (tenant_id) DO UPDATE SET \
            price_per_km = $2, minutes_per_km = $3, store_lat = $4, store_lng = $5, \
-           store_address = $6, max_km = $7, cobrar_coleta = $8, cobrar_entrega = $9, updated_at = now()",
+           store_address = $6, max_km = $7, cobrar_coleta = $8, cobrar_entrega = $9",
     )
     .bind(&claims.tenant_id)
     .bind(input.price_per_km)
