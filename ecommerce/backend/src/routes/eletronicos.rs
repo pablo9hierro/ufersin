@@ -121,8 +121,8 @@ fn validate_status(status: &str) -> Result<(), AppError> {
 const SELECT_COLUMNS: &str = "id::text, created_at::text, customer_name, customer_phone, customer_email, \
     phone_model, problem_description, image_url, address_cep, address_street, address_number, \
     address_reference, address_neighborhood, address_city, address_state, address_lat, address_lng, \
-    address_label, status, quote_value, estimated_quote_value, owner_notes, discount_percent, \
-    payment_methods, self_pickup, shipping_price, diagnosis_requested, source";
+    address_label, status, quote_value::float8, estimated_quote_value::float8, owner_notes, discount_percent, \
+    payment_methods, self_pickup, shipping_price::float8, diagnosis_requested, source";
 
 pub async fn list_service_requests(
     State(state): State<AppState>,
@@ -342,7 +342,7 @@ pub struct ServiceOrderDto {
 }
 
 const SO_COLUMNS: &str = "id::text, request_id::text, created_at::text, updated_at::text, checklist, \
-    completed_services, warranty, final_value, pdf_url, closed_at::text, used_parts";
+    completed_services, warranty, final_value::float8, pdf_url, closed_at::text, used_parts";
 
 /// Busca a OS de um atendimento, criando uma vazia na primeira vez (mesmo
 /// padrao do vrtech: a OS nasce junto com o card entrando em "em reparo",
@@ -610,7 +610,7 @@ pub async fn complete_service_order(
 
     // Frete de coleta so entra na 1a conclusao -- reabertura nunca duplica.
     let request_row: (bool, Option<f64>, Option<f64>) = sqlx::query_as(
-        "SELECT self_pickup, shipping_price, quote_value FROM eletronicos.service_requests \
+        "SELECT self_pickup, shipping_price::float8, quote_value::float8 FROM eletronicos.service_requests \
          WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
@@ -625,7 +625,7 @@ pub async fn complete_service_order(
     };
 
     let previous_final: (Option<f64>,) =
-        sqlx::query_as("SELECT final_value FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid")
+        sqlx::query_as("SELECT final_value::float8 FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid")
             .bind(&claims.tenant_id)
             .bind(&id)
             .fetch_one(&mut *tx)
@@ -1111,7 +1111,7 @@ pub struct StockItemDto {
 }
 
 const STOCK_COLUMNS: &str =
-    "id::text, name, unit, quantity, price, warranty_days, units_per_box, low_stock_threshold";
+    "id::text, name, unit, quantity::float8, price::float8, warranty_days, units_per_box::float8, low_stock_threshold::float8";
 
 pub async fn list_stock_items(
     State(state): State<AppState>,
@@ -1244,7 +1244,7 @@ pub struct PdvSaleDto {
     pub concluded_at: Option<String>,
 }
 
-const SALE_COLUMNS: &str = "id::text, status, total_value, notes, created_at::text, concluded_at::text";
+const SALE_COLUMNS: &str = "id::text, status, total_value::float8, notes, created_at::text, concluded_at::text";
 
 pub async fn create_pdv_sale(
     State(state): State<AppState>,
@@ -1342,7 +1342,7 @@ pub async fn add_sale_item(
 
     if let Some(stock_item_id) = &input.stock_item_id {
         let stock: Option<(f64,)> = sqlx::query_as(
-            "SELECT quantity FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid",
+            "SELECT quantity::float8 FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid",
         )
         .bind(&claims.tenant_id)
         .bind(stock_item_id)
@@ -1423,7 +1423,7 @@ pub async fn get_pdv_sale(
         return Err(AppError::NotFound("venda não encontrada".to_string()));
     };
     let items: Vec<PdvSaleItemDto> = sqlx::query_as(
-        "SELECT id::text, sale_id::text, item_type, product_id::text, service_id::text, label, quantity, unit_price, stock_deducted \
+        "SELECT id::text, sale_id::text, item_type, product_id::text, service_id::text, label, quantity::float8, unit_price::float8, stock_deducted \
          FROM eletronicos.pdv_sale_items WHERE tenant_id = $1 AND sale_id = $2::uuid ORDER BY id",
     )
     .bind(&claims.tenant_id)
@@ -1454,7 +1454,7 @@ pub struct PdvPaymentDto {
 }
 
 const PAYMENT_COLUMNS: &str =
-    "id::text, sale_id::text, method, amount, status, installments, change_amount, mp_payment_id";
+    "id::text, sale_id::text, method, amount::float8, status, installments, change_amount::float8, mp_payment_id";
 
 #[derive(Debug, Deserialize)]
 pub struct AddPaymentInput {
@@ -1525,8 +1525,8 @@ pub async fn confirm_payment(
     }
 
     let sums: (Option<f64>, Option<f64>) = sqlx::query_as(
-        "SELECT (SELECT total_value FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2::uuid), \
-                (SELECT COALESCE(SUM(amount), 0) FROM eletronicos.pdv_payments \
+        "SELECT (SELECT total_value::float8 FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2::uuid), \
+                (SELECT COALESCE(SUM(amount), 0)::float8 FROM eletronicos.pdv_payments \
                  WHERE tenant_id = $1 AND sale_id = $2::uuid AND status = 'confirmado')",
     )
     .bind(&claims.tenant_id)
