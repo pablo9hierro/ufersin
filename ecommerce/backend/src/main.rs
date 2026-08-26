@@ -322,6 +322,14 @@ async fn main() -> anyhow::Result<()> {
             get(routes::public::get_public_services_sitemap),
         )
         .route(
+            "/api/public/eletronicos/{slug}/service-requests",
+            post(routes::eletronicos::create_service_request_public),
+        )
+        .route(
+            "/api/public/eletronicos/{slug}/consultar/{phone}",
+            get(routes::eletronicos::consultar_por_telefone),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )

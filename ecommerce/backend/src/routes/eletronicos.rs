@@ -176,6 +176,22 @@ pub async fn create_service_request(
     AdminUser(claims): AdminUser,
     Json(input): Json<CreateServiceRequestInput>,
 ) -> Result<Json<ServiceRequestDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let row = insert_service_request(&mut tx, &claims.tenant_id, input, "admin_dashboard").await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+/// Compartilhado pelo admin (`create_service_request`, tenant vem do JWT) e
+/// pela vitrine pública (`create_service_request_public`, tenant vem do
+/// slug na URL) -- mesma validação e INSERT nos dois casos, só a origem do
+/// `tenant_id` e o `source` padrão mudam.
+async fn insert_service_request(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    input: CreateServiceRequestInput,
+    default_source: &str,
+) -> Result<ServiceRequestDto, AppError> {
     if input.customer_name.trim().is_empty() {
         return Err(AppError::BadRequest("nome do cliente é obrigatório".to_string()));
     }
@@ -193,7 +209,6 @@ pub async fn create_service_request(
     validate_status(status)?;
 
     let id = Uuid::new_v4().to_string();
-    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     sqlx::query(
         "INSERT INTO eletronicos.service_requests \
          (id, tenant_id, customer_name, customer_phone, customer_email, phone_model, problem_description, \
@@ -203,7 +218,7 @@ pub async fn create_service_request(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)",
     )
     .bind(&id)
-    .bind(&claims.tenant_id)
+    .bind(tenant_id)
     .bind(input.customer_name.trim())
     .bind(input.customer_phone.trim())
     .bind(input.customer_email.as_deref())
@@ -222,17 +237,33 @@ pub async fn create_service_request(
     .bind(input.address_lng)
     .bind(input.diagnosis_requested.unwrap_or(false))
     .bind(status)
-    .bind(input.source.as_deref().unwrap_or("admin_dashboard"))
+    .bind(input.source.as_deref().unwrap_or(default_source))
     .execute(&mut *tx)
     .await?;
 
     let row: ServiceRequestDto = sqlx::query_as(&format!(
         "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2"
     ))
-    .bind(&claims.tenant_id)
+    .bind(tenant_id)
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
+    Ok(row)
+}
+
+/// Vitrine pública -- cliente cria a solicitação sozinho (formulário de
+/// triagem em /loja/eletronica-loja), sem login. Tenant resolvido pelo slug
+/// da URL, nunca por JWT. `status`/`source` do input são ignorados aqui
+/// (cliente não decide isso) -- sempre entra como 'pending'/'site'.
+pub async fn create_service_request_public(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(mut input): Json<CreateServiceRequestInput>,
+) -> Result<Json<ServiceRequestDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    input.status = None;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let row = insert_service_request(&mut tx, &store.id, input, "site").await?;
     tx.commit().await?;
     Ok(Json(row))
 }
@@ -1711,4 +1742,80 @@ pub async fn render_whatsapp_template(
         }
         _ => Ok(None),
     }
+}
+
+// ============================================================================
+// Consultar (vitrine pública) -- fase 4.6
+//
+// Porta `consultarAtendimentoEmAndamento` do vrtech: cliente sem login,
+// informando telefone, vê o status de tudo que tem em aberto -- solicitação
+// de serviço, OS/reparo em andamento, e próximos agendamentos. Nunca expõe
+// dado de outro tenant nem de outro telefone (tenant vem do slug, filtro
+// sempre por customer_phone = $2).
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct ConsultarServiceRequestDto {
+    #[serde(flatten)]
+    pub request: ServiceRequestDto,
+    pub service_order: Option<ServiceOrderDto>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConsultarResponse {
+    pub requests: Vec<ConsultarServiceRequestDto>,
+    pub appointments: Vec<AppointmentDto>,
+}
+
+/// Só telefones com dígito -- normaliza igual ao resto do módulo (WhatsApp
+/// manda com formatação variável, o cadastro também).
+fn digits_only(s: &str) -> String {
+    s.chars().filter(char::is_ascii_digit).collect()
+}
+
+pub async fn consultar_por_telefone(
+    State(state): State<AppState>,
+    Path((slug, phone)): Path<(String, String)>,
+) -> Result<Json<ConsultarResponse>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let digits = digits_only(&phone);
+    if digits.is_empty() {
+        return Err(AppError::BadRequest("telefone inválido".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+
+    let requests: Vec<ServiceRequestDto> = sqlx::query_as(&format!(
+        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests \
+         WHERE tenant_id = $1 AND customer_phone = $2 AND status <> 'cancelled' \
+         ORDER BY created_at DESC LIMIT 10"
+    ))
+    .bind(&store.id)
+    .bind(&digits)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut out = Vec::with_capacity(requests.len());
+    for request in requests {
+        let service_order: Option<ServiceOrderDto> = sqlx::query_as(&format!(
+            "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND request_id = $2"
+        ))
+        .bind(&store.id)
+        .bind(&request.id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        out.push(ConsultarServiceRequestDto { request, service_order });
+    }
+
+    let appointments: Vec<AppointmentDto> = sqlx::query_as(&format!(
+        "SELECT {APPT_COLUMNS} FROM eletronicos.appointments \
+         WHERE tenant_id = $1 AND customer_phone = $2 AND status = 'agendado' \
+         ORDER BY starts_at ASC"
+    ))
+    .bind(&store.id)
+    .bind(&digits)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Json(ConsultarResponse { requests: out, appointments }))
 }

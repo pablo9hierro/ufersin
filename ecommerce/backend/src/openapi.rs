@@ -211,6 +211,8 @@ pub fn build() -> OpenApi {
         ("/api/admin/eletronicos/templates", Get, "Listar templates de WhatsApp (Template Zap)", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/templates/{key}", Put, "Editar conteudo de um template (valida variaveis obrigatorias)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/templates/{key}/toggle", Patch, "Ligar/desligar disparo de um template", "Admin - Eletronicos", true, true),
+        ("/api/public/eletronicos/{slug}/service-requests", Post, "Vitrine: cliente cria solicitacao de servico (sem login)", "Publico - Eletronicos", false, true),
+        ("/api/public/eletronicos/{slug}/consultar/{phone}", Get, "Vitrine: consultar status de atendimentos/agendamentos por telefone", "Publico - Eletronicos", false, false),
     ];
 
     for (path, method, summary, tag, auth, body) in routes {
