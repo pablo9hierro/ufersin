@@ -22,6 +22,29 @@ export interface CreateServiceRequestPayload {
   address_lat?: number
   address_lng?: number
   diagnosis_requested?: boolean
+  estimated_quote_value?: number
+}
+
+export interface CatalogCategory {
+  id: string
+  name: string
+  slug: string
+  sort_order: number
+  device_type: string
+}
+
+export interface CatalogItem {
+  id: string
+  category_id: string
+  model_name: string | null
+  repair_type: string
+  price: number
+  description: string | null
+}
+
+export interface CatalogResponse {
+  categories: CatalogCategory[]
+  items: CatalogItem[]
 }
 
 export interface ServiceRequestDto {
@@ -104,6 +127,11 @@ export async function uploadPublicMedia(slug: string, file: File): Promise<strin
   })
   const body = await parseOrThrow<{ url: string }>(res)
   return body.url
+}
+
+export async function fetchCatalog(slug: string): Promise<CatalogResponse> {
+  const res = await fetch(`${API_BASE}/api/public/eletronicos/${encodeURIComponent(slug)}/catalog`)
+  return parseOrThrow(res)
 }
 
 export async function consultarPorTelefone(slug: string, phone: string): Promise<ConsultarResponse> {
