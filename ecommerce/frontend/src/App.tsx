@@ -61,6 +61,7 @@ const Uiux2Carrinho = lazy(() => import('./uiux2/pages/Carrinho'))
 const Uiux2Checkout = lazy(() => import('./uiux2/pages/Checkout'))
 const Uiux2Consultar = lazy(() => import('./uiux2/pages/Consultar'))
 const EletronicaHome = lazy(() => import('./pages/eletronicos/EletronicaHome'))
+const EletronicaLoja = lazy(() => import('./pages/eletronicos/EletronicaLoja'))
 const EletronicaConsultar = lazy(() => import('./pages/eletronicos/EletronicaConsultar'))
 const EletronicaCatalogoServico = lazy(() => import('./pages/eletronicos/EletronicaCatalogoServico'))
 const EletronicaAdminLayout = lazy(() => import('./pages/eletronicos/EletronicaAdminLayout'))
@@ -324,12 +325,15 @@ export default function App() {
             element={<StyleAware ufersin={Uiux2Landing} burgerbite={Uiux3Landing} burgerhouse={Uiux4Landing} eletronica={EletronicaHome} />}
           />
           <Route path="/demo-entrar" element={<DemoEntrar />} />
-          <Route path="/catalogo" element={<StyleAware ufersin={Uiux2Catalogo} burgerbite={Uiux3Catalogo} burgerhouse={Uiux4Catalogo} />} />
+          <Route path="/catalogo" element={<StyleAware ufersin={Uiux2Catalogo} burgerbite={Uiux3Catalogo} burgerhouse={Uiux4Catalogo} eletronica={EletronicaLoja} />} />
           <Route path="/produto/:id" element={<StyleAware ufersin={Uiux2ProdutoDetalhe} burgerbite={Uiux3ProdutoDetalhe} burgerhouse={Uiux4ProdutoDetalhe} />} />
           <Route path="/servico/:id" element={<StyleAware ufersin={Uiux2ServicoDetalhe} burgerbite={Uiux3ServicoDetalhe} burgerhouse={Uiux4ServicoDetalhe} />} />
           <Route path="/servicos" element={<StyleAware ufersin={Uiux2ServicosCatalogo} burgerbite={Uiux3ServicosCatalogo} burgerhouse={Uiux4ServicosCatalogo} />} />
-          <Route path="/carrinho" element={<StyleAware ufersin={Uiux2Carrinho} burgerbite={Uiux3Carrinho} burgerhouse={Uiux4Carrinho} />} />
-          <Route path="/checkout" element={<StyleAware ufersin={Uiux2Checkout} burgerbite={Uiux3Checkout} burgerhouse={Uiux4Checkout} />} />
+          {/* Cart/checkout do ramo eletrônica reaproveita a tela genérica (ufersin) --
+              real, funcional, sem inventar UI nova; não existe checkout próprio do
+              vrtech pra migrar (o vrtech original nunca teve checkout de produto). */}
+          <Route path="/carrinho" element={<StyleAware ufersin={Uiux2Carrinho} burgerbite={Uiux3Carrinho} burgerhouse={Uiux4Carrinho} eletronica={Uiux2Carrinho} />} />
+          <Route path="/checkout" element={<StyleAware ufersin={Uiux2Checkout} burgerbite={Uiux3Checkout} burgerhouse={Uiux4Checkout} eletronica={Uiux2Checkout} />} />
           <Route path="/banner" element={<StyleAware ufersin={Uiux2Banner} burgerbite={Uiux3Banner} burgerhouse={Uiux4Banner} />} />
           <Route path="/banner/checkout" element={<StyleAware ufersin={Uiux2BannerCheckout} burgerbite={Uiux3BannerCheckout} burgerhouse={Uiux4BannerCheckout} />} />
           <Route path="/pagamento/:orderId" element={<StyleAware ufersin={Uiux2Pagamento} burgerbite={Uiux3Pagamento} burgerhouse={Uiux4Pagamento} skipVenderExternamenteGate />} />
