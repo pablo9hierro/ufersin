@@ -354,7 +354,7 @@ export default function EletronicaRequestDetailModal({
     setSavingEstimate(true)
     try {
       const value = estimatedQuoteValue ? parseFloat(estimatedQuoteValue) : undefined
-      const updated = await eletronicosAdmin.serviceRequests.updateStatus(request.id, { status, quote_value: value })
+      const updated = await eletronicosAdmin.serviceRequests.updateStatus(request.id, { status, estimated_quote_value: value })
       onUpdated(updated)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao salvar orçamento estimado')

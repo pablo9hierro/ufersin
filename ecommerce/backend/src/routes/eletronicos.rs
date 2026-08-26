@@ -105,6 +105,7 @@ pub struct UpdateStatusInput {
     pub owner_notes: Option<String>,
     pub discount_percent: Option<i32>,
     pub payment_methods: Option<serde_json::Value>,
+    pub estimated_quote_value: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -513,7 +514,8 @@ pub async fn update_service_request_status(
         "UPDATE eletronicos.service_requests \
          SET status = $3, quote_value = COALESCE($4, quote_value), owner_notes = COALESCE($5, owner_notes), \
              discount_percent = COALESCE($6, discount_percent), \
-             payment_methods = COALESCE($7, payment_methods) \
+             payment_methods = COALESCE($7, payment_methods), \
+             estimated_quote_value = COALESCE($8, estimated_quote_value) \
          WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
@@ -523,6 +525,7 @@ pub async fn update_service_request_status(
     .bind(input.owner_notes.as_deref())
     .bind(input.discount_percent)
     .bind(&input.payment_methods)
+    .bind(input.estimated_quote_value)
     .execute(&mut *tx)
     .await?;
     if updated.rows_affected() == 0 {

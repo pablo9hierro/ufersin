@@ -85,6 +85,7 @@ export const eletronicosAdmin = {
         owner_notes?: string
         discount_percent?: number
         payment_methods?: { method: string; value: number }[]
+        estimated_quote_value?: number
       },
     ) =>
       req<ServiceRequestDto>(`${BASE}/service-requests/${id}/status`, {
