@@ -65,6 +65,9 @@ export interface ServiceRequestDto {
   shipping_price: number | null
   diagnosis_requested: boolean
   source: string
+  address_label: string | null
+  address_lat: number | null
+  address_lng: number | null
 }
 
 export interface ServiceOrderDto {

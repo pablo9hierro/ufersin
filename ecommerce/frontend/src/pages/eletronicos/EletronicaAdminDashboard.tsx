@@ -1,31 +1,91 @@
 import { useEffect, useState } from 'react'
-import { FileText, Loader2, X } from 'lucide-react'
+import { ChevronRight, Clock, FileText, Loader2, MapPin, Package, Smartphone, Wrench, X } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { ServiceRequestDto } from '../../lib/eletronicosApi'
-import { STATUS_LABEL } from '../../lib/eletronicosApi'
 import { generateServiceOrderPdf } from '../../lib/eletronicosPdf'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 
-// Colunas do kanban-lite (agrupamento visual, sem drag-drop por ora --
-// mudança de status acontece no painel de detalhe, mais previsível que
-// arrastar um card sem confirmação).
-const COLUMNS: { key: string; statuses: string[] }[] = [
-  { key: 'Novo', statuses: ['pending', 'aguardando_diagnostico', 'diagnostico_enviado'] },
-  { key: 'Aprovado', statuses: ['accepted', 'retirada_local', 'em_busca'] },
-  { key: 'Em reparo', statuses: ['in_progress'] },
-  { key: 'Pronto', statuses: ['completed', 'em_pagamento'] },
-  { key: 'Finalizado', statuses: ['delivered', 'finished'] },
+// Port 1:1 de src/app/dashboard/DashboardClient.tsx do vrtech: mesmo
+// STATUS_CONFIG (14 status, mesma cor/label), mesmos 7 baldes de
+// STATUS_GROUP (ver serviceLifecycle/types.ts), mesmos stats/filtros/lista
+// de cards. A aba "Vendas" (pedidos da vitrine de produtos) e o dialog
+// "Registrar serviço" do vrtech ainda não foram portados -- ficam de fora
+// por ora, não inventados.
+
+type ServiceStatus =
+  | 'pending' | 'accepted' | 'rejected' | 'retirada_local' | 'em_busca' | 'in_progress'
+  | 'completed' | 'em_pagamento' | 'em_entrega' | 'delivered' | 'finished' | 'cancelled'
+  | 'aguardando_diagnostico' | 'diagnostico_enviado'
+
+type StatusGroup = 'novas' | 'em_deslocamento' | 'aguardando_aparelho' | 'em_diagnostico' | 'em_reparo' | 'retiradas' | 'concluidos'
+
+const STATUS_GROUP: Record<ServiceStatus, StatusGroup> = {
+  pending: 'novas',
+  accepted: 'em_deslocamento',
+  aguardando_diagnostico: 'em_diagnostico',
+  diagnostico_enviado: 'em_diagnostico',
+  retirada_local: 'aguardando_aparelho',
+  em_busca: 'em_deslocamento',
+  in_progress: 'em_reparo',
+  completed: 'retiradas',
+  em_pagamento: 'retiradas',
+  em_entrega: 'retiradas',
+  delivered: 'concluidos',
+  finished: 'concluidos',
+  rejected: 'concluidos',
+  cancelled: 'concluidos',
+}
+
+const STATUS_GROUP_LABEL: Record<StatusGroup, string> = {
+  novas: 'Solicitação nova',
+  em_deslocamento: 'Em deslocamento',
+  aguardando_aparelho: 'Aguardando aparelho',
+  em_diagnostico: 'Em diagnóstico',
+  em_reparo: 'Em reparo',
+  retiradas: 'Pronto',
+  concluidos: 'Concluídos',
+}
+
+const GROUP_FILTERS: { key: StatusGroup; label: string }[] = [
+  { key: 'novas', label: STATUS_GROUP_LABEL.novas },
+  { key: 'em_deslocamento', label: STATUS_GROUP_LABEL.em_deslocamento },
+  { key: 'aguardando_aparelho', label: STATUS_GROUP_LABEL.aguardando_aparelho },
+  { key: 'em_diagnostico', label: STATUS_GROUP_LABEL.em_diagnostico },
+  { key: 'em_reparo', label: STATUS_GROUP_LABEL.em_reparo },
+  { key: 'retiradas', label: STATUS_GROUP_LABEL.retiradas },
+  { key: 'concluidos', label: STATUS_GROUP_LABEL.concluidos },
 ]
+
+const STATUS_CONFIG: Record<ServiceStatus, { label: string; color: string; bg: string }> = {
+  pending: { label: 'Solicitação nova', color: 'text-yellow-700', bg: 'bg-yellow-100' },
+  accepted: { label: 'Aceito', color: 'text-green-700', bg: 'bg-green-100' },
+  rejected: { label: 'Recusado', color: 'text-red-700', bg: 'bg-red-100' },
+  retirada_local: { label: 'Retirada/entrega pelo cliente', color: 'text-teal-700', bg: 'bg-teal-100' },
+  em_busca: { label: 'Em rota de recolhimento', color: 'text-orange-700', bg: 'bg-orange-100' },
+  in_progress: { label: 'Em reparo', color: 'text-purple-700', bg: 'bg-purple-100' },
+  completed: { label: 'Pronto', color: 'text-gray-700', bg: 'bg-gray-100' },
+  em_pagamento: { label: 'Em pagamento', color: 'text-lime-700', bg: 'bg-lime-100' },
+  em_entrega: { label: 'Em rota de entrega', color: 'text-indigo-700', bg: 'bg-indigo-100' },
+  delivered: { label: 'Aparelho entregue', color: 'text-cyan-700', bg: 'bg-cyan-100' },
+  finished: { label: 'Atendimento concluído', color: 'text-emerald-700', bg: 'bg-emerald-100' },
+  cancelled: { label: 'Cancelado', color: 'text-rose-700', bg: 'bg-rose-100' },
+  aguardando_diagnostico: { label: 'Aguardando diagnóstico', color: 'text-blue-700', bg: 'bg-blue-100' },
+  diagnostico_enviado: { label: 'Diagnóstico enviado', color: 'text-violet-700', bg: 'bg-violet-100' },
+}
+
+function googleMapsLink(lat: number, lng: number) {
+  return `https://maps.google.com/?q=${lat},${lng}`
+}
 
 export default function EletronicaAdminDashboard() {
   const [requests, setRequests] = useState<ServiceRequestDto[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [groupFilter, setGroupFilter] = useState<StatusGroup>('novas')
   const [selected, setSelected] = useState<ServiceRequestDto | null>(null)
 
   async function load() {
     try {
-      const rows = await eletronicosAdmin.serviceRequests.list()
-      setRequests(rows.filter((r) => r.status !== 'cancelled' && r.status !== 'rejected'))
+      setRequests(await eletronicosAdmin.serviceRequests.list())
     } catch (e) {
       setError(e instanceof Error ? e.message : 'erro ao carregar')
     }
@@ -39,40 +99,112 @@ export default function EletronicaAdminDashboard() {
   if (!requests) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+        <Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" />
       </div>
     )
   }
 
+  const filtered = requests.filter((r) => STATUS_GROUP[r.status as ServiceStatus] === groupFilter)
+  const counts = {
+    pending: requests.filter((r) => r.status === 'pending').length,
+    in_progress: requests.filter((r) => r.status === 'in_progress').length,
+    completed: requests.filter((r) => r.status === 'completed').length,
+  }
+
   return (
-    <div>
-      <h1 className="text-xl font-bold mb-5">Solicitações</h1>
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {COLUMNS.map((col) => {
-          const items = requests.filter((r) => col.statuses.includes(r.status))
-          return (
-            <div key={col.key} className="rounded-2xl border border-slate-800 bg-slate-900/50 p-3">
-              <p className="text-xs font-semibold text-slate-400 mb-3">
-                {col.key} <span className="text-slate-600">({items.length})</span>
-              </p>
-              <div className="space-y-2">
-                {items.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setSelected(r)}
-                    className="w-full text-left rounded-xl border border-slate-800 bg-slate-900 p-3 hover:border-emerald-600 transition-colors"
-                  >
-                    <p className="text-sm font-medium">{r.customer_name}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{r.phone_model}</p>
-                    <p className="text-[11px] text-emerald-400 mt-2">{STATUS_LABEL[r.status] || r.status}</p>
-                  </button>
-                ))}
-                {items.length === 0 && <p className="text-xs text-slate-600">vazio</p>}
-              </div>
-            </div>
-          )
-        })}
+    <div className="max-w-4xl mx-auto space-y-6">
+      <h1 className="text-lg font-bold text-white">Solicitações</h1>
+
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Pendentes', value: counts.pending, icon: <Clock className="w-5 h-5 text-[#e0211a]" /> },
+          { label: 'Em reparo', value: counts.in_progress, icon: <Wrench className="w-5 h-5 text-[#e0211a]" /> },
+          { label: 'Concluídos', value: counts.completed, icon: <FileText className="w-5 h-5 text-[#e0211a]" /> },
+        ].map((s) => (
+          <div key={s.label} className="rounded-2xl border border-white/5 bg-[#161618] p-4">
+            {s.icon}
+            <div className="text-2xl font-bold text-white mt-1">{s.value}</div>
+            <div className="text-xs text-[#d4d4d8]/60">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {GROUP_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => setGroupFilter(f.key)}
+            className={`shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              groupFilter === f.key ? 'bg-[#e0211a] text-white' : 'bg-[#161618] border border-white/5 text-[#d4d4d8] hover:bg-[#232327]'
+            }`}
+          >
+            {f.label}
+            <span className={`ml-1.5 px-1.5 rounded-full text-xs ${groupFilter === f.key ? 'bg-white/20 text-white' : 'bg-white/5 text-[#d4d4d8]/60'}`}>
+              {requests.filter((r) => STATUS_GROUP[r.status as ServiceStatus] === f.key).length}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-3">
+        {filtered.length === 0 ? (
+          <div className="text-center py-16 text-[#d4d4d8]/40">
+            <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p>Nenhuma solicitação encontrada</p>
+          </div>
+        ) : (
+          filtered.map((req) => {
+            const sc = STATUS_CONFIG[req.status as ServiceStatus]
+            return (
+              <button
+                key={req.id}
+                type="button"
+                onClick={() => setSelected(req)}
+                className="w-full bg-[#161618] rounded-2xl border border-white/5 overflow-hidden hover:border-[#e0211a]/30 transition-all group text-left"
+              >
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sc.bg} ${sc.color}`}>{sc.label}</span>
+                        {req.quote_value != null && (
+                          <span className="text-xs font-bold text-[#e0211a]">R$ {Number(req.quote_value).toFixed(2)}</span>
+                        )}
+                      </div>
+                      <h3 className="font-semibold text-white truncate">{req.customer_name}</h3>
+                      <div className="flex items-center gap-1 text-[#d4d4d8]/70 text-sm">
+                        <Smartphone className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{req.phone_model ?? (req.diagnosis_requested ? '🔍 Diagnóstico solicitado' : '—')}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[#d4d4d8]/40 text-xs mt-1">
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{req.self_pickup ? 'Retirada pelo cliente' : req.address_label || 'Coleta/entrega'}</span>
+                        {!req.self_pickup && req.address_lat != null && req.address_lng != null && (
+                          <a
+                            href={googleMapsLink(req.address_lat, req.address_lng)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-blue-400 hover:underline shrink-0"
+                          >
+                            📍
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <span className="text-xs text-[#d4d4d8]/40">
+                        {new Date(req.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-[#d4d4d8]/30 group-hover:text-[#e0211a] transition-colors" />
+                    </div>
+                  </div>
+                </div>
+              </button>
+            )
+          })
+        )}
       </div>
 
       {selected && (
@@ -105,6 +237,11 @@ const NEXT_STATUS: Record<string, string[]> = {
   cancelled: [],
 }
 
+// Painel de detalhe/edição -- ainda a versão simplificada minha (não o
+// RequestDetailModal.tsx real de 1066 linhas do vrtech, com checklist
+// item a item, dialog de pagamento com Pix e timeline de mensagens
+// WhatsApp). Cobre o essencial (ver status, avançar, orçamento, concluir,
+// gerar PDF), mas o port fiel do modal completo ainda está pendente.
 function DetailPanel({
   request,
   onClose,
@@ -176,52 +313,51 @@ function DetailPanel({
   }
 
   const nextOptions = NEXT_STATUS[request.status] ?? []
+  const sc = STATUS_CONFIG[request.status as ServiceStatus]
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-0 sm:px-4">
-      <div className="w-full sm:max-w-md bg-slate-950 border border-slate-800 rounded-t-2xl sm:rounded-2xl p-5 max-h-[90vh] overflow-y-auto">
+      <div className="w-full sm:max-w-md bg-[#0a0a0b] border border-white/10 rounded-t-2xl sm:rounded-2xl p-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <p className="font-bold">{request.customer_name}</p>
-            <p className="text-xs text-slate-500">{request.customer_phone}</p>
+            <p className="font-bold text-white">{request.customer_name}</p>
+            <p className="text-xs text-[#d4d4d8]/50">{request.customer_phone}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-slate-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-[#d4d4d8]/50 hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="space-y-3 text-sm">
+        <div className="space-y-3 text-sm text-[#d4d4d8]">
           <div>
-            <p className="text-xs text-slate-500">Aparelho</p>
-            <p>{request.phone_model || '—'}</p>
+            <p className="text-xs text-[#d4d4d8]/50">Aparelho</p>
+            <p className="text-white">{request.phone_model || '—'}</p>
           </div>
           <div>
-            <p className="text-xs text-slate-500">Problema</p>
-            <p>{request.problem_description || '—'}</p>
+            <p className="text-xs text-[#d4d4d8]/50">Problema</p>
+            <p className="text-white">{request.problem_description || '—'}</p>
           </div>
           <div>
-            <p className="text-xs text-slate-500 mb-1">Status atual</p>
-            <p className="inline-flex rounded-full bg-emerald-500/10 text-emerald-300 text-xs font-medium px-3 py-1">
-              {STATUS_LABEL[request.status] || request.status}
-            </p>
+            <p className="text-xs text-[#d4d4d8]/50 mb-1">Status atual</p>
+            <p className={`inline-flex rounded-full text-xs font-medium px-3 py-1 ${sc.bg} ${sc.color}`}>{sc.label}</p>
           </div>
 
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Valor do orçamento (R$)</label>
+            <label className="block text-xs text-[#d4d4d8]/50 mb-1">Valor do orçamento (R$)</label>
             <input
               value={quote}
               onChange={(e) => setQuote(e.target.value)}
               placeholder="0.00"
-              className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+              className="w-full rounded-xl border border-white/10 bg-[#161618] text-white px-3 py-2 text-sm outline-none focus:border-[#e0211a]"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Observações internas</label>
+            <label className="block text-xs text-[#d4d4d8]/50 mb-1">Observações internas</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-emerald-500 resize-none"
+              className="w-full rounded-xl border border-white/10 bg-[#161618] text-white px-3 py-2 text-sm outline-none focus:border-[#e0211a] resize-none"
             />
           </div>
 
@@ -229,7 +365,7 @@ function DetailPanel({
 
           {nextOptions.length > 0 && (
             <div>
-              <p className="text-xs text-slate-500 mb-2">Avançar status</p>
+              <p className="text-xs text-[#d4d4d8]/50 mb-2">Avançar status</p>
               <div className="flex flex-wrap gap-2">
                 {nextOptions.map((s) => (
                   <button
@@ -237,9 +373,9 @@ function DetailPanel({
                     type="button"
                     disabled={saving}
                     onClick={() => transitionTo(s)}
-                    className="rounded-lg border border-slate-800 px-3 py-1.5 text-xs hover:border-emerald-500 hover:text-emerald-300 transition-colors disabled:opacity-50"
+                    className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-[#d4d4d8] hover:border-[#e0211a] hover:text-[#e0211a] transition-colors disabled:opacity-50"
                   >
-                    {STATUS_LABEL[s] || s}
+                    {STATUS_CONFIG[s as ServiceStatus]?.label ?? s}
                   </button>
                 ))}
               </div>
@@ -247,19 +383,19 @@ function DetailPanel({
           )}
 
           {request.status === 'in_progress' && (
-            <div className="pt-2 border-t border-slate-800">
-              <label className="block text-xs text-slate-500 mb-1">Resumo do serviço realizado</label>
+            <div className="pt-2 border-t border-white/10">
+              <label className="block text-xs text-[#d4d4d8]/50 mb-1">Resumo do serviço realizado</label>
               <input
                 value={completedServices}
                 onChange={(e) => setCompletedServices(e.target.value)}
                 placeholder="ex: troca de tela"
-                className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-emerald-500 mb-2"
+                className="w-full rounded-xl border border-white/10 bg-[#161618] text-white px-3 py-2 text-sm outline-none focus:border-[#e0211a] mb-2"
               />
               <button
                 type="button"
                 disabled={completing}
                 onClick={handleComplete}
-                className="w-full rounded-xl bg-emerald-500 disabled:bg-slate-800 text-slate-950 font-semibold py-2.5 flex items-center justify-center gap-2"
+                className="w-full rounded-xl bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-50 text-white font-semibold py-2.5 flex items-center justify-center gap-2 transition-all"
               >
                 {completing && <Loader2 className="w-4 h-4 animate-spin" />}
                 Marcar como pronto
@@ -272,7 +408,7 @@ function DetailPanel({
               type="button"
               disabled={generatingPdf}
               onClick={handleGeneratePdf}
-              className="w-full rounded-xl border border-slate-800 py-2.5 text-sm flex items-center justify-center gap-2 hover:border-emerald-500"
+              className="w-full rounded-xl border border-white/10 py-2.5 text-sm text-[#d4d4d8] flex items-center justify-center gap-2 hover:border-[#e0211a] hover:text-[#e0211a] transition-colors"
             >
               {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
               Gerar / baixar PDF da OS
