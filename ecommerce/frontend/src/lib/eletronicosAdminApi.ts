@@ -42,6 +42,17 @@ export const eletronicosAdmin = {
     list: (status?: string) =>
       req<ServiceRequestDto[]>(`${BASE}/service-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`),
     get: (id: string) => req<ServiceRequestDto>(`${BASE}/service-requests/${id}`),
+    create: (input: {
+      customer_name: string
+      customer_phone: string
+      phone_model?: string
+      problem_description?: string
+      self_pickup: boolean
+      address_lat?: number
+      address_lng?: number
+      address_neighborhood?: string
+      status?: string
+    }) => req<ServiceRequestDto>(`${BASE}/service-requests`, { method: 'POST', body: JSON.stringify(input) }),
     updateStatus: (
       id: string,
       input: {

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, Clock, FileText, Loader2, MapPin, Package, Smartphone, Wrench } from 'lucide-react'
+import { ChevronRight, Clock, FileText, Loader2, MapPin, Package, Plus, Smartphone, Wrench } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { ServiceRequestDto } from '../../lib/eletronicosApi'
 import EletronicaRequestDetailModal from './EletronicaRequestDetailModal'
 import EletronicaVendasTab from './EletronicaVendasTab'
+import EletronicaNovoServicoDialog from './EletronicaNovoServicoDialog'
 
 // Port 1:1 de src/app/dashboard/DashboardClient.tsx do vrtech: mesmo
 // STATUS_CONFIG (14 status, mesma cor/label), mesmos 7 baldes de
@@ -85,6 +86,7 @@ export default function EletronicaAdminDashboard() {
   const [groupFilter, setGroupFilter] = useState<StatusGroup>('novas')
   const [selected, setSelected] = useState<ServiceRequestDto | null>(null)
   const [tab, setTab] = useState<'solicitacoes' | 'pedidos'>('solicitacoes')
+  const [novoServicoOpen, setNovoServicoOpen] = useState(false)
 
   async function load() {
     try {
@@ -107,7 +109,27 @@ export default function EletronicaAdminDashboard() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-lg font-bold text-white">Solicitações</h1>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="text-lg font-bold text-white">Solicitações</h1>
+        <button
+          type="button"
+          onClick={() => setNovoServicoOpen(true)}
+          className="shrink-0 flex items-center gap-1.5 bg-[#e0211a] hover:bg-[#a3140f] text-white text-sm font-medium px-3.5 py-2 rounded-xl transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Registrar serviço
+        </button>
+      </div>
+
+      {novoServicoOpen && (
+        <EletronicaNovoServicoDialog
+          onClose={() => setNovoServicoOpen(false)}
+          onDone={() => {
+            setNovoServicoOpen(false)
+            load()
+          }}
+        />
+      )}
 
       <div className="flex gap-2 border-b border-white/5">
         {[
