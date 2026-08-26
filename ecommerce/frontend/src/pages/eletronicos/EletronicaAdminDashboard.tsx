@@ -3,6 +3,7 @@ import { ChevronRight, Clock, FileText, Loader2, MapPin, Package, Smartphone, Wr
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { ServiceRequestDto } from '../../lib/eletronicosApi'
 import EletronicaRequestDetailModal from './EletronicaRequestDetailModal'
+import EletronicaVendasTab from './EletronicaVendasTab'
 
 // Port 1:1 de src/app/dashboard/DashboardClient.tsx do vrtech: mesmo
 // STATUS_CONFIG (14 status, mesma cor/label), mesmos 7 baldes de
@@ -83,6 +84,7 @@ export default function EletronicaAdminDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [groupFilter, setGroupFilter] = useState<StatusGroup>('novas')
   const [selected, setSelected] = useState<ServiceRequestDto | null>(null)
+  const [tab, setTab] = useState<'solicitacoes' | 'pedidos'>('solicitacoes')
 
   async function load() {
     try {
@@ -96,26 +98,45 @@ export default function EletronicaAdminDashboard() {
     load()
   }, [])
 
-  if (error) return <p className="text-red-400 text-sm">{error}</p>
-  if (!requests) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" />
-      </div>
-    )
-  }
-
-  const filtered = requests.filter((r) => STATUS_GROUP[r.status as ServiceStatus] === groupFilter)
+  const filtered = (requests ?? []).filter((r) => STATUS_GROUP[r.status as ServiceStatus] === groupFilter)
   const counts = {
-    pending: requests.filter((r) => r.status === 'pending').length,
-    in_progress: requests.filter((r) => r.status === 'in_progress').length,
-    completed: requests.filter((r) => r.status === 'completed').length,
+    pending: (requests ?? []).filter((r) => r.status === 'pending').length,
+    in_progress: (requests ?? []).filter((r) => r.status === 'in_progress').length,
+    completed: (requests ?? []).filter((r) => r.status === 'completed').length,
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <h1 className="text-lg font-bold text-white">Solicitações</h1>
 
+      <div className="flex gap-2 border-b border-white/5">
+        {[
+          { key: 'solicitacoes' as const, label: 'Solicitações' },
+          { key: 'pedidos' as const, label: 'Vendas' },
+        ].map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t.key ? 'border-[#e0211a] text-white' : 'border-transparent text-[#d4d4d8]/60 hover:text-[#d4d4d8]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'pedidos' ? (
+        <EletronicaVendasTab />
+      ) : error ? (
+        <p className="text-red-400 text-sm">{error}</p>
+      ) : !requests ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" />
+        </div>
+      ) : (
+        <>
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Pendentes', value: counts.pending, icon: <Clock className="w-5 h-5 text-[#e0211a]" /> },
@@ -207,6 +228,8 @@ export default function EletronicaAdminDashboard() {
           })
         )}
       </div>
+        </>
+      )}
 
       {selected && (
         <EletronicaRequestDetailModal
