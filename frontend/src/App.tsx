@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import EnvironmentBanner from './components/EnvironmentBanner'
 import Landing from './pages/Landing'
 import Demo from './pages/Demo'
@@ -23,20 +23,19 @@ import Obrigado from './pages/Obrigado'
 import PoliticasPrivacidade from './pages/PoliticasPrivacidade'
 
 /**
- * "/dashboard/x" bare (sem o prefixo do proxy) não é uma rota inválida
- * qualquer — é a URL NATURAL que qualquer um digitaria/salvaria pro painel
- * de uma loja (o próprio menu do vrtech usa esse mesmo path internamente,
- * só que sob o prefixo `/loja/eletronica-admin`). Sem este catch-all, cair
- * aqui batia 200 na SPA da plataforma e crashava client-side com "No routes
- * matched" — pior que um 404 normal, porque parece um bug em vez de uma
- * URL errada. "/dashboard" sem sub-rota continua sendo o painel do
- * SUPERADMIN (rota já existente logo acima) — só os sub-paths (que o
- * superadmin nunca usa) redirecionam pro painel da loja.
+ * "/dashboard/x" bare (sem prefixo) não é uma rota inválida qualquer — era
+ * a URL que o antigo app externo do ramo eletrônica (vrtech, descontinuado)
+ * usava internamente, então alguém podia ter isso salvo/no histórico. Sem
+ * este catch-all, cair aqui batia 200 na SPA da plataforma e crashava
+ * client-side com "No routes matched" — pior que um 404 normal. "/dashboard"
+ * sem sub-rota continua sendo o painel do SUPERADMIN (rota já existente
+ * logo acima) — só os sub-paths (que o superadmin nunca usa) caem aqui.
+ * Os sub-paths antigos (/dashboard/produtos etc.) não têm correspondência
+ * 1:1 com as abas nativas atuais (/admin-eletronica/estoque etc.), então
+ * manda pra raiz do painel nativo em vez de tentar adivinhar o mapeamento.
  */
 function DashboardSubpathRedirect() {
-  const params = useParams()
-  const rest = params['*'] ?? ''
-  return <Navigate to={`/loja/eletronica-admin/${rest}`} replace />
+  return <Navigate to="/loja/admin-eletronica" replace />
 }
 
 export default function App() {

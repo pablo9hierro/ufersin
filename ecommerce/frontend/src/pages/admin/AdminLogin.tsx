@@ -12,7 +12,6 @@ import {
   resetTenantConfigCache,
   takeLojaOfflineMessage,
 } from '../../lib/tenantConfig'
-import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 // Login exclusivo do admin — não tenta mais vendedor/motoboy em cascata
 // (isso causava logins acidentais na conta admin: o campo de e-mail vinha
@@ -54,18 +53,11 @@ export default function AdminLogin() {
     if (fromState || stashed) setError(fromState || stashed)
   }, [location.state])
 
-  // Ramo eletrônicos nunca loga aqui — o painel dele é o app real do
-  // vrtech, proxiado via /loja/eletronica-admin (ver AdminLayout.tsx pro
-  // mesmo padrão pós-login). Sem isso, um tenant eletronicos com deep
-  // link ?tenant=vrtech caía nesta tela genérica de ecommerce e via
-  // "invalid credentials" pra sempre (credencial daqui nunca existiu/foi
-  // removida — o login de verdade é o próprio do vrtech).
-  const tenantConfigForRedirect = useTenantConfig()
-  useEffect(() => {
-    if (tenantFromUrl && tenantConfigForRedirect?.vertical === 'eletronicos') {
-      window.location.href = '/loja/eletronica-admin'
-    }
-  }, [tenantFromUrl, tenantConfigForRedirect?.vertical])
+  // Ramo eletrônicos loga por AQUI mesmo -- é o mesmo motor Rust, mesmo JWT
+  // de admin. O redirect pro painel nativo (/admin-eletronica) acontece
+  // DEPOIS do login, em AdminLayout.tsx (que já sabe o vertical do tenant
+  // recém-logado). Nunca sai desta tela antes do submit, nem pro app
+  // externo vrtech-jp.vercel.app (descontinuado).
 
   // Demo ativa nesta aba: pular o formulário (nunca pedir senha / autofill).
   if (isDemoModeActive()) {

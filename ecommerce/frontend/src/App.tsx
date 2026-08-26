@@ -215,13 +215,16 @@ function StyleLoading() {
   )
 }
 
-/** Mesma URL do :path* preservado (ex: /loja/produto/xyz?tenant=vrtech -> /loja/eletronica-loja/produto/xyz), pro proxy da Vercel achar a página certa do vrtech. */
+/** Rota de vitrine sem página nativa ainda pro ramo eletrônica (ex:
+ * /catalogo, /produto/:id — só o "/" e "/consultar" têm página própria por
+ * enquanto). NUNCA sai pro app externo vrtech-jp.vercel.app (descontinuado
+ * de vez) -- manda pra home nativa da loja, que é o fluxo real (formulário
+ * de solicitação), em vez de um link externo morto. */
 function EletronicaStorefrontRedirect({ slug }: { slug: string }) {
+  const navigate = useNavigate()
   useEffect(() => {
-    const afterLoja = window.location.pathname.replace(/^\/loja\/?/, '')
-    const target = `/loja/eletronica-loja${afterLoja ? `/${afterLoja}` : ''}${window.location.search}`
-    window.location.replace(target)
-  }, [slug])
+    navigate(`/${window.location.search}`, { replace: true })
+  }, [slug, navigate])
   return <StyleLoading />
 }
 
