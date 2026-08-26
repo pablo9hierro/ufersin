@@ -165,6 +165,29 @@ export const eletronicosAdmin = {
     status: (paymentId: string) =>
       req<{ status: string }>(`/api/admin/pdv/pix/${paymentId}/status`),
   },
+  shippingSettings: {
+    get: () =>
+      req<{
+        price_per_km: number
+        minutes_per_km: number
+        store_lat: number | null
+        store_lng: number | null
+        store_address: string
+        max_km: number | null
+        cobrar_coleta: boolean
+        cobrar_entrega: boolean
+      }>(`${BASE}/shipping-settings`),
+    update: (input: {
+      price_per_km: number
+      minutes_per_km: number
+      store_lat: number | null
+      store_lng: number | null
+      store_address: string
+      max_km: number | null
+      cobrar_coleta: boolean
+      cobrar_entrega: boolean
+    }) => req(`${BASE}/shipping-settings`, { method: 'PUT', body: JSON.stringify(input) }),
+  },
   templates: {
     list: () =>
       req<

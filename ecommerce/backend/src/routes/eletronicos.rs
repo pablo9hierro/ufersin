@@ -826,6 +826,98 @@ pub async fn reopen_service_order(
 
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, NaiveTime, TimeZone, Weekday};
 
+// ============================================================================
+// Config de frete (coleta/entrega) -- port de shipping_settings do vrtech,
+// aqui por tenant em vez de single-row global.
+// ============================================================================
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ShippingSettingsDto {
+    pub price_per_km: f64,
+    pub minutes_per_km: f64,
+    pub store_lat: Option<f64>,
+    pub store_lng: Option<f64>,
+    pub store_address: String,
+    pub max_km: Option<f64>,
+    pub cobrar_coleta: bool,
+    pub cobrar_entrega: bool,
+}
+
+const SHIPPING_COLUMNS: &str = "price_per_km::float8, minutes_per_km::float8, store_lat, store_lng, \
+    store_address, max_km::float8, cobrar_coleta, cobrar_entrega";
+
+pub async fn get_shipping_settings(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<ShippingSettingsDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    sqlx::query("INSERT INTO eletronicos.shipping_settings (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING")
+        .bind(&claims.tenant_id)
+        .execute(&mut *tx)
+        .await?;
+    let row: ShippingSettingsDto = sqlx::query_as(&format!(
+        "SELECT {SHIPPING_COLUMNS} FROM eletronicos.shipping_settings WHERE tenant_id = $1"
+    ))
+    .bind(&claims.tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateShippingSettingsInput {
+    pub price_per_km: f64,
+    pub minutes_per_km: f64,
+    pub store_lat: Option<f64>,
+    pub store_lng: Option<f64>,
+    pub store_address: String,
+    pub max_km: Option<f64>,
+    pub cobrar_coleta: bool,
+    pub cobrar_entrega: bool,
+}
+
+pub async fn update_shipping_settings(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<UpdateShippingSettingsInput>,
+) -> Result<Json<ShippingSettingsDto>, AppError> {
+    if input.price_per_km < 0.0 {
+        return Err(AppError::BadRequest("preço por km não pode ser negativo".to_string()));
+    }
+    if input.store_address.trim().is_empty() {
+        return Err(AppError::BadRequest("informe o endereço da loja".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    sqlx::query(
+        "INSERT INTO eletronicos.shipping_settings \
+           (tenant_id, price_per_km, minutes_per_km, store_lat, store_lng, store_address, max_km, cobrar_coleta, cobrar_entrega, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now()) \
+         ON CONFLICT (tenant_id) DO UPDATE SET \
+           price_per_km = $2, minutes_per_km = $3, store_lat = $4, store_lng = $5, \
+           store_address = $6, max_km = $7, cobrar_coleta = $8, cobrar_entrega = $9, updated_at = now()",
+    )
+    .bind(&claims.tenant_id)
+    .bind(input.price_per_km)
+    .bind(input.minutes_per_km)
+    .bind(input.store_lat)
+    .bind(input.store_lng)
+    .bind(input.store_address.trim())
+    .bind(input.max_km)
+    .bind(input.cobrar_coleta)
+    .bind(input.cobrar_entrega)
+    .execute(&mut *tx)
+    .await?;
+    let row: ShippingSettingsDto = sqlx::query_as(&format!(
+        "SELECT {SHIPPING_COLUMNS} FROM eletronicos.shipping_settings WHERE tenant_id = $1"
+    ))
+    .bind(&claims.tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct AgendaSettingsDto {
     pub appointment_ai_enabled: bool,

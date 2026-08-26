@@ -350,6 +350,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::eletronicos::list_closed_service_orders),
         )
         .route(
+            "/api/admin/eletronicos/shipping-settings",
+            get(routes::eletronicos::get_shipping_settings).put(routes::eletronicos::update_shipping_settings),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )
