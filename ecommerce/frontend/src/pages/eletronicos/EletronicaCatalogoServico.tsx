@@ -17,6 +17,7 @@ import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { resolveTenantSlug, withTenantSearch } from '../../lib/tenantConfig'
 import { fetchCatalog, type CatalogCategory, type CatalogItem } from '../../lib/eletronicosApi'
 import EletronicaServiceRequestForm from './EletronicaServiceRequestForm'
+import EletronicaCarrinhoFlutuante from './EletronicaCarrinhoFlutuante'
 
 // Port 1:1 de src/app/catalogo-servico/page.tsx + DiagnosticoToggle.tsx +
 // CatalogoClient.tsx do vrtech: header, título "Serviços e orçamento", o
@@ -205,8 +206,14 @@ export default function EletronicaCatalogoServico() {
   return (
     <main className="min-h-screen bg-[#0a0a0b] text-white">
       <header className="px-5 sm:px-10 py-5 flex items-center justify-between max-w-6xl mx-auto border-b border-white/5">
-        <Link to={`/${withTenantSearch()}`} className="font-black text-lg">
-          VR Tech
+        <Link to={`/${withTenantSearch()}`}>
+          <img
+            src="https://res.cloudinary.com/dkqhped8y/image/upload/v1783212643/iconelogo_rpcnvw.png"
+            alt="VR Tech"
+            width={56}
+            height={56}
+            className="rounded-lg block"
+          />
         </Link>
         <Link to={`/${withTenantSearch()}`} className="flex items-center gap-1.5 text-sm font-medium text-[#d4d4d8] hover:text-white transition-colors">
           <ArrowLeft className="w-4 h-4" />
@@ -364,7 +371,7 @@ export default function EletronicaCatalogoServico() {
                                     </>
                                   ) : (
                                     <>
-                                      <ShoppingCart className="w-3.5 h-3.5" /> Solicitar orçamento
+                                      <ShoppingCart className="w-3.5 h-3.5" /> Adicionar ao carrinho
                                     </>
                                   )}
                                 </button>
@@ -382,6 +389,7 @@ export default function EletronicaCatalogoServico() {
           </div>
         )}
       </section>
+      <EletronicaCarrinhoFlutuante />
     </main>
   )
 }

@@ -14,6 +14,9 @@ import {
 } from 'lucide-react'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { withTenantSearch } from '../../lib/tenantConfig'
+import EletronicaCarrinhoFlutuante from './EletronicaCarrinhoFlutuante'
+
+const LOGO_FALLBACK = 'https://res.cloudinary.com/dkqhped8y/image/upload/v1783212643/iconelogo_rpcnvw.png'
 
 // Port 1:1 de src/app/page.tsx do vrtech -- mesma landing de marketing
 // (Hero + Serviços + Diferenciais + Footer), mesmo texto, mesmas cores.
@@ -41,14 +44,17 @@ export default function EletronicaHome() {
   return (
     <main className="min-h-screen bg-[#0a0a0b] text-white">
       <header className="px-5 sm:px-10 py-5 flex items-center justify-between max-w-6xl mx-auto">
-        <Link to={`/${withTenantSearch()}`} className="font-black text-xl">
-          {tenantConfig?.logo_url ? (
-            <img src={tenantConfig.logo_url} alt={lojaNome} width={80} height={80} className="rounded-lg block" />
-          ) : (
-            lojaNome
-          )}
+        <Link to={`/${withTenantSearch()}`}>
+          <img src={tenantConfig?.logo_url || LOGO_FALLBACK} alt={lojaNome} width={80} height={80} className="rounded-lg block" />
         </Link>
         <div className="flex items-center gap-4 sm:gap-6">
+          <Link
+            to={`/catalogo${withTenantSearch()}`}
+            className="flex items-center gap-1.5 text-sm font-medium text-[#d4d4d8] hover:text-white transition-colors"
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span className="hidden sm:inline">Catálogo</span>
+          </Link>
           <Link
             to={`/consultar${withTenantSearch()}`}
             className="flex items-center gap-1.5 text-sm font-medium text-[#d4d4d8] hover:text-white transition-colors"
@@ -130,7 +136,10 @@ export default function EletronicaHome() {
 
       <footer className="px-5 sm:px-10 py-10 border-t border-white/5">
         <div className="max-w-6xl mx-auto flex flex-col items-center gap-6 text-center">
-          <span className="font-black text-lg">{lojaNome}</span>
+          <div>
+            <p className="font-black text-lg">{lojaNome}</p>
+            <p className="text-[10px] tracking-[0.2em] uppercase text-[#d4d4d8]/40 mt-0.5">Assistência técnica especializada</p>
+          </div>
           <div className="flex flex-wrap items-center justify-center gap-4">
             {SERVICES.map((s) => (
               <span key={s.title} className="flex items-center gap-1.5 text-xs text-[#d4d4d8]/60">
@@ -144,6 +153,7 @@ export default function EletronicaHome() {
           </p>
         </div>
       </footer>
+      <EletronicaCarrinhoFlutuante />
     </main>
   )
 }

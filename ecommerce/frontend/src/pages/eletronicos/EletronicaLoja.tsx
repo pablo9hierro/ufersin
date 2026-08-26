@@ -6,6 +6,7 @@ import { withTenantSearch } from '../../lib/tenantConfig'
 import { productService } from '../../services/productService'
 import { useCart } from '../../store/cart'
 import type { Product } from '../../types'
+import EletronicaCarrinhoFlutuante from './EletronicaCarrinhoFlutuante'
 
 // Port 1:1 de src/app/loja/LojaClient.tsx do vrtech -- vitrine de produtos
 // físicos (peças/acessórios), mesmo layout/cores. StoreLink -> Link do
@@ -193,6 +194,7 @@ export default function EletronicaLoja() {
           </div>
         )}
       </div>
+      <EletronicaCarrinhoFlutuante />
     </main>
   )
 }
