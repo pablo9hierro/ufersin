@@ -213,6 +213,9 @@ pub fn build() -> OpenApi {
         ("/api/admin/eletronicos/templates/{key}/toggle", Patch, "Ligar/desligar disparo de um template", "Admin - Eletronicos", true, true),
         ("/api/public/eletronicos/{slug}/service-requests", Post, "Vitrine: cliente cria solicitacao de servico (sem login)", "Publico - Eletronicos", false, true),
         ("/api/public/eletronicos/{slug}/consultar/{phone}", Get, "Vitrine: consultar status de atendimentos/agendamentos por telefone", "Publico - Eletronicos", false, false),
+        ("/api/public/eletronicos/{slug}/upload", Post, "Vitrine: upload de foto/video do aparelho (multipart, campo file)", "Publico - Eletronicos", false, true),
+        ("/api/admin/eletronicos/upload", Post, "Admin: upload de foto/video/pdf (multipart, campo file)", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/service-orders/{id}/pdf", Post, "Salva a URL do PDF gerado da OS", "Admin - Eletronicos", true, true),
     ];
 
     for (path, method, summary, tag, auth, body) in routes {

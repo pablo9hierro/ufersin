@@ -1819,3 +1819,109 @@ pub async fn consultar_por_telefone(
     tx.commit().await?;
     Ok(Json(ConsultarResponse { requests: out, appointments }))
 }
+
+// ============================================================================
+// Upload de mídia -- fase 4.9
+//
+// vrtech original fazia upload direto do browser pro Supabase Storage
+// (confiando em RLS) -- aqui passa pelo backend, mesmo padrao de
+// admin::upload_product_image (chave de servico nunca sai do servidor).
+// Prefixo `eletronicos/<tenant_id>/` no mesmo bucket ja usado por produtos
+// (`sunset-products`, ja existe e ja tem permissao publica configurada) --
+// nao precisa de bucket novo.
+// ============================================================================
+
+const MAX_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
+
+async fn read_upload_field(
+    multipart: &mut axum::extract::Multipart,
+    allow_pdf: bool,
+) -> Result<(String, Vec<u8>), AppError> {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("upload inválido: {e}")))?
+    {
+        if field.name() != Some("file") {
+            continue;
+        }
+        let content_type = field.content_type().unwrap_or("application/octet-stream").to_string();
+        let is_pdf = content_type == "application/pdf";
+        if !content_type.starts_with("image/") && !content_type.starts_with("video/") && !(allow_pdf && is_pdf) {
+            return Err(AppError::BadRequest(format!("tipo de arquivo não aceito: {content_type}")));
+        }
+        let bytes = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("upload inválido: {e}")))?;
+        if bytes.len() > MAX_UPLOAD_BYTES {
+            return Err(AppError::BadRequest("arquivo maior que 8MB".to_string()));
+        }
+        let ext = if is_pdf { "pdf" } else { crate::storage::extension_for(&content_type) };
+        return Ok((format!("{content_type}\0{ext}"), bytes.to_vec()));
+    }
+    Err(AppError::BadRequest("campo 'file' ausente no upload".to_string()))
+}
+
+/// Vitrine pública -- foto do aparelho/problema anexada no formulário de
+/// solicitação, sem login. Tenant resolvido pelo slug da URL.
+pub async fn upload_public_media(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    mut multipart: axum::extract::Multipart,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let (meta, bytes) = read_upload_field(&mut multipart, false).await?;
+    let (content_type, ext) = meta.split_once('\0').expect("meta sempre tem separador");
+    let filename = format!("eletronicos/{}/{}.{ext}", store.id, Uuid::new_v4());
+    let url = crate::storage::upload_image(&state, &filename, content_type, bytes).await?;
+    Ok(Json(serde_json::json!({ "url": url })))
+}
+
+/// Admin -- fotos de checklist/diagnóstico ou o PDF gerado da OS.
+pub async fn upload_admin_media(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    mut multipart: axum::extract::Multipart,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let (meta, bytes) = read_upload_field(&mut multipart, true).await?;
+    let (content_type, ext) = meta.split_once('\0').expect("meta sempre tem separador");
+    let filename = format!("eletronicos/{}/{}.{ext}", claims.tenant_id, Uuid::new_v4());
+    let url = crate::storage::upload_image(&state, &filename, content_type, bytes).await?;
+    Ok(Json(serde_json::json!({ "url": url })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetServiceOrderPdfInput {
+    pub pdf_url: String,
+}
+
+pub async fn set_service_order_pdf(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<SetServiceOrderPdfInput>,
+) -> Result<Json<ServiceOrderDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query(
+        "UPDATE eletronicos.service_orders SET pdf_url = $3, updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2::uuid",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(&input.pdf_url)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("ordem de servico nao encontrada".to_string()));
+    }
+    let row: ServiceOrderDto = sqlx::query_as(&format!(
+        "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}

@@ -330,6 +330,18 @@ async fn main() -> anyhow::Result<()> {
             get(routes::eletronicos::consultar_por_telefone),
         )
         .route(
+            "/api/public/eletronicos/{slug}/upload",
+            post(routes::eletronicos::upload_public_media),
+        )
+        .route(
+            "/api/admin/eletronicos/upload",
+            post(routes::eletronicos::upload_admin_media),
+        )
+        .route(
+            "/api/admin/eletronicos/service-orders/{id}/pdf",
+            post(routes::eletronicos::set_service_order_pdf),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )
