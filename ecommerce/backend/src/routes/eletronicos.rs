@@ -3189,6 +3189,32 @@ pub async fn consultar_cancel(
     Ok(Json(row))
 }
 
+#[derive(Debug, Serialize)]
+pub struct MercadoPagoStatusDto {
+    pub connected: bool,
+    pub credenciais_mask: Option<String>,
+}
+
+/// Status (só leitura) da conexão Mercado Pago do tenant -- port da parte
+/// visual de MercadoPagoSection.tsx. Conectar/desconectar (fluxo OAuth
+/// completo) fica de fora por ora: a conta é vinculada pela sessão de
+/// plataforma do Resolutoo (ufersin-api), que esse painel (login próprio
+/// via ecommerce-api) não compartilha -- gap disclosed, não arriscar
+/// mexer em credencial de pagamento sem essa ponte de sessão existir.
+pub async fn get_mercadopago_status(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<MercadoPagoStatusDto>, AppError> {
+    let payment = tenant::load_tenant_payment(&state.pool, &claims.tenant_id).await?;
+    let token = payment.mp_access_token();
+    let connected = token.is_some();
+    let mask = token.map(|t| {
+        let tail = if t.len() > 4 { &t[t.len() - 4..] } else { t };
+        format!("•••• {tail}")
+    });
+    Ok(Json(MercadoPagoStatusDto { connected, credenciais_mask: mask }))
+}
+
 // ============================================================================
 // Upload de mídia -- fase 4.9
 //

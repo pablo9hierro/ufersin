@@ -422,6 +422,7 @@ export const eletronicosAdmin = {
     status: (paymentId: string) =>
       req<{ status: string }>(`/api/admin/pdv/pix/${paymentId}/status`),
   },
+  mercadoPagoStatus: () => req<{ connected: boolean; credenciais_mask: string | null }>(`${BASE}/mercadopago-status`),
   shippingSettings: {
     get: async () => {
       const row = await req<{

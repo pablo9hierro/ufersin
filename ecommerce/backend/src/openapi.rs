@@ -222,6 +222,7 @@ pub fn build() -> OpenApi {
         ("/api/admin/eletronicos/service-orders-closed", Get, "Ordens de servico fechadas (relatorios)", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/shipping-settings", Get, "Config de frete da vertical eletronicos", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/shipping-settings", Put, "Salvar config de frete da vertical eletronicos", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/mercadopago-status", Get, "Status (somente leitura) da conexao Mercado Pago do tenant", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/catalog-categories", Get, "Listar categorias (marcas) do catalogo de servicos", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/catalog-categories", Post, "Criar categoria (marca) do catalogo de servicos", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/catalog-categories/{id}", Put, "Atualizar categoria (marca) do catalogo de servicos", "Admin - Eletronicos", true, true),

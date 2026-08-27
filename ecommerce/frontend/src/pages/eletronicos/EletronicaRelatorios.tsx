@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ShoppingBag, Truck, Wallet, Wrench } from 'lucide-react'
+import { CreditCard, Loader2, ShoppingBag, Truck, Wallet, Wrench } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import { adminService } from '../../services/adminService'
 import type { Order } from '../../types'
@@ -10,10 +10,16 @@ import type { Order } from '../../types'
 // manutenção/venda/frete, mesma lista de lançamentos. "Manutenção" vem de
 // service_orders fechadas (novo endpoint service-orders-closed); "Venda"
 // vem de adminService.orders.list() (mesma fonte da aba Vendas).
-// NÃO portado: MercadoPagoSection (config de credenciais MP -- já existe
-// uma tela própria pra isso no motor, fora do escopo de relatório),
-// StockActivitySection e ErrorLogSection (esse motor ainda não tem log de
-// estoque/erros pro schema eletronicos).
+// MercadoPagoSection: portado só o status (somente leitura, badge
+// Conectado/Desconectado + credencial mascarada) via
+// GET /api/admin/eletronicos/mercadopago-status. Conectar/Desconectar (fluxo
+// OAuth completo) NÃO foi portado: no original a conta é vinculada pela
+// sessão de plataforma do Resolutoo (ufersin-api, Supabase), mas esse painel
+// eletrônica usa login próprio via ecommerce-api (JWT por tenant) -- as duas
+// sessões não têm ponte hoje, então mexer em credencial de pagamento sem
+// essa ponte existir seria arriscado.
+// NÃO portado: StockActivitySection e ErrorLogSection (esse motor ainda não
+// tem log de estoque/erros pro schema eletronicos).
 
 type Transaction = {
   id: string
@@ -89,6 +95,17 @@ export default function EletronicaRelatorios() {
         setServiceOrders(so)
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Não foi possível carregar os relatórios.'))
+  }, [])
+
+  const [mpStatus, setMpStatus] = useState<{ connected: boolean; credenciais_mask: string | null } | null>(null)
+  const [mpLoading, setMpLoading] = useState(true)
+
+  useEffect(() => {
+    eletronicosAdmin
+      .mercadoPagoStatus()
+      .then(setMpStatus)
+      .catch(() => setMpStatus(null))
+      .finally(() => setMpLoading(false))
   }, [])
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
@@ -192,6 +209,33 @@ export default function EletronicaRelatorios() {
       {error && (
         <div className="flex items-center gap-2 bg-red-500/8 border border-red-500/20 rounded-xl px-3 py-2.5 text-red-400 text-sm">{error}</div>
       )}
+
+      <div className="bg-[#161618] rounded-2xl border border-white/5 p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <CreditCard className="w-4 h-4 text-[#e0211a]" />
+          <h2 className="text-sm font-semibold text-white">Mercado Pago</h2>
+          {!mpLoading && (
+            <span
+              className={`ml-auto text-xs font-medium px-2 py-0.5 rounded-full ${
+                mpStatus?.connected ? 'bg-green-500/15 text-green-400' : 'bg-[#232327] text-[#d4d4d8]/60'
+              }`}
+            >
+              {mpStatus?.connected ? 'Conectado' : 'Desconectado'}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-[#d4d4d8]/50">Recebimento de pagamentos via PIX/Mercado Pago nas vendas da vitrine.</p>
+        {mpLoading ? (
+          <Loader2 className="w-4 h-4 text-[#d4d4d8]/40 animate-spin" />
+        ) : (
+          mpStatus?.connected &&
+          mpStatus.credenciais_mask && (
+            <div className="text-xs text-green-400 bg-green-500/8 border border-green-500/20 rounded-lg px-3 py-1.5">
+              Conta conectada · {mpStatus.credenciais_mask}
+            </div>
+          )
+        )}
+      </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {TYPE_FILTERS.map((f) => (
