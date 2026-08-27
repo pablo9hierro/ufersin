@@ -1,19 +1,74 @@
 import { jsPDF } from 'jspdf'
 import type { ServiceOrderDto, ChecklistItem } from './eletronicosApi'
 import type { ServiceRequestDto } from './eletronicosApi'
+import { isImageUrl, loadImage } from './pdfImages'
 
-// Gera o PDF da Ordem de Serviço -- port funcional de
-// generateServiceOrderPdf.ts do vrtech: itemiza cada componente marcado na
-// checklist (com valor/garantia individual), não só o resumo. Gap
-// disclosed: fotos ficam como link clicável, não embutidas (mesma
-// simplificação de generateDiagnosticPdf, lib/pdfImages.ts do original não
-// foi portado).
-export function generateServiceOrderPdf(
+function isVideoUrl(url: string) {
+  return !isImageUrl(url)
+}
+
+/** Desenha uma grade de miniaturas embutidas + links pros vídeos, mesmo
+ * layout do generateServiceOrderPdf.ts real. Retorna o novo `y`. */
+async function drawMediaGrid(doc: jsPDF, mediaUrls: string[], marginX: number, w: number, startY: number): Promise<number> {
+  let y = startY
+  const imageUrls = mediaUrls.filter(isImageUrl)
+  const videoUrls = mediaUrls.filter(isVideoUrl)
+
+  if (imageUrls.length > 0) {
+    const THUMB = 32
+    const GAP = 4
+    const perRow = Math.floor((w - marginX * 2) / (THUMB + GAP))
+    const images = (await Promise.all(imageUrls.map((url) => loadImage(url)))).filter(Boolean) as Array<{
+      dataUrl: string
+      width: number
+      height: number
+      format: string
+    }>
+    let col = 0
+    let rowStartY = y
+    for (const img of images) {
+      if (col >= perRow) {
+        col = 0
+        y += THUMB + GAP
+        rowStartY = y
+      }
+      const x = marginX + col * (THUMB + GAP)
+      const scale = Math.min(THUMB / img.width, THUMB / img.height, 1)
+      const iw = img.width * scale
+      const ih = img.height * scale
+      doc.addImage(img.dataUrl, img.format, x, rowStartY, iw, ih)
+      doc.setDrawColor(220)
+      doc.rect(x, rowStartY, THUMB, THUMB, 'S')
+      col++
+    }
+    if (images.length > 0) y = rowStartY + THUMB + 6
+  }
+
+  if (videoUrls.length > 0) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(0, 0, 238)
+    videoUrls.forEach((url, i) => {
+      doc.textWithLink(`Vídeo anexado ${i + 1} (toque para abrir)`, marginX, y, { url })
+      y += 5
+    })
+    doc.setTextColor(0)
+    doc.setFontSize(11)
+  }
+
+  return y
+}
+
+// Gera o PDF da Ordem de Serviço -- port de generateServiceOrderPdf.ts do
+// vrtech: itemiza cada componente marcado na checklist (com valor/
+// garantia individual) e embute as fotos anexadas de verdade (não só
+// link), usando o mesmo lib/pdfImages.ts portado.
+export async function generateServiceOrderPdf(
   request: ServiceRequestDto,
   order: ServiceOrderDto,
   storeName: string,
   checklist?: ChecklistItem[],
-): Blob {
+): Promise<Blob> {
   const doc = new jsPDF()
   const marginX = 15
   const w = doc.internal.pageSize.getWidth()
@@ -73,6 +128,11 @@ export function generateServiceOrderPdf(
         y += 5
       }
       y += 2
+
+      if (item.media_urls?.length) {
+        y = await drawMediaGrid(doc, item.media_urls, marginX + 6, w, y)
+        y += 2
+      }
     }
     y += 2
   }
@@ -86,19 +146,17 @@ export function generateServiceOrderPdf(
   return doc.output('blob')
 }
 
-// Gera o PDF de diagnóstico -- versão simplificada da lógica original do
-// vrtech (DiagnosticSection.tsx::generatePdfBlob, que também embute fotos
-// anexadas dentro do PDF); esse motor ainda não tem o helper de carregar
-// imagem pra PDF (lib/pdfImages.ts), então as fotos ficam só como link
-// clicável, não embutidas.
-export function generateDiagnosticPdf(
+// Gera o PDF de diagnóstico -- port de DiagnosticSection.tsx::generatePdfBlob
+// do vrtech, com as fotos embutidas de verdade (grade de miniaturas via
+// lib/pdfImages.ts), não mais só como link clicável.
+export async function generateDiagnosticPdf(
   request: ServiceRequestDto,
   storeName: string,
   services: { repair_type: string; price: number }[],
   notes: string,
   finalTotal: number,
   mediaUrls: string[],
-): Blob {
+): Promise<Blob> {
   const doc = new jsPDF()
   const marginX = 15
   const w = doc.internal.pageSize.getWidth()
@@ -171,16 +229,8 @@ export function generateDiagnosticPdf(
     y += 8
     doc.setFont('helvetica', 'bold')
     doc.text('Fotos/vídeos anexados', marginX, y)
-    y += 6
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.setTextColor(0, 0, 238)
-    mediaUrls.forEach((url, i) => {
-      doc.textWithLink(`Anexo ${i + 1} (toque para abrir)`, marginX, y, { url })
-      y += 5
-    })
-    doc.setTextColor(0)
-    doc.setFontSize(11)
+    y += 7
+    y = await drawMediaGrid(doc, mediaUrls, marginX, w, y)
   }
 
   return doc.output('blob')

@@ -309,7 +309,7 @@ export default function EletronicaServiceOrderPanel({
 
       let pdfUrl: string | null = null
       try {
-        const blob = generateServiceOrderPdf(request, result.service_order, tenantConfig?.loja_nome || 'Assistência técnica', result.service_order.checklist)
+        const blob = await generateServiceOrderPdf(request, result.service_order, tenantConfig?.loja_nome || 'Assistência técnica', result.service_order.checklist)
         pdfUrl = await eletronicosAdmin.uploadMedia(blob, `os-${order.id}.pdf`)
         await eletronicosAdmin.serviceOrders.setPdf(order.id, pdfUrl)
         setOrder((prev) => (prev ? { ...prev, pdf_url: pdfUrl } : prev))
@@ -336,7 +336,7 @@ export default function EletronicaServiceOrderPanel({
     setPdfError(null)
     try {
       const previewOrder: ServiceOrderDto = { ...order, checklist }
-      const blob = generateServiceOrderPdf(request, previewOrder, tenantConfig?.loja_nome || 'Assistência técnica', checklist)
+      const blob = await generateServiceOrderPdf(request, previewOrder, tenantConfig?.loja_nome || 'Assistência técnica', checklist)
       const pdfUrl = await eletronicosAdmin.uploadMedia(blob, `os-${order.id}.pdf`)
       await eletronicosAdmin.serviceOrders.setPdf(order.id, pdfUrl)
       setOrder((prev) => (prev ? { ...prev, pdf_url: pdfUrl } : prev))
@@ -352,7 +352,7 @@ export default function EletronicaServiceOrderPanel({
     setGeneratingPdf(true)
     setPdfError(null)
     try {
-      const blob = generateServiceOrderPdf(request, order, tenantConfig?.loja_nome || 'Assistência técnica', order.checklist)
+      const blob = await generateServiceOrderPdf(request, order, tenantConfig?.loja_nome || 'Assistência técnica', order.checklist)
       const pdfUrl = await eletronicosAdmin.uploadMedia(blob, `os-${order.id}.pdf`)
       await eletronicosAdmin.serviceOrders.setPdf(order.id, pdfUrl)
       setOrder((prev) => (prev ? { ...prev, pdf_url: pdfUrl } : prev))

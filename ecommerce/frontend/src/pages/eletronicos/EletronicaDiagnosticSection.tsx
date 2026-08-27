@@ -112,7 +112,7 @@ export default function EletronicaDiagnosticSection({
   }
 
   async function persist(finalized: boolean) {
-    const doc = generateDiagnosticPdf(request, tenantConfig?.loja_nome || 'Assistência técnica', selectedServices, notes, finalTotal, mediaUrls)
+    const doc = await generateDiagnosticPdf(request, tenantConfig?.loja_nome || 'Assistência técnica', selectedServices, notes, finalTotal, mediaUrls)
     const url = await eletronicosAdmin.uploadMedia(doc, `diagnostico-${request.id}.pdf`)
     setPdfUrl(url)
     const updated = await eletronicosAdmin.serviceRequests.saveDiagnostic(request.id, {
