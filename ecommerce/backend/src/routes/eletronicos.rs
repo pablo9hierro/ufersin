@@ -2430,9 +2430,15 @@ async fn fetch_unified_by_phone(
     tenant_id: &str,
     digits: &str,
 ) -> Result<ConsultarResponse, AppError> {
+    // customer_phone é gravado como o cliente digitou/o formulário mandou --
+    // às vezes com formatação "(83) 98751-6699", às vezes só dígitos. A
+    // busca sempre normaliza os dois lados (regexp_replace tira tudo que
+    // não é dígito) pra nunca depender de como aquele registro específico
+    // foi salvo -- achado real testando o gate de OTP em produção: a busca
+    // exata contra a coluna crua nunca batia pra telefone com formatação.
     let requests: Vec<ServiceRequestDto> = sqlx::query_as(&format!(
         "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests \
-         WHERE tenant_id = $1 AND customer_phone = $2 AND status <> 'cancelled' \
+         WHERE tenant_id = $1 AND regexp_replace(customer_phone, '\\D', '', 'g') = $2 AND status <> 'cancelled' \
          ORDER BY created_at DESC LIMIT 10"
     ))
     .bind(tenant_id)
@@ -2454,7 +2460,7 @@ async fn fetch_unified_by_phone(
 
     let appointments: Vec<AppointmentDto> = sqlx::query_as(&format!(
         "SELECT {APPT_COLUMNS} FROM eletronicos.appointments \
-         WHERE tenant_id = $1 AND customer_phone = $2 AND status = 'agendado' \
+         WHERE tenant_id = $1 AND regexp_replace(customer_phone, '\\D', '', 'g') = $2 AND status = 'agendado' \
          ORDER BY starts_at ASC"
     ))
     .bind(tenant_id)
@@ -2587,53 +2593,6 @@ pub async fn consultar_otp_verify(
     let unified = fetch_unified_by_phone(&mut tx, &store.id, &digits).await?;
     tx.commit().await?;
     Ok(Json(OtpVerifyResponse { valid: true, data: Some(unified) }))
-}
-
-pub async fn consultar_por_telefone(
-    State(state): State<AppState>,
-    Path((slug, phone)): Path<(String, String)>,
-) -> Result<Json<ConsultarResponse>, AppError> {
-    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
-    let digits = digits_only(&phone);
-    if digits.is_empty() {
-        return Err(AppError::BadRequest("telefone inválido".to_string()));
-    }
-    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
-
-    let requests: Vec<ServiceRequestDto> = sqlx::query_as(&format!(
-        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests \
-         WHERE tenant_id = $1 AND customer_phone = $2 AND status <> 'cancelled' \
-         ORDER BY created_at DESC LIMIT 10"
-    ))
-    .bind(&store.id)
-    .bind(&digits)
-    .fetch_all(&mut *tx)
-    .await?;
-
-    let mut out = Vec::with_capacity(requests.len());
-    for request in requests {
-        let service_order: Option<ServiceOrderDto> = sqlx::query_as(&format!(
-            "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND request_id = $2::uuid"
-        ))
-        .bind(&store.id)
-        .bind(&request.id)
-        .fetch_optional(&mut *tx)
-        .await?;
-        out.push(ConsultarServiceRequestDto { request, service_order });
-    }
-
-    let appointments: Vec<AppointmentDto> = sqlx::query_as(&format!(
-        "SELECT {APPT_COLUMNS} FROM eletronicos.appointments \
-         WHERE tenant_id = $1 AND customer_phone = $2 AND status = 'agendado' \
-         ORDER BY starts_at ASC"
-    ))
-    .bind(&store.id)
-    .bind(&digits)
-    .fetch_all(&mut *tx)
-    .await?;
-
-    tx.commit().await?;
-    Ok(Json(ConsultarResponse { requests: out, appointments }))
 }
 
 // ============================================================================

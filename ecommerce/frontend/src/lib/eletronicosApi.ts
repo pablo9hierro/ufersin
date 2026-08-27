@@ -141,14 +141,6 @@ export async function fetchCatalog(slug: string): Promise<CatalogResponse> {
   return parseOrThrow(res)
 }
 
-export async function consultarPorTelefone(slug: string, phone: string): Promise<ConsultarResponse> {
-  const digits = phone.replace(/\D/g, '')
-  const res = await fetch(
-    `${API_BASE}/api/public/eletronicos/${encodeURIComponent(slug)}/consultar/${encodeURIComponent(digits)}`,
-  )
-  return parseOrThrow(res)
-}
-
 export async function consultarOtpCheck(slug: string, phone: string, send: boolean): Promise<{ found: boolean; sent: boolean }> {
   const res = await fetch(`${API_BASE}/api/public/eletronicos/${encodeURIComponent(slug)}/consultar-otp`, {
     method: 'POST',

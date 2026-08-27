@@ -326,10 +326,6 @@ async fn main() -> anyhow::Result<()> {
             post(routes::eletronicos::create_service_request_public),
         )
         .route(
-            "/api/public/eletronicos/{slug}/consultar/{phone}",
-            get(routes::eletronicos::consultar_por_telefone),
-        )
-        .route(
             "/api/public/eletronicos/{slug}/consultar-otp",
             post(routes::eletronicos::consultar_otp_check),
         )
