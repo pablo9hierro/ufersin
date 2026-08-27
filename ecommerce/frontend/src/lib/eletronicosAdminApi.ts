@@ -378,17 +378,19 @@ export const eletronicosAdmin = {
       req<{ status: string }>(`/api/admin/pdv/pix/${paymentId}/status`),
   },
   shippingSettings: {
-    get: () =>
-      req<{
+    get: async () => {
+      const row = await req<{
         price_per_km: number
         minutes_per_km: number
         store_lat: number | null
         store_lng: number | null
-        store_address: string
+        store_address: string | null
         max_km: number | null
         cobrar_coleta: boolean
         cobrar_entrega: boolean
-      }>(`${BASE}/shipping-settings`),
+      }>(`${BASE}/shipping-settings`)
+      return { ...row, store_address: row.store_address ?? '' }
+    },
     update: (input: {
       price_per_km: number
       minutes_per_km: number

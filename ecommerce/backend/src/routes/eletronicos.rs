@@ -1107,7 +1107,7 @@ pub struct ShippingSettingsDto {
     pub minutes_per_km: f64,
     pub store_lat: Option<f64>,
     pub store_lng: Option<f64>,
-    pub store_address: String,
+    pub store_address: Option<String>,
     pub max_km: Option<f64>,
     pub cobrar_coleta: bool,
     pub cobrar_entrega: bool,
