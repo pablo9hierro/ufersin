@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, CalendarDays, CheckCircle2, Clock, Lock, Loader2, MessageCircle, Plus, Unlock, User, X } from 'lucide-react'
+import { AlertCircle, CalendarDays, CalendarClock, CheckCircle2, Clock, Lock, Loader2, MessageCircle, Plus, Unlock, User, X } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { AppointmentDto } from '../../lib/eletronicosApi'
 
@@ -7,13 +7,11 @@ import type { AppointmentDto } from '../../lib/eletronicosApi'
 // src/app/dashboard/agenda/AgendaClient.tsx do vrtech -- grade de
 // disponibilidade do dia (livre/ocupado/bloqueado/muito em cima), seletor
 // de dia (dropdown + Hoje/Amanhã), lista de atendimentos do dia com
-// "Concluir"/"Cancelar", dialog "Indisponibilizar horário" com lista de
-// bloqueios + liberar.
-// Gaps disclosed: remarcar agendamento (com justificativa+aviso
-// customizado por WhatsApp) e o dialog de detalhe com histórico de eventos
-// não foram portados -- endpoints reschedule/appointment-events desse
-// motor ainda não existem. Cancelar aqui segue simples (sem justificativa
-// obrigatória de 30 chars), mesmo mecanismo que já funcionava.
+// "Concluir"/"Remarcar"/"Cancelar" (justificativa >=20 chars + aviso
+// padrão via template ou mensagem customizada, igual src/lib/agenda/notifications.ts),
+// dialog "Indisponibilizar horário" com lista de bloqueios + liberar.
+// Gap disclosed: dialog de detalhe com histórico de eventos
+// (appointment_events) não foi portado.
 
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const SELECT = 'bg-[#0a0a0b] border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[#e0211a] transition-colors'
@@ -181,6 +179,157 @@ function BlockDialog({ date, onClose, onDone }: { date: string; onClose: () => v
   )
 }
 
+const MIN_JUSTIFICATION_LENGTH = 20
+
+function JustificationField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ok = value.trim().length >= MIN_JUSTIFICATION_LENGTH
+  return (
+    <div>
+      <label className="block text-sm text-[#d4d4d8] mb-1.5">Motivo (obrigatório, visível só para você)</label>
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} className={`${INPUT} resize-none`} placeholder="Explique o motivo com pelo menos 20 caracteres..." />
+      {!ok && value.length > 0 && (
+        <p className="text-xs text-red-400 mt-1">Faltam {MIN_JUSTIFICATION_LENGTH - value.trim().length} caracteres.</p>
+      )}
+    </div>
+  )
+}
+
+function DefaultMessageToggle({
+  useDefault,
+  onToggle,
+  customMessage,
+  onCustomChange,
+}: {
+  useDefault: boolean
+  onToggle: (v: boolean) => void
+  customMessage: string
+  onCustomChange: (v: string) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="flex items-center gap-2 text-sm text-[#d4d4d8]">
+        <input type="checkbox" checked={useDefault} onChange={(e) => onToggle(e.target.checked)} className="accent-[#e0211a]" />
+        Usar mensagem padrão do WhatsApp
+      </label>
+      {!useDefault && (
+        <div>
+          <textarea
+            value={customMessage}
+            onChange={(e) => onCustomChange(e.target.value)}
+            rows={3}
+            className={`${INPUT} resize-none`}
+            placeholder="Mensagem personalizada enviada ao cliente (mínimo 10 caracteres)..."
+          />
+          <p className="text-xs text-[#d4d4d8]/40 mt-1">Essa mensagem é enviada exatamente como escrita — não passa pelo modelo padrão.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CancelDialog({ appt, onClose, onDone }: { appt: AppointmentDto; onClose: () => void; onDone: () => void }) {
+  const [justification, setJustification] = useState('')
+  const [useDefault, setUseDefault] = useState(true)
+  const [customMessage, setCustomMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const valid = justification.trim().length >= MIN_JUSTIFICATION_LENGTH && (useDefault || customMessage.trim().length >= 10)
+
+  const submit = async () => {
+    setSaving(true)
+    setErr(null)
+    try {
+      await eletronicosAdmin.appointments.cancel(appt.id, {
+        justification: justification.trim(),
+        use_default_message: useDefault,
+        custom_message: useDefault ? undefined : customMessage.trim(),
+      })
+      onDone()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Falha ao cancelar.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog title="Cancelar atendimento" onClose={onClose}>
+      <p className="text-sm text-[#d4d4d8]/60">
+        {appt.customer_name} — {appt.service_label} — {fmtTime(appt.starts_at)}
+      </p>
+      <JustificationField value={justification} onChange={setJustification} />
+      <DefaultMessageToggle useDefault={useDefault} onToggle={setUseDefault} customMessage={customMessage} onCustomChange={setCustomMessage} />
+      {err && <p className="text-sm text-red-400">{err}</p>}
+      <button
+        onClick={submit}
+        disabled={saving || !valid}
+        className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+      >
+        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+        Cancelar atendimento
+      </button>
+    </Dialog>
+  )
+}
+
+function RescheduleDialog({ appt, onClose, onDone }: { appt: AppointmentDto; onClose: () => void; onDone: () => void }) {
+  const start = new Date(appt.starts_at)
+  const [dia, setDia] = useState(start.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))
+  const [hora, setHora] = useState(fmtTime(appt.starts_at))
+  const [justification, setJustification] = useState('')
+  const [useDefault, setUseDefault] = useState(true)
+  const [customMessage, setCustomMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const valid = justification.trim().length >= MIN_JUSTIFICATION_LENGTH && (useDefault || customMessage.trim().length >= 10)
+
+  const submit = async () => {
+    setSaving(true)
+    setErr(null)
+    try {
+      await eletronicosAdmin.appointments.reschedule(appt.id, {
+        data: dia,
+        horario: hora,
+        justification: justification.trim(),
+        use_default_message: useDefault,
+        custom_message: useDefault ? undefined : customMessage.trim(),
+      })
+      onDone()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Falha ao remarcar.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog title="Remarcar atendimento" onClose={onClose}>
+      <p className="text-sm text-[#d4d4d8]/60">
+        {appt.customer_name} — {appt.service_label} — atual: {dateKeyToBr(start.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))} às {fmtTime(appt.starts_at)}
+      </p>
+      <div>
+        <label className="block text-sm text-[#d4d4d8] mb-1.5">Nova data</label>
+        <DateDropdown value={dia} onChange={setDia} />
+      </div>
+      <div>
+        <label className="block text-sm text-[#d4d4d8] mb-1.5">Novo horário</label>
+        <TimeDropdown value={hora} onChange={setHora} />
+      </div>
+      <JustificationField value={justification} onChange={setJustification} />
+      <DefaultMessageToggle useDefault={useDefault} onToggle={setUseDefault} customMessage={customMessage} onCustomChange={setCustomMessage} />
+      {err && <p className="text-sm text-red-400">{err}</p>}
+      <button
+        onClick={submit}
+        disabled={saving || !valid}
+        className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+      >
+        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4" />}
+        Remarcar atendimento
+      </button>
+    </Dialog>
+  )
+}
+
 export default function EletronicaAdminAgenda() {
   const [date, setDate] = useState(todayKey())
   const [slots, setSlots] = useState<DaySlot[] | null>(null)
@@ -188,6 +337,8 @@ export default function EletronicaAdminAgenda() {
   const [blocks, setBlocks] = useState<AgendaBlock[]>([])
   const [error, setError] = useState<string | null>(null)
   const [blocking, setBlocking] = useState(false)
+  const [cancelling, setCancelling] = useState<AppointmentDto | null>(null)
+  const [rescheduling, setRescheduling] = useState<AppointmentDto | null>(null)
 
   const load = useCallback(async () => {
     setError(null)
@@ -216,15 +367,6 @@ export default function EletronicaAdminAgenda() {
       load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao concluir.')
-    }
-  }
-
-  const cancelAppt = async (id: string) => {
-    try {
-      await eletronicosAdmin.appointments.cancel(id)
-      load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao cancelar.')
     }
   }
 
@@ -382,7 +524,10 @@ export default function EletronicaAdminAgenda() {
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" /> Concluir
                     </button>
-                    <button onClick={() => cancelAppt(a.id)} className="flex items-center gap-1.5 text-sm text-red-400 hover:text-red-300 bg-red-500/10 px-3 py-1.5 rounded-lg transition-colors">
+                    <button onClick={() => setRescheduling(a)} className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 bg-blue-500/10 px-3 py-1.5 rounded-lg transition-colors">
+                      <CalendarClock className="w-3.5 h-3.5" /> Remarcar
+                    </button>
+                    <button onClick={() => setCancelling(a)} className="flex items-center gap-1.5 text-sm text-red-400 hover:text-red-300 bg-red-500/10 px-3 py-1.5 rounded-lg transition-colors">
                       <X className="w-3.5 h-3.5" /> Cancelar
                     </button>
                   </div>
@@ -399,6 +544,26 @@ export default function EletronicaAdminAgenda() {
           onClose={() => setBlocking(false)}
           onDone={() => {
             setBlocking(false)
+            load()
+          }}
+        />
+      )}
+      {cancelling && (
+        <CancelDialog
+          appt={cancelling}
+          onClose={() => setCancelling(null)}
+          onDone={() => {
+            setCancelling(null)
+            load()
+          }}
+        />
+      )}
+      {rescheduling && (
+        <RescheduleDialog
+          appt={rescheduling}
+          onClose={() => setRescheduling(null)}
+          onDone={() => {
+            setRescheduling(null)
             load()
           }}
         />

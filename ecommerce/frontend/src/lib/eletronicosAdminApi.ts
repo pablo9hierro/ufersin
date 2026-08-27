@@ -170,10 +170,28 @@ export const eletronicosAdmin = {
       notes?: string
       service_request_id?: string
     }) => req<AppointmentDto>(`${BASE}/appointments`, { method: 'POST', body: JSON.stringify(input) }),
-    cancel: (id: string, justification?: string) =>
+    cancel: (
+      id: string,
+      input: { justification: string; use_default_message?: boolean; custom_message?: string },
+    ) =>
       req<AppointmentDto>(`${BASE}/appointments/${id}/cancel`, {
         method: 'POST',
-        body: JSON.stringify({ justification }),
+        body: JSON.stringify(input),
+      }),
+    reschedule: (
+      id: string,
+      input: {
+        data: string
+        horario: string
+        justification: string
+        use_default_message?: boolean
+        custom_message?: string
+        duration_minutes?: number
+      },
+    ) =>
+      req<AppointmentDto>(`${BASE}/appointments/${id}/reschedule`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
       }),
     complete: (id: string) => req<AppointmentDto>(`${BASE}/appointments/${id}/complete`, { method: 'POST' }),
   },

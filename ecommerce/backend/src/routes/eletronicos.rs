@@ -1444,9 +1444,44 @@ pub async fn create_appointment(
     Ok(Json(row))
 }
 
+const MIN_JUSTIFICATION_LENGTH: usize = 20;
+
+fn fmt_store_dt(dt: DateTime<chrono::FixedOffset>) -> String {
+    dt.format("%d/%m às %H:%M").to_string()
+}
+
+fn build_cancellation_message(customer_name: &str, service_label: &str, starts_at: DateTime<chrono::FixedOffset>, justification: &str) -> String {
+    format!(
+        "Olá, {customer_name}! Informamos que seu atendimento foi cancelado.\n\n\
+         Serviço: {service_label}\nHorário original: {}\n\nMotivo: {}\n\n\
+         Pedimos desculpas pelo transtorno. Se quiser, respondemos aqui mesmo pra encontrar um novo horário.",
+        fmt_store_dt(starts_at),
+        justification.trim()
+    )
+}
+
+fn build_reschedule_message(
+    customer_name: &str,
+    service_label: &str,
+    previous_starts_at: DateTime<chrono::FixedOffset>,
+    new_starts_at: DateTime<chrono::FixedOffset>,
+    justification: &str,
+) -> String {
+    format!(
+        "Olá, {customer_name}! Precisamos alterar o horário do seu atendimento.\n\n\
+         Serviço: {service_label}\nHorário anterior: {}\nNovo horário: {}\n\nMotivo: {}\n\n\
+         Pedimos desculpas pelo transtorno. Se o novo horário não funcionar pra você, é só responder aqui que a gente encontra outro.",
+        fmt_store_dt(previous_starts_at),
+        fmt_store_dt(new_starts_at),
+        justification.trim()
+    )
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CancelAppointmentInput {
     pub justification: Option<String>,
+    pub use_default_message: Option<bool>,
+    pub custom_message: Option<String>,
 }
 
 pub async fn cancel_appointment(
@@ -1455,7 +1490,31 @@ pub async fn cancel_appointment(
     Path(id): Path<String>,
     Json(input): Json<CancelAppointmentInput>,
 ) -> Result<Json<AppointmentDto>, AppError> {
+    let justification = input.justification.clone().unwrap_or_default();
+    if justification.trim().len() < MIN_JUSTIFICATION_LENGTH {
+        return Err(AppError::BadRequest(format!(
+            "justificativa precisa ter pelo menos {MIN_JUSTIFICATION_LENGTH} caracteres"
+        )));
+    }
+    let use_default = input.use_default_message.unwrap_or(true);
+    let custom = input.custom_message.clone().unwrap_or_default();
+    if !use_default && custom.trim().len() < 10 {
+        return Err(AppError::BadRequest("mensagem personalizada precisa ter pelo menos 10 caracteres".to_string()));
+    }
+
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let before: Option<(String, String, DateTime<chrono::FixedOffset>)> = sqlx::query_as(
+        "SELECT customer_name, service_label, starts_at FROM eletronicos.appointments \
+         WHERE tenant_id = $1 AND id = $2::uuid AND status = 'agendado'",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((customer_name, service_label, starts_at)) = before else {
+        return Err(AppError::NotFound("agendamento não encontrado ou já não está mais ativo".to_string()));
+    };
+
     let updated = sqlx::query(
         "UPDATE eletronicos.appointments SET status = 'cancelado', updated_at = now() \
          WHERE tenant_id = $1 AND id = $2::uuid AND status = 'agendado'",
@@ -1477,7 +1536,7 @@ pub async fn cancel_appointment(
     .bind(Uuid::new_v4().to_string())
     .bind(&claims.tenant_id)
     .bind(&id)
-    .bind(input.justification.as_deref())
+    .bind(justification.trim())
     .execute(&mut *tx)
     .await?;
     let row: AppointmentDto = sqlx::query_as(&format!(
@@ -1487,6 +1546,219 @@ pub async fn cancel_appointment(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
+
+    // Mensagem personalizada substitui o template inteiro, literal --
+    // a justificativa (ou a mensagem customizada) nunca passa por
+    // reescrita, mesma garantia do vrtech original.
+    let text = if !use_default {
+        custom.trim().to_string()
+    } else {
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("nome".to_string(), customer_name.clone());
+        vars.insert("servico".to_string(), service_label.clone());
+        vars.insert("motivo".to_string(), justification.trim().to_string());
+        render_whatsapp_template(&mut *tx, &claims.tenant_id, "appointment_cancelled", &vars)
+            .await?
+            .unwrap_or_else(|| build_cancellation_message(&customer_name, &service_label, starts_at, &justification))
+    };
+    let tenant = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
+    let digits: String = row.customer_phone.chars().filter(char::is_ascii_digit).collect();
+    crate::whatsapp::notify(&state, &tenant.whatsapp_instance, &digits, &text);
+
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RescheduleAppointmentInput {
+    pub data: String,
+    pub horario: String,
+    pub justification: String,
+    pub use_default_message: Option<bool>,
+    pub custom_message: Option<String>,
+    pub duration_minutes: Option<i32>,
+}
+
+pub async fn reschedule_appointment(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<RescheduleAppointmentInput>,
+) -> Result<Json<AppointmentDto>, AppError> {
+    if input.justification.trim().len() < MIN_JUSTIFICATION_LENGTH {
+        return Err(AppError::BadRequest(format!(
+            "justificativa precisa ter pelo menos {MIN_JUSTIFICATION_LENGTH} caracteres"
+        )));
+    }
+    let use_default = input.use_default_message.unwrap_or(true);
+    let custom = input.custom_message.clone().unwrap_or_default();
+    if !use_default && custom.trim().len() < 10 {
+        return Err(AppError::BadRequest("mensagem personalizada precisa ter pelo menos 10 caracteres".to_string()));
+    }
+    let naive_date = parse_date_time(&input.data, &input.horario)?;
+    let naive_time = NaiveTime::parse_from_str(&input.horario, "%H:%M").unwrap();
+    let naive_dt = naive_date.and_time(naive_time);
+
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+
+    let before: Option<(String, String, String, DateTime<chrono::FixedOffset>, DateTime<chrono::FixedOffset>)> = sqlx::query_as(
+        "SELECT customer_name, service_label, customer_phone, starts_at, ends_at FROM eletronicos.appointments \
+         WHERE tenant_id = $1 AND id = $2::uuid AND status = 'agendado'",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((customer_name, service_label, customer_phone, prev_starts_at, prev_ends_at)) = before else {
+        return Err(AppError::NotFound("agendamento não encontrado ou já não está mais ativo".to_string()));
+    };
+
+    let settings: AgendaSettingsDto = sqlx::query_as(
+        "SELECT appointment_ai_enabled, default_duration_minutes, lead_time_minutes, \
+         max_advance_days, buffer_minutes FROM eletronicos.agenda_settings WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let duration = input
+        .duration_minutes
+        .unwrap_or_else(|| (prev_ends_at - prev_starts_at).num_minutes() as i32);
+    if duration <= 0 {
+        return Err(AppError::BadRequest("duração precisa ser maior que zero".to_string()));
+    }
+
+    let brasilia = chrono::FixedOffset::west_opt(3 * 3600).expect("offset válido");
+    let starts_at = brasilia
+        .from_local_datetime(&naive_dt)
+        .single()
+        .ok_or_else(|| AppError::BadRequest("data/hora inválida".to_string()))?;
+    let ends_at = starts_at + ChronoDuration::minutes(duration as i64);
+    let now = Utc::now().with_timezone(&brasilia);
+
+    if starts_at < now + ChronoDuration::minutes(settings.lead_time_minutes as i64) {
+        return Err(AppError::BadRequest(format!(
+            "horário muito próximo -- é preciso agendar com pelo menos {} minutos de antecedência",
+            settings.lead_time_minutes
+        )));
+    }
+    if starts_at > now + ChronoDuration::days(settings.max_advance_days as i64) {
+        return Err(AppError::BadRequest(format!(
+            "a loja só agenda com até {} dia(s) de antecedência",
+            settings.max_advance_days
+        )));
+    }
+
+    let weekday_num = match starts_at.weekday() {
+        Weekday::Sun => 0,
+        Weekday::Mon => 1,
+        Weekday::Tue => 2,
+        Weekday::Wed => 3,
+        Weekday::Thu => 4,
+        Weekday::Fri => 5,
+        Weekday::Sat => 6,
+    };
+    let hours: Option<(NaiveTime, NaiveTime)> = sqlx::query_as(
+        "SELECT open_time, close_time FROM eletronicos.agenda_business_hours WHERE tenant_id = $1 AND weekday = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(weekday_num)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((open_time, close_time)) = hours else {
+        return Err(AppError::BadRequest("a loja não abre nesse dia da semana".to_string()));
+    };
+    let start_time = starts_at.time();
+    let end_time = ends_at.time();
+    if start_time < open_time || end_time > close_time || end_time < start_time {
+        return Err(AppError::BadRequest(format!("fora do horário de funcionamento ({open_time}-{close_time})")));
+    }
+
+    let buffer = ChronoDuration::minutes(settings.buffer_minutes as i64);
+    let window_start = starts_at - buffer;
+    let window_end = ends_at + buffer;
+
+    // Exclui o próprio agendamento do conflito -- ele está se movendo, não
+    // colidindo consigo mesmo no horário antigo.
+    let conflict: Option<(String,)> = sqlx::query_as(
+        "SELECT id::text FROM eletronicos.appointments \
+         WHERE tenant_id = $1 AND status = 'agendado' AND id <> $4::uuid \
+           AND starts_at < $3 AND ends_at > $2 LIMIT 1",
+    )
+    .bind(&claims.tenant_id)
+    .bind(window_start)
+    .bind(window_end)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if conflict.is_some() {
+        return Err(AppError::BadRequest(
+            "esse horário já está ocupado por outro agendamento (respeitando o intervalo mínimo entre atendimentos)".to_string(),
+        ));
+    }
+    let blocked: Option<(String,)> = sqlx::query_as(
+        "SELECT id::text FROM eletronicos.agenda_blocks WHERE tenant_id = $1 AND starts_at < $3 AND ends_at > $2 LIMIT 1",
+    )
+    .bind(&claims.tenant_id)
+    .bind(window_start)
+    .bind(window_end)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if blocked.is_some() {
+        return Err(AppError::BadRequest("esse horário está bloqueado pela loja".to_string()));
+    }
+
+    sqlx::query(
+        "UPDATE eletronicos.appointments SET starts_at = $3, ends_at = $4, status = 'remarcado', updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2::uuid",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(starts_at)
+    .bind(ends_at)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO eletronicos.appointment_events \
+         (id, tenant_id, appointment_id, action, actor_type, justification, previous_starts_at, previous_ends_at, new_starts_at, new_ends_at) \
+         VALUES ($1::uuid, $2, $3::uuid, 'rescheduled', 'admin', $4, $5, $6, $7, $8)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(input.justification.trim())
+    .bind(prev_starts_at)
+    .bind(prev_ends_at)
+    .bind(starts_at)
+    .bind(ends_at)
+    .execute(&mut *tx)
+    .await?;
+
+    let row: AppointmentDto = sqlx::query_as(&format!(
+        "SELECT {APPT_COLUMNS} FROM eletronicos.appointments WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let text = if !use_default {
+        custom.trim().to_string()
+    } else {
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("nome".to_string(), customer_name.clone());
+        vars.insert("servico".to_string(), service_label.clone());
+        vars.insert("data_hora".to_string(), fmt_store_dt(starts_at));
+        vars.insert("horario_anterior".to_string(), fmt_store_dt(prev_starts_at));
+        vars.insert("motivo".to_string(), input.justification.trim().to_string());
+        render_whatsapp_template(&mut *tx, &claims.tenant_id, "appointment_rescheduled", &vars)
+            .await?
+            .unwrap_or_else(|| build_reschedule_message(&customer_name, &service_label, prev_starts_at, starts_at, &input.justification))
+    };
+    let tenant = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
+    let digits: String = customer_phone.chars().filter(char::is_ascii_digit).collect();
+    crate::whatsapp::notify(&state, &tenant.whatsapp_instance, &digits, &text);
+
     tx.commit().await?;
     Ok(Json(row))
 }

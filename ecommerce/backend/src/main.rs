@@ -623,6 +623,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/eletronicos/appointments/{id}/cancel",
             post(routes::eletronicos::cancel_appointment),
         )
+        .route(
+            "/api/admin/eletronicos/appointments/{id}/reschedule",
+            patch(routes::eletronicos::reschedule_appointment),
+        )
         // Fase 4.4: estoque + PDV (Pix reaproveita /api/admin/pdv/pix, generico)
         .route(
             "/api/admin/eletronicos/stock-items",
