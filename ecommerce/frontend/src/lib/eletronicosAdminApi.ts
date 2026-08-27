@@ -7,6 +7,21 @@ import type {
   AppointmentDto,
 } from './eletronicosApi'
 
+export type EletronicaAdminCatalogItem = {
+  id: string
+  category_id: string
+  model_name: string | null
+  repair_type: string
+  price: number
+  cost_price: number
+  duration_minutes: number
+  description: string | null
+  image_url: string | null
+  tags: string[]
+  active: boolean
+  sort_order: number
+}
+
 // Admin autenticado (JWT do lojista, mesmo login de /admin) pro schema
 // eletronicos.* -- espelha eletronicos.rs no backend Rust.
 
@@ -179,6 +194,29 @@ export const eletronicosAdmin = {
         }),
       delete: (id: string) => req<void>(`${BASE}/agenda/blocks/${id}`, { method: 'DELETE' }),
     },
+  },
+  catalogCategories: {
+    list: () =>
+      req<{ id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }[]>(`${BASE}/catalog-categories`),
+    create: (input: { name: string; device_type: string; image_url?: string; sort_order?: number }) =>
+      req<{ id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }>(`${BASE}/catalog-categories`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    update: (id: string, input: { name: string; device_type: string; image_url?: string; sort_order?: number }) =>
+      req<{ id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }>(`${BASE}/catalog-categories/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      }),
+    delete: (id: string) => req<void>(`${BASE}/catalog-categories/${id}`, { method: 'DELETE' }),
+  },
+  catalogItems: {
+    list: () => req<EletronicaAdminCatalogItem[]>(`${BASE}/catalog-items`),
+    create: (input: Omit<EletronicaAdminCatalogItem, 'id'>) =>
+      req<EletronicaAdminCatalogItem>(`${BASE}/catalog-items`, { method: 'POST', body: JSON.stringify(input) }),
+    update: (id: string, input: Omit<EletronicaAdminCatalogItem, 'id'>) =>
+      req<EletronicaAdminCatalogItem>(`${BASE}/catalog-items/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+    delete: (id: string) => req<void>(`${BASE}/catalog-items/${id}`, { method: 'DELETE' }),
   },
   stockItems: {
     list: () =>

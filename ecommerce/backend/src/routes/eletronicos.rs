@@ -2645,3 +2645,305 @@ pub async fn get_public_catalog(
     tx.commit().await?;
     Ok(Json(CatalogResponse { categories, items }))
 }
+
+// ============================================================================
+// Admin do catálogo de serviços (marca/aparelho + serviços por modelo) --
+// port simplificado de ProdutosClient.tsx (Serviços + Aparelho·Marca·
+// Modelo do vrtech). Gap disclosed: sem o vínculo multi-select
+// aparelho/marca/modelo por serviço, sem peças-de-estoque como
+// dependência de custo nem custos extras avulsos (service_catalog_
+// item_parts/extra_costs não usados aqui) -- cada serviço pertence a
+// UMA categoria (marca) só, custo é digitado direto.
+// ============================================================================
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct AdminCatalogCategoryDto {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub sort_order: i32,
+    pub device_type: String,
+    pub image_url: Option<String>,
+}
+
+const ADMIN_CAT_COLUMNS: &str = "id::text, name, slug, sort_order, device_type, image_url";
+
+pub async fn list_admin_categories(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<AdminCatalogCategoryDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<AdminCatalogCategoryDto> = sqlx::query_as(&format!(
+        "SELECT {ADMIN_CAT_COLUMNS} FROM eletronicos.service_catalog_categories WHERE tenant_id = $1 ORDER BY sort_order"
+    ))
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+fn slugify(s: &str) -> String {
+    s.trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SaveCategoryInput {
+    pub name: String,
+    pub device_type: String,
+    pub image_url: Option<String>,
+    pub sort_order: Option<i32>,
+}
+
+pub async fn create_admin_category(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<SaveCategoryInput>,
+) -> Result<Json<AdminCatalogCategoryDto>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("nome é obrigatório".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    let slug = slugify(&input.name);
+    sqlx::query(
+        "INSERT INTO eletronicos.service_catalog_categories (id, tenant_id, name, slug, device_type, image_url, sort_order) \
+         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(input.name.trim())
+    .bind(&slug)
+    .bind(input.device_type.trim())
+    .bind(input.image_url.as_deref())
+    .bind(input.sort_order.unwrap_or(0))
+    .execute(&mut *tx)
+    .await?;
+    let row: AdminCatalogCategoryDto = sqlx::query_as(&format!(
+        "SELECT {ADMIN_CAT_COLUMNS} FROM eletronicos.service_catalog_categories WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+pub async fn update_admin_category(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<SaveCategoryInput>,
+) -> Result<Json<AdminCatalogCategoryDto>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("nome é obrigatório".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query(
+        "UPDATE eletronicos.service_catalog_categories \
+         SET name = $3, device_type = $4, image_url = $5, sort_order = COALESCE($6, sort_order) \
+         WHERE tenant_id = $1 AND id = $2::uuid",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(input.name.trim())
+    .bind(input.device_type.trim())
+    .bind(input.image_url.as_deref())
+    .bind(input.sort_order)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("categoria não encontrada".to_string()));
+    }
+    let row: AdminCatalogCategoryDto = sqlx::query_as(&format!(
+        "SELECT {ADMIN_CAT_COLUMNS} FROM eletronicos.service_catalog_categories WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+pub async fn delete_admin_category(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let deleted = sqlx::query("DELETE FROM eletronicos.service_catalog_categories WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(AppError::NotFound("categoria não encontrada".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct AdminCatalogItemDto {
+    pub id: String,
+    pub category_id: String,
+    pub model_name: Option<String>,
+    pub repair_type: String,
+    pub price: f64,
+    pub cost_price: f64,
+    pub duration_minutes: i32,
+    pub description: Option<String>,
+    pub image_url: Option<String>,
+    pub tags: Vec<String>,
+    pub active: bool,
+    pub sort_order: i32,
+}
+
+const ADMIN_ITEM_COLUMNS: &str = "id::text, category_id::text, model_name, repair_type, price::float8, \
+    cost_price::float8, duration_minutes, description, image_url, COALESCE(tags, '{}') AS tags, active, sort_order";
+
+pub async fn list_admin_catalog_items(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<AdminCatalogItemDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<AdminCatalogItemDto> = sqlx::query_as(&format!(
+        "SELECT {ADMIN_ITEM_COLUMNS} FROM eletronicos.service_catalog_items WHERE tenant_id = $1 ORDER BY sort_order"
+    ))
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SaveCatalogItemInput {
+    pub category_id: String,
+    pub model_name: Option<String>,
+    pub repair_type: String,
+    pub price: f64,
+    pub cost_price: Option<f64>,
+    pub duration_minutes: Option<i32>,
+    pub description: Option<String>,
+    pub image_url: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub active: Option<bool>,
+    pub sort_order: Option<i32>,
+}
+
+pub async fn create_admin_catalog_item(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<SaveCatalogItemInput>,
+) -> Result<Json<AdminCatalogItemDto>, AppError> {
+    if input.repair_type.trim().is_empty() {
+        return Err(AppError::BadRequest("tipo de reparo é obrigatório".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO eletronicos.service_catalog_items \
+           (id, tenant_id, category_id, model_name, repair_type, price, cost_price, duration_minutes, \
+            description, image_url, tags, active, sort_order) \
+         VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(&input.category_id)
+    .bind(input.model_name.as_deref())
+    .bind(input.repair_type.trim())
+    .bind(input.price)
+    .bind(input.cost_price.unwrap_or(0.0))
+    .bind(input.duration_minutes.unwrap_or(60))
+    .bind(input.description.as_deref())
+    .bind(input.image_url.as_deref())
+    .bind(input.tags.unwrap_or_default())
+    .bind(input.active.unwrap_or(true))
+    .bind(input.sort_order.unwrap_or(0))
+    .execute(&mut *tx)
+    .await?;
+    let row: AdminCatalogItemDto = sqlx::query_as(&format!(
+        "SELECT {ADMIN_ITEM_COLUMNS} FROM eletronicos.service_catalog_items WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+pub async fn update_admin_catalog_item(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<SaveCatalogItemInput>,
+) -> Result<Json<AdminCatalogItemDto>, AppError> {
+    if input.repair_type.trim().is_empty() {
+        return Err(AppError::BadRequest("tipo de reparo é obrigatório".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query(
+        "UPDATE eletronicos.service_catalog_items \
+         SET category_id = $3::uuid, model_name = $4, repair_type = $5, price = $6, cost_price = $7, \
+             duration_minutes = $8, description = $9, image_url = $10, tags = $11, \
+             active = COALESCE($12, active), sort_order = COALESCE($13, sort_order), updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2::uuid",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(&input.category_id)
+    .bind(input.model_name.as_deref())
+    .bind(input.repair_type.trim())
+    .bind(input.price)
+    .bind(input.cost_price.unwrap_or(0.0))
+    .bind(input.duration_minutes.unwrap_or(60))
+    .bind(input.description.as_deref())
+    .bind(input.image_url.as_deref())
+    .bind(input.tags.unwrap_or_default())
+    .bind(input.active)
+    .bind(input.sort_order)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("serviço não encontrado".to_string()));
+    }
+    let row: AdminCatalogItemDto = sqlx::query_as(&format!(
+        "SELECT {ADMIN_ITEM_COLUMNS} FROM eletronicos.service_catalog_items WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+pub async fn delete_admin_catalog_item(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let deleted = sqlx::query("DELETE FROM eletronicos.service_catalog_items WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(AppError::NotFound("serviço não encontrado".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}

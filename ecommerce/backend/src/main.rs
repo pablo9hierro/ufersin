@@ -375,6 +375,22 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::delete(routes::eletronicos::delete_agenda_block),
         )
         .route(
+            "/api/admin/eletronicos/catalog-categories",
+            get(routes::eletronicos::list_admin_categories).post(routes::eletronicos::create_admin_category),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-categories/{id}",
+            put(routes::eletronicos::update_admin_category).delete(routes::eletronicos::delete_admin_category),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-items",
+            get(routes::eletronicos::list_admin_catalog_items).post(routes::eletronicos::create_admin_catalog_item),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-items/{id}",
+            put(routes::eletronicos::update_admin_catalog_item).delete(routes::eletronicos::delete_admin_catalog_item),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )
