@@ -235,6 +235,41 @@ export const eletronicosAdmin = {
     update: (id: string, input: Omit<EletronicaAdminCatalogItem, 'id'>) =>
       req<EletronicaAdminCatalogItem>(`${BASE}/catalog-items/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
     delete: (id: string) => req<void>(`${BASE}/catalog-items/${id}`, { method: 'DELETE' }),
+    saveLinks: (
+      id: string,
+      input: {
+        device_ids: string[]
+        brand_ids: string[]
+        model_ids: string[]
+        parts: { stock_item_id: string; quantity: number }[]
+        extra_costs: { name: string; value: number }[]
+      },
+    ) => req<void>(`${BASE}/catalog-items/${id}/links`, { method: 'PUT', body: JSON.stringify(input) }),
+    devices: () => req<{ service_catalog_item_id: string; device_type_id: string }[]>(`${BASE}/catalog-items-links`),
+    brands: () => req<{ service_catalog_item_id: string; brand_id: string }[]>(`${BASE}/catalog-items-brands`),
+    models: () => req<{ service_catalog_item_id: string; model_id: string }[]>(`${BASE}/catalog-items-models`),
+    parts: () =>
+      req<{ id: string; service_catalog_item_id: string; stock_item_id: string; quantity: number; name: string; unit: string; price: number }[]>(
+        `${BASE}/catalog-items-parts`,
+      ),
+    extraCosts: () =>
+      req<{ id: string; service_catalog_item_id: string; name: string; value: number }[]>(`${BASE}/catalog-items-extra-costs`),
+  },
+  deviceTypes: {
+    list: () => req<{ id: string; name: string; slug: string; icon_key: string; sort_order: number }[]>(`${BASE}/device-types`),
+    create: (name: string) =>
+      req<{ id: string; name: string; slug: string; icon_key: string; sort_order: number }>(`${BASE}/device-types`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      }),
+  },
+  catalogModels: {
+    list: () => req<{ id: string; brand_id: string; name: string; sort_order: number }[]>(`${BASE}/catalog-models`),
+    create: (brand_id: string, name: string) =>
+      req<{ id: string; brand_id: string; name: string; sort_order: number }>(`${BASE}/catalog-models`, {
+        method: 'POST',
+        body: JSON.stringify({ brand_id, name }),
+      }),
   },
   stockItems: {
     list: () =>

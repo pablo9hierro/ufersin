@@ -3342,3 +3342,414 @@ pub async fn delete_admin_catalog_item(
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+// ============================================================================
+// Aparelho (device_types) / Modelo (catalog_models) e vínculos multi-select
+// de serviço -- port de ServicosTab.tsx do vrtech: um serviço pode se
+// aplicar a múltiplos aparelhos/marcas/modelos, ter peças de estoque como
+// dependência de custo (service_catalog_item_parts) e custos avulsos
+// (service_catalog_item_extra_costs). Tabelas já existiam no schema
+// mirror, só faltavam os endpoints admin.
+// ============================================================================
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct DeviceTypeDto {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub icon_key: String,
+    pub sort_order: i32,
+}
+
+const DEVICE_TYPE_COLUMNS: &str = "id::text, name, slug, icon_key, sort_order";
+
+pub async fn list_device_types(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<DeviceTypeDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<DeviceTypeDto> = sqlx::query_as(&format!(
+        "SELECT {DEVICE_TYPE_COLUMNS} FROM eletronicos.device_types WHERE tenant_id = $1 ORDER BY sort_order"
+    ))
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateDeviceTypeInput {
+    pub name: String,
+}
+
+pub async fn create_device_type(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<CreateDeviceTypeInput>,
+) -> Result<Json<DeviceTypeDto>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("nome é obrigatório".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    let count: (i64,) = sqlx::query_as("SELECT count(*) FROM eletronicos.device_types WHERE tenant_id = $1")
+        .bind(&claims.tenant_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO eletronicos.device_types (id, tenant_id, name, slug, icon_key, sort_order) \
+         VALUES ($1::uuid, $2, $3, $4, 'generic', $5)",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(input.name.trim())
+    .bind(slugify(&input.name))
+    .bind(count.0 as i32)
+    .execute(&mut *tx)
+    .await?;
+    let row: DeviceTypeDto = sqlx::query_as(&format!(
+        "SELECT {DEVICE_TYPE_COLUMNS} FROM eletronicos.device_types WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct CatalogModelDto {
+    pub id: String,
+    pub brand_id: String,
+    pub name: String,
+    pub sort_order: i32,
+}
+
+const CATALOG_MODEL_COLUMNS: &str = "id::text, brand_id::text, name, sort_order";
+
+pub async fn list_catalog_models(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<CatalogModelDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<CatalogModelDto> = sqlx::query_as(&format!(
+        "SELECT {CATALOG_MODEL_COLUMNS} FROM eletronicos.catalog_models WHERE tenant_id = $1 ORDER BY sort_order"
+    ))
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateCatalogModelInput {
+    pub brand_id: String,
+    pub name: String,
+}
+
+pub async fn create_catalog_model(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<CreateCatalogModelInput>,
+) -> Result<Json<CatalogModelDto>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("nome é obrigatório".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    let count: (i64,) = sqlx::query_as("SELECT count(*) FROM eletronicos.catalog_models WHERE tenant_id = $1")
+        .bind(&claims.tenant_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO eletronicos.catalog_models (id, tenant_id, brand_id, name, sort_order) \
+         VALUES ($1::uuid, $2, $3::uuid, $4, $5)",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(&input.brand_id)
+    .bind(input.name.trim())
+    .bind(count.0 as i32)
+    .execute(&mut *tx)
+    .await?;
+    let row: CatalogModelDto = sqlx::query_as(&format!(
+        "SELECT {CATALOG_MODEL_COLUMNS} FROM eletronicos.catalog_models WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ItemDeviceLinkDto {
+    pub service_catalog_item_id: String,
+    pub device_type_id: String,
+}
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ItemBrandLinkDto {
+    pub service_catalog_item_id: String,
+    pub brand_id: String,
+}
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ItemModelLinkDto {
+    pub service_catalog_item_id: String,
+    pub model_id: String,
+}
+
+pub async fn list_item_devices(State(state): State<AppState>, AdminUser(claims): AdminUser) -> Result<Json<Vec<ItemDeviceLinkDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ItemDeviceLinkDto> = sqlx::query_as(
+        "SELECT service_catalog_item_id::text, device_type_id::text FROM eletronicos.service_item_devices WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+pub async fn list_item_brands(State(state): State<AppState>, AdminUser(claims): AdminUser) -> Result<Json<Vec<ItemBrandLinkDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ItemBrandLinkDto> = sqlx::query_as(
+        "SELECT service_catalog_item_id::text, brand_id::text FROM eletronicos.service_item_brands WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+pub async fn list_item_models(State(state): State<AppState>, AdminUser(claims): AdminUser) -> Result<Json<Vec<ItemModelLinkDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ItemModelLinkDto> = sqlx::query_as(
+        "SELECT service_catalog_item_id::text, model_id::text FROM eletronicos.service_item_models WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ItemPartDto {
+    pub id: String,
+    pub service_catalog_item_id: String,
+    pub stock_item_id: String,
+    pub quantity: f64,
+    pub name: String,
+    pub unit: String,
+    pub price: f64,
+}
+
+pub async fn list_item_parts(State(state): State<AppState>, AdminUser(claims): AdminUser) -> Result<Json<Vec<ItemPartDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ItemPartDto> = sqlx::query_as(
+        "SELECT p.id::text, p.service_catalog_item_id::text, p.stock_item_id::text, p.quantity::float8, \
+         s.name, s.unit, s.price::float8 \
+         FROM eletronicos.service_catalog_item_parts p \
+         JOIN eletronicos.stock_items s ON s.id = p.stock_item_id AND s.tenant_id = p.tenant_id \
+         WHERE p.tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ItemExtraCostDto {
+    pub id: String,
+    pub service_catalog_item_id: String,
+    pub name: String,
+    pub value: f64,
+}
+
+pub async fn list_item_extra_costs(State(state): State<AppState>, AdminUser(claims): AdminUser) -> Result<Json<Vec<ItemExtraCostDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ItemExtraCostDto> = sqlx::query_as(
+        "SELECT id::text, service_catalog_item_id::text, name, value::float8 \
+         FROM eletronicos.service_catalog_item_extra_costs WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PartInput {
+    pub stock_item_id: String,
+    pub quantity: f64,
+}
+#[derive(Debug, Deserialize)]
+pub struct ExtraCostInput {
+    pub name: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SaveServiceItemLinksInput {
+    pub device_ids: Vec<String>,
+    pub brand_ids: Vec<String>,
+    pub model_ids: Vec<String>,
+    pub parts: Vec<PartInput>,
+    pub extra_costs: Vec<ExtraCostInput>,
+}
+
+/// Substitui os vínculos multi-select (aparelho/marca/modelo), peças e
+/// custos avulsos de um serviço já existente -- espelha o `saveEditItem`
+/// real (delete-all + insert-all por não ter diff incremental na UI).
+/// `category_id`/`model_name` legados continuam sincronizados a partir da
+/// primeira marca/modelo selecionado (compatibilidade com PDV/IA/tags).
+pub async fn save_service_item_links(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<SaveServiceItemLinksInput>,
+) -> Result<StatusCode, AppError> {
+    if input.brand_ids.is_empty() {
+        return Err(AppError::BadRequest("selecione ao menos uma marca".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+
+    let legacy_model_name: Option<String> = if input.model_ids.len() == 1 {
+        sqlx::query_scalar("SELECT name FROM eletronicos.catalog_models WHERE tenant_id = $1 AND id = $2::uuid")
+            .bind(&claims.tenant_id)
+            .bind(&input.model_ids[0])
+            .fetch_optional(&mut *tx)
+            .await?
+    } else {
+        None
+    };
+    let cost_price: f64 = input.parts.iter().map(|_| 0.0).sum::<f64>();
+    let _ = cost_price; // custo real calculado abaixo, após buscar preço das peças
+
+    let updated = sqlx::query(
+        "UPDATE eletronicos.service_catalog_items SET category_id = $3::uuid, model_name = $4, updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2::uuid",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(&input.brand_ids[0])
+    .bind(&legacy_model_name)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("serviço não encontrado".to_string()));
+    }
+
+    sqlx::query("DELETE FROM eletronicos.service_item_devices WHERE tenant_id = $1 AND service_catalog_item_id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    for device_id in &input.device_ids {
+        sqlx::query(
+            "INSERT INTO eletronicos.service_item_devices (tenant_id, service_catalog_item_id, device_type_id) VALUES ($1, $2::uuid, $3::uuid)",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(device_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query("DELETE FROM eletronicos.service_item_brands WHERE tenant_id = $1 AND service_catalog_item_id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    for brand_id in &input.brand_ids {
+        sqlx::query(
+            "INSERT INTO eletronicos.service_item_brands (tenant_id, service_catalog_item_id, brand_id) VALUES ($1, $2::uuid, $3::uuid)",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(brand_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query("DELETE FROM eletronicos.service_item_models WHERE tenant_id = $1 AND service_catalog_item_id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    for model_id in &input.model_ids {
+        sqlx::query(
+            "INSERT INTO eletronicos.service_item_models (tenant_id, service_catalog_item_id, model_id) VALUES ($1, $2::uuid, $3::uuid)",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(model_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query("DELETE FROM eletronicos.service_catalog_item_parts WHERE tenant_id = $1 AND service_catalog_item_id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    let mut parts_cost = 0.0f64;
+    for part in &input.parts {
+        let price: Option<f64> = sqlx::query_scalar("SELECT price::float8 FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid")
+            .bind(&claims.tenant_id)
+            .bind(&part.stock_item_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        parts_cost += price.unwrap_or(0.0) * part.quantity;
+        sqlx::query(
+            "INSERT INTO eletronicos.service_catalog_item_parts (id, tenant_id, service_catalog_item_id, stock_item_id, quantity) \
+             VALUES ($1::uuid, $2, $3::uuid, $4::uuid, $5)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(&part.stock_item_id)
+        .bind(part.quantity)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query("DELETE FROM eletronicos.service_catalog_item_extra_costs WHERE tenant_id = $1 AND service_catalog_item_id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    let mut extras_cost = 0.0f64;
+    for extra in &input.extra_costs {
+        extras_cost += extra.value;
+        sqlx::query(
+            "INSERT INTO eletronicos.service_catalog_item_extra_costs (id, tenant_id, service_catalog_item_id, name, value) \
+             VALUES ($1::uuid, $2, $3::uuid, $4, $5)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(extra.name.trim())
+        .bind(extra.value)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query("UPDATE eletronicos.service_catalog_items SET cost_price = $3 WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(parts_cost + extras_cost)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}

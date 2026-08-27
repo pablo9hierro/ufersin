@@ -395,6 +395,38 @@ async fn main() -> anyhow::Result<()> {
             put(routes::eletronicos::update_admin_catalog_item).delete(routes::eletronicos::delete_admin_catalog_item),
         )
         .route(
+            "/api/admin/eletronicos/catalog-items/{id}/links",
+            put(routes::eletronicos::save_service_item_links),
+        )
+        .route(
+            "/api/admin/eletronicos/device-types",
+            get(routes::eletronicos::list_device_types).post(routes::eletronicos::create_device_type),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-models",
+            get(routes::eletronicos::list_catalog_models).post(routes::eletronicos::create_catalog_model),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-items-links",
+            get(routes::eletronicos::list_item_devices),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-items-brands",
+            get(routes::eletronicos::list_item_brands),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-items-models",
+            get(routes::eletronicos::list_item_models),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-items-parts",
+            get(routes::eletronicos::list_item_parts),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-items-extra-costs",
+            get(routes::eletronicos::list_item_extra_costs),
+        )
+        .route(
             "/api/orders/{id}/create-pix-payment",
             post(routes::public::create_pix_payment),
         )
