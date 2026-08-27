@@ -39,7 +39,9 @@ function friendlySimulateError(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback
 }
 
-/** Inbox do Assistente IA (beta) — visível só pra loja no allowlist (ver assistantIaBeta.ts). */
+/** Inbox do Assistente IA — nativo pra todo tenant do ramo eletrônica; no
+ * ramo ecommerce ainda é acessório pago, visível só pra loja no allowlist
+ * (ver assistantIaBeta.ts). */
 export default function AdminChat() {
   const tenantConfig = useTenantConfig()
   const tenantSlug = tenantConfig?.slug
@@ -218,7 +220,7 @@ export default function AdminChat() {
         <div className="p-4 border-b border-white/5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <MessageCircle className={`w-4 h-4 ${t.accent}`} />
-            <h1 className="font-bold text-sm">Chat — Assistente IA (beta)</h1>
+            <h1 className="font-bold text-sm">Chat — Assistente IA{tenantConfig?.vertical !== 'eletronicos' ? ' (beta)' : ''}</h1>
           </div>
           <button
             type="button"
