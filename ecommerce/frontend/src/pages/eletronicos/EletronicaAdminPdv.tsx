@@ -92,13 +92,13 @@ export default function EletronicaAdminPdv() {
   if (!sale) {
     return (
       <div>
-        <h1 className="text-xl font-bold mb-5">PDV</h1>
+        <h1 className="text-xl font-bold text-white mb-5">PDV</h1>
         {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
         <button
           type="button"
           disabled={busy}
           onClick={startSale}
-          className="rounded-xl bg-emerald-500 disabled:bg-slate-800 text-slate-950 font-semibold px-5 py-3 flex items-center gap-2"
+          className="rounded-xl bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white font-semibold px-5 py-3 flex items-center gap-2 transition-colors"
         >
           {busy && <Loader2 className="w-4 h-4 animate-spin" />}
           Abrir nova venda
@@ -112,22 +112,22 @@ export default function EletronicaAdminPdv() {
   return (
     <div className="max-w-md">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold">Venda balcão</h1>
-        {isClosed && <span className="text-emerald-400 text-sm font-semibold">Concluída ✓</span>}
+        <h1 className="text-xl font-bold text-white">Venda balcão</h1>
+        {isClosed && <span className="text-green-400 text-sm font-semibold">Concluída ✓</span>}
       </div>
       {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 mb-4">
+      <div className="rounded-2xl border border-white/10 bg-[#161618] p-4 mb-4">
         <div className="space-y-2 mb-3">
           {sale.items.map((it) => (
-            <div key={it.id} className="flex justify-between text-sm">
+            <div key={it.id} className="flex justify-between text-sm text-[#d4d4d8]">
               <span>{it.label}</span>
-              <span>R$ {(it.quantity * it.unit_price).toFixed(2)}</span>
+              <span className="text-white">R$ {(it.quantity * it.unit_price).toFixed(2)}</span>
             </div>
           ))}
-          {sale.items.length === 0 && <p className="text-sm text-slate-500">Nenhum item ainda.</p>}
+          {sale.items.length === 0 && <p className="text-sm text-[#d4d4d8]/40">Nenhum item ainda.</p>}
         </div>
-        <div className="flex justify-between text-sm font-bold border-t border-slate-800 pt-2">
+        <div className="flex justify-between text-sm font-bold text-white border-t border-white/10 pt-2">
           <span>Total</span>
           <span>R$ {sale.sale.total_value.toFixed(2)}</span>
         </div>
@@ -140,19 +140,19 @@ export default function EletronicaAdminPdv() {
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Item / serviço"
-              className="flex-1 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+              className="flex-1 rounded-xl border border-white/10 bg-[#0a0a0b] text-white px-3 py-2 text-sm outline-none focus:border-[#e0211a] transition-colors"
             />
             <input
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="R$"
-              className="w-24 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+              className="w-24 rounded-xl border border-white/10 bg-[#0a0a0b] text-white px-3 py-2 text-sm outline-none focus:border-[#e0211a] transition-colors"
             />
             <button
               type="button"
               disabled={busy}
               onClick={addItem}
-              className="rounded-xl bg-slate-800 text-white px-3 flex items-center justify-center"
+              className="rounded-xl bg-[#e0211a] hover:bg-[#a3140f] text-white px-3 flex items-center justify-center transition-colors"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -164,7 +164,7 @@ export default function EletronicaAdminPdv() {
                 type="button"
                 disabled={busy}
                 onClick={generatePix}
-                className="rounded-xl border border-slate-800 py-2.5 text-sm flex flex-col items-center gap-1 hover:border-emerald-500"
+                className="rounded-xl border border-white/10 text-[#d4d4d8] py-2.5 text-sm flex flex-col items-center gap-1 hover:border-[#e0211a] hover:text-white transition-colors"
               >
                 <QrCode className="w-4 h-4" /> Pix
               </button>
@@ -172,7 +172,7 @@ export default function EletronicaAdminPdv() {
                 type="button"
                 disabled={busy}
                 onClick={() => markManual('cartao')}
-                className="rounded-xl border border-slate-800 py-2.5 text-sm hover:border-emerald-500"
+                className="rounded-xl border border-white/10 text-[#d4d4d8] py-2.5 text-sm hover:border-[#e0211a] hover:text-white transition-colors"
               >
                 Cartão
               </button>
@@ -180,7 +180,7 @@ export default function EletronicaAdminPdv() {
                 type="button"
                 disabled={busy}
                 onClick={() => markManual('dinheiro')}
-                className="rounded-xl border border-slate-800 py-2.5 text-sm hover:border-emerald-500"
+                className="rounded-xl border border-white/10 text-[#d4d4d8] py-2.5 text-sm hover:border-[#e0211a] hover:text-white transition-colors"
               >
                 Dinheiro
               </button>
@@ -188,13 +188,13 @@ export default function EletronicaAdminPdv() {
           )}
 
           {pix && (
-            <div className="mt-4 rounded-2xl border border-emerald-600/40 bg-emerald-500/5 p-4 text-center">
+            <div className="mt-4 rounded-2xl border border-[#e0211a]/40 bg-[#e0211a]/5 p-4 text-center">
               <img
                 src={`data:image/png;base64,${pix.qrBase64}`}
                 alt="QR Pix"
                 className="w-40 h-40 mx-auto rounded-lg bg-white p-2"
               />
-              <p className="text-xs text-slate-400 mt-3 break-all">{pix.qrText}</p>
+              <p className="text-xs text-[#d4d4d8]/60 mt-3 break-all">{pix.qrText}</p>
             </div>
           )}
         </>
@@ -206,7 +206,7 @@ export default function EletronicaAdminPdv() {
           setSale(null)
           setPix(null)
         }}
-        className="mt-5 text-xs text-slate-500 hover:text-white"
+        className="mt-5 text-xs text-[#d4d4d8]/40 hover:text-white transition-colors"
       >
         {isClosed ? 'Nova venda' : 'Cancelar / voltar'}
       </button>
