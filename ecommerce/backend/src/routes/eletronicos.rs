@@ -2226,6 +2226,149 @@ pub async fn stock_entry(
     Ok(Json(row))
 }
 
+/// Edicao completa do item (nome/quantidade/unidade/custo/garantia/
+/// alerta) -- port de EstoqueTab.tsx::handleSaveEdit. Diferente de
+/// stock_entry (so soma), aqui o valor final e definido diretamente.
+pub async fn update_stock_item(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<CreateStockItemInput>,
+) -> Result<Json<StockItemDto>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("nome é obrigatório".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query(
+        "UPDATE eletronicos.stock_items SET name = $3, unit = $4, quantity = $5, price = $6, \
+         warranty_days = $7, units_per_box = $8, low_stock_threshold = $9, updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2::uuid",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(input.name.trim())
+    .bind(&input.unit)
+    .bind(input.quantity)
+    .bind(input.price)
+    .bind(input.warranty_days)
+    .bind(input.units_per_box)
+    .bind(input.low_stock_threshold)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
+    }
+    let row: StockItemDto = sqlx::query_as(&format!(
+        "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+pub async fn delete_stock_item(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let deleted = sqlx::query("DELETE FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Saída manual de estoque (uso/perda fora de uma venda/OS) -- port de
+/// EstoqueTab.tsx::handleRegisterExit. Nunca deixa a quantidade negativa.
+pub async fn stock_exit(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<StockEntryInput>,
+) -> Result<Json<StockItemDto>, AppError> {
+    if input.quantity <= 0.0 {
+        return Err(AppError::BadRequest("quantidade precisa ser maior que zero".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let current: Option<(f64,)> = sqlx::query_as("SELECT quantity::float8 FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let Some((available,)) = current else {
+        return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
+    };
+    if input.quantity > available {
+        return Err(AppError::BadRequest("quantidade maior que o estoque disponível".to_string()));
+    }
+    sqlx::query("UPDATE eletronicos.stock_items SET quantity = quantity - $3, updated_at = now() WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(input.quantity)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO eletronicos.stock_movements (id, tenant_id, item_id, type, quantity, unit) \
+         SELECT $1::uuid, $2, $3::uuid, 'saida', $4, unit FROM eletronicos.stock_items WHERE tenant_id = $2 AND id = $3::uuid",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(input.quantity)
+    .execute(&mut *tx)
+    .await?;
+    let row: StockItemDto = sqlx::query_as(&format!(
+        "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct StockMovementDto {
+    pub id: String,
+    pub item_id: String,
+    pub item_name: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub quantity: f64,
+    pub unit: String,
+    pub moved_at: String,
+}
+
+/// Últimas movimentações (entrada/saída) -- port da lista no fim de
+/// EstoqueTab.tsx real.
+pub async fn list_stock_movements(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<StockMovementDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<StockMovementDto> = sqlx::query_as(
+        "SELECT m.id::text, m.item_id::text, s.name AS item_name, m.type, m.quantity::float8, m.unit, m.moved_at::text \
+         FROM eletronicos.stock_movements m \
+         LEFT JOIN eletronicos.stock_items s ON s.id = m.item_id AND s.tenant_id = m.tenant_id \
+         WHERE m.tenant_id = $1 ORDER BY m.moved_at DESC LIMIT 50",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
 // ============================================================================
 // PDV -- fase 4.4b. A geracao/consulta de Pix reaproveita
 // routes::admin::create_pdv_pix / get_pdv_pix_status (genericas, ja

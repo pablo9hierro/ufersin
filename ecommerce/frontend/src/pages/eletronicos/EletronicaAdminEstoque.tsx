@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Check, DollarSign, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Search, Smartphone, Trash2, Wrench, X } from 'lucide-react'
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Check, DollarSign, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Search, Smartphone, Trash2, Wrench, X } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { EletronicaAdminCatalogItem } from '../../lib/eletronicosAdminApi'
 import { adminService } from '../../services/adminService'
@@ -32,7 +32,16 @@ type TabKey = (typeof TABS)[number]['key']
 const INPUT = 'w-full rounded-xl border border-white/10 bg-[#0a0a0b] px-3 py-2 text-sm text-white placeholder:text-[#d4d4d8]/30 outline-none focus:border-[#e0211a] transition-colors'
 
 type Category = { id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }
-type StockItem = { id: string; name: string; unit: string; quantity: number; price: number | null; low_stock_threshold: number | null }
+type StockItem = {
+  id: string
+  name: string
+  unit: string
+  quantity: number
+  price: number | null
+  low_stock_threshold: number | null
+  warranty_days?: number | null
+  units_per_box?: number | null
+}
 
 const DEVICE_TYPES = ['celular', 'tablet', 'notebook', 'computador']
 
@@ -1335,104 +1344,363 @@ function MarcasTab({ categories, onChanged }: { categories: Category[]; onChange
   )
 }
 
-function EstoqueTab({ items, onChanged, filter }: { items: StockItem[]; onChanged: () => void; filter?: 'alerta' | 'falta' }) {
-  const [name, setName] = useState('')
-  const [unit, setUnit] = useState('unidade')
-  const [quantity, setQuantity] = useState('0')
-  const [price, setPrice] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [entryFor, setEntryFor] = useState<string | null>(null)
-  const [entryQty, setEntryQty] = useState('')
-  const [error, setError] = useState<string | null>(null)
+type StockMovement = { id: string; item_id: string; item_name: string | null; type: string; quantity: number; unit: string; moved_at: string }
 
-  async function handleCreate() {
-    if (!name.trim()) return
+// Port 1:1 de EstoqueTab.tsx real -- cadastro completo (unidade/caixa
+// com unidades por caixa, custo, garantia, alerta), popup de ações
+// (registrar saída/editar/deletar), lista de últimas movimentações.
+function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged: () => void }) {
+  const [movements, setMovements] = useState<StockMovement[]>([])
+
+  const [newName, setNewName] = useState('')
+  const [newQuantity, setNewQuantity] = useState('')
+  const [newUnit, setNewUnit] = useState('unidade')
+  const [newUnitsPerBox, setNewUnitsPerBox] = useState('')
+  const [newPrice, setNewPrice] = useState('')
+  const [newWarrantyDays, setNewWarrantyDays] = useState('')
+  const [newLowStockThreshold, setNewLowStockThreshold] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const [actionsItem, setActionsItem] = useState<StockItem | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const [editItem, setEditItem] = useState<StockItem | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editQuantity, setEditQuantity] = useState('')
+  const [editUnit, setEditUnit] = useState('unidade')
+  const [editUnitsPerBox, setEditUnitsPerBox] = useState('')
+  const [editPrice, setEditPrice] = useState('')
+  const [editWarrantyDays, setEditWarrantyDays] = useState('')
+  const [editLowStockThreshold, setEditLowStockThreshold] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  const [exitItem, setExitItem] = useState<StockItem | null>(null)
+  const [exitQuantity, setExitQuantity] = useState('')
+  const [exitError, setExitError] = useState<string | null>(null)
+  const [savingExit, setSavingExit] = useState(false)
+
+  useEffect(() => {
+    eletronicosAdmin.stockItems.movements().then(setMovements).catch(() => {})
+  }, [])
+
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return items
+    return items.filter((i) => i.name.toLowerCase().includes(q))
+  }, [items, searchQuery])
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreateError(null)
+    const trimmedName = newName.trim()
+    const qty = parseFloat(newQuantity)
+    const priceNum = parseFloat(newPrice)
+    if (!trimmedName) { setCreateError('Informe o nome do item.'); return }
+    if (!newQuantity || isNaN(qty) || qty < 0) { setCreateError('Informe uma quantidade válida.'); return }
+    if (!newPrice || isNaN(priceNum) || priceNum < 0) { setCreateError('Informe o custo do item.'); return }
+    const unitsPerBoxNum = newUnit === 'caixa' ? parseFloat(newUnitsPerBox) : undefined
+    if (newUnit === 'caixa' && (!newUnitsPerBox || isNaN(unitsPerBoxNum!) || unitsPerBoxNum! <= 0)) {
+      setCreateError('Informe quantas unidades tem em cada caixa.')
+      return
+    }
     setCreating(true)
-    setError(null)
     try {
       await eletronicosAdmin.stockItems.create({
-        name: name.trim(),
-        unit,
-        quantity: Number(quantity.replace(',', '.')) || 0,
-        price: price.trim() ? Number(price.replace(',', '.')) : undefined,
+        name: trimmedName,
+        unit: newUnit,
+        quantity: qty,
+        price: priceNum,
+        units_per_box: unitsPerBoxNum,
+        warranty_days: newWarrantyDays.trim() ? parseInt(newWarrantyDays, 10) : undefined,
+        low_stock_threshold: newLowStockThreshold.trim() ? Number(newLowStockThreshold) : undefined,
       })
-      setName('')
-      setQuantity('0')
-      setPrice('')
+      setNewName(''); setNewQuantity(''); setNewUnit('unidade'); setNewUnitsPerBox(''); setNewPrice(''); setNewWarrantyDays(''); setNewLowStockThreshold('')
       onChanged()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'erro ao criar')
+      setCreateError(e instanceof Error ? e.message : 'Não foi possível cadastrar o item.')
     } finally {
       setCreating(false)
     }
   }
 
-  async function handleEntry(id: string) {
-    const qty = Number(entryQty.replace(',', '.'))
-    if (!qty || qty <= 0) return
+  const openActions = (item: StockItem) => { setActionsItem(item); setConfirmingDelete(false) }
+  const closeActions = () => { setActionsItem(null); setConfirmingDelete(false) }
+
+  const openEdit = (item: StockItem) => {
+    setEditItem(item)
+    setEditName(item.name)
+    setEditQuantity(String(item.quantity))
+    setEditUnit(item.unit)
+    setEditUnitsPerBox(item.units_per_box != null ? String(item.units_per_box) : '')
+    setEditPrice(item.price != null ? String(item.price) : '')
+    setEditWarrantyDays(item.warranty_days != null ? String(item.warranty_days) : '')
+    setEditLowStockThreshold(item.low_stock_threshold != null ? String(item.low_stock_threshold) : '')
+    setEditError(null)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editItem) return
+    setEditError(null)
+    const trimmedName = editName.trim()
+    const qty = parseFloat(editQuantity)
+    const priceNum = parseFloat(editPrice)
+    if (!trimmedName) { setEditError('Informe o nome do item.'); return }
+    if (!editQuantity || isNaN(qty) || qty < 0) { setEditError('Informe uma quantidade válida.'); return }
+    if (!editPrice || isNaN(priceNum) || priceNum < 0) { setEditError('Informe o custo do item.'); return }
+    const editUnitsPerBoxNum = editUnit === 'caixa' ? parseFloat(editUnitsPerBox) : undefined
+    if (editUnit === 'caixa' && (!editUnitsPerBox || isNaN(editUnitsPerBoxNum!) || editUnitsPerBoxNum! <= 0)) {
+      setEditError('Informe quantas unidades tem em cada caixa.')
+      return
+    }
+    setSavingEdit(true)
     try {
-      await eletronicosAdmin.stockItems.stockEntry(id, qty)
-      setEntryFor(null)
-      setEntryQty('')
+      await eletronicosAdmin.stockItems.update(editItem.id, {
+        name: trimmedName,
+        unit: editUnit,
+        quantity: qty,
+        price: priceNum,
+        units_per_box: editUnitsPerBoxNum,
+        warranty_days: editWarrantyDays.trim() ? parseInt(editWarrantyDays, 10) : undefined,
+        low_stock_threshold: editLowStockThreshold.trim() ? Number(editLowStockThreshold) : undefined,
+      })
+      setEditItem(null)
       onChanged()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'erro ao lançar entrada')
+      setEditError(e instanceof Error ? e.message : 'Não foi possível salvar as alterações.')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
-  const visible = filter === 'alerta'
-    ? items.filter((it) => it.low_stock_threshold != null && it.quantity <= it.low_stock_threshold)
-    : filter === 'falta'
-      ? items.filter((it) => it.quantity <= 0)
-      : items
+  const openExit = (item: StockItem) => { setExitItem(item); setExitQuantity(''); setExitError(null) }
+
+  const handleRegisterExit = async () => {
+    if (!exitItem) return
+    setExitError(null)
+    const qty = parseFloat(exitQuantity)
+    if (!exitQuantity || isNaN(qty) || qty <= 0) { setExitError('Informe uma quantidade válida.'); return }
+    if (qty > exitItem.quantity) { setExitError('Quantidade maior que o estoque disponível.'); return }
+    setSavingExit(true)
+    try {
+      await eletronicosAdmin.stockItems.stockExit(exitItem.id, qty)
+      setExitItem(null)
+      onChanged()
+      eletronicosAdmin.stockItems.movements().then(setMovements).catch(() => {})
+    } catch (e) {
+      setExitError(e instanceof Error ? e.message : 'Não foi possível registrar a saída.')
+    } finally {
+      setSavingExit(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!actionsItem) return
+    setDeleting(true)
+    try {
+      await eletronicosAdmin.stockItems.delete(actionsItem.id)
+      onChanged()
+      closeActions()
+    } catch {
+      setDeleting(false)
+      return
+    }
+    setDeleting(false)
+  }
 
   return (
-    <div className="space-y-3">
-      {!filter && (
-        <div className="bg-[#161618] rounded-2xl border border-white/5 p-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome da peça" className={`col-span-2 sm:col-span-1 ${INPUT}`} />
-          <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="Unidade" className={INPUT} />
-          <input value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="Qtd inicial" className={INPUT} />
-          <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Custo (R$)" className={INPUT} />
-          <button
-            type="button"
-            disabled={creating || !name.trim()}
-            onClick={handleCreate}
-            className="col-span-2 sm:col-span-4 rounded-xl bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white font-semibold py-2 flex items-center justify-center gap-2 text-sm transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Cadastrar item
-          </button>
+    <div className="space-y-4">
+      <form onSubmit={handleCreate} className="bg-[#161618] rounded-2xl border border-white/5 p-4 space-y-3">
+        <p className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Cadastrar item</p>
+        <div>
+          <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Nome do item *</label>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Ex: Tela iPhone 12" className={`${INPUT} mt-1`} />
         </div>
-      )}
-      {error && <p className="text-sm text-red-400">{error}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Quantidade *</label>
+            <input type="number" step="0.01" min="0" value={newQuantity} onChange={(e) => setNewQuantity(e.target.value)} placeholder="0" className={`${INPUT} mt-1`} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Unidade *</label>
+            <select value={newUnit} onChange={(e) => setNewUnit(e.target.value)} className={`${INPUT} mt-1`}>
+              <option value="unidade">Unidade</option>
+              <option value="caixa">Caixa</option>
+            </select>
+          </div>
+        </div>
+        {newUnit === 'caixa' && (
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Unidades por caixa *</label>
+            <input type="number" step="1" min="1" value={newUnitsPerBox} onChange={(e) => setNewUnitsPerBox(e.target.value)} placeholder="Ex: 12" className={`${INPUT} mt-1`} />
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Custo do item (R$) *</label>
+            <input type="number" step="0.01" min="0" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} placeholder="0,00" className={`${INPUT} mt-1`} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Garantia (dias)</label>
+            <input type="number" step="1" min="0" value={newWarrantyDays} onChange={(e) => setNewWarrantyDays(e.target.value)} placeholder="Ex: 90" className={`${INPUT} mt-1`} />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Alertar baixo estoque quando chegar em:</label>
+          <input type="number" step="0.01" min="0" value={newLowStockThreshold} onChange={(e) => setNewLowStockThreshold(e.target.value)} placeholder="Opcional — ex: 5" className={`${INPUT} mt-1`} />
+        </div>
+        {createError && <p className="text-xs text-red-400">{createError}</p>}
+        <button type="submit" disabled={creating} className="w-full flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+          {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+          Cadastrar item
+        </button>
+      </form>
 
       <div className="space-y-2">
-        {visible.map((it) => (
-          <div key={it.id} className="bg-[#161618] rounded-xl border border-white/5 p-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-white">{it.name}</p>
-              <p className="text-xs text-[#d4d4d8]/50">
-                {it.quantity} {it.unit}
-                {it.price != null && ` · ${currency(it.price)}`}
-                {it.low_stock_threshold != null && it.quantity <= it.low_stock_threshold && <span className="text-amber-400 ml-2">estoque baixo</span>}
-              </p>
-            </div>
-            {entryFor === it.id ? (
-              <div className="flex items-center gap-2">
-                <input value={entryQty} onChange={(e) => setEntryQty(e.target.value)} placeholder="qtd" className="w-20 rounded-lg border border-white/10 bg-[#0a0a0b] px-2 py-1.5 text-sm outline-none focus:border-[#e0211a]" />
-                <button type="button" onClick={() => handleEntry(it.id)} className="rounded-lg bg-[#e0211a] text-white text-xs font-semibold px-3 py-1.5">
-                  OK
-                </button>
+        <h2 className="text-xs font-bold text-[#d4d4d8]/50 uppercase tracking-wider">Itens em estoque ({items.length})</h2>
+        <div className="relative">
+          <Search className="w-4 h-4 text-[#d4d4d8]/40 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar item..." className={`${INPUT} pl-9`} />
+        </div>
+        {filteredItems.length === 0 ? (
+          <p className="text-sm text-[#d4d4d8]/40">{items.length === 0 ? 'Nenhum item cadastrado ainda.' : 'Nenhum item encontrado.'}</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {filteredItems.map((item) => (
+              <div
+                key={item.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => openActions(item)}
+                className="bg-[#161618] rounded-xl border border-white/5 px-4 py-3 flex items-center justify-between gap-2 cursor-pointer hover:border-[#e0211a]/30 transition-colors"
+              >
+                <span className="text-sm text-white truncate">{item.name}</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className={`text-sm font-bold ${item.quantity <= 0 ? 'text-red-400' : 'text-[#d4d4d8]'}`}>{item.quantity} {item.unit}</span>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(item) }} className="text-[#d4d4d8]/40 hover:text-[#e0211a] transition-colors p-1">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </span>
               </div>
-            ) : (
-              <button type="button" onClick={() => setEntryFor(it.id)} className="text-xs text-[#e0211a] hover:underline shrink-0">
-                + Estoque
-              </button>
-            )}
+            ))}
           </div>
-        ))}
-        {visible.length === 0 && <p className="text-sm text-[#d4d4d8]/40 py-4">Nenhum item {filter === 'alerta' ? 'com estoque baixo' : filter === 'falta' ? 'em falta' : 'cadastrado'}.</p>}
+        )}
       </div>
+
+      <div className="space-y-2">
+        <h2 className="text-xs font-bold text-[#d4d4d8]/50 uppercase tracking-wider">Últimas movimentações</h2>
+        {movements.length === 0 ? (
+          <p className="text-sm text-[#d4d4d8]/40">Nenhuma movimentação registrada ainda.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {movements.map((m) => (
+              <li key={m.id} className="bg-[#161618] rounded-xl border border-white/5 px-4 py-2.5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  {m.type === 'entrada' ? <ArrowDownCircle className="w-4 h-4 text-green-500 shrink-0" /> : <ArrowUpCircle className="w-4 h-4 text-[#e0211a] shrink-0" />}
+                  <span className="text-sm text-white truncate">{m.item_name ?? 'Item removido'}</span>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-sm font-semibold text-[#d4d4d8]">{m.type === 'entrada' ? '+' : '-'}{m.quantity} {m.unit}</span>
+                  <span className="text-xs text-[#d4d4d8]/40">{new Date(m.moved_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {actionsItem && (
+        <Dialog title={actionsItem.name} onClose={closeActions}>
+          <p className="text-xs text-[#d4d4d8]/50">Estoque atual: {actionsItem.quantity} {actionsItem.unit}</p>
+          {confirmingDelete ? (
+            <div className="bg-[#0a0a0b] border border-red-500/30 rounded-xl p-3 space-y-2">
+              <p className="text-xs text-red-400">Tem certeza que deseja excluir este item?</p>
+              <div className="flex gap-2">
+                <button onClick={handleDelete} disabled={deleting} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-2 disabled:opacity-50">
+                  {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Confirmar
+                </button>
+                <button onClick={() => setConfirmingDelete(false)} className="text-xs font-semibold text-[#d4d4d8]/60 hover:text-white px-3 py-2">Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <button onClick={() => { openExit(actionsItem); closeActions() }} className="w-full flex items-center gap-2.5 text-sm font-semibold text-white bg-[#0a0a0b] border border-white/10 rounded-xl px-4 py-3 hover:border-[#e0211a]/40 transition-colors">
+                <ArrowUpCircle className="w-4 h-4 text-[#e0211a]" /> Registrar saída
+              </button>
+              <button onClick={() => { openEdit(actionsItem); closeActions() }} className="w-full flex items-center gap-2.5 text-sm font-semibold text-white bg-[#0a0a0b] border border-white/10 rounded-xl px-4 py-3 hover:border-[#e0211a]/40 transition-colors">
+                <Pencil className="w-4 h-4 text-[#e0211a]" /> Editar item
+              </button>
+              <button onClick={() => setConfirmingDelete(true)} className="w-full flex items-center gap-2.5 text-sm font-semibold text-red-400 bg-[#0a0a0b] border border-white/10 rounded-xl px-4 py-3 hover:border-red-500/40 transition-colors">
+                <Trash2 className="w-4 h-4" /> Deletar item
+              </button>
+            </div>
+          )}
+        </Dialog>
+      )}
+
+      {editItem && (
+        <Dialog title="Editar item" onClose={() => setEditItem(null)}>
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Nome *</label>
+            <input value={editName} onChange={(e) => setEditName(e.target.value)} className={`${INPUT} mt-1`} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Quantidade *</label>
+              <input type="number" step="0.01" min="0" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} className={`${INPUT} mt-1`} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Unidade *</label>
+              <select value={editUnit} onChange={(e) => setEditUnit(e.target.value)} className={`${INPUT} mt-1`}>
+                <option value="unidade">Unidade</option>
+                <option value="caixa">Caixa</option>
+              </select>
+            </div>
+          </div>
+          {editUnit === 'caixa' && (
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Unidades por caixa *</label>
+              <input type="number" step="1" min="1" value={editUnitsPerBox} onChange={(e) => setEditUnitsPerBox(e.target.value)} placeholder="Ex: 12" className={`${INPUT} mt-1`} />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Custo do item (R$) *</label>
+              <input type="number" step="0.01" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} placeholder="0,00" className={`${INPUT} mt-1`} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Garantia (dias)</label>
+              <input type="number" step="1" min="0" value={editWarrantyDays} onChange={(e) => setEditWarrantyDays(e.target.value)} placeholder="Ex: 90" className={`${INPUT} mt-1`} />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Alertar baixo estoque quando chegar em:</label>
+            <input type="number" step="0.01" min="0" value={editLowStockThreshold} onChange={(e) => setEditLowStockThreshold(e.target.value)} placeholder="Opcional — ex: 5" className={`${INPUT} mt-1`} />
+          </div>
+          {editError && <p className="text-xs text-red-400">{editError}</p>}
+          <button onClick={handleSaveEdit} disabled={savingEdit} className="w-full flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+            {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />} Salvar alterações
+          </button>
+        </Dialog>
+      )}
+
+      {exitItem && (
+        <Dialog title="Registrar saída" onClose={() => setExitItem(null)}>
+          <p className="text-xs text-[#d4d4d8]/50 truncate">{exitItem.name} — {exitItem.quantity} {exitItem.unit}</p>
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Quantidade de saída *</label>
+            <input type="number" step="0.01" min="0.01" value={exitQuantity} onChange={(e) => setExitQuantity(e.target.value)} placeholder="0" className={`${INPUT} mt-1`} />
+          </div>
+          {exitError && <p className="text-xs text-red-400">{exitError}</p>}
+          <button onClick={handleRegisterExit} disabled={savingExit} className="w-full flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+            {savingExit ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpCircle className="w-4 h-4" />} Confirmar saída
+          </button>
+        </Dialog>
+      )}
     </div>
   )
 }
@@ -1496,7 +1764,8 @@ function StockAlertList({ title, emptyMessage, filter }: { title: string; emptyM
         if (p) await adminService.products.update(target.id, { name: p.name, price: p.price, quantity: qty })
         setProducts((prev) => prev.map((x) => (x.id === target.id ? { ...x, quantity: qty } : x)))
       } else {
-        await eletronicosAdmin.stockItems.stockEntry(target.id, qty - target.quantity)
+        const s = stockItems.find((x) => x.id === target.id)
+        if (s) await eletronicosAdmin.stockItems.update(target.id, { name: s.name, unit: s.unit, quantity: qty, price: s.price ?? undefined, low_stock_threshold: s.low_stock_threshold ?? undefined })
         setStockItems((prev) => prev.map((x) => (x.id === target.id ? { ...x, quantity: qty } : x)))
       }
       setSaved(true)

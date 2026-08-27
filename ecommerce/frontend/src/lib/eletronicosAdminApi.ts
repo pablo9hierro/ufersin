@@ -358,10 +358,36 @@ export const eletronicosAdmin = {
   stockItems: {
     list: () =>
       req<StockItemDto[]>(`${BASE}/stock-items`),
-    create: (input: { name: string; unit: string; quantity: number; price?: number; warranty_days?: number }) =>
-      req<StockItemDto>(`${BASE}/stock-items`, { method: 'POST', body: JSON.stringify(input) }),
+    create: (input: {
+      name: string
+      unit: string
+      quantity: number
+      price?: number
+      warranty_days?: number
+      units_per_box?: number
+      low_stock_threshold?: number
+    }) => req<StockItemDto>(`${BASE}/stock-items`, { method: 'POST', body: JSON.stringify(input) }),
+    update: (
+      id: string,
+      input: {
+        name: string
+        unit: string
+        quantity: number
+        price?: number
+        warranty_days?: number
+        units_per_box?: number
+        low_stock_threshold?: number
+      },
+    ) => req<StockItemDto>(`${BASE}/stock-items/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+    delete: (id: string) => req<void>(`${BASE}/stock-items/${id}`, { method: 'DELETE' }),
     stockEntry: (id: string, quantity: number) =>
-      req(`${BASE}/stock-items/${id}/entry`, { method: 'POST', body: JSON.stringify({ quantity }) }),
+      req<StockItemDto>(`${BASE}/stock-items/${id}/entry`, { method: 'POST', body: JSON.stringify({ quantity }) }),
+    stockExit: (id: string, quantity: number) =>
+      req<StockItemDto>(`${BASE}/stock-items/${id}/exit`, { method: 'POST', body: JSON.stringify({ quantity }) }),
+    movements: () =>
+      req<{ id: string; item_id: string; item_name: string | null; type: string; quantity: number; unit: string; moved_at: string }[]>(
+        `${BASE}/stock-movements`,
+      ),
   },
   pdv: {
     createSale: () =>

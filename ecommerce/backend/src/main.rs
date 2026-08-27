@@ -705,6 +705,18 @@ async fn main() -> anyhow::Result<()> {
             post(routes::eletronicos::stock_entry),
         )
         .route(
+            "/api/admin/eletronicos/stock-items/{id}/exit",
+            post(routes::eletronicos::stock_exit),
+        )
+        .route(
+            "/api/admin/eletronicos/stock-items/{id}",
+            put(routes::eletronicos::update_stock_item).delete(routes::eletronicos::delete_stock_item),
+        )
+        .route(
+            "/api/admin/eletronicos/stock-movements",
+            get(routes::eletronicos::list_stock_movements),
+        )
+        .route(
             "/api/admin/eletronicos/pdv/sales",
             post(routes::eletronicos::create_pdv_sale),
         )
