@@ -1332,10 +1332,6 @@ function MarcasTab({ categories, onChanged }: { categories: Category[]; onChange
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-sm text-[#d4d4d8] mb-1.5">URL da imagem (banner)</label>
-            <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className={INPUT} placeholder="https://..." />
-          </div>
           <button
             onClick={save}
             disabled={saving || !name.trim()}

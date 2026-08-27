@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Home, Loader2, MapPin, Search, Truck, X } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, Home, Loader2, MapPin, Search, Truck, X } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import { fetchCatalog, type CatalogItem } from '../../lib/eletronicosApi'
 import { resolveTenantSlug } from '../../lib/tenantConfig'
+import { DeviceTypeIcon, BrandIcon } from '../../lib/deviceBrandIcons'
 import LocationPicker, { type LocationPickerResult } from '../../components/checkout/LocationPicker'
+
+type DeviceTypeRow = { id: string; name: string; slug: string; icon_key: string; sort_order: number }
+type BrandRow = { id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }
 
 // Port 1:1 (adaptado) de src/components/dashboard/NovoServicoDialog.tsx do
 // vrtech -- "PDV de serviço": lojista registra um atendimento já combinado
@@ -162,10 +166,131 @@ function ServicePicker({
   )
 }
 
+/** Aparelho (obrigatório) -> Marca (obrigatória) -> Modelo (opcional, texto
+ * livre -- "não sei o modelo" é só deixar em branco). Aparelho e marca vêm
+ * do cadastro real (device_types/catalog_categories), com ícone: aparelho
+ * usa o mesmo mapeamento de EletronicaServiceRequestForm, marca usa
+ * Simple Icons quando reconhece o nome (fallback pra inicial). */
+function DeviceBrandModelPicker({
+  deviceTypeId,
+  brandId,
+  modelName,
+  onChange,
+}: {
+  deviceTypeId: string | null
+  brandId: string | null
+  modelName: string
+  onChange: (patch: { deviceTypeId?: string | null; brandId?: string | null; brandName?: string; modelName?: string }) => void
+}) {
+  const [deviceTypes, setDeviceTypes] = useState<DeviceTypeRow[]>([])
+  const [brands, setBrands] = useState<BrandRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([eletronicosAdmin.deviceTypes.list(), eletronicosAdmin.catalogCategories.list()])
+      .then(([dt, br]) => {
+        setDeviceTypes(dt)
+        setBrands(br)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const selectedDeviceType = deviceTypes.find((d) => d.id === deviceTypeId) ?? null
+  const brandsForType = selectedDeviceType ? brands.filter((b) => b.device_type === selectedDeviceType.slug) : []
+  const selectedBrand = brands.find((b) => b.id === brandId) ?? null
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-[#d4d4d8]/50 text-sm py-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Carregando aparelhos...
+      </div>
+    )
+  }
+
+  if (!selectedDeviceType) {
+    return deviceTypes.length === 0 ? (
+      <p className="text-sm text-[#d4d4d8]/40 py-2">Nenhum tipo de aparelho cadastrado ainda.</p>
+    ) : (
+      <div className="grid grid-cols-4 gap-2">
+        {deviceTypes.map((d) => (
+          <button
+            key={d.id}
+            type="button"
+            onClick={() => onChange({ deviceTypeId: d.id, brandId: null, modelName: '' })}
+            className="flex flex-col items-center gap-1.5 py-3 rounded-xl bg-[#0a0a0b] border border-white/10 text-[#d4d4d8] hover:border-[#e0211a]/40 hover:text-white transition-all"
+          >
+            <DeviceTypeIcon slug={d.slug} className="w-5 h-5" />
+            <span className="text-[11px] font-semibold">{d.name}</span>
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  if (!selectedBrand) {
+    return (
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => onChange({ deviceTypeId: null, brandId: null, modelName: '' })}
+          className="flex items-center gap-1 text-xs text-[#d4d4d8]/50 hover:text-white"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" /> Trocar aparelho ({selectedDeviceType.name})
+        </button>
+        {brandsForType.length === 0 ? (
+          <p className="text-sm text-[#d4d4d8]/40 py-2">Nenhuma marca cadastrada pra esse aparelho ainda.</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {brandsForType.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => onChange({ brandId: b.id, brandName: b.name, modelName: '' })}
+                className="flex flex-col items-center gap-1.5 py-3 rounded-xl bg-[#0a0a0b] border border-white/10 text-[#d4d4d8] hover:border-[#e0211a]/40 hover:text-white transition-all"
+              >
+                <BrandIcon name={b.name} className="w-5 h-5" />
+                <span className="text-[11px] font-semibold">{b.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => onChange({ brandId: null, modelName: '' })}
+        className="flex items-center gap-1 text-xs text-[#d4d4d8]/50 hover:text-white"
+      >
+        <ChevronLeft className="w-3.5 h-3.5" /> Trocar marca
+      </button>
+      <div className="flex items-center gap-2 bg-[#0a0a0b] border border-white/10 rounded-xl px-3 py-2">
+        <DeviceTypeIcon slug={selectedDeviceType.slug} className="w-4 h-4 text-[#d4d4d8]/50 shrink-0" />
+        <BrandIcon name={selectedBrand.name} className="w-4 h-4 text-[#d4d4d8]/70 shrink-0" />
+        <span className="text-sm text-white font-medium">{selectedDeviceType.name} · {selectedBrand.name}</span>
+      </div>
+      <input
+        value={modelName}
+        onChange={(e) => onChange({ modelName: e.target.value })}
+        placeholder="Ex: Moto G84 (opcional -- deixe em branco se não souber)"
+        className={INPUT}
+      />
+    </div>
+  )
+}
+
 export default function EletronicaNovoServicoDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const today = new Date().toISOString().slice(0, 10)
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
+  const [deviceTypeId, setDeviceTypeId] = useState<string | null>(null)
+  const [brandId, setBrandId] = useState<string | null>(null)
+  const [brandName, setBrandName] = useState('')
+  const [modelName, setModelName] = useState('')
   const [service, setService] = useState<{ id: string | null; label: string }>({ id: null, label: '' })
   const [notes, setNotes] = useState('')
   const [dia, setDia] = useState(today)
@@ -176,14 +301,21 @@ export default function EletronicaNovoServicoDialog({ onClose, onDone }: { onClo
   const [address, setAddress] = useState<LocationPickerResult | null>(null)
   const [showMap, setShowMap] = useState(false)
 
+  const phoneModel = (() => {
+    if (!brandName) return service.label || undefined
+    const trimmedModel = modelName.trim()
+    if (!trimmedModel) return brandName
+    return trimmedModel.toLowerCase().startsWith(brandName.toLowerCase()) ? trimmedModel : `${brandName} ${trimmedModel}`
+  })()
+
   const submit = async () => {
     setSaving(true)
     setErr(null)
     try {
       const request = await eletronicosAdmin.serviceRequests.create({
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        phone_model: service.label || undefined,
+        customer_name: customerName.trim() || 'Cliente balcão',
+        customer_phone: customerPhone.trim(),
+        phone_model: phoneModel,
         problem_description: notes || undefined,
         self_pickup: selfPickup,
         address_lat: selfPickup ? undefined : address?.lat,
@@ -194,8 +326,8 @@ export default function EletronicaNovoServicoDialog({ onClose, onDone }: { onClo
       await eletronicosAdmin.appointments.create({
         service_label: service.label || 'Atendimento',
         service_id: service.id ?? undefined,
-        customer_name: customerName,
-        customer_phone: customerPhone,
+        customer_name: customerName.trim() || 'Cliente balcão',
+        customer_phone: customerPhone.trim(),
         date: dia,
         time: horario,
         notes: notes || undefined,
@@ -225,12 +357,30 @@ export default function EletronicaNovoServicoDialog({ onClose, onDone }: { onClo
           {showMap && <LocationPicker onClose={() => setShowMap(false)} onConfirm={(r) => { setAddress(r); setShowMap(false) }} />}
 
           <div>
-            <label className="block text-sm text-[#d4d4d8] mb-1.5">Cliente</label>
-            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className={INPUT} />
+            <label className="block text-sm text-[#d4d4d8] mb-1.5">
+              Cliente <span className="font-normal text-[#d4d4d8]/40">(opcional)</span>
+            </label>
+            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Cliente balcão" className={INPUT} />
           </div>
           <div>
-            <label className="block text-sm text-[#d4d4d8] mb-1.5">WhatsApp</label>
+            <label className="block text-sm text-[#d4d4d8] mb-1.5">
+              WhatsApp <span className="font-normal text-[#d4d4d8]/40">(opcional)</span>
+            </label>
             <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className={INPUT} />
+          </div>
+          <div>
+            <label className="block text-sm text-[#d4d4d8] mb-1.5">Aparelho / Marca / Modelo</label>
+            <DeviceBrandModelPicker
+              deviceTypeId={deviceTypeId}
+              brandId={brandId}
+              modelName={modelName}
+              onChange={(patch) => {
+                if ('deviceTypeId' in patch) setDeviceTypeId(patch.deviceTypeId ?? null)
+                if ('brandId' in patch) setBrandId(patch.brandId ?? null)
+                if (patch.brandName !== undefined) setBrandName(patch.brandName)
+                if (patch.modelName !== undefined) setModelName(patch.modelName)
+              }}
+            />
           </div>
           <div>
             <label className="block text-sm text-[#d4d4d8] mb-1.5">Serviço</label>
@@ -245,7 +395,7 @@ export default function EletronicaNovoServicoDialog({ onClose, onDone }: { onClo
             <TimeDropdown value={horario} onChange={setHorario} />
           </div>
           <div>
-            <label className="block text-sm text-[#d4d4d8] mb-1.5">Aparelho</label>
+            <label className="block text-sm text-[#d4d4d8] mb-1.5">Retirada do aparelho</label>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -284,7 +434,7 @@ export default function EletronicaNovoServicoDialog({ onClose, onDone }: { onClo
           {err && <p className="text-sm text-red-400">{err}</p>}
           <button
             onClick={submit}
-            disabled={saving || !customerName || !customerPhone || !service.label || (!selfPickup && !address)}
+            disabled={saving || !deviceTypeId || !brandId || !service.label || (!selfPickup && !address)}
             className="w-full bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
