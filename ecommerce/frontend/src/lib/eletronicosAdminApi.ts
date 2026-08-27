@@ -7,6 +7,20 @@ import type {
   AppointmentDto,
 } from './eletronicosApi'
 
+export type PdvSaleDetail = {
+  sale: { id: string; status: string; total_value: number; notes: string | null }
+  items: { id: string; label: string; quantity: number; unit_price: number }[]
+  payments: {
+    id: string
+    method: string
+    amount: number
+    status: string
+    installments: number | null
+    change_amount: number | null
+    mp_payment_id: string | null
+  }[]
+}
+
 export type EletronicaAdminCatalogItem = {
   id: string
   category_id: string
@@ -309,22 +323,26 @@ export const eletronicosAdmin = {
   pdv: {
     createSale: () =>
       req<{ id: string; status: string; total_value: number }>(`${BASE}/pdv/sales`, { method: 'POST' }),
-    getSale: (id: string) =>
-      req<{
-        sale: { id: string; status: string; total_value: number; notes: string | null }
-        items: { id: string; label: string; quantity: number; unit_price: number }[]
-        payments: { id: string; method: string; amount: number; status: string; mp_payment_id: string | null }[]
-      }>(`${BASE}/pdv/sales/${id}`),
+    getSale: (id: string) => req<PdvSaleDetail>(`${BASE}/pdv/sales/${id}`),
     addItem: (
       saleId: string,
-      input: { item_type: string; label: string; quantity: number; unit_price: number; stock_item_id?: string },
-    ) => req(`${BASE}/pdv/sales/${saleId}/items`, { method: 'POST', body: JSON.stringify(input) }),
+      input: {
+        item_type: string
+        product_id?: string
+        service_id?: string
+        label?: string
+        quantity: number
+        unit_price?: number
+        scheduled_at?: string
+      },
+    ) => req<PdvSaleDetail>(`${BASE}/pdv/sales/${saleId}/items`, { method: 'POST', body: JSON.stringify(input) }),
     addPayment: (
       saleId: string,
       input: { method: string; amount: number; installments?: number; change_amount?: number; mp_payment_id?: string },
-    ) => req(`${BASE}/pdv/sales/${saleId}/payments`, { method: 'POST', body: JSON.stringify(input) }),
+    ) => req<PdvSaleDetail>(`${BASE}/pdv/sales/${saleId}/payments`, { method: 'POST', body: JSON.stringify(input) }),
     confirmPayment: (saleId: string, paymentId: string) =>
-      req(`${BASE}/pdv/sales/${saleId}/payments/${paymentId}/confirm`, { method: 'POST' }),
+      req<PdvSaleDetail>(`${BASE}/pdv/sales/${saleId}/payments/${paymentId}/confirm`, { method: 'POST' }),
+    cancelSale: (saleId: string) => req<void>(`${BASE}/pdv/sales/${saleId}`, { method: 'DELETE' }),
   },
   pix: {
     create: (input: { amount: number; customer_name: string; customer_email?: string; external_reference: string }) =>

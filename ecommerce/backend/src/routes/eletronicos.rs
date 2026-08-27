@@ -2402,6 +2402,50 @@ pub async fn get_pdv_sale(
     Ok(Json(PdvSaleDetailDto { sale, items, payments }))
 }
 
+/// Cancela uma venda ainda aberta (sem pagamento confirmado) -- devolve
+/// eventuais itens de estoque decrementados na hora (peças avulsas).
+pub async fn cancel_pdv_sale(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let sale: Option<(String,)> = sqlx::query_as(
+        "SELECT status FROM eletronicos.pdv_sales WHERE tenant_id = $1 AND id = $2::uuid AND status = 'aberta'",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if sale.is_none() {
+        return Err(AppError::NotFound("venda não encontrada ou já concluída".to_string()));
+    }
+    let deducted: Vec<(String, f64)> = sqlx::query_as(
+        "SELECT stock_item_id::text, quantity::float8 FROM eletronicos.pdv_sale_items \
+         WHERE tenant_id = $1 AND sale_id = $2::uuid AND stock_deducted = true AND stock_item_id IS NOT NULL",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap_or_default();
+    for (stock_item_id, qty) in deducted {
+        sqlx::query("UPDATE eletronicos.stock_items SET quantity = quantity + $3, updated_at = now() WHERE tenant_id = $1 AND id = $2::uuid")
+            .bind(&claims.tenant_id)
+            .bind(&stock_item_id)
+            .bind(qty)
+            .execute(&mut *tx)
+            .await?;
+    }
+    sqlx::query("UPDATE eletronicos.pdv_sales SET status = 'cancelada' WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[derive(Debug, Serialize, Clone, sqlx::FromRow)]
 pub struct PdvPaymentDto {
     pub id: String,

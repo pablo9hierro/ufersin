@@ -678,7 +678,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/admin/eletronicos/pdv/sales/{id}",
-            get(routes::eletronicos::get_pdv_sale),
+            get(routes::eletronicos::get_pdv_sale).delete(routes::eletronicos::cancel_pdv_sale),
         )
         .route(
             "/api/admin/eletronicos/pdv/sales/{id}/items",

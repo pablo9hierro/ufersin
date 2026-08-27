@@ -227,6 +227,7 @@ pub fn build() -> OpenApi {
         ("/api/admin/eletronicos/catalog-items/{id}", Delete, "Excluir item (servico/modelo) do catalogo", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/pdv/sales", Post, "Abrir venda no PDV", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/pdv/sales/{id}", Get, "Detalhe da venda (itens + pagamentos)", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/pdv/sales/{id}", Delete, "Cancelar venda aberta (devolve pecas de estoque decrementadas)", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/pdv/sales/{id}/items", Post, "Adicionar item a venda (decrementa estoque se aplicavel)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/pdv/sales/{id}/payments", Post, "Registrar pagamento (Pix ja gerado via /api/admin/pdv/pix, ou manual)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/pdv/sales/{sale_id}/payments/{payment_id}/confirm", Post, "Confirmar pagamento (fecha a venda se cobrir o total)", "Admin - Eletronicos", true, false),
