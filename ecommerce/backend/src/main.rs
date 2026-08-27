@@ -403,6 +403,22 @@ async fn main() -> anyhow::Result<()> {
             put(routes::eletronicos::save_service_item_links),
         )
         .route(
+            "/api/admin/eletronicos/products-links/{id}",
+            put(routes::eletronicos::save_product_links),
+        )
+        .route(
+            "/api/admin/eletronicos/products-devices",
+            get(routes::eletronicos::list_product_devices),
+        )
+        .route(
+            "/api/admin/eletronicos/products-brands",
+            get(routes::eletronicos::list_product_brands),
+        )
+        .route(
+            "/api/admin/eletronicos/products-models",
+            get(routes::eletronicos::list_product_models),
+        )
+        .route(
             "/api/admin/eletronicos/device-types",
             get(routes::eletronicos::list_device_types).post(routes::eletronicos::create_device_type),
         )

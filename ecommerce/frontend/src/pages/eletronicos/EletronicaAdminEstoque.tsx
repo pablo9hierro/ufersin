@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { AlertTriangle, Check, DollarSign, ExternalLink, Loader2, Package, PackageX, Pencil, Plus, Search, Smartphone, Trash2, Wrench, X } from 'lucide-react'
+import { AlertTriangle, Check, DollarSign, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Search, Smartphone, Trash2, Wrench, X } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { EletronicaAdminCatalogItem } from '../../lib/eletronicosAdminApi'
-import { withTenantSearch } from '../../lib/tenantConfig'
+import { adminService } from '../../services/adminService'
+import type { Product } from '../../types/product'
 
-// Port de src/app/dashboard/produtos/ProdutosClient.tsx + ServicosTab.tsx do
-// vrtech -- mesmas 6 abas (Produtos/Serviços/Estoque/Aparelho·Marca·Modelo/
-// Alerta de reposição/Em falta). "Produtos" reaproveita a tela real e já
-// existente /admin/produtos (mesma tabela `products` que a vitrine /loja já
-// lê) em vez de duplicar. Serviços tem o vínculo multi-select real de
-// aparelho(s)/marca(s)/modelo(s) via service_item_devices/brands/models,
-// peças de estoque como dependência de custo (service_catalog_item_parts) e
-// custos avulsos (service_catalog_item_extra_costs) -- mesmas tabelas do
-// schema espelhado do vrtech.
+// Port de src/app/dashboard/produtos/ProdutosClient.tsx + ProdutosTab.tsx +
+// ServicosTab.tsx do vrtech -- mesmas 6 abas (Produtos/Serviços/Estoque/
+// Aparelho·Marca·Modelo/Alerta de reposição/Em falta). "Produtos" é CRUD
+// próprio embutido na mesma página (não um redirect pra outra tela) com o
+// mesmo vínculo multi-select aparelho(s)/marca(s)/modelo(s) via
+// product_devices/brands/models, agrupamento por modelo e filtro por marca
+// -- reaproveita adminService.products (mesma tabela `products` que a
+// vitrine /loja já lê) só pros campos comerciais (nome/preço/qtd/imagem).
+// Serviços tem o vínculo equivalente via service_item_devices/brands/
+// models, peças de estoque como dependência de custo
+// (service_catalog_item_parts) e custos avulsos
+// (service_catalog_item_extra_costs) -- mesmas tabelas do schema espelhado
+// do vrtech.
 
 const TABS = [
   { key: 'produtos', label: 'Produtos', icon: Package },
@@ -146,6 +150,523 @@ function SearchCreateMultiSelect({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function ImageSlotPicker({ url, onPick, onRemove }: { url: string | null; onPick: (file: File) => void; onRemove: () => void }) {
+  return (
+    <div className="relative w-16 h-16">
+      <label className="w-16 h-16 rounded-xl bg-[#0a0a0b] border border-dashed border-white/10 flex items-center justify-center overflow-hidden cursor-pointer">
+        {url ? <img src={url} alt="" className="w-full h-full object-cover" /> : <ImagePlus className="w-5 h-5 text-[#d4d4d8]/40" />}
+        <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f) }} />
+      </label>
+      {url && (
+        <button type="button" onClick={onRemove} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#e0211a] text-white flex items-center justify-center">
+          <X className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function ProdutosTab({ categories }: { categories: Category[] }) {
+  const [products, setProducts] = useState<Product[] | null>(null)
+  const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([])
+  const [models, setModels] = useState<CatalogModelRow[]>([])
+  const [productDevices, setProductDevices] = useState<{ product_id: string; device_type_id: string }[]>([])
+  const [productBrands, setProductBrands] = useState<{ product_id: string; brand_id: string }[]>([])
+  const [productModels, setProductModels] = useState<{ product_id: string; model_id: string }[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  const [showForm, setShowForm] = useState(false)
+  const [name, setName] = useState('')
+  const [newDeviceIds, setNewDeviceIds] = useState<string[]>([])
+  const [newBrandIds, setNewBrandIds] = useState<string[]>([])
+  const [newModelIds, setNewModelIds] = useState<string[]>([])
+  const [price, setPrice] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [description, setDescription] = useState('')
+  const [lowStockThreshold, setLowStockThreshold] = useState('')
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [activeBrand, setActiveBrand] = useState<string | null>(null)
+
+  const [actionsProduct, setActionsProduct] = useState<Product | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const [editProduct, setEditProduct] = useState<Product | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editDeviceIds, setEditDeviceIds] = useState<string[]>([])
+  const [editBrandIds, setEditBrandIds] = useState<string[]>([])
+  const [editModelIds, setEditModelIds] = useState<string[]>([])
+  const [editPrice, setEditPrice] = useState('')
+  const [editQuantity, setEditQuantity] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editLowStockThreshold, setEditLowStockThreshold] = useState('')
+  const [editImageUrl, setEditImageUrl] = useState<string | null>(null)
+  const [editImageFile, setEditImageFile] = useState<File | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  async function load() {
+    try {
+      const [prods, devs, mods, pd, pb, pm] = await Promise.all([
+        adminService.products.list(),
+        eletronicosAdmin.deviceTypes.list(),
+        eletronicosAdmin.catalogModels.list(),
+        eletronicosAdmin.products.devices(),
+        eletronicosAdmin.products.brands(),
+        eletronicosAdmin.products.models(),
+      ])
+      setProducts(prods)
+      setDeviceTypes(devs)
+      setModels(mods)
+      setProductDevices(pd)
+      setProductBrands(pb)
+      setProductModels(pm)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'erro ao carregar')
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  const brands = useMemo(() => {
+    const ids = new Set(productBrands.map((l) => l.brand_id))
+    return categories.filter((c) => ids.has(c.id)).sort((a, b) => a.name.localeCompare(b.name))
+  }, [categories, productBrands])
+
+  const filteredProducts = useMemo(() => {
+    let base = products ?? []
+    if (activeBrand) {
+      const productIds = new Set(productBrands.filter((l) => l.brand_id === activeBrand).map((l) => l.product_id))
+      base = base.filter((p) => productIds.has(p.id))
+    }
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((p) => p.name.toLowerCase().includes(q))
+  }, [products, activeBrand, searchQuery, productBrands])
+
+  const byModel = useMemo(() => {
+    const map = new Map<string, Product[]>()
+    for (const p of filteredProducts) {
+      const brandIds = productBrands.filter((l) => l.product_id === p.id).map((l) => l.brand_id)
+      const modelIds = productModels.filter((l) => l.product_id === p.id).map((l) => l.model_id)
+      const modelName = modelIds.length === 1 ? models.find((m) => m.id === modelIds[0])?.name : undefined
+      const brandName = brandIds.length === 1 ? categories.find((c) => c.id === brandIds[0])?.name : undefined
+      const key = modelName ?? brandName ?? 'Sem modelo'
+      const list = map.get(key) ?? []
+      list.push(p)
+      map.set(key, list)
+    }
+    return map
+  }, [filteredProducts, productBrands, productModels, models, categories])
+
+  const modelOptionsForNewItem = newBrandIds.length > 0 ? models.filter((m) => newBrandIds.includes(m.brand_id)) : models
+  const modelOptionsForEdit = editBrandIds.length > 0 ? models.filter((m) => editBrandIds.includes(m.brand_id)) : models
+
+  const resetForm = () => {
+    setName(''); setNewDeviceIds([]); setNewBrandIds([]); setNewModelIds([])
+    setPrice(''); setQuantity(''); setDescription('')
+    setLowStockThreshold(''); setImageUrl(null); setImageFile(null)
+    setCreateError(null); setShowForm(false)
+  }
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreateError(null)
+    const trimmedName = name.trim()
+    const priceNum = parseFloat(price)
+    const qtyNum = parseFloat(quantity)
+    if (!trimmedName) { setCreateError('Informe o nome do produto.'); return }
+    if (!price || isNaN(priceNum) || priceNum < 0) { setCreateError('Informe um preço válido.'); return }
+    if (!quantity || isNaN(qtyNum) || qtyNum < 0) { setCreateError('Informe uma quantidade válida.'); return }
+
+    setCreating(true)
+    try {
+      let finalImageUrl = imageUrl
+      if (imageFile) {
+        const uploaded = await adminService.products.uploadImage(imageFile)
+        finalImageUrl = uploaded.url
+      }
+      const created = await adminService.products.create({
+        name: trimmedName,
+        price: priceNum,
+        quantity: qtyNum,
+        description: description.trim() || undefined,
+        image_url: finalImageUrl ?? undefined,
+        low_stock_threshold: lowStockThreshold.trim() ? Number(lowStockThreshold) : undefined,
+      })
+      await eletronicosAdmin.products.saveLinks(created.id, { device_ids: newDeviceIds, brand_ids: newBrandIds, model_ids: newModelIds })
+      setProductDevices((prev) => [...prev, ...newDeviceIds.map((device_type_id) => ({ product_id: created.id, device_type_id }))])
+      setProductBrands((prev) => [...prev, ...newBrandIds.map((brand_id) => ({ product_id: created.id, brand_id }))])
+      setProductModels((prev) => [...prev, ...newModelIds.map((model_id) => ({ product_id: created.id, model_id }))])
+      setProducts((prev) => [...(prev ?? []), created].sort((a, b) => a.name.localeCompare(b.name)))
+      resetForm()
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Não foi possível cadastrar o produto.')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const openEdit = (product: Product) => {
+    setEditProduct(product)
+    setEditName(product.name)
+    setEditDeviceIds(productDevices.filter((l) => l.product_id === product.id).map((l) => l.device_type_id))
+    setEditBrandIds(productBrands.filter((l) => l.product_id === product.id).map((l) => l.brand_id))
+    setEditModelIds(productModels.filter((l) => l.product_id === product.id).map((l) => l.model_id))
+    setEditPrice(String(Number(product.price)))
+    setEditQuantity(String(Number(product.quantity)))
+    setEditDescription(product.description ?? '')
+    setEditLowStockThreshold(product.low_stock_threshold != null ? String(product.low_stock_threshold) : '')
+    setEditImageUrl(product.image_url ?? null)
+    setEditImageFile(null)
+    setEditError(null)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editProduct) return
+    setEditError(null)
+    const trimmedName = editName.trim()
+    const priceNum = parseFloat(editPrice)
+    const qtyNum = parseFloat(editQuantity)
+    if (!trimmedName) { setEditError('Informe o nome do produto.'); return }
+    if (!editPrice || isNaN(priceNum) || priceNum < 0) { setEditError('Informe um preço válido.'); return }
+    if (!editQuantity || isNaN(qtyNum) || qtyNum < 0) { setEditError('Informe uma quantidade válida.'); return }
+
+    setSavingEdit(true)
+    try {
+      let finalImageUrl = editImageUrl
+      if (editImageFile) {
+        const uploaded = await adminService.products.uploadImage(editImageFile)
+        finalImageUrl = uploaded.url
+      }
+      const updated = await adminService.products.update(editProduct.id, {
+        name: trimmedName,
+        price: priceNum,
+        quantity: qtyNum,
+        description: editDescription.trim() || undefined,
+        image_url: finalImageUrl ?? undefined,
+        low_stock_threshold: editLowStockThreshold.trim() ? Number(editLowStockThreshold) : undefined,
+      })
+      await eletronicosAdmin.products.saveLinks(editProduct.id, { device_ids: editDeviceIds, brand_ids: editBrandIds, model_ids: editModelIds })
+      setProductDevices((prev) => [...prev.filter((l) => l.product_id !== editProduct.id), ...editDeviceIds.map((device_type_id) => ({ product_id: editProduct.id, device_type_id }))])
+      setProductBrands((prev) => [...prev.filter((l) => l.product_id !== editProduct.id), ...editBrandIds.map((brand_id) => ({ product_id: editProduct.id, brand_id }))])
+      setProductModels((prev) => [...prev.filter((l) => l.product_id !== editProduct.id), ...editModelIds.map((model_id) => ({ product_id: editProduct.id, model_id }))])
+      setProducts((prev) => prev?.map((p) => (p.id === editProduct.id ? updated : p)).sort((a, b) => a.name.localeCompare(b.name)) ?? null)
+      setEditProduct(null)
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Não foi possível salvar as alterações.')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!actionsProduct) return
+    setDeleting(true)
+    try {
+      await adminService.products.delete(actionsProduct.id)
+      setProducts((prev) => prev?.filter((p) => p.id !== actionsProduct.id) ?? null)
+      setActionsProduct(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'erro ao excluir')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  if (!products) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-[#161618] rounded-2xl border border-white/5 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowForm((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
+        >
+          <span className="flex items-center gap-2">
+            <Package className="w-4 h-4 text-[#e0211a]" />
+            Novo produto
+          </span>
+        </button>
+
+        {showForm && (
+          <form onSubmit={handleCreate} className="px-4 pb-4 space-y-3 border-t border-white/5 pt-3">
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Foto</label>
+              <div className="mt-1">
+                <ImageSlotPicker
+                  url={imageUrl}
+                  onPick={(f) => { setImageFile(f); setImageUrl(URL.createObjectURL(f)) }}
+                  onRemove={() => { setImageFile(null); setImageUrl(null) }}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Nome do produto *</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Tela OLED" className={`${INPUT} mt-1`} />
+            </div>
+            <p className="text-xs text-[#d4d4d8]/40">
+              Aparelho, marca e modelo são opcionais — deixe vazio pra "serve pra todos" naquela dimensão.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <SearchCreateMultiSelect
+                label="Aparelho(s) — opcional"
+                placeholder="Buscar aparelho..."
+                options={deviceTypes}
+                selectedIds={newDeviceIds}
+                onChange={setNewDeviceIds}
+                onCreate={async (n) => {
+                  const created = await eletronicosAdmin.deviceTypes.create(n)
+                  setDeviceTypes((prev) => [...prev, created])
+                  return created
+                }}
+              />
+              <SearchCreateMultiSelect
+                label="Marca(s) — opcional"
+                placeholder="Buscar marca..."
+                options={categories}
+                selectedIds={newBrandIds}
+                onChange={(ids) => { setNewBrandIds(ids); setNewModelIds([]) }}
+              />
+              <SearchCreateMultiSelect
+                label="Modelo(s) — opcional"
+                placeholder="Buscar modelo..."
+                options={modelOptionsForNewItem}
+                selectedIds={newModelIds}
+                onChange={setNewModelIds}
+                onCreate={
+                  newBrandIds[0]
+                    ? async (n) => {
+                        const created = await eletronicosAdmin.catalogModels.create(newBrandIds[0], n)
+                        setModels((prev) => [...prev, created])
+                        return created
+                      }
+                    : undefined
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Preço (R$) *</label>
+                <input type="number" step="0.01" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0,00" className={`${INPUT} mt-1`} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Quantidade *</label>
+                <input type="number" step="1" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0" className={`${INPUT} mt-1`} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Descrição</label>
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Detalhes do produto..." rows={2} className={`${INPUT} mt-1 resize-none`} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Alertar baixo estoque quando chegar em:</label>
+              <input type="number" step="1" min="0" value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} placeholder="Opcional — ex: 5" className={`${INPUT} mt-1`} />
+            </div>
+            {createError && <p className="text-xs text-red-400">{createError}</p>}
+            <div className="flex gap-2">
+              <button type="submit" disabled={creating} className="flex-1 flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+                {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+                Cadastrar produto
+              </button>
+              <button type="button" onClick={resetForm} className="px-4 text-sm text-[#d4d4d8]/60 hover:text-white transition-colors">
+                Cancelar
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {brands.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            <button
+              onClick={() => setActiveBrand(null)}
+              className={`shrink-0 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all ${!activeBrand ? 'bg-[#e0211a] text-white' : 'bg-[#161618] border border-white/5 text-[#d4d4d8] hover:border-[#e0211a]/30'}`}
+            >
+              Todos
+            </button>
+            {brands.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => setActiveBrand(b.id)}
+                className={`shrink-0 px-4 py-1.5 rounded-xl text-xs font-semibold transition-all ${activeBrand === b.id ? 'bg-[#e0211a] text-white' : 'bg-[#161618] border border-white/5 text-[#d4d4d8] hover:border-[#e0211a]/30'}`}
+              >
+                {b.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="relative">
+          <Search className="w-4 h-4 text-[#d4d4d8]/40 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar produto..." className={`${INPUT} pl-9`} />
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {filteredProducts.length === 0 ? (
+        <p className="text-sm text-[#d4d4d8]/40 text-center py-6">{products.length === 0 ? 'Nenhum produto cadastrado ainda.' : 'Nenhum produto encontrado.'}</p>
+      ) : (
+        <div className="space-y-6">
+          {Array.from(byModel.entries()).map(([modelName, modelProducts]) => (
+            <section key={modelName}>
+              <h2 className="text-xs font-bold text-[#d4d4d8]/50 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <span className="w-1 h-3 bg-[#e0211a] rounded-full" />
+                {modelName}
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {modelProducts.map((product) => (
+                  <div
+                    key={product.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => { setActionsProduct(product); setConfirmingDelete(false) }}
+                    className="bg-[#161618] rounded-xl border border-white/5 px-3 py-3 flex items-center gap-3 cursor-pointer hover:border-[#e0211a]/30 transition-colors"
+                  >
+                    <div className="w-12 h-12 shrink-0 rounded-lg bg-[#0a0a0b] border border-white/10 overflow-hidden flex items-center justify-center">
+                      {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-4 h-4 text-[#d4d4d8]/30" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white truncate">{product.name}</p>
+                      <p className="text-xs text-[#d4d4d8]/50">{Number(product.quantity)} em estoque</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-sm font-bold text-[#d4d4d8]">R$ {Number(product.price).toFixed(2)}</span>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); openEdit(product) }} className="text-[#d4d4d8]/40 hover:text-[#e0211a] transition-colors p-1">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+
+      {actionsProduct && (
+        <Dialog title={actionsProduct.name} onClose={() => setActionsProduct(null)}>
+          <p className="text-xs text-[#d4d4d8]/50">R$ {Number(actionsProduct.price).toFixed(2)} · {Number(actionsProduct.quantity)} em estoque</p>
+          {confirmingDelete ? (
+            <div className="bg-[#0a0a0b] border border-red-500/30 rounded-xl p-3 space-y-2">
+              <p className="text-xs text-red-400">Tem certeza que deseja excluir este produto?</p>
+              <div className="flex gap-2">
+                <button onClick={handleDelete} disabled={deleting} className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg px-3 py-2 disabled:opacity-50">
+                  {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Confirmar
+                </button>
+                <button onClick={() => setConfirmingDelete(false)} className="text-xs font-semibold text-[#d4d4d8]/60 hover:text-white px-3 py-2">Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <button onClick={() => { openEdit(actionsProduct); setActionsProduct(null) }} className="w-full flex items-center gap-2.5 text-sm font-semibold text-white bg-[#0a0a0b] border border-white/10 rounded-xl px-4 py-3 hover:border-[#e0211a]/40 transition-colors">
+                <Pencil className="w-4 h-4 text-[#e0211a]" /> Editar produto
+              </button>
+              <button onClick={() => setConfirmingDelete(true)} className="w-full flex items-center gap-2.5 text-sm font-semibold text-red-400 bg-[#0a0a0b] border border-white/10 rounded-xl px-4 py-3 hover:border-red-500/40 transition-colors">
+                <Trash2 className="w-4 h-4" /> Deletar produto
+              </button>
+            </div>
+          )}
+        </Dialog>
+      )}
+
+      {editProduct && (
+        <Dialog title="Editar produto" onClose={() => setEditProduct(null)}>
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Foto</label>
+            <div className="mt-1">
+              <ImageSlotPicker
+                url={editImageUrl}
+                onPick={(f) => { setEditImageFile(f); setEditImageUrl(URL.createObjectURL(f)) }}
+                onRemove={() => { setEditImageFile(null); setEditImageUrl(null) }}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Nome *</label>
+            <input value={editName} onChange={(e) => setEditName(e.target.value)} className={`${INPUT} mt-1`} />
+          </div>
+          <div className="grid grid-cols-1 gap-2">
+            <SearchCreateMultiSelect
+              label="Aparelho(s) — opcional"
+              placeholder="Buscar aparelho..."
+              options={deviceTypes}
+              selectedIds={editDeviceIds}
+              onChange={setEditDeviceIds}
+              onCreate={async (n) => {
+                const created = await eletronicosAdmin.deviceTypes.create(n)
+                setDeviceTypes((prev) => [...prev, created])
+                return created
+              }}
+            />
+            <SearchCreateMultiSelect
+              label="Marca(s) — opcional"
+              placeholder="Buscar marca..."
+              options={categories}
+              selectedIds={editBrandIds}
+              onChange={(ids) => { setEditBrandIds(ids); setEditModelIds([]) }}
+            />
+            <SearchCreateMultiSelect
+              label="Modelo(s) — opcional"
+              placeholder="Buscar modelo..."
+              options={modelOptionsForEdit}
+              selectedIds={editModelIds}
+              onChange={setEditModelIds}
+              onCreate={
+                editBrandIds[0]
+                  ? async (n) => {
+                      const created = await eletronicosAdmin.catalogModels.create(editBrandIds[0], n)
+                      setModels((prev) => [...prev, created])
+                      return created
+                    }
+                  : undefined
+              }
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Preço (R$) *</label>
+              <input type="number" step="0.01" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className={`${INPUT} mt-1`} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Quantidade *</label>
+              <input type="number" step="1" min="0" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} className={`${INPUT} mt-1`} />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Descrição</label>
+            <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={2} className={`${INPUT} mt-1 resize-none`} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Alertar baixo estoque quando chegar em:</label>
+            <input type="number" step="1" min="0" value={editLowStockThreshold} onChange={(e) => setEditLowStockThreshold(e.target.value)} placeholder="Opcional — ex: 5" className={`${INPUT} mt-1`} />
+          </div>
+          {editError && <p className="text-xs text-red-400">{editError}</p>}
+          <button onClick={handleSaveEdit} disabled={savingEdit} className="w-full flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
+            {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            Salvar alterações
+          </button>
+        </Dialog>
+      )}
     </div>
   )
 }
@@ -808,18 +1329,7 @@ export default function EletronicaAdminEstoque() {
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      {tab === 'produtos' && (
-        <div className="bg-[#161618] rounded-2xl border border-white/5 p-6 text-center space-y-3">
-          <Package className="w-10 h-10 mx-auto text-[#d4d4d8]/30" />
-          <p className="text-sm text-[#d4d4d8]/60">Catálogo de produtos físicos (peças, acessórios, aparelhos usados) — mesma tela e mesmo catálogo que a vitrine /loja já lê.</p>
-          <Link
-            to={`/admin/produtos${withTenantSearch()}`}
-            className="inline-flex items-center gap-1.5 bg-[#e0211a] hover:bg-[#a3140f] text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-          >
-            Abrir gerenciador de produtos <ExternalLink className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-      )}
+      {tab === 'produtos' && (categories ? <ProdutosTab categories={categories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
 
       {tab === 'servicos' && (categories ? <ServicosTab categories={categories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
       {tab === 'marcas' && (categories ? <MarcasTab categories={categories} onChanged={loadCategories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}

@@ -320,6 +320,13 @@ export const eletronicosAdmin = {
     extraCosts: () =>
       req<{ id: string; service_catalog_item_id: string; name: string; value: number }[]>(`${BASE}/catalog-items-extra-costs`),
   },
+  products: {
+    devices: () => req<{ product_id: string; device_type_id: string }[]>(`${BASE}/products-devices`),
+    brands: () => req<{ product_id: string; brand_id: string }[]>(`${BASE}/products-brands`),
+    models: () => req<{ product_id: string; model_id: string }[]>(`${BASE}/products-models`),
+    saveLinks: (id: string, input: { device_ids: string[]; brand_ids: string[]; model_ids: string[] }) =>
+      req<void>(`${BASE}/products-links/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  },
   deviceTypes: {
     list: () => req<{ id: string; name: string; slug: string; icon_key: string; sort_order: number }[]>(`${BASE}/device-types`),
     create: (name: string) =>

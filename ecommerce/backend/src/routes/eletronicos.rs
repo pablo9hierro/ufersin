@@ -3666,6 +3666,160 @@ pub async fn create_catalog_model(
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ProductDeviceLinkDto {
+    pub product_id: String,
+    pub device_type_id: String,
+}
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ProductBrandLinkDto {
+    pub product_id: String,
+    pub brand_id: String,
+}
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ProductModelLinkDto {
+    pub product_id: String,
+    pub model_id: String,
+}
+
+pub async fn list_product_devices(State(state): State<AppState>, AdminUser(claims): AdminUser) -> Result<Json<Vec<ProductDeviceLinkDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ProductDeviceLinkDto> = sqlx::query_as(
+        "SELECT product_id::text, device_type_id::text FROM eletronicos.product_devices WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+pub async fn list_product_brands(State(state): State<AppState>, AdminUser(claims): AdminUser) -> Result<Json<Vec<ProductBrandLinkDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ProductBrandLinkDto> = sqlx::query_as(
+        "SELECT product_id::text, brand_id::text FROM eletronicos.product_brands WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+pub async fn list_product_models(State(state): State<AppState>, AdminUser(claims): AdminUser) -> Result<Json<Vec<ProductModelLinkDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ProductModelLinkDto> = sqlx::query_as(
+        "SELECT product_id::text, model_id::text FROM eletronicos.product_models WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SaveProductLinksInput {
+    pub device_ids: Vec<String>,
+    pub brand_ids: Vec<String>,
+    pub model_ids: Vec<String>,
+}
+
+/// Substitui os vínculos multi-select (aparelho/marca/modelo) de um
+/// produto -- mesmo padrão de save_service_item_links, mas sem peças/
+/// custo (produto não tem ficha técnica). `phone_brand`/`phone_model`
+/// legados na tabela `products` compartilhada ficam sincronizados a
+/// partir da 1a marca/1o modelo (só quando exatamente um foi escolhido),
+/// mesma regra do ProdutosTab.tsx real.
+pub async fn save_product_links(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<SaveProductLinksInput>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+
+    let owner: Option<(String,)> = sqlx::query_as("SELECT id::text FROM products WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if owner.is_none() {
+        return Err(AppError::NotFound("produto não encontrado".to_string()));
+    }
+
+    let brand_name: Option<String> = if input.brand_ids.len() == 1 {
+        sqlx::query_scalar("SELECT name FROM eletronicos.service_catalog_categories WHERE tenant_id = $1 AND id = $2::uuid")
+            .bind(&claims.tenant_id)
+            .bind(&input.brand_ids[0])
+            .fetch_optional(&mut *tx)
+            .await?
+    } else {
+        None
+    };
+    let model_name: Option<String> = if input.model_ids.len() == 1 {
+        sqlx::query_scalar("SELECT name FROM eletronicos.catalog_models WHERE tenant_id = $1 AND id = $2::uuid")
+            .bind(&claims.tenant_id)
+            .bind(&input.model_ids[0])
+            .fetch_optional(&mut *tx)
+            .await?
+    } else {
+        None
+    };
+    sqlx::query("UPDATE products SET phone_brand = $3, phone_model = $4 WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(&brand_name)
+        .bind(&model_name)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("DELETE FROM eletronicos.product_devices WHERE tenant_id = $1 AND product_id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    for device_id in &input.device_ids {
+        sqlx::query("INSERT INTO eletronicos.product_devices (tenant_id, product_id, device_type_id) VALUES ($1, $2::uuid, $3::uuid)")
+            .bind(&claims.tenant_id)
+            .bind(&id)
+            .bind(device_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    sqlx::query("DELETE FROM eletronicos.product_brands WHERE tenant_id = $1 AND product_id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    for brand_id in &input.brand_ids {
+        sqlx::query("INSERT INTO eletronicos.product_brands (tenant_id, product_id, brand_id) VALUES ($1, $2::uuid, $3::uuid)")
+            .bind(&claims.tenant_id)
+            .bind(&id)
+            .bind(brand_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    sqlx::query("DELETE FROM eletronicos.product_models WHERE tenant_id = $1 AND product_id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    for model_id in &input.model_ids {
+        sqlx::query("INSERT INTO eletronicos.product_models (tenant_id, product_id, model_id) VALUES ($1, $2::uuid, $3::uuid)")
+            .bind(&claims.tenant_id)
+            .bind(&id)
+            .bind(model_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct ItemDeviceLinkDto {
     pub service_catalog_item_id: String,
     pub device_type_id: String,
