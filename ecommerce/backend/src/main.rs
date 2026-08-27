@@ -659,6 +659,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/eletronicos/appointments/{id}/reschedule",
             patch(routes::eletronicos::reschedule_appointment),
         )
+        .route(
+            "/api/admin/eletronicos/appointments/{id}/events",
+            get(routes::eletronicos::list_appointment_events),
+        )
         // Fase 4.4: estoque + PDV (Pix reaproveita /api/admin/pdv/pix, generico)
         .route(
             "/api/admin/eletronicos/stock-items",

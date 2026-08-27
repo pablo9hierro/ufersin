@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, CalendarDays, CalendarClock, CheckCircle2, Clock, Lock, Loader2, MessageCircle, Plus, Unlock, User, X } from 'lucide-react'
+import { AlertCircle, CalendarDays, CalendarClock, CheckCircle2, Clock, History, Lock, Loader2, MessageCircle, Plus, Unlock, User, X } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { AppointmentDto } from '../../lib/eletronicosApi'
 
@@ -10,8 +10,8 @@ import type { AppointmentDto } from '../../lib/eletronicosApi'
 // "Concluir"/"Remarcar"/"Cancelar" (justificativa >=20 chars + aviso
 // padrão via template ou mensagem customizada, igual src/lib/agenda/notifications.ts),
 // dialog "Indisponibilizar horário" com lista de bloqueios + liberar.
-// Gap disclosed: dialog de detalhe com histórico de eventos
-// (appointment_events) não foi portado.
+// Dialog de detalhe com histórico de eventos (appointment_events) --
+// port de DetailDialog em AgendaClient.tsx.
 
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const SELECT = 'bg-[#0a0a0b] border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[#e0211a] transition-colors'
@@ -330,6 +330,89 @@ function RescheduleDialog({ appt, onClose, onDone }: { appt: AppointmentDto; onC
   )
 }
 
+const ACTION_LABEL: Record<string, string> = {
+  created: 'Criado',
+  rescheduled: 'Remarcado',
+  cancelled: 'Cancelado',
+  completed: 'Concluído',
+  no_show: 'Não compareceu',
+}
+
+function fmtDateTime(iso: string) {
+  return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+type AppointmentEvent = {
+  id: string
+  action: string
+  actor_type: string
+  actor_id: string | null
+  justification: string | null
+  previous_starts_at: string | null
+  new_starts_at: string | null
+  created_at: string
+}
+
+function DetailDialog({ appointment, onClose }: { appointment: AppointmentDto; onClose: () => void }) {
+  const [events, setEvents] = useState<AppointmentEvent[] | null>(null)
+  const st = STATUS_CONFIG[appointment.status] ?? { label: appointment.status, className: 'bg-white/10 text-[#d4d4d8]' }
+  const dur = Math.round((new Date(appointment.ends_at).getTime() - new Date(appointment.starts_at).getTime()) / 60_000)
+
+  useEffect(() => {
+    eletronicosAdmin.appointments.events(appointment.id).then(setEvents).catch(() => setEvents([]))
+  }, [appointment.id])
+
+  return (
+    <Dialog title="Detalhes do agendamento" onClose={onClose}>
+      <div className="space-y-1.5 text-sm">
+        <p className="text-white font-semibold">{appointment.service_label}</p>
+        <p className="text-[#d4d4d8]">{appointment.customer_name} — {appointment.customer_phone}</p>
+        <p className="text-[#d4d4d8]">
+          {dateKeyToBr(new Date(appointment.starts_at).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))}, {fmtTime(appointment.starts_at)}–{fmtTime(appointment.ends_at)}
+          <span className="text-[#d4d4d8]/40"> ({dur} min)</span>
+        </p>
+        <p>
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.className}`}>{st.label}</span>
+        </p>
+        {appointment.notes && <p className="text-[#d4d4d8]/70 pt-1">{appointment.notes}</p>}
+      </div>
+
+      <div className="border-t border-white/5 pt-3">
+        <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-1.5">
+          <History className="w-4 h-4 text-[#e0211a]" /> Histórico
+        </h3>
+        {!events ? (
+          <div className="flex items-center gap-2 text-[#d4d4d8]/40 text-sm py-4">
+            <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+          </div>
+        ) : events.length === 0 ? (
+          <p className="text-sm text-[#d4d4d8]/40">Sem eventos registrados.</p>
+        ) : (
+          <div className="space-y-2.5">
+            {events.map((ev) => (
+              <div key={ev.id} className="text-sm border-l-2 border-white/10 pl-3">
+                <p className="text-white">
+                  {ACTION_LABEL[ev.action] ?? ev.action}
+                  <span className="text-[#d4d4d8]/40 text-xs ml-2">
+                    {ev.actor_type}{ev.actor_id ? ` · ${ev.actor_id}` : ''}
+                  </span>
+                </p>
+                <p className="text-[#d4d4d8]/50 text-xs">{fmtDateTime(ev.created_at)}</p>
+                {ev.previous_starts_at && ev.new_starts_at && ev.previous_starts_at !== ev.new_starts_at && (
+                  <p className="text-[#d4d4d8]/70 text-xs mt-0.5">
+                    {fmtDateTime(ev.previous_starts_at)} → {fmtDateTime(ev.new_starts_at)}
+                  </p>
+                )}
+                {ev.justification && <p className="text-[#d4d4d8]/70 text-xs mt-0.5 italic">&ldquo;{ev.justification}&rdquo;</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Dialog>
+  )
+}
+
 export default function EletronicaAdminAgenda() {
   const [date, setDate] = useState(todayKey())
   const [slots, setSlots] = useState<DaySlot[] | null>(null)
@@ -339,6 +422,7 @@ export default function EletronicaAdminAgenda() {
   const [blocking, setBlocking] = useState(false)
   const [cancelling, setCancelling] = useState<AppointmentDto | null>(null)
   const [rescheduling, setRescheduling] = useState<AppointmentDto | null>(null)
+  const [detail, setDetail] = useState<AppointmentDto | null>(null)
 
   const load = useCallback(async () => {
     setError(null)
@@ -501,20 +585,20 @@ export default function EletronicaAdminAgenda() {
             return (
               <div key={a.id} className="bg-[#161618] rounded-2xl border border-white/5 p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <button type="button" onClick={() => setDetail(a)} className="min-w-0 text-left">
                     <div className="flex items-center gap-2 text-white font-semibold">
                       <Clock className="w-4 h-4 text-[#e0211a] shrink-0" />
                       {fmtTime(a.starts_at)}–{fmtTime(a.ends_at)}
                     </div>
                     <p className="text-sm text-white mt-1 truncate">{a.service_label}</p>
-                    <a href={whatsappLink(a.customer_phone)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-[#d4d4d8]/70 hover:text-white mt-1 transition-colors">
-                      <User className="w-3.5 h-3.5" />
-                      {a.customer_name}
-                      <MessageCircle className="w-3.5 h-3.5 text-green-500" />
-                    </a>
-                  </div>
+                  </button>
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${st.className}`}>{st.label}</span>
                 </div>
+                <a href={whatsappLink(a.customer_phone)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-[#d4d4d8]/70 hover:text-white transition-colors">
+                  <User className="w-3.5 h-3.5" />
+                  {a.customer_name}
+                  <MessageCircle className="w-3.5 h-3.5 text-green-500" />
+                </a>
                 {a.notes && <p className="text-sm text-[#d4d4d8]/60 border-t border-white/5 pt-2">{a.notes}</p>}
                 {ativo && (
                   <div className="flex flex-wrap gap-2 pt-1 border-t border-white/5">
@@ -568,6 +652,7 @@ export default function EletronicaAdminAgenda() {
           }}
         />
       )}
+      {detail && <DetailDialog appointment={detail} onClose={() => setDetail(null)} />}
     </div>
   )
 }

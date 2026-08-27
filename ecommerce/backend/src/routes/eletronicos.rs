@@ -1569,6 +1569,43 @@ pub async fn cancel_appointment(
     Ok(Json(row))
 }
 
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct AppointmentEventDto {
+    pub id: String,
+    pub appointment_id: String,
+    pub action: String,
+    pub actor_type: String,
+    pub actor_id: Option<String>,
+    pub justification: Option<String>,
+    pub previous_starts_at: Option<DateTime<chrono::FixedOffset>>,
+    pub previous_ends_at: Option<DateTime<chrono::FixedOffset>>,
+    pub new_starts_at: Option<DateTime<chrono::FixedOffset>>,
+    pub new_ends_at: Option<DateTime<chrono::FixedOffset>>,
+    pub created_at: DateTime<chrono::FixedOffset>,
+}
+
+/// Histórico de eventos do agendamento -- port do painel "Detalhes do
+/// agendamento" (DetailDialog) real, que mostra a timeline completa.
+pub async fn list_appointment_events(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<AppointmentEventDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<AppointmentEventDto> = sqlx::query_as(
+        "SELECT id::text, appointment_id::text, action, actor_type, actor_id, justification, \
+         previous_starts_at, previous_ends_at, new_starts_at, new_ends_at, created_at \
+         FROM eletronicos.appointment_events WHERE tenant_id = $1 AND appointment_id = $2::uuid \
+         ORDER BY created_at",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct RescheduleAppointmentInput {
     pub data: String,

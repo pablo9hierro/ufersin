@@ -194,6 +194,22 @@ export const eletronicosAdmin = {
         body: JSON.stringify(input),
       }),
     complete: (id: string) => req<AppointmentDto>(`${BASE}/appointments/${id}/complete`, { method: 'POST' }),
+    events: (id: string) =>
+      req<
+        {
+          id: string
+          appointment_id: string
+          action: string
+          actor_type: string
+          actor_id: string | null
+          justification: string | null
+          previous_starts_at: string | null
+          previous_ends_at: string | null
+          new_starts_at: string | null
+          new_ends_at: string | null
+          created_at: string
+        }[]
+      >(`${BASE}/appointments/${id}/events`),
   },
   agenda: {
     day: (date: string) =>

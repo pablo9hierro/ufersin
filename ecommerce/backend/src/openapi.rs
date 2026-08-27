@@ -202,6 +202,7 @@ pub fn build() -> OpenApi {
         ("/api/admin/eletronicos/appointments/{id}/cancel", Post, "Cancelar agendamento (justificativa >=20 chars + aviso WhatsApp padrao ou customizado)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/appointments/{id}/reschedule", Patch, "Remarcar agendamento (revalida conflito/expediente, aviso WhatsApp padrao ou customizado)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/appointments/{id}/complete", Post, "Concluir agendamento", "Admin - Eletronicos", true, false),
+        ("/api/admin/eletronicos/appointments/{id}/events", Get, "Historico de eventos do agendamento (timeline)", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/agenda/day", Get, "Grade de horarios do dia (livre/ocupado/bloqueado/muito em cima)", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/agenda/blocks", Get, "Listar bloqueios de horario do dia", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/agenda/blocks", Post, "Criar bloqueio de horario", "Admin - Eletronicos", true, true),
