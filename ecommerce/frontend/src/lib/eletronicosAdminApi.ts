@@ -277,6 +277,37 @@ export const eletronicosAdmin = {
         }),
       delete: (id: string) => req<void>(`${BASE}/agenda/blocks/${id}`, { method: 'DELETE' }),
     },
+    settings: {
+      get: () =>
+        req<{
+          appointment_ai_enabled: boolean
+          default_duration_minutes: number
+          lead_time_minutes: number
+          max_advance_days: number
+          buffer_minutes: number
+        }>(`${BASE}/agenda/settings`),
+      update: (input: {
+        appointment_ai_enabled: boolean
+        lead_time_minutes: number
+        buffer_minutes: number
+        default_duration_minutes: number
+      }) =>
+        req<{
+          appointment_ai_enabled: boolean
+          default_duration_minutes: number
+          lead_time_minutes: number
+          max_advance_days: number
+          buffer_minutes: number
+        }>(`${BASE}/agenda/settings`, { method: 'PUT', body: JSON.stringify(input) }),
+    },
+    businessHours: {
+      list: () => req<{ weekday: number; open_time: string; close_time: string }[]>(`${BASE}/agenda/business-hours`),
+      update: (input: { blocks: { weekday: number; open_time: string; close_time: string }[] }) =>
+        req<{ weekday: number; open_time: string; close_time: string }[]>(`${BASE}/agenda/business-hours`, {
+          method: 'PUT',
+          body: JSON.stringify(input),
+        }),
+    },
   },
   catalogCategories: {
     list: () =>

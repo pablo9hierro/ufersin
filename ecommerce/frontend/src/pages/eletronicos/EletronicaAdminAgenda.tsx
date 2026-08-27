@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, CalendarDays, CalendarClock, CheckCircle2, Clock, History, Lock, Loader2, MessageCircle, Plus, Unlock, User, X } from 'lucide-react'
+import { AlertCircle, CalendarDays, CalendarClock, Check, CheckCircle2, ChevronDown, Clock, History, Lock, Loader2, MessageCircle, Plus, Unlock, User, X } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { AppointmentDto } from '../../lib/eletronicosApi'
 
@@ -12,6 +12,182 @@ import type { AppointmentDto } from '../../lib/eletronicosApi'
 // dialog "Indisponibilizar horário" com lista de bloqueios + liberar.
 // Dialog de detalhe com histórico de eventos (appointment_events) --
 // port de DetailDialog em AgendaClient.tsx.
+// AgendaSettingsCard.tsx também portado 1:1 abaixo (antecedência mínima,
+// buffer entre atendimentos, horário de funcionamento por dia com múltiplos
+// blocos) via GET/PUT /api/admin/eletronicos/agenda/{settings,business-hours}.
+
+const WEEKDAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+const SETTINGS_LABEL = 'block text-xs font-semibold text-[#d4d4d8]/60 mb-1.5 uppercase tracking-wider'
+const SETTINGS_INPUT =
+  'w-full px-3.5 py-2.5 rounded-xl bg-[#0a0a0b] border border-white/8 text-white text-sm placeholder-[#d4d4d8]/30 outline-none focus:border-[#e0211a]/50 transition-colors'
+
+type AgendaSettings = {
+  appointment_ai_enabled: boolean
+  lead_time_minutes: number
+  buffer_minutes: number
+  default_duration_minutes: number
+}
+type HourBlock = { weekday: number; open_time: string; close_time: string }
+
+function toInputTime(t: string): string {
+  return t.slice(0, 5)
+}
+
+function AgendaSettingsCard() {
+  const [cfg, setCfg] = useState<AgendaSettings | null>(null)
+  const [blocks, setBlocks] = useState<HourBlock[] | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    Promise.all([eletronicosAdmin.agenda.settings.get(), eletronicosAdmin.agenda.businessHours.list()])
+      .then(([settings, hours]) => {
+        setCfg(settings)
+        setBlocks(hours.map((h) => ({ weekday: h.weekday, open_time: toInputTime(h.open_time), close_time: toInputTime(h.close_time) })))
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar a agenda.'))
+  }, [])
+
+  const set = <K extends keyof AgendaSettings>(k: K, v: AgendaSettings[K]) => setCfg((prev) => (prev ? { ...prev, [k]: v } : prev))
+  const addBlock = (weekday: number) => setBlocks((prev) => [...(prev ?? []), { weekday, open_time: '09:00', close_time: '18:00' }])
+  const removeBlock = (index: number) => setBlocks((prev) => (prev ?? []).filter((_, i) => i !== index))
+  const updateBlock = (index: number, patch: Partial<HourBlock>) => setBlocks((prev) => (prev ?? []).map((b, i) => (i === index ? { ...b, ...patch } : b)))
+
+  const save = async () => {
+    if (!cfg || !blocks) return
+    setSaving(true)
+    setError(null)
+    try {
+      const [settingsRes, hoursRes] = await Promise.all([
+        eletronicosAdmin.agenda.settings.update(cfg),
+        eletronicosAdmin.agenda.businessHours.update({ blocks }),
+      ])
+      setCfg(settingsRes)
+      setBlocks(hoursRes.map((h) => ({ weekday: h.weekday, open_time: toInputTime(h.open_time), close_time: toInputTime(h.close_time) })))
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1600)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao salvar.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (error && !cfg) {
+    return <div className="bg-[#161618] rounded-2xl border border-white/5 p-4 text-sm text-red-400">{error}</div>
+  }
+  if (!cfg || !blocks) {
+    return (
+      <div className="bg-[#161618] rounded-2xl border border-white/5 p-4 flex items-center gap-2 text-sm text-[#d4d4d8]/40">
+        <Loader2 className="w-4 h-4 animate-spin" /> Carregando agenda...
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-[#161618] rounded-2xl border border-white/5 overflow-hidden">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 p-4 text-left hover:bg-white/2 transition-colors">
+        <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+          <CalendarClock className="w-4 h-4 text-[#e0211a]" />
+          Agendamento de atendimentos
+        </h2>
+        <ChevronDown className={`w-4 h-4 text-[#d4d4d8]/50 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="p-4 pt-0 space-y-4">
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={cfg.appointment_ai_enabled}
+              onChange={(e) => set('appointment_ai_enabled', e.target.checked)}
+              className="w-4 h-4 accent-[#e0211a]"
+            />
+            <span className="text-sm text-white">
+              Deixar a assistente agendar atendimentos
+              <span className="block text-xs text-[#d4d4d8]/50">Desligado, ela não consulta nem marca horários no WhatsApp.</span>
+            </span>
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={SETTINGS_LABEL}>Antecedência mínima (min)</label>
+              <input
+                type="number"
+                min={0}
+                step={5}
+                value={cfg.lead_time_minutes}
+                onChange={(e) => set('lead_time_minutes', Number(e.target.value))}
+                className={SETTINGS_INPUT}
+              />
+              <p className="text-xs text-[#d4d4d8]/50 mt-1">
+                Folga entre agora e o próximo horário aceito. Com 30, às 9h a assistente só oferece a partir das 9h30.
+              </p>
+            </div>
+            <div>
+              <label className={SETTINGS_LABEL}>Buffer entre atendimentos (min)</label>
+              <input
+                type="number"
+                min={0}
+                step={5}
+                value={cfg.buffer_minutes}
+                onChange={(e) => set('buffer_minutes', Number(e.target.value))}
+                className={SETTINGS_INPUT}
+              />
+              <p className="text-xs text-[#d4d4d8]/50 mt-1">
+                Folga obrigatória depois de um atendimento e a partir de agora — evita marcar em sequência colada.
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-white/5 pt-4 space-y-3">
+            <p className={SETTINGS_LABEL}>Horário de funcionamento</p>
+            {WEEKDAY_LABELS.map((label, weekday) => {
+              const dayBlocks = blocks.map((b, i) => ({ ...b, i })).filter((b) => b.weekday === weekday)
+              return (
+                <div key={weekday} className="flex flex-wrap items-start gap-2">
+                  <span className="text-sm text-[#d4d4d8]/70 w-20 pt-2.5 shrink-0">{label}</span>
+                  <div className="flex-1 flex flex-col gap-2 min-w-[240px]">
+                    {dayBlocks.length === 0 && <span className="text-xs text-[#d4d4d8]/30 py-2.5">Fechado</span>}
+                    {dayBlocks.map((b) => (
+                      <div key={b.i} className="flex items-center gap-2">
+                        <input type="time" value={b.open_time} onChange={(e) => updateBlock(b.i, { open_time: e.target.value })} className={`${SETTINGS_INPUT} w-32`} />
+                        <span className="text-[#d4d4d8]/40 text-sm">até</span>
+                        <input type="time" value={b.close_time} onChange={(e) => updateBlock(b.i, { close_time: e.target.value })} className={`${SETTINGS_INPUT} w-32`} />
+                        <button onClick={() => removeBlock(b.i)} className="p-1.5 rounded-lg text-[#d4d4d8]/40 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button onClick={() => addBlock(weekday)} className="self-start flex items-center gap-1 text-xs text-[#e0211a] hover:text-[#e0211a]/80 transition-colors">
+                      <Plus className="w-3.5 h-3.5" /> Adicionar bloco
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+            <p className="text-xs text-[#d4d4d8]/40">Um dia pode ter mais de um bloco (ex: 08:00–12:00 e 14:00–18:00). Dia sem nenhum bloco fica fechado pra agendamento.</p>
+          </div>
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
+
+          <button
+            onClick={save}
+            disabled={saving}
+            className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors ${
+              saved ? 'bg-green-600 text-white' : 'bg-[#e0211a] text-white hover:bg-[#a3140f] disabled:opacity-40'
+            }`}
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : null}
+            {saved ? 'Salvo!' : 'Salvar agendamento'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const SELECT = 'bg-[#0a0a0b] border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[#e0211a] transition-colors'
@@ -484,6 +660,8 @@ export default function EletronicaAdminAgenda() {
           Indisponibilizar horário
         </button>
       </div>
+
+      <AgendaSettingsCard />
 
       <div className="flex flex-wrap items-center gap-2">
         <DateDropdown value={date} onChange={setDate} />

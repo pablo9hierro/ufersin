@@ -680,7 +680,7 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
   )
 }
 
-function ServicosTab({ categories }: { categories: Category[] }) {
+function ServicosTab({ categories, onCategoriesChanged }: { categories: Category[]; onCategoriesChanged: () => void }) {
   const [items, setItems] = useState<EletronicaAdminCatalogItem[] | null>(null)
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([])
   const [models, setModels] = useState<CatalogModelRow[]>([])
@@ -903,6 +903,12 @@ function ServicosTab({ categories }: { categories: Category[] }) {
               onChange={(ids) => {
                 setBrandIds(ids)
                 setModelIds([])
+              }}
+              onCreate={async (name) => {
+                const deviceType = deviceIds[0] ? deviceTypes.find((d) => d.id === deviceIds[0])?.slug ?? deviceTypes[0]?.slug ?? 'geral' : deviceTypes[0]?.slug ?? 'geral'
+                const created = await eletronicosAdmin.catalogCategories.create({ name, device_type: deviceType, sort_order: categories.length })
+                onCategoriesChanged()
+                return created
               }}
             />
             <SearchCreateMultiSelect
@@ -1877,7 +1883,7 @@ export default function EletronicaAdminEstoque() {
 
       {tab === 'produtos' && (categories ? <ProdutosTab categories={categories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
 
-      {tab === 'servicos' && (categories ? <ServicosTab categories={categories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
+      {tab === 'servicos' && (categories ? <ServicosTab categories={categories} onCategoriesChanged={loadCategories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
       {tab === 'marcas' && (categories ? <MarcasTab categories={categories} onChanged={loadCategories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
       {tab === 'estoque' &&
         (stockItems ? <EstoqueTab items={stockItems} onChanged={loadStock} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}

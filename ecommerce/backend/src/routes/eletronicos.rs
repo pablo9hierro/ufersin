@@ -1213,6 +1213,38 @@ pub async fn get_agenda_settings(
     Ok(Json(row))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AgendaSettingsInput {
+    pub appointment_ai_enabled: bool,
+    pub lead_time_minutes: i32,
+    pub buffer_minutes: i32,
+    pub default_duration_minutes: i32,
+}
+
+pub async fn update_agenda_settings(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<AgendaSettingsInput>,
+) -> Result<Json<AgendaSettingsDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let row: AgendaSettingsDto = sqlx::query_as(
+        "UPDATE eletronicos.agenda_settings SET appointment_ai_enabled = $2, \
+         lead_time_minutes = $3, buffer_minutes = $4, default_duration_minutes = $5 \
+         WHERE tenant_id = $1 \
+         RETURNING appointment_ai_enabled, default_duration_minutes, lead_time_minutes, \
+         max_advance_days, buffer_minutes",
+    )
+    .bind(&claims.tenant_id)
+    .bind(input.appointment_ai_enabled)
+    .bind(input.lead_time_minutes)
+    .bind(input.buffer_minutes)
+    .bind(input.default_duration_minutes)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct BusinessHourDto {
     pub weekday: i32,
@@ -1225,6 +1257,51 @@ pub async fn list_business_hours(
     AdminUser(claims): AdminUser,
 ) -> Result<Json<Vec<BusinessHourDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<BusinessHourDto> = sqlx::query_as(
+        "SELECT weekday, open_time::text, close_time::text FROM eletronicos.agenda_business_hours \
+         WHERE tenant_id = $1 ORDER BY weekday",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BusinessHoursInput {
+    pub blocks: Vec<BusinessHourBlockInput>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BusinessHourBlockInput {
+    pub weekday: i32,
+    pub open_time: String,
+    pub close_time: String,
+}
+
+pub async fn update_business_hours(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<BusinessHoursInput>,
+) -> Result<Json<Vec<BusinessHourDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    sqlx::query("DELETE FROM eletronicos.agenda_business_hours WHERE tenant_id = $1")
+        .bind(&claims.tenant_id)
+        .execute(&mut *tx)
+        .await?;
+    for block in &input.blocks {
+        sqlx::query(
+            "INSERT INTO eletronicos.agenda_business_hours (tenant_id, weekday, open_time, close_time) \
+             VALUES ($1, $2, $3::time, $4::time)",
+        )
+        .bind(&claims.tenant_id)
+        .bind(block.weekday)
+        .bind(&block.open_time)
+        .bind(&block.close_time)
+        .execute(&mut *tx)
+        .await?;
+    }
     let rows: Vec<BusinessHourDto> = sqlx::query_as(
         "SELECT weekday, open_time::text, close_time::text FROM eletronicos.agenda_business_hours \
          WHERE tenant_id = $1 ORDER BY weekday",

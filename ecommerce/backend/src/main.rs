@@ -677,11 +677,11 @@ async fn main() -> anyhow::Result<()> {
         // Fase 4.3: agenda/appointments
         .route(
             "/api/admin/eletronicos/agenda/settings",
-            get(routes::eletronicos::get_agenda_settings),
+            get(routes::eletronicos::get_agenda_settings).put(routes::eletronicos::update_agenda_settings),
         )
         .route(
             "/api/admin/eletronicos/agenda/business-hours",
-            get(routes::eletronicos::list_business_hours),
+            get(routes::eletronicos::list_business_hours).put(routes::eletronicos::update_business_hours),
         )
         .route(
             "/api/admin/eletronicos/appointments",
