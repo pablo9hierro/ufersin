@@ -4,8 +4,22 @@ import { ApiError } from './apiError'
 import type {
   ServiceRequestDto,
   ServiceOrderDto,
+  ServiceOrderUpdateDto,
+  ChecklistItem,
   AppointmentDto,
 } from './eletronicosApi'
+export type { ChecklistItem, ServiceOrderUpdateDto, ServiceOrderDto } from './eletronicosApi'
+
+export type StockItemDto = {
+  id: string
+  name: string
+  unit: string
+  quantity: number
+  price: number | null
+  warranty_days: number | null
+  units_per_box: number | null
+  low_stock_threshold: number | null
+}
 
 export type PdvSaleDetail = {
   sale: { id: string; status: string; total_value: number; notes: string | null }
@@ -121,14 +135,35 @@ export const eletronicosAdmin = {
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    updateQuoteValue: (id: string, quoteValue: number) =>
+      req<ServiceRequestDto>(`${BASE}/service-requests/${id}/quote-value`, {
+        method: 'PATCH',
+        body: JSON.stringify({ quote_value: quoteValue }),
+      }),
   },
   serviceOrders: {
     getOrCreate: (requestId: string) =>
       req<ServiceOrderDto>(`${BASE}/service-requests/${requestId}/service-order`),
-    complete: (id: string, input: { checklist: unknown[]; completed_services?: string; shipping_price?: number }) =>
+    saveChecklist: (id: string, checklist: ChecklistItem[]) =>
+      req<ServiceOrderDto>(`${BASE}/service-orders/${id}/checklist`, {
+        method: 'POST',
+        body: JSON.stringify({ checklist }),
+      }),
+    listUpdates: (id: string) => req<ServiceOrderUpdateDto[]>(`${BASE}/service-orders/${id}/updates`),
+    addUpdate: (id: string, input: { message?: string; media_urls?: string[]; component?: string }) =>
+      req<ServiceOrderUpdateDto>(`${BASE}/service-orders/${id}/updates`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    complete: (id: string, input: { checklist: ChecklistItem[]; completed_services?: string; shipping_price?: number }) =>
       req<{ service_order: ServiceOrderDto; final_value: number }>(`${BASE}/service-orders/${id}/complete`, {
         method: 'POST',
         body: JSON.stringify(input),
+      }),
+    reopen: (id: string, message: string) =>
+      req<ServiceOrderDto>(`${BASE}/service-orders/${id}/reopen`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
       }),
     setPdf: (id: string, pdfUrl: string) =>
       req<ServiceOrderDto>(`${BASE}/service-orders/${id}/pdf`, {
@@ -303,20 +338,9 @@ export const eletronicosAdmin = {
   },
   stockItems: {
     list: () =>
-      req<
-        {
-          id: string
-          name: string
-          unit: string
-          quantity: number
-          price: number | null
-          warranty_days: number | null
-          units_per_box: number | null
-          low_stock_threshold: number | null
-        }[]
-      >(`${BASE}/stock-items`),
-    create: (input: { name: string; unit: string; quantity: number; price?: number }) =>
-      req(`${BASE}/stock-items`, { method: 'POST', body: JSON.stringify(input) }),
+      req<StockItemDto[]>(`${BASE}/stock-items`),
+    create: (input: { name: string; unit: string; quantity: number; price?: number; warranty_days?: number }) =>
+      req<StockItemDto>(`${BASE}/stock-items`, { method: 'POST', body: JSON.stringify(input) }),
     stockEntry: (id: string, quantity: number) =>
       req(`${BASE}/stock-items/${id}/entry`, { method: 'POST', body: JSON.stringify({ quantity }) }),
   },

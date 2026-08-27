@@ -570,6 +570,45 @@ pub async fn update_service_request_status(
     Ok(Json(row))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateQuoteValueInput {
+    pub quote_value: f64,
+}
+
+/// Atualiza so o quote_value, sem mexer no status e sem disparar o
+/// template de WhatsApp `status_<status>` -- usado ao salvar a checklist
+/// da OS (ServiceOrderPanel), que precisa refletir o valor somado dos
+/// componentes marcados sem reenviar a mesma notificacao de status a cada
+/// salvamento.
+pub async fn update_quote_value(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<UpdateQuoteValueInput>,
+) -> Result<Json<ServiceRequestDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query(
+        "UPDATE eletronicos.service_requests SET quote_value = $3 WHERE tenant_id = $1 AND id = $2::uuid",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(input.quote_value)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("solicitação não encontrada".to_string()));
+    }
+    let row: ServiceRequestDto = sqlx::query_as(&format!(
+        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
 // ============================================================================
 // Ordem de servico (checklist / garantia / conclusao) -- fase 4.2
 // ============================================================================

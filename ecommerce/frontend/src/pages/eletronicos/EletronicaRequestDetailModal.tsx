@@ -4,7 +4,6 @@ import {
   ArrowRight,
   Check,
   ExternalLink,
-  FileText,
   Loader2,
   Mail,
   MapPin,
@@ -17,20 +16,16 @@ import {
 } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { ServiceRequestDto } from '../../lib/eletronicosApi'
-import { generateServiceOrderPdf } from '../../lib/eletronicosPdf'
-import { useTenantConfig } from '../../hooks/useTenantConfig'
 import EletronicaDiagnosticSection from './EletronicaDiagnosticSection'
+import EletronicaServiceOrderPanel, { isServiceOrderStatus } from './EletronicaServiceOrderPanel'
 import PatternLockInput from '../../components/PatternLockInput'
 
 // Port 1:1 (adaptado) de src/components/RequestDetailModal.tsx do vrtech --
 // mesmo STATUS_LABELS/getAdvanceConfig (fluxo guiado single/choice em vez
 // de "qualquer status"), mesmo dialog de pagamento com desconto/Pix real
-// (reaproveita eletronicosAdmin.pix, o mesmo mecanismo do PDV). NÃO
-// portado (gaps disclosed, esse motor não tem a tabela/endpoint ainda):
-// senha do cliente (PIN/padrão), DiagnosticSection completa (fotos +
-// checklist de diagnóstico -- aqui "aguardando_diagnostico" só pede o
-// valor final e avança), checklist item-a-item da OS (usa o campo texto
-// livre "resumo do serviço" já existente).
+// (reaproveita eletronicosAdmin.pix, o mesmo mecanismo do PDV), e o
+// ServiceOrderPanel real (checklist por componente/timeline/conclusão com
+// garantia/PDF/reabertura -- ver EletronicaServiceOrderPanel.tsx).
 
 type ServiceStatus = string
 
@@ -218,7 +213,6 @@ export default function EletronicaRequestDetailModal({
   onClose: () => void
   onUpdated: (r: ServiceRequestDto) => void
 }) {
-  const tenantConfig = useTenantConfig()
   const [status, setStatus] = useState(request.status)
   const [quoteValue, setQuoteValue] = useState(request.quote_value?.toString() ?? '')
   const [estimatedQuoteValue, setEstimatedQuoteValue] = useState(request.estimated_quote_value?.toString() ?? '')
@@ -231,10 +225,8 @@ export default function EletronicaRequestDetailModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  const [generatingPdf, setGeneratingPdf] = useState(false)
-  const [completedServices, setCompletedServices] = useState('')
-  const [osCompleted, setOsCompleted] = useState(['completed', 'em_pagamento', 'em_entrega', 'delivered', 'finished'].includes(request.status))
-  const [completing, setCompleting] = useState(false)
+  const [osState, setOsState] = useState({ closed: false, hasUpdate: false })
+  const osCompleted = osState.closed
 
   const [selectedMethods, setSelectedMethods] = useState<string[]>((request.payment_methods ?? []).map((p) => p.method))
   const [methodValues, setMethodValues] = useState<Record<string, string>>(
@@ -406,39 +398,6 @@ export default function EletronicaRequestDetailModal({
       setError(e instanceof Error ? e.message : 'Erro ao salvar')
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function handleCompleteOs() {
-    setCompleting(true)
-    setError(null)
-    try {
-      const order = await eletronicosAdmin.serviceOrders.getOrCreate(request.id)
-      await eletronicosAdmin.serviceOrders.complete(order.id, {
-        checklist: [],
-        completed_services: completedServices.trim() || undefined,
-      })
-      setOsCompleted(true)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'erro ao concluir ordem de serviço')
-    } finally {
-      setCompleting(false)
-    }
-  }
-
-  async function handleGeneratePdf() {
-    setGeneratingPdf(true)
-    setError(null)
-    try {
-      const order = await eletronicosAdmin.serviceOrders.getOrCreate(request.id)
-      const blob = generateServiceOrderPdf(request, order, tenantConfig?.loja_nome || 'Assistência técnica')
-      const url = await eletronicosAdmin.uploadMedia(blob, `os-${request.id}.pdf`)
-      await eletronicosAdmin.serviceOrders.setPdf(order.id, url)
-      window.open(url, '_blank')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'erro ao gerar PDF')
-    } finally {
-      setGeneratingPdf(false)
     }
   }
 
@@ -647,32 +606,16 @@ export default function EletronicaRequestDetailModal({
             </section>
           )}
 
-          {status === 'in_progress' && (
-            <section className="space-y-2">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Ordem de serviço</h3>
-              {osCompleted ? (
-                <p className="text-sm text-green-600 bg-green-50 border border-green-100 rounded-xl p-3">✓ Ordem de serviço concluída</p>
-              ) : (
-                <>
-                  <label className="block text-xs text-gray-500 mb-1">Resumo do serviço realizado</label>
-                  <input
-                    value={completedServices}
-                    onChange={(e) => setCompletedServices(e.target.value)}
-                    placeholder="ex: troca de tela"
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#e0211a] mb-2"
-                  />
-                  <button
-                    type="button"
-                    disabled={completing}
-                    onClick={handleCompleteOs}
-                    className="w-full rounded-xl bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-50 text-white font-semibold py-2.5 flex items-center justify-center gap-2 transition-all"
-                  >
-                    {completing && <Loader2 className="w-4 h-4 animate-spin" />}
-                    Concluir ordem de serviço
-                  </button>
-                </>
-              )}
-            </section>
+          {isServiceOrderStatus(status) && (
+            <EletronicaServiceOrderPanel
+              request={request}
+              status={status}
+              onQuoteValueChange={(newValue) => {
+                setQuoteValue(String(newValue))
+                onUpdated({ ...request, quote_value: newValue })
+              }}
+              onOrderStateChange={setOsState}
+            />
           )}
 
           {status === 'em_pagamento' && !paymentDialogOpen && !paymentSaved && (
@@ -803,18 +746,6 @@ export default function EletronicaRequestDetailModal({
                 ))}
               </div>
             </section>
-          )}
-
-          {['completed', 'em_pagamento', 'em_entrega', 'delivered', 'finished'].includes(status) && (
-            <button
-              type="button"
-              disabled={generatingPdf}
-              onClick={handleGeneratePdf}
-              className="w-full rounded-xl border border-gray-200 py-2.5 text-sm text-gray-600 flex items-center justify-center gap-2 hover:border-[#e0211a] hover:text-[#e0211a] transition-colors"
-            >
-              {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-              Gerar / baixar PDF da OS
-            </button>
           )}
 
           <section className="space-y-3 pt-2 border-t border-gray-100">

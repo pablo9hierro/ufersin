@@ -189,6 +189,7 @@ pub fn build() -> OpenApi {
         ("/api/admin/eletronicos/service-requests", Post, "Criar solicitacao de servico", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/service-requests/{id}", Get, "Detalhe da solicitacao", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/service-requests/{id}/status", Post, "Avancar status da solicitacao", "Admin - Eletronicos", true, true),
+        ("/api/admin/eletronicos/service-requests/{id}/quote-value", Patch, "Atualizar so o valor do orcamento, sem notificar WhatsApp (usado ao salvar checklist da OS)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/service-requests/{request_id}/service-order", Get, "Ordem de servico do atendimento (cria se nao existir)", "Admin - Eletronicos", true, false),
         ("/api/admin/eletronicos/service-orders/{id}/checklist", Post, "Salvar checklist da OS", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/service-orders/{id}/updates", Get, "Timeline de atualizacoes da OS", "Admin - Eletronicos", true, false),

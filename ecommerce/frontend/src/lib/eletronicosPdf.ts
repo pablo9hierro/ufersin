@@ -1,14 +1,22 @@
 import { jsPDF } from 'jspdf'
-import type { ServiceOrderDto } from './eletronicosApi'
+import type { ServiceOrderDto, ChecklistItem } from './eletronicosApi'
 import type { ServiceRequestDto } from './eletronicosApi'
 
-// Gera o PDF da Ordem de Serviço -- versão simplificada da lógica original
-// do vrtech (generateServiceOrderPdf.ts, checklist/fotos item a item);
-// como o painel novo ainda não tem checklist granular, usa o resumo já
-// coletado (completed_services/final_value/warranty).
-export function generateServiceOrderPdf(request: ServiceRequestDto, order: ServiceOrderDto, storeName: string): Blob {
+// Gera o PDF da Ordem de Serviço -- port funcional de
+// generateServiceOrderPdf.ts do vrtech: itemiza cada componente marcado na
+// checklist (com valor/garantia individual), não só o resumo. Gap
+// disclosed: fotos ficam como link clicável, não embutidas (mesma
+// simplificação de generateDiagnosticPdf, lib/pdfImages.ts do original não
+// foi portado).
+export function generateServiceOrderPdf(
+  request: ServiceRequestDto,
+  order: ServiceOrderDto,
+  storeName: string,
+  checklist?: ChecklistItem[],
+): Blob {
   const doc = new jsPDF()
   const marginX = 15
+  const w = doc.internal.pageSize.getWidth()
   let y = 20
 
   doc.setFontSize(16)
@@ -21,7 +29,7 @@ export function generateServiceOrderPdf(request: ServiceRequestDto, order: Servi
   y += 10
 
   doc.setDrawColor(200)
-  doc.line(marginX, y, 195, y)
+  doc.line(marginX, y, w - marginX, y)
   y += 8
 
   const field = (label: string, value: string) => {
@@ -38,6 +46,37 @@ export function generateServiceOrderPdf(request: ServiceRequestDto, order: Servi
   field('Aparelho', request.phone_model || '—')
   field('Problema relatado', request.problem_description || '—')
   y += 4
+
+  const checkedItems = (checklist ?? order.checklist ?? []).filter((i) => i.checked)
+  if (checkedItems.length > 0) {
+    doc.line(marginX, y, w - marginX, y)
+    y += 8
+    doc.setFont('helvetica', 'bold')
+    doc.text('Componentes reparados', marginX, y)
+    y += 6
+    doc.setFont('helvetica', 'normal')
+    for (const item of checkedItems) {
+      doc.setFont('helvetica', 'bold')
+      doc.text(`• ${item.component}`, marginX, y)
+      if (item.value != null) doc.text(`R$ ${item.value.toFixed(2)}`, w - marginX - 30, y)
+      y += 5
+      doc.setFont('helvetica', 'normal')
+      if (item.description) {
+        const lines = doc.splitTextToSize(item.description, w - marginX * 2 - 8)
+        doc.text(lines, marginX + 6, y)
+        y += lines.length * 5
+      }
+      if (item.warranty_days != null) {
+        doc.setTextColor(120)
+        doc.text(`Garantia: ${item.warranty_days} dias`, marginX + 6, y)
+        doc.setTextColor(0)
+        y += 5
+      }
+      y += 2
+    }
+    y += 2
+  }
+
   field('Serviço realizado', order.completed_services || '—')
   field('Garantia', order.warranty || 'não informada')
   field('Valor final', `R$ ${(order.final_value ?? 0).toFixed(2)}`)

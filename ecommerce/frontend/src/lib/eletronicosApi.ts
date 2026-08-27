@@ -74,12 +74,34 @@ export interface ServiceRequestDto {
   address_lng: number | null
 }
 
+export interface ChecklistItem {
+  component: string
+  checked: boolean
+  description: string
+  media_urls: string[]
+  value: number | null
+  note: string | null
+  warranty_days: number | null
+  stock_item_id: string | null
+  added_at: string | null
+}
+
+export interface ServiceOrderUpdateDto {
+  id: string
+  service_order_id: string
+  created_at: string
+  message: string | null
+  media_urls: string[]
+  action_type: string
+  component: string | null
+}
+
 export interface ServiceOrderDto {
   id: string
   request_id: string
   created_at: string
   updated_at: string
-  checklist: unknown
+  checklist: ChecklistItem[]
   completed_services: string | null
   warranty: string | null
   final_value: number | null

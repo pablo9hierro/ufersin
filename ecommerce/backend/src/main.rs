@@ -626,6 +626,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::eletronicos::update_checklist),
         )
         .route(
+            "/api/admin/eletronicos/service-requests/{id}/quote-value",
+            patch(routes::eletronicos::update_quote_value),
+        )
+        .route(
             "/api/admin/eletronicos/service-orders/{id}/updates",
             get(routes::eletronicos::list_service_order_updates)
                 .post(routes::eletronicos::add_service_order_update),
