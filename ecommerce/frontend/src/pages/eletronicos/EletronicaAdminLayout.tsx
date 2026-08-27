@@ -1,8 +1,10 @@
+import { useEffect } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { CalendarDays, ClipboardList, LogOut, MessageCircle, MessageSquare, Package, ShoppingCart, Truck, UserCog, Wallet } from 'lucide-react'
 import { useAdminAuth } from '../../store/adminAuth'
 import { withTenantSearch } from '../../lib/tenantConfig'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import EletronicaLogo from './EletronicaLogo'
 
 // Port 1:1 de src/components/dashboard/DashboardSidebar.tsx do vrtech --
@@ -25,6 +27,21 @@ export default function EletronicaAdminLayout() {
   const { token, logout } = useAdminAuth()
   const tenantConfig = useTenantConfig()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!token) return
+    const report = (message: string) => {
+      eletronicosAdmin.errorLog.report({ message: message.slice(0, 1000), route: window.location.pathname }).catch(() => {})
+    }
+    const onError = (e: ErrorEvent) => report(e.message)
+    const onRejection = (e: PromiseRejectionEvent) => report(e.reason instanceof Error ? e.reason.message : String(e.reason))
+    window.addEventListener('error', onError)
+    window.addEventListener('unhandledrejection', onRejection)
+    return () => {
+      window.removeEventListener('error', onError)
+      window.removeEventListener('unhandledrejection', onRejection)
+    }
+  }, [token])
 
   if (!token) return <Navigate to={`/admin/login${withTenantSearch()}`} replace />
 

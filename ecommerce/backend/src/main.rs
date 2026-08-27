@@ -721,6 +721,18 @@ async fn main() -> anyhow::Result<()> {
             get(routes::eletronicos::list_stock_movements),
         )
         .route(
+            "/api/admin/eletronicos/stock-activity-log",
+            get(routes::eletronicos::list_stock_activity_log),
+        )
+        .route(
+            "/api/admin/eletronicos/error-log",
+            get(routes::eletronicos::list_error_log).post(routes::eletronicos::report_client_error),
+        )
+        .route(
+            "/api/admin/eletronicos/error-log/{id}/resolve",
+            post(routes::eletronicos::resolve_error_log),
+        )
+        .route(
             "/api/admin/eletronicos/pdv/sales",
             post(routes::eletronicos::create_pdv_sale),
         )

@@ -2190,6 +2190,49 @@ pub struct StockItemDto {
 const STOCK_COLUMNS: &str =
     "id::text, name, unit, quantity::float8, price::float8, warranty_days, units_per_box::float8, low_stock_threshold::float8";
 
+/// Grava um evento no feed de atividade de estoque (visto em Relatórios) --
+/// best-effort, nunca deixa a ação principal falhar por causa do log.
+/// Port de src/lib/stockActivityLog.ts::logStockEvent.
+async fn log_stock_event(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    entity_type: &str,
+    entity_id: &str,
+    entity_name: &str,
+    event_type: &str,
+) {
+    let _ = sqlx::query(
+        "INSERT INTO eletronicos.stock_activity_log (tenant_id, entity_type, entity_id, entity_name, event_type) \
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(tenant_id)
+    .bind(entity_type)
+    .bind(entity_id)
+    .bind(entity_name)
+    .bind(event_type)
+    .execute(&mut *tx)
+    .await;
+}
+
+/// Compara quantidade anterior/nova contra o threshold e retorna o evento de
+/// transição (se houver) -- só loga low_stock/out_of_stock quando o item
+/// CRUZA o limiar. Port de stockActivityLog.ts::stockTransitionEvent.
+fn stock_transition_event(prev_quantity: f64, next_quantity: f64, threshold: Option<f64>) -> Option<&'static str> {
+    let was_out = prev_quantity <= 0.0;
+    let is_out = next_quantity <= 0.0;
+    if is_out && !was_out {
+        return Some("out_of_stock");
+    }
+    if let Some(threshold) = threshold {
+        let was_low = prev_quantity > 0.0 && prev_quantity <= threshold;
+        let is_low = next_quantity > 0.0 && next_quantity <= threshold;
+        if is_low && !was_low {
+            return Some("low_stock");
+        }
+    }
+    None
+}
+
 pub async fn list_stock_items(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
@@ -2249,6 +2292,7 @@ pub async fn create_stock_item(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "created").await;
     tx.commit().await?;
     Ok(Json(row))
 }
@@ -2270,7 +2314,17 @@ pub async fn stock_entry(
         return Err(AppError::BadRequest("quantidade precisa ser maior que zero".to_string()));
     }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    let updated = sqlx::query(
+    let before: Option<StockItemDto> = sqlx::query_as(&format!(
+        "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(before) = before else {
+        return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
+    };
+    sqlx::query(
         "UPDATE eletronicos.stock_items SET quantity = quantity + $3, updated_at = now() \
          WHERE tenant_id = $1 AND id = $2::uuid",
     )
@@ -2279,9 +2333,6 @@ pub async fn stock_entry(
     .bind(input.quantity)
     .execute(&mut *tx)
     .await?;
-    if updated.rows_affected() == 0 {
-        return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
-    }
     sqlx::query(
         "INSERT INTO eletronicos.stock_movements (id, tenant_id, item_id, type, quantity, unit) \
          SELECT $1::uuid, $2, $3::uuid, 'entrada', $4, unit FROM eletronicos.stock_items WHERE tenant_id = $2 AND id = $3::uuid",
@@ -2299,6 +2350,10 @@ pub async fn stock_entry(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "stock_updated").await;
+    if let Some(evt) = stock_transition_event(before.quantity, row.quantity, row.low_stock_threshold) {
+        log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, evt).await;
+    }
     tx.commit().await?;
     Ok(Json(row))
 }
@@ -2316,7 +2371,17 @@ pub async fn update_stock_item(
         return Err(AppError::BadRequest("nome é obrigatório".to_string()));
     }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    let updated = sqlx::query(
+    let before: Option<StockItemDto> = sqlx::query_as(&format!(
+        "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(before) = before else {
+        return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
+    };
+    sqlx::query(
         "UPDATE eletronicos.stock_items SET name = $3, unit = $4, quantity = $5, price = $6, \
          warranty_days = $7, units_per_box = $8, low_stock_threshold = $9, updated_at = now() \
          WHERE tenant_id = $1 AND id = $2::uuid",
@@ -2332,9 +2397,6 @@ pub async fn update_stock_item(
     .bind(input.low_stock_threshold)
     .execute(&mut *tx)
     .await?;
-    if updated.rows_affected() == 0 {
-        return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
-    }
     let row: StockItemDto = sqlx::query_as(&format!(
         "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid"
     ))
@@ -2342,6 +2404,10 @@ pub async fn update_stock_item(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "updated").await;
+    if let Some(evt) = stock_transition_event(before.quantity, row.quantity, row.low_stock_threshold) {
+        log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, evt).await;
+    }
     tx.commit().await?;
     Ok(Json(row))
 }
@@ -2352,14 +2418,20 @@ pub async fn delete_stock_item(
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    let deleted = sqlx::query("DELETE FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid")
+    let existing: Option<(String,)> = sqlx::query_as("SELECT name FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let Some((name,)) = existing else {
+        return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
+    };
+    sqlx::query("DELETE FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid")
         .bind(&claims.tenant_id)
         .bind(&id)
         .execute(&mut *tx)
         .await?;
-    if deleted.rows_affected() == 0 {
-        return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
-    }
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &name, "deleted").await;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2376,15 +2448,17 @@ pub async fn stock_exit(
         return Err(AppError::BadRequest("quantidade precisa ser maior que zero".to_string()));
     }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    let current: Option<(f64,)> = sqlx::query_as("SELECT quantity::float8 FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid")
-        .bind(&claims.tenant_id)
-        .bind(&id)
-        .fetch_optional(&mut *tx)
-        .await?;
-    let Some((available,)) = current else {
+    let before: Option<StockItemDto> = sqlx::query_as(&format!(
+        "SELECT {STOCK_COLUMNS} FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(before) = before else {
         return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
     };
-    if input.quantity > available {
+    if input.quantity > before.quantity {
         return Err(AppError::BadRequest("quantidade maior que o estoque disponível".to_string()));
     }
     sqlx::query("UPDATE eletronicos.stock_items SET quantity = quantity - $3, updated_at = now() WHERE tenant_id = $1 AND id = $2::uuid")
@@ -2410,8 +2484,113 @@ pub async fn stock_exit(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "stock_updated").await;
+    if let Some(evt) = stock_transition_event(before.quantity, row.quantity, row.low_stock_threshold) {
+        log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, evt).await;
+    }
     tx.commit().await?;
     Ok(Json(row))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct StockActivityLogDto {
+    pub id: String,
+    pub entity_type: String,
+    pub entity_id: String,
+    pub entity_name: String,
+    pub event_type: String,
+    pub created_at: String,
+}
+
+pub async fn list_stock_activity_log(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<StockActivityLogDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<StockActivityLogDto> = sqlx::query_as(
+        "SELECT id::text, entity_type, entity_id, entity_name, event_type, created_at::text \
+         FROM eletronicos.stock_activity_log WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ErrorLogDto {
+    pub id: String,
+    pub source: String,
+    pub level: String,
+    pub message: String,
+    pub route: Option<String>,
+    pub resolved: bool,
+    pub created_at: String,
+}
+
+pub async fn list_error_log(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<ErrorLogDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ErrorLogDto> = sqlx::query_as(
+        "SELECT id::text, source, level, message, route, resolved, created_at::text \
+         FROM eletronicos.error_log WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClientErrorInput {
+    pub message: String,
+    pub route: Option<String>,
+}
+
+/// Captura de erro JS não tratado no painel eletrônica (source='client') --
+/// port parcial de logError() do vrtech. Fontes 'middleware'/'api'/'webhook'
+/// exigiriam um hook de erro central em todo o backend da plataforma
+/// (fora do escopo desta vertical) -- tabela já preparada pra isso depois.
+pub async fn report_client_error(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<ClientErrorInput>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    sqlx::query(
+        "INSERT INTO eletronicos.error_log (tenant_id, source, message, route) VALUES ($1, 'client', $2, $3)",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&input.message)
+    .bind(&input.route)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn resolve_error_log(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query(
+        "UPDATE eletronicos.error_log SET resolved = true WHERE tenant_id = $1 AND id = $2::uuid",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("erro não encontrado".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

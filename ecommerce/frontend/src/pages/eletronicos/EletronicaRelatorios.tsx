@@ -3,6 +3,8 @@ import { CreditCard, Loader2, ShoppingBag, Truck, Wallet, Wrench } from 'lucide-
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import { adminService } from '../../services/adminService'
 import type { Order } from '../../types'
+import EletronicaStockActivitySection from './EletronicaStockActivitySection'
+import EletronicaErrorLogSection from './EletronicaErrorLogSection'
 
 // Port 1:1 (parcial, gaps disclosed abaixo) de
 // src/app/dashboard/relatorios/RelatoriosClient.tsx do vrtech -- mesmos
@@ -18,8 +20,13 @@ import type { Order } from '../../types'
 // eletrônica usa login próprio via ecommerce-api (JWT por tenant) -- as duas
 // sessões não têm ponte hoje, então mexer em credencial de pagamento sem
 // essa ponte existir seria arriscado.
-// NÃO portado: StockActivitySection e ErrorLogSection (esse motor ainda não
-// tem log de estoque/erros pro schema eletronicos).
+// StockActivitySection e ErrorLogSection: portados (EletronicaStockActivitySection.tsx
+// e EletronicaErrorLogSection.tsx) via novas tabelas eletronicos.stock_activity_log e
+// eletronicos.error_log. Atividade de estoque cobre só "stock_item" (peças do módulo
+// eletrônica) -- "product" (produtos da vitrine) usa CRUD genérico da plataforma, fora
+// desta vertical. Erros só populam a fonte 'client' (captura de erro JS não tratado no
+// painel, ver EletronicaAdminLayout.tsx); 'middleware'/'api'/'webhook' exigiriam hook
+// central em todo o backend da plataforma -- fora do escopo desta vertical.
 
 type Transaction = {
   id: string
@@ -413,6 +420,9 @@ export default function EletronicaRelatorios() {
           ))
         )}
       </div>
+
+      <EletronicaStockActivitySection />
+      <EletronicaErrorLogSection />
     </div>
   )
 }

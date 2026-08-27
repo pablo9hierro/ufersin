@@ -420,6 +420,36 @@ export const eletronicosAdmin = {
         `${BASE}/stock-movements`,
       ),
   },
+  stockActivityLog: {
+    list: () =>
+      req<
+        {
+          id: string
+          entity_type: 'product' | 'stock_item'
+          entity_id: string
+          entity_name: string
+          event_type: 'created' | 'updated' | 'deleted' | 'stock_updated' | 'low_stock' | 'out_of_stock'
+          created_at: string
+        }[]
+      >(`${BASE}/stock-activity-log`),
+  },
+  errorLog: {
+    list: () =>
+      req<
+        {
+          id: string
+          source: 'middleware' | 'api' | 'client' | 'webhook'
+          level: 'error' | 'warn'
+          message: string
+          route: string | null
+          resolved: boolean
+          created_at: string
+        }[]
+      >(`${BASE}/error-log`),
+    report: (input: { message: string; route?: string }) =>
+      req<void>(`${BASE}/error-log`, { method: 'POST', body: JSON.stringify(input) }),
+    resolve: (id: string) => req<void>(`${BASE}/error-log/${id}/resolve`, { method: 'POST' }),
+  },
   pdv: {
     createSale: () =>
       req<{ id: string; status: string; total_value: number }>(`${BASE}/pdv/sales`, { method: 'POST' }),
