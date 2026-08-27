@@ -149,6 +149,28 @@ export async function consultarPorTelefone(slug: string, phone: string): Promise
   return parseOrThrow(res)
 }
 
+export async function consultarOtpCheck(slug: string, phone: string, send: boolean): Promise<{ found: boolean; sent: boolean }> {
+  const res = await fetch(`${API_BASE}/api/public/eletronicos/${encodeURIComponent(slug)}/consultar-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: phone.replace(/\D/g, ''), send }),
+  })
+  return parseOrThrow(res)
+}
+
+export async function consultarOtpVerify(
+  slug: string,
+  phone: string,
+  code: string,
+): Promise<{ valid: boolean; requests: ConsultarResponse['requests']; appointments: ConsultarResponse['appointments'] }> {
+  const res = await fetch(`${API_BASE}/api/public/eletronicos/${encodeURIComponent(slug)}/consultar-verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone: phone.replace(/\D/g, ''), code }),
+  })
+  return parseOrThrow(res)
+}
+
 export const STATUS_LABEL: Record<string, string> = {
   pending: 'Aguardando análise',
   aguardando_diagnostico: 'Aguardando diagnóstico',

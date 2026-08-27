@@ -330,6 +330,14 @@ async fn main() -> anyhow::Result<()> {
             get(routes::eletronicos::consultar_por_telefone),
         )
         .route(
+            "/api/public/eletronicos/{slug}/consultar-otp",
+            post(routes::eletronicos::consultar_otp_check),
+        )
+        .route(
+            "/api/public/eletronicos/{slug}/consultar-verify",
+            post(routes::eletronicos::consultar_otp_verify),
+        )
+        .route(
             "/api/public/eletronicos/{slug}/upload",
             post(routes::eletronicos::upload_public_media),
         )

@@ -2425,6 +2425,170 @@ fn digits_only(s: &str) -> String {
     s.chars().filter(char::is_ascii_digit).collect()
 }
 
+async fn fetch_unified_by_phone(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    digits: &str,
+) -> Result<ConsultarResponse, AppError> {
+    let requests: Vec<ServiceRequestDto> = sqlx::query_as(&format!(
+        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests \
+         WHERE tenant_id = $1 AND customer_phone = $2 AND status <> 'cancelled' \
+         ORDER BY created_at DESC LIMIT 10"
+    ))
+    .bind(tenant_id)
+    .bind(digits)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut out = Vec::with_capacity(requests.len());
+    for request in requests {
+        let service_order: Option<ServiceOrderDto> = sqlx::query_as(&format!(
+            "SELECT {SO_COLUMNS} FROM eletronicos.service_orders WHERE tenant_id = $1 AND request_id = $2::uuid"
+        ))
+        .bind(tenant_id)
+        .bind(&request.id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        out.push(ConsultarServiceRequestDto { request, service_order });
+    }
+
+    let appointments: Vec<AppointmentDto> = sqlx::query_as(&format!(
+        "SELECT {APPT_COLUMNS} FROM eletronicos.appointments \
+         WHERE tenant_id = $1 AND customer_phone = $2 AND status = 'agendado' \
+         ORDER BY starts_at ASC"
+    ))
+    .bind(tenant_id)
+    .bind(digits)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    Ok(ConsultarResponse { requests: out, appointments })
+}
+
+fn has_any_attendance(r: &ConsultarResponse) -> bool {
+    !r.requests.is_empty() || !r.appointments.is_empty()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OtpCheckInput {
+    pub phone: String,
+    #[serde(default)]
+    pub send: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OtpCheckResponse {
+    pub found: bool,
+    pub sent: bool,
+}
+
+/// `send=false`: só confere se existe atendimento pra esse telefone (não
+/// gera/manda código -- evita spam de WhatsApp a cada dígito digitado).
+/// `send=true`: gera um código de 3 dígitos novo (invalida os anteriores),
+/// manda por WhatsApp. Nunca retorna o código na resposta HTTP.
+pub async fn consultar_otp_check(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(input): Json<OtpCheckInput>,
+) -> Result<Json<OtpCheckResponse>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let digits = digits_only(&input.phone);
+    if digits.len() < 8 {
+        return Err(AppError::BadRequest("telefone inválido".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let unified = fetch_unified_by_phone(&mut tx, &store.id, &digits).await?;
+    if !has_any_attendance(&unified) {
+        tx.commit().await?;
+        return Ok(Json(OtpCheckResponse { found: false, sent: false }));
+    }
+    if !input.send {
+        tx.commit().await?;
+        return Ok(Json(OtpCheckResponse { found: true, sent: false }));
+    }
+
+    let code = format!("{:03}", rand::random::<u16>() % 1000);
+    sqlx::query(
+        "INSERT INTO eletronicos.consultation_otps (id, tenant_id, phone_digits, code, expires_at, max_attempts) \
+         VALUES ($1::uuid, $2, $3, $4, now() + interval '10 minutes', 5)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&store.id)
+    .bind(&digits)
+    .bind(&code)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let tenant = tenant::load_tenant(&state.pool, &store.id).await?;
+    let text = format!("Seu código de acesso é *{code}*\n\nEle vale por 10 minutos.");
+    crate::whatsapp::notify(&state, &tenant.whatsapp_instance, &digits, &text);
+
+    Ok(Json(OtpCheckResponse { found: true, sent: true }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OtpVerifyInput {
+    pub phone: String,
+    pub code: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OtpVerifyResponse {
+    pub valid: bool,
+    #[serde(flatten)]
+    pub data: Option<ConsultarResponse>,
+}
+
+pub async fn consultar_otp_verify(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(input): Json<OtpVerifyInput>,
+) -> Result<Json<OtpVerifyResponse>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let digits = digits_only(&input.phone);
+    if digits.len() < 8 || input.code.trim().is_empty() {
+        return Err(AppError::BadRequest("telefone e código são obrigatórios".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+
+    let row: Option<(String, String, i32, i32)> = sqlx::query_as(
+        "SELECT id::text, code, attempts, max_attempts FROM eletronicos.consultation_otps \
+         WHERE tenant_id = $1 AND phone_digits = $2 AND used_at IS NULL AND expires_at > now() \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&store.id)
+    .bind(&digits)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let Some((otp_id, real_code, attempts, max_attempts)) = row else {
+        tx.commit().await?;
+        return Ok(Json(OtpVerifyResponse { valid: false, data: None }));
+    };
+    if attempts >= max_attempts {
+        tx.commit().await?;
+        return Ok(Json(OtpVerifyResponse { valid: false, data: None }));
+    }
+    sqlx::query("UPDATE eletronicos.consultation_otps SET attempts = attempts + 1 WHERE id = $1::uuid")
+        .bind(&otp_id)
+        .execute(&mut *tx)
+        .await?;
+
+    if real_code != input.code.trim() {
+        tx.commit().await?;
+        return Ok(Json(OtpVerifyResponse { valid: false, data: None }));
+    }
+    sqlx::query("UPDATE eletronicos.consultation_otps SET used_at = now() WHERE id = $1::uuid")
+        .bind(&otp_id)
+        .execute(&mut *tx)
+        .await?;
+
+    let unified = fetch_unified_by_phone(&mut tx, &store.id, &digits).await?;
+    tx.commit().await?;
+    Ok(Json(OtpVerifyResponse { valid: true, data: Some(unified) }))
+}
+
 pub async fn consultar_por_telefone(
     State(state): State<AppState>,
     Path((slug, phone)): Path<(String, String)>,

@@ -20,18 +20,17 @@ import {
   XCircle,
 } from 'lucide-react'
 import { resolveTenantSlug, withTenantSearch } from '../../lib/tenantConfig'
-import { consultarPorTelefone, type ConsultarResponse, type ServiceRequestDto } from '../../lib/eletronicosApi'
+import { consultarOtpCheck, consultarOtpVerify, type ConsultarResponse, type ServiceRequestDto } from '../../lib/eletronicosApi'
 import EletronicaLogo from './EletronicaLogo'
 
 // Port 1:1 de src/app/consultar/ConsultarView.tsx do vrtech -- mesmo tema
 // (gradiente vr-graphite->vr-black, card branco, timeline com etapas
 // pontilhadas), mesmo STATUS_MAP/STAGES (adaptado pros nomes reais de
-// ServiceStatus que o backend Resolutoo usa). NÃO portado: o gate de OTP
-// por WhatsApp (o real pede telefone -> valida -> pede código de 3 dígitos
-// mandado por WhatsApp antes de mostrar os dados) -- esse motor não tem
-// envio de OTP implementado, então a consulta aqui segue direto por
-// telefone (mesmo fluxo que já funcionava). Cancelamento de solicitação
-// também não portado (endpoint /api/consultar não existe nesse motor).
+// ServiceStatus que o backend Resolutoo usa), e agora também o gate de OTP
+// por WhatsApp (telefone -> valida se tem atendimento -> código de 3
+// dígitos mandado por WhatsApp -> resultados). Cancelamento de
+// solicitação ainda não portado (endpoint /api/consultar de cancelar não
+// existe nesse motor).
 
 type ServiceStatus = string
 
@@ -185,34 +184,97 @@ function googleMapsLink(lat: number, lng: number) {
 export default function EletronicaConsultar() {
   const slug = resolveTenantSlug()
 
+  const [step, setStep] = useState<'phone' | 'otp' | 'results' | 'not-found'>('phone')
   const [phone, setPhone] = useState('')
+  const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<ConsultarResponse | null>(null)
-  const [searched, setSearched] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
 
   useEffect(() => {
     setData(null)
-    setSearched(false)
+    setStep('phone')
   }, [slug])
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    if (!slug || phone.replace(/\D/g, '').length < 10 || loading) return
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const t = setTimeout(() => setResendCooldown((v) => v - 1), 1000)
+    return () => clearTimeout(t)
+  }, [resendCooldown])
+
+  const checkPhone = async (rawPhone: string) => {
+    if (!slug) return
+    const digits = rawPhone.replace(/\D/g, '')
+    if (digits.length < 10) return
     setLoading(true)
     setError(null)
     try {
-      const res = await consultarPorTelefone(slug, phone)
-      setData(res)
-      setSearched(true)
+      const res = await consultarOtpCheck(slug, digits, false)
+      if (!res.found) {
+        setStep('not-found')
+        return
+      }
+      setStep('otp')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'não foi possível consultar agora, tente de novo')
+      setError(e instanceof Error ? e.message : 'Erro ao verificar telefone')
     } finally {
       setLoading(false)
     }
   }
 
-  const nothingFound = searched && data && data.requests.length === 0 && data.appointments.length === 0
+  const sendNewOtp = async (rawPhone: string) => {
+    if (!slug) return
+    const digits = rawPhone.replace(/\D/g, '')
+    if (digits.length < 10) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await consultarOtpCheck(slug, digits, true)
+      if (!res.found) {
+        setStep('not-found')
+        return
+      }
+      setResendCooldown(30)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao gerar código')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Gera e manda o primeiro código assim que o telefone é confirmado.
+  useEffect(() => {
+    if (step === 'otp' && slug) sendNewOtp(phone)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault()
+    await checkPhone(phone)
+  }
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault()
+    if (!slug || phone.replace(/\D/g, '').length < 10 || otp.length < 3) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await consultarOtpVerify(slug, phone, otp)
+      if (!res.valid) {
+        setError('Código inválido ou expirado')
+        return
+      }
+      setData({ requests: res.requests, appointments: res.appointments })
+      setStep('results')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao verificar código')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const nothingFound = step === 'results' && data && data.requests.length === 0 && data.appointments.length === 0
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#232327] to-[#0a0a0b]">
@@ -226,27 +288,80 @@ export default function EletronicaConsultar() {
       </header>
 
       <div className="px-4 max-w-lg md:mx-auto pb-8">
-        <form onSubmit={handleSearch} className="bg-white rounded-2xl p-5 shadow-xl mb-4">
-          <label className="block text-xs font-semibold text-gray-500 mb-1.5">Seu WhatsApp cadastrado</label>
-          <div className="flex gap-2">
-            <input
-              value={phone}
-              onChange={(e) => setPhone(formatPhone(e.target.value))}
-              placeholder="(11) 99999-9999"
-              inputMode="tel"
-              maxLength={15}
-              className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#e0211a]"
-            />
-            <button
-              type="submit"
-              disabled={loading || phone.replace(/\D/g, '').length < 10}
-              className="bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white font-semibold rounded-xl px-5 flex items-center justify-center gap-2 transition-colors"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            </button>
+        {step === 'phone' && (
+          <form onSubmit={handleSearch} className="bg-white rounded-2xl p-5 shadow-xl mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Seu WhatsApp cadastrado</label>
+            <div className="flex gap-2">
+              <input
+                value={phone}
+                onChange={(e) => setPhone(formatPhone(e.target.value))}
+                placeholder="(11) 99999-9999"
+                inputMode="tel"
+                maxLength={15}
+                className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#e0211a]"
+              />
+              <button
+                type="submit"
+                disabled={loading || phone.replace(/\D/g, '').length < 10}
+                className="bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white font-semibold rounded-xl px-5 flex items-center justify-center gap-2 transition-colors"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              </button>
+            </div>
+            {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+          </form>
+        )}
+
+        {step === 'not-found' && (
+          <div className="mb-4">
+            <NotFoundCard />
           </div>
-          {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
-        </form>
+        )}
+
+        {step === 'otp' && (
+          <form onSubmit={handleVerify} className="bg-white rounded-2xl p-5 shadow-xl mb-4">
+            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Código de 3 dígitos enviado pro seu WhatsApp</label>
+            <div className="flex gap-2">
+              <input
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                placeholder="000"
+                inputMode="numeric"
+                maxLength={3}
+                autoFocus
+                className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-2xl tracking-[0.5em] font-bold text-center outline-none focus:border-[#e0211a]"
+              />
+              <button
+                type="submit"
+                disabled={loading || otp.length < 3}
+                className="bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white font-semibold rounded-xl px-5 flex items-center justify-center gap-2 transition-colors"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              </button>
+            </div>
+            {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+            <div className="flex items-center justify-between mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep('phone')
+                  setOtp('')
+                }}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                Trocar número
+              </button>
+              <button
+                type="button"
+                disabled={resendCooldown > 0 || loading}
+                onClick={() => sendNewOtp(phone)}
+                className="text-xs text-[#e0211a] hover:text-[#a3140f] font-semibold disabled:text-gray-300 disabled:cursor-not-allowed"
+              >
+                {resendCooldown > 0 ? `Gerar novo código (${resendCooldown}s)` : 'Gerar novo código'}
+              </button>
+            </div>
+          </form>
+        )}
 
         {nothingFound && <NotFoundCard />}
 
