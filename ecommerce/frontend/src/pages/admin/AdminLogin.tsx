@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, Loader2, Lock, Users } from 'lucide-react'
 import Logo from '../../components/ui/Logo'
+import EletronicaLogo from '../eletronicos/EletronicaLogo'
 import { ApiError } from '../../lib/apiError'
 import { getDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
 import { authService } from '../../services/authService'
 import { useAdminAuth } from '../../store/adminAuth'
 import {
   LOJA_OFFLINE_MSG,
+  getTenantConfig,
   persistTenantSlug,
   resetTenantConfigCache,
   takeLojaOfflineMessage,
@@ -41,6 +43,22 @@ export default function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // Tela de login é a mesma pro motor inteiro (todos os verticais) --
+  // quando o deep link já traz `?tenant=`, resolve o vertical ANTES do
+  // login pra vestir a identidade visual certa (preto/vermelho do vrtech
+  // em vez do verde/dourado genérico da Resolutoo).
+  const [isEletronica, setIsEletronica] = useState(false)
+  const [lojaNome, setLojaNome] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!tenantFromUrl) return
+    getTenantConfig()
+      .then((c) => {
+        setIsEletronica(c.vertical === 'eletronicos')
+        setLojaNome(c.loja_nome ?? null)
+      })
+      .catch(() => {})
+  }, [tenantFromUrl])
 
   useEffect(() => {
     const fromState =
@@ -113,6 +131,86 @@ export default function AdminLogin() {
   // Sem tenant: desliga autocomplete pra não colar credenciais da plataforma
   // Resolutoo (mesmo domínio /loja) no formulário do ecommerce.
   const allowPasswordManager = Boolean(tenantFromUrl && emailFromUrl)
+
+  if (isEletronica) {
+    const INPUT = 'w-full rounded-xl border border-white/10 bg-[#0a0a0b] px-3 py-2.5 text-sm text-white placeholder:text-[#d4d4d8]/30 outline-none focus:border-[#e0211a] transition-colors'
+    return (
+      <main className="min-h-screen bg-[#0a0a0b] text-white flex items-center justify-center px-5">
+        <form
+          onSubmit={handleSubmit}
+          className="w-full max-w-sm rounded-2xl p-8 bg-[#161618] border border-white/10"
+          autoComplete={allowPasswordManager ? 'on' : 'off'}
+        >
+          <div className="text-center mb-6 flex flex-col items-center">
+            <EletronicaLogo size="lg" showTagline name={lojaNome} />
+            <p className="text-[#d4d4d8]/50 text-sm mt-3 flex items-center justify-center gap-1.5">
+              <Lock className="w-3.5 h-3.5" /> Painel administrativo
+            </p>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-[#d4d4d8] mb-1.5">E-mail</label>
+              <input
+                className={INPUT}
+                type="email"
+                name="loja-admin-email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus={!emailFromUrl}
+                autoComplete={allowPasswordManager ? 'username' : 'off'}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#d4d4d8] mb-1.5">Senha</label>
+              <div className="relative">
+                <input
+                  className={`${INPUT} pr-12`}
+                  type={showPassword ? 'text' : 'password'}
+                  name="loja-admin-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoFocus={Boolean(emailFromUrl)}
+                  autoComplete={allowPasswordManager ? 'current-password' : 'off'}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#d4d4d8]/50 hover:text-white p-1"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            {error && (
+              <div>
+                <p className="text-sm text-red-400">{error}</p>
+                <p className="text-xs text-[#d4d4d8]/50 mt-1">
+                  É motoboy ou vendedor? Essa tela é só pro admin — use o botão abaixo.
+                </p>
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Entrar
+            </button>
+            <Link
+              to="/funcionarios/login"
+              className="w-full flex items-center justify-center gap-2 text-sm bg-[#0a0a0b] border border-white/10 text-[#d4d4d8] hover:text-white py-2.5 rounded-xl transition-colors"
+            >
+              <Users className="w-4 h-4" /> Sou vendedor ou motoboy
+            </Link>
+          </div>
+        </form>
+      </main>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-son-black text-white flex items-center justify-center px-5">
