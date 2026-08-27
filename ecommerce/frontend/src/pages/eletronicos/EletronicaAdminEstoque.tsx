@@ -1437,6 +1437,122 @@ function EstoqueTab({ items, onChanged, filter }: { items: StockItem[]; onChange
   )
 }
 
+type AlertItem =
+  | { kind: 'product'; id: string; name: string; quantity: number; threshold: number | null }
+  | { kind: 'stock_item'; id: string; name: string; quantity: number; threshold: number | null }
+
+// Port de StockAlertList.tsx real -- unifica produtos físicos (products)
+// E peças de estoque (stock_items) na mesma lista de alerta, busca os
+// dados de forma independente (não compartilha state com as outras
+// abas) pra refletir qualquer cadastro/edição feito em qualquer aba.
+function StockAlertList({ title, emptyMessage, filter }: { title: string; emptyMessage: string; filter: (quantity: number, threshold: number | null) => boolean }) {
+  const [loading, setLoading] = useState(true)
+  const [products, setProducts] = useState<Product[]>([])
+  const [stockItems, setStockItems] = useState<StockItem[]>([])
+  const [target, setTarget] = useState<AlertItem | null>(null)
+  const [newQuantity, setNewQuantity] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [p, s] = await Promise.all([adminService.products.list(), eletronicosAdmin.stockItems.list()])
+      setProducts(p)
+      setStockItems(s)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  const items = useMemo<AlertItem[]>(() => {
+    const fromProducts: AlertItem[] = products
+      .filter((p) => filter(Number(p.quantity), p.low_stock_threshold ?? null))
+      .map((p) => ({ kind: 'product', id: p.id, name: p.name, quantity: Number(p.quantity), threshold: p.low_stock_threshold ?? null }))
+    const fromStock: AlertItem[] = stockItems
+      .filter((s) => filter(Number(s.quantity), s.low_stock_threshold ?? null))
+      .map((s) => ({ kind: 'stock_item', id: s.id, name: s.name, quantity: Number(s.quantity), threshold: s.low_stock_threshold ?? null }))
+    return [...fromProducts, ...fromStock]
+  }, [products, stockItems, filter])
+
+  const openUpdate = (item: AlertItem) => {
+    setTarget(item)
+    setNewQuantity(String(item.quantity))
+    setSaved(false)
+  }
+
+  const saveQuantity = async () => {
+    if (!target) return
+    const qty = Number(newQuantity)
+    if (!Number.isFinite(qty) || qty < 0) return
+    setSaving(true)
+    try {
+      if (target.kind === 'product') {
+        const p = products.find((x) => x.id === target.id)
+        if (p) await adminService.products.update(target.id, { name: p.name, price: p.price, quantity: qty })
+        setProducts((prev) => prev.map((x) => (x.id === target.id ? { ...x, quantity: qty } : x)))
+      } else {
+        await eletronicosAdmin.stockItems.stockEntry(target.id, qty - target.quantity)
+        setStockItems((prev) => prev.map((x) => (x.id === target.id ? { ...x, quantity: qty } : x)))
+      }
+      setSaved(true)
+      setTimeout(() => { setTarget(null); setSaved(false) }, 700)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-xs font-bold text-[#d4d4d8]/50 uppercase tracking-wider">{title} ({items.length})</h2>
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-[#d4d4d8]/40" /></div>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-[#d4d4d8]/40 text-center py-6">{emptyMessage}</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {items.map((item) => (
+            <button
+              key={`${item.kind}-${item.id}`}
+              onClick={() => openUpdate(item)}
+              className="bg-[#161618] rounded-xl border border-white/5 px-4 py-3 flex items-center justify-between gap-2 text-left hover:border-[#e0211a]/30 transition-colors"
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                {item.kind === 'product' ? <Package className="w-4 h-4 text-[#d4d4d8]/40 shrink-0" /> : <Wrench className="w-4 h-4 text-[#d4d4d8]/40 shrink-0" />}
+                <span className="text-sm text-white truncate">{item.name}</span>
+              </span>
+              <span className={`text-sm font-bold shrink-0 ${item.quantity <= 0 ? 'text-red-400' : 'text-yellow-400'}`}>
+                {item.quantity}{item.threshold != null ? ` / ${item.threshold}` : ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {target && (
+        <Dialog title={`Atualizar estoque — ${target.name}`} onClose={() => setTarget(null)}>
+          <div>
+            <label className="block text-sm text-[#d4d4d8] mb-1.5">Nova quantidade</label>
+            <input type="number" step="0.01" min="0" value={newQuantity} onChange={(e) => setNewQuantity(e.target.value)} className={INPUT} />
+          </div>
+          <button
+            onClick={saveQuantity}
+            disabled={saving}
+            className={`w-full font-semibold py-2.5 rounded-xl transition-colors text-sm disabled:opacity-40 flex items-center justify-center gap-2 ${saved ? 'bg-green-600 text-white' : 'bg-[#e0211a] text-white hover:bg-[#a3140f]'}`}
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            {saved ? 'Atualizado!' : saving ? 'Salvando…' : 'Salvar'}
+          </button>
+        </Dialog>
+      )}
+    </div>
+  )
+}
+
 export default function EletronicaAdminEstoque() {
   const [tab, setTab] = useState<TabKey>('produtos')
   const [categories, setCategories] = useState<Category[] | null>(null)
@@ -1494,14 +1610,18 @@ export default function EletronicaAdminEstoque() {
 
       {tab === 'servicos' && (categories ? <ServicosTab categories={categories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
       {tab === 'marcas' && (categories ? <MarcasTab categories={categories} onChanged={loadCategories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
-      {(tab === 'estoque' || tab === 'alerta' || tab === 'falta') &&
-        (stockItems ? (
-          <EstoqueTab items={stockItems} onChanged={loadStock} filter={tab === 'alerta' ? 'alerta' : tab === 'falta' ? 'falta' : undefined} />
-        ) : (
-          <div className="flex justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" />
-          </div>
-        ))}
+      {tab === 'estoque' &&
+        (stockItems ? <EstoqueTab items={stockItems} onChanged={loadStock} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
+      {tab === 'alerta' && (
+        <StockAlertList
+          title="Alerta de reposição"
+          emptyMessage="Nenhum item em baixo estoque no momento."
+          filter={(quantity, threshold) => threshold != null && quantity > 0 && quantity <= threshold}
+        />
+      )}
+      {tab === 'falta' && (
+        <StockAlertList title="Em falta" emptyMessage="Nenhum item em falta no momento." filter={(quantity) => quantity <= 0} />
+      )}
     </div>
   )
 }
