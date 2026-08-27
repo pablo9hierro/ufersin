@@ -24,9 +24,24 @@ const NAV_ITEMS = [
 ]
 
 export default function EletronicaAdminLayout() {
-  const { token, logout } = useAdminAuth()
+  const { token, tenantSlug, logout } = useAdminAuth()
   const tenantConfig = useTenantConfig()
   const navigate = useNavigate()
+
+  // Sessão de admin fica num único registro global no localStorage (não
+  // por tenant) -- se o usuário logou antes noutra loja nesta mesma aba e
+  // navega direto pra ?tenant=X sem passar pelo /admin/login de novo, o
+  // token antigo (de outro tenant_id) fica "válido" pro backend mas todo
+  // dado eletronicos.* vem vazio/"no rows" pra esse tenant. Detecta o
+  // descompasso e força novo login em vez de deixar a tela quebrar.
+  const urlTenant = new URLSearchParams(window.location.search).get('tenant')?.trim().toLowerCase() || null
+  const tenantMismatch = Boolean(token && urlTenant && tenantSlug && urlTenant !== tenantSlug)
+
+  useEffect(() => {
+    if (tenantMismatch) {
+      logout()
+    }
+  }, [tenantMismatch, logout])
 
   useEffect(() => {
     if (!token) return
@@ -43,7 +58,7 @@ export default function EletronicaAdminLayout() {
     }
   }, [token])
 
-  if (!token) return <Navigate to={`/admin/login${withTenantSearch()}`} replace />
+  if (!token || tenantMismatch) return <Navigate to={`/admin/login${withTenantSearch()}`} replace />
 
   function handleLogout() {
     logout()
