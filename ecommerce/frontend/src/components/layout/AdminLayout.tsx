@@ -448,8 +448,8 @@ export default function AdminLayout() {
     if ((i.href === '/admin/pedidos' || i.href === '/admin/frete') && !pedidosLiberado) return false
     // Loja só retirada — sem entrega, não existe frete pra configurar.
     if (i.href === '/admin/frete' && tenantConfig?.apenas_retirada) return false
-    // Assistente IA em beta — só a loja no allowlist enxerga o menu.
-    if (i.href === '/admin/chat' && !isAssistantIaBetaTenant(tenantConfig?.slug)) return false
+    // Assistente IA: nativo pro ramo eletrônica, acessório pago (allowlist) pro ecommerce.
+    if (i.href === '/admin/chat' && !isAssistantIaBetaTenant(tenantConfig?.slug, tenantConfig?.vertical)) return false
     return true
   })
 
