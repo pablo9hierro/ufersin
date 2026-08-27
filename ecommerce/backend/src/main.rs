@@ -423,8 +423,16 @@ async fn main() -> anyhow::Result<()> {
             get(routes::eletronicos::list_device_types).post(routes::eletronicos::create_device_type),
         )
         .route(
+            "/api/admin/eletronicos/device-types/{id}",
+            put(routes::eletronicos::update_device_type).delete(routes::eletronicos::delete_device_type),
+        )
+        .route(
             "/api/admin/eletronicos/catalog-models",
             get(routes::eletronicos::list_catalog_models).post(routes::eletronicos::create_catalog_model),
+        )
+        .route(
+            "/api/admin/eletronicos/catalog-models/{id}",
+            put(routes::eletronicos::update_catalog_model).delete(routes::eletronicos::delete_catalog_model),
         )
         .route(
             "/api/admin/eletronicos/catalog-items-links",

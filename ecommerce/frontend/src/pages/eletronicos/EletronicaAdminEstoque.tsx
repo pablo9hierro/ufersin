@@ -1064,6 +1064,156 @@ function ServicosTab({ categories }: { categories: Category[] }) {
   )
 }
 
+function DevicesSection({ deviceTypes, setDeviceTypes }: { deviceTypes: DeviceType[]; setDeviceTypes: React.Dispatch<React.SetStateAction<DeviceType[]>> }) {
+  const [editing, setEditing] = useState<DeviceType | 'new' | null>(null)
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const save = async () => {
+    if (!name.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      if (editing === 'new') {
+        const created = await eletronicosAdmin.deviceTypes.create(name.trim())
+        setDeviceTypes((prev) => [...prev, created])
+      } else if (editing) {
+        const updated = await eletronicosAdmin.deviceTypes.update(editing.id, name.trim())
+        setDeviceTypes((prev) => prev.map((d) => (d.id === editing.id ? updated : d)))
+      }
+      setEditing(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'erro ao salvar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const remove = async (id: string) => {
+    try {
+      await eletronicosAdmin.deviceTypes.delete(id)
+      setDeviceTypes((prev) => prev.filter((d) => d.id !== id))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'erro ao excluir (verifique se não há marcas usando esse aparelho)')
+    }
+  }
+
+  return (
+    <div className="bg-[#161618] border border-white/5 rounded-2xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-[#d4d4d8]/70 flex items-center gap-1.5">
+          <Smartphone className="w-3.5 h-3.5" /> Aparelhos
+        </h2>
+        <button onClick={() => { setName(''); setEditing('new') }} className="flex items-center gap-1 text-xs font-semibold bg-[#0a0a0b] border border-white/10 text-white px-2.5 py-1.5 rounded-lg hover:border-[#e0211a]/40 transition-colors">
+          <Plus className="w-3 h-3" /> Aparelho
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        {deviceTypes.map((d) => (
+          <div key={d.id} className="flex items-center gap-1 bg-[#0a0a0b] border border-white/10 rounded-lg px-3 py-1.5">
+            <span className="text-sm text-white">{d.name}</span>
+            <button onClick={() => { setName(d.name); setEditing(d) }} className="text-[#d4d4d8]/30 hover:text-[#e0211a] transition-colors ml-1"><Pencil className="w-3 h-3" /></button>
+            <button onClick={() => remove(d.id)} className="text-[#d4d4d8]/30 hover:text-red-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
+          </div>
+        ))}
+        {deviceTypes.length === 0 && <p className="text-xs text-[#d4d4d8]/40">Nenhum aparelho cadastrado.</p>}
+      </div>
+      {editing && (
+        <Dialog title={editing === 'new' ? 'Novo aparelho' : 'Editar aparelho'} onClose={() => setEditing(null)}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome (ex: Smartwatch)" className={INPUT} />
+          <button onClick={save} disabled={saving || !name.trim()} className="w-full bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar
+          </button>
+        </Dialog>
+      )}
+    </div>
+  )
+}
+
+function ModelsSection({
+  categories, models, setModels,
+}: { categories: Category[]; models: CatalogModelRow[]; setModels: React.Dispatch<React.SetStateAction<CatalogModelRow[]>> }) {
+  const [editing, setEditing] = useState<CatalogModelRow | 'new' | null>(null)
+  const [name, setName] = useState('')
+  const [brandId, setBrandId] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const save = async () => {
+    if (!name.trim() || !brandId) return
+    setSaving(true)
+    setError(null)
+    try {
+      if (editing === 'new') {
+        const created = await eletronicosAdmin.catalogModels.create(brandId, name.trim())
+        setModels((prev) => [...prev, created])
+      } else if (editing) {
+        const updated = await eletronicosAdmin.catalogModels.update(editing.id, brandId, name.trim())
+        setModels((prev) => prev.map((m) => (m.id === editing.id ? updated : m)))
+      }
+      setEditing(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'erro ao salvar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const remove = async (id: string) => {
+    try {
+      await eletronicosAdmin.catalogModels.delete(id)
+      setModels((prev) => prev.filter((m) => m.id !== id))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'erro ao excluir')
+    }
+  }
+
+  return (
+    <div className="bg-[#161618] border border-white/5 rounded-2xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-[#d4d4d8]/70 flex items-center gap-1.5">
+          <Package className="w-3.5 h-3.5" /> Modelos
+        </h2>
+        <button
+          onClick={() => { setName(''); setBrandId(categories[0]?.id ?? ''); setEditing('new') }}
+          disabled={categories.length === 0}
+          className="flex items-center gap-1 text-xs font-semibold bg-[#0a0a0b] border border-white/10 text-white px-2.5 py-1.5 rounded-lg hover:border-[#e0211a]/40 transition-colors disabled:opacity-40"
+        >
+          <Plus className="w-3 h-3" /> Modelo
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        {models.map((m) => (
+          <div key={m.id} className="flex items-center gap-1 bg-[#0a0a0b] border border-white/10 rounded-lg px-3 py-1.5">
+            <span className="text-sm text-white">{m.name}</span>
+            <span className="text-[10px] text-[#d4d4d8]/40">{categories.find((c) => c.id === m.brand_id)?.name ?? '—'}</span>
+            <button onClick={() => { setName(m.name); setBrandId(m.brand_id); setEditing(m) }} className="text-[#d4d4d8]/30 hover:text-[#e0211a] transition-colors ml-1"><Pencil className="w-3 h-3" /></button>
+            <button onClick={() => remove(m.id)} className="text-[#d4d4d8]/30 hover:text-red-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
+          </div>
+        ))}
+        {models.length === 0 && <p className="text-xs text-[#d4d4d8]/40">Nenhum modelo cadastrado.</p>}
+      </div>
+      {editing && (
+        <Dialog title={editing === 'new' ? 'Novo modelo' : 'Editar modelo'} onClose={() => setEditing(null)}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do modelo (ex: iPhone 14 Pro)" className={INPUT} />
+          <div>
+            <label className="block text-sm text-[#d4d4d8] mb-1.5">Marca</label>
+            <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className={INPUT}>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <button onClick={save} disabled={saving || !name.trim() || !brandId} className="w-full bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar
+          </button>
+        </Dialog>
+      )}
+    </div>
+  )
+}
+
 function MarcasTab({ categories, onChanged }: { categories: Category[]; onChanged: () => void }) {
   const [editing, setEditing] = useState<Category | 'new' | null>(null)
   const [name, setName] = useState('')
@@ -1071,6 +1221,13 @@ function MarcasTab({ categories, onChanged }: { categories: Category[]; onChange
   const [imageUrl, setImageUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([])
+  const [models, setModels] = useState<CatalogModelRow[]>([])
+
+  useEffect(() => {
+    eletronicosAdmin.deviceTypes.list().then(setDeviceTypes).catch(() => {})
+    eletronicosAdmin.catalogModels.list().then(setModels).catch(() => {})
+  }, [])
 
   function openNew() {
     setName('')
@@ -1113,11 +1270,13 @@ function MarcasTab({ categories, onChanged }: { categories: Category[]; onChange
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <DevicesSection deviceTypes={deviceTypes} setDeviceTypes={setDeviceTypes} />
+
       <div className="flex items-center justify-between">
-        <p className="text-sm text-[#d4d4d8]/50">{categories.length} marca{categories.length === 1 ? '' : 's'}/aparelho{categories.length === 1 ? '' : 's'}</p>
+        <p className="text-sm text-[#d4d4d8]/50">{categories.length} marca{categories.length === 1 ? '' : 's'}</p>
         <button onClick={openNew} className="flex items-center gap-1.5 bg-[#e0211a] hover:bg-[#a3140f] text-white text-sm font-medium px-3.5 py-2 rounded-xl transition-colors">
-          <Plus className="w-4 h-4" /> Nova marca/aparelho
+          <Plus className="w-4 h-4" /> Nova marca
         </button>
       </div>
       {error && <p className="text-sm text-red-400">{error}</p>}
@@ -1139,8 +1298,10 @@ function MarcasTab({ categories, onChanged }: { categories: Category[]; onChange
             </div>
           </div>
         ))}
-        {categories.length === 0 && <p className="text-sm text-[#d4d4d8]/40 py-4 col-span-full">Nenhuma marca/aparelho cadastrado.</p>}
+        {categories.length === 0 && <p className="text-sm text-[#d4d4d8]/40 py-4 col-span-full">Nenhuma marca cadastrada.</p>}
       </div>
+
+      <ModelsSection categories={categories} models={models} setModels={setModels} />
 
       {editing && (
         <Dialog title={editing === 'new' ? 'Nova marca/aparelho' : 'Editar marca/aparelho'} onClose={() => setEditing(null)}>

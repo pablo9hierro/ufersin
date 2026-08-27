@@ -334,6 +334,12 @@ export const eletronicosAdmin = {
         method: 'POST',
         body: JSON.stringify({ name }),
       }),
+    update: (id: string, name: string) =>
+      req<{ id: string; name: string; slug: string; icon_key: string; sort_order: number }>(`${BASE}/device-types/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name }),
+      }),
+    delete: (id: string) => req<void>(`${BASE}/device-types/${id}`, { method: 'DELETE' }),
   },
   catalogModels: {
     list: () => req<{ id: string; brand_id: string; name: string; sort_order: number }[]>(`${BASE}/catalog-models`),
@@ -342,6 +348,12 @@ export const eletronicosAdmin = {
         method: 'POST',
         body: JSON.stringify({ brand_id, name }),
       }),
+    update: (id: string, brand_id: string, name: string) =>
+      req<{ id: string; brand_id: string; name: string; sort_order: number }>(`${BASE}/catalog-models/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ brand_id, name }),
+      }),
+    delete: (id: string) => req<void>(`${BASE}/catalog-models/${id}`, { method: 'DELETE' }),
   },
   stockItems: {
     list: () =>

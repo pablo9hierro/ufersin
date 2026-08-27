@@ -3665,6 +3665,103 @@ pub async fn create_catalog_model(
     Ok(Json(row))
 }
 
+pub async fn update_device_type(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<CreateDeviceTypeInput>,
+) -> Result<Json<DeviceTypeDto>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("nome é obrigatório".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query("UPDATE eletronicos.device_types SET name = $3 WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(input.name.trim())
+        .execute(&mut *tx)
+        .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("aparelho não encontrado".to_string()));
+    }
+    let row: DeviceTypeDto = sqlx::query_as(&format!(
+        "SELECT {DEVICE_TYPE_COLUMNS} FROM eletronicos.device_types WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+pub async fn delete_device_type(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let deleted = sqlx::query("DELETE FROM eletronicos.device_types WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(AppError::NotFound("aparelho não encontrado".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn update_catalog_model(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<CreateCatalogModelInput>,
+) -> Result<Json<CatalogModelDto>, AppError> {
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("nome é obrigatório".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated = sqlx::query("UPDATE eletronicos.catalog_models SET name = $3, brand_id = $4::uuid WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(input.name.trim())
+        .bind(&input.brand_id)
+        .execute(&mut *tx)
+        .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("modelo não encontrado".to_string()));
+    }
+    let row: CatalogModelDto = sqlx::query_as(&format!(
+        "SELECT {CATALOG_MODEL_COLUMNS} FROM eletronicos.catalog_models WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+pub async fn delete_catalog_model(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let deleted = sqlx::query("DELETE FROM eletronicos.catalog_models WHERE tenant_id = $1 AND id = $2::uuid")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(AppError::NotFound("modelo não encontrado".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct ProductDeviceLinkDto {
     pub product_id: String,
