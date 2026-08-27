@@ -123,7 +123,7 @@ export interface AppointmentDto {
 }
 
 export interface ConsultarResponse {
-  requests: (ServiceRequestDto & { service_order: ServiceOrderDto | null })[]
+  requests: (ServiceRequestDto & { service_order: ServiceOrderDto | null; diagnostic: { pdf_url: string | null; finalized: boolean } | null })[]
   appointments: AppointmentDto[]
 }
 
@@ -181,6 +181,15 @@ export async function consultarOtpVerify(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: phone.replace(/\D/g, ''), code }),
+  })
+  return parseOrThrow(res)
+}
+
+export async function consultarCancel(slug: string, id: string, phone: string): Promise<ServiceRequestDto> {
+  const res = await fetch(`${API_BASE}/api/public/eletronicos/${encodeURIComponent(slug)}/consultar-cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, phone: phone.replace(/\D/g, '') }),
   })
   return parseOrThrow(res)
 }

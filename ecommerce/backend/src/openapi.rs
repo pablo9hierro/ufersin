@@ -238,6 +238,7 @@ pub fn build() -> OpenApi {
         ("/api/public/eletronicos/{slug}/service-requests", Post, "Vitrine: cliente cria solicitacao de servico (sem login)", "Publico - Eletronicos", false, true),
         ("/api/public/eletronicos/{slug}/consultar-otp", Post, "Vitrine: verifica telefone e envia codigo OTP por WhatsApp (etapa 1 da Consulta)", "Publico - Eletronicos", false, true),
         ("/api/public/eletronicos/{slug}/consultar-verify", Post, "Vitrine: valida codigo OTP e retorna atendimentos/agendamentos do telefone (etapa 2 da Consulta)", "Publico - Eletronicos", false, true),
+        ("/api/public/eletronicos/{slug}/consultar-cancel", Post, "Vitrine: cliente cancela a propria solicitacao pendente (telefone precisa bater com o dono)", "Publico - Eletronicos", false, true),
         ("/api/public/eletronicos/{slug}/upload", Post, "Vitrine: upload de foto/video do aparelho (multipart, campo file)", "Publico - Eletronicos", false, true),
         ("/api/admin/eletronicos/upload", Post, "Admin: upload de foto/video/pdf (multipart, campo file)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/service-orders/{id}/pdf", Post, "Salva a URL do PDF gerado da OS", "Admin - Eletronicos", true, true),

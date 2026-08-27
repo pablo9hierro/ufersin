@@ -2798,11 +2798,18 @@ pub async fn render_whatsapp_template(
 // sempre por customer_phone = $2).
 // ============================================================================
 
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ConsultarDiagnosticDto {
+    pub pdf_url: Option<String>,
+    pub finalized: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ConsultarServiceRequestDto {
     #[serde(flatten)]
     pub request: ServiceRequestDto,
     pub service_order: Option<ServiceOrderDto>,
+    pub diagnostic: Option<ConsultarDiagnosticDto>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2847,7 +2854,14 @@ async fn fetch_unified_by_phone(
         .bind(&request.id)
         .fetch_optional(&mut *tx)
         .await?;
-        out.push(ConsultarServiceRequestDto { request, service_order });
+        let diagnostic: Option<ConsultarDiagnosticDto> = sqlx::query_as(
+            "SELECT pdf_url, finalized FROM eletronicos.service_diagnostics WHERE tenant_id = $1 AND service_request_id = $2::uuid",
+        )
+        .bind(tenant_id)
+        .bind(&request.id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        out.push(ConsultarServiceRequestDto { request, service_order, diagnostic });
     }
 
     let appointments: Vec<AppointmentDto> = sqlx::query_as(&format!(
@@ -2985,6 +2999,51 @@ pub async fn consultar_otp_verify(
     let unified = fetch_unified_by_phone(&mut tx, &store.id, &digits).await?;
     tx.commit().await?;
     Ok(Json(OtpVerifyResponse { valid: true, data: Some(unified) }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConsultarCancelInput {
+    pub id: String,
+    pub phone: String,
+}
+
+/// Cliente cancela a própria solicitação pela vitrine (só quando ainda
+/// está "pending" -- port de ConsultarView.tsx::confirmCancel). Sem
+/// login: o telefone precisa bater com o dono da solicitação, mesma
+/// checagem de posse usada no restante do fluxo /consultar.
+pub async fn consultar_cancel(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(input): Json<ConsultarCancelInput>,
+) -> Result<Json<ServiceRequestDto>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let digits = digits_only(&input.phone);
+    if digits.len() < 8 {
+        return Err(AppError::BadRequest("telefone inválido".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let updated = sqlx::query(
+        "UPDATE eletronicos.service_requests SET status = 'cancelled' \
+         WHERE tenant_id = $1 AND id = $2::uuid AND status = 'pending' \
+           AND regexp_replace(customer_phone, '\\D', '', 'g') = $3",
+    )
+    .bind(&store.id)
+    .bind(&input.id)
+    .bind(&digits)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("solicitação não encontrada ou não pode mais ser cancelada".to_string()));
+    }
+    let row: ServiceRequestDto = sqlx::query_as(&format!(
+        "SELECT {SELECT_COLUMNS} FROM eletronicos.service_requests WHERE tenant_id = $1 AND id = $2::uuid"
+    ))
+    .bind(&store.id)
+    .bind(&input.id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
 }
 
 // ============================================================================

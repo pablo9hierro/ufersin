@@ -334,6 +334,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::eletronicos::consultar_otp_verify),
         )
         .route(
+            "/api/public/eletronicos/{slug}/consultar-cancel",
+            post(routes::eletronicos::consultar_cancel),
+        )
+        .route(
             "/api/public/eletronicos/{slug}/upload",
             post(routes::eletronicos::upload_public_media),
         )

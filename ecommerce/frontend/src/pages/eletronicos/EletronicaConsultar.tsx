@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  AlertTriangle,
   CheckCircle,
   ChevronDown,
   ChevronLeft,
@@ -20,17 +21,16 @@ import {
   XCircle,
 } from 'lucide-react'
 import { resolveTenantSlug, withTenantSearch } from '../../lib/tenantConfig'
-import { consultarOtpCheck, consultarOtpVerify, type ConsultarResponse, type ServiceRequestDto } from '../../lib/eletronicosApi'
+import { consultarOtpCheck, consultarOtpVerify, consultarCancel, type ConsultarResponse, type ServiceRequestDto } from '../../lib/eletronicosApi'
 import EletronicaLogo from './EletronicaLogo'
 
 // Port 1:1 de src/app/consultar/ConsultarView.tsx do vrtech -- mesmo tema
 // (gradiente vr-graphite->vr-black, card branco, timeline com etapas
 // pontilhadas), mesmo STATUS_MAP/STAGES (adaptado pros nomes reais de
-// ServiceStatus que o backend Resolutoo usa), e agora também o gate de OTP
-// por WhatsApp (telefone -> valida se tem atendimento -> código de 3
-// dígitos mandado por WhatsApp -> resultados). Cancelamento de
-// solicitação ainda não portado (endpoint /api/consultar de cancelar não
-// existe nesse motor).
+// ServiceStatus que o backend Resolutoo usa), gate de OTP por WhatsApp
+// (telefone -> valida se tem atendimento -> código de 3 dígitos mandado
+// por WhatsApp -> resultados), cancelamento de solicitação pendente
+// (CancelModal real) e link do PDF de diagnóstico (além do PDF da OS).
 
 type ServiceStatus = string
 
@@ -95,7 +95,14 @@ function TimelineStep({
   )
 }
 
-function RequestStatusTimeline({ request }: { request: ServiceRequestDto & { service_order: { pdf_url: string | null } | null } }) {
+function RequestStatusTimeline({
+  request,
+}: {
+  request: ServiceRequestDto & {
+    service_order: { pdf_url: string | null } | null
+    diagnostic: { pdf_url: string | null; finalized: boolean } | null
+  }
+}) {
   const [expanded, setExpanded] = useState(false)
   const current = STATUS_MAP[request.status] ?? STATUS_MAP.pending
   const isInterrupted = request.status === 'rejected' || request.status === 'cancelled'
@@ -118,6 +125,17 @@ function RequestStatusTimeline({ request }: { request: ServiceRequestDto & { ser
 
       {expanded && (
         <div className="px-4 pb-4 pt-1">
+          {request.diagnostic?.pdf_url && (
+            <div className="mb-3 pb-3 border-b border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 mb-1">📋 PDF de diagnóstico</p>
+              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                <a href={request.diagnostic.pdf_url} target="_blank" rel="noreferrer" className="text-xs text-[#e0211a] hover:text-[#a3140f] font-semibold flex items-center gap-1">
+                  <Eye className="w-3.5 h-3.5" /> Visualizar
+                </a>
+                {!request.diagnostic.finalized && <span className="text-xs text-gray-400">Prévia — ainda em análise</span>}
+              </div>
+            </div>
+          )}
           <ol>
             {isInterrupted ? (
               <>
@@ -149,6 +167,30 @@ function RequestStatusTimeline({ request }: { request: ServiceRequestDto & { ser
           </ol>
         </div>
       )}
+    </div>
+  )
+}
+
+function CancelModal({ onConfirm, onDismiss, loading }: { onConfirm: () => void; onDismiss: () => void; loading: boolean }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+      <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+        <div className="flex items-center justify-center w-14 h-14 rounded-full bg-rose-100 mx-auto mb-4">
+          <AlertTriangle className="w-7 h-7 text-rose-500" />
+        </div>
+        <h2 className="text-lg font-bold text-gray-900 text-center mb-2">Cancelar solicitação?</h2>
+        <p className="text-sm text-gray-500 text-center mb-6">
+          Tem certeza que deseja cancelar esta solicitação de serviço? Esta ação não pode ser desfeita.
+        </p>
+        <div className="flex gap-3">
+          <button onClick={onDismiss} disabled={loading} className="flex-1 py-3 rounded-xl border border-gray-200 font-semibold text-gray-600 hover:bg-gray-50 transition-all text-sm">
+            Não, manter
+          </button>
+          <button onClick={onConfirm} disabled={loading} className="flex-1 py-3 rounded-xl bg-rose-500 hover:bg-rose-600 font-semibold text-white transition-all text-sm flex items-center justify-center gap-2">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sim, cancelar'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -191,6 +233,8 @@ export default function EletronicaConsultar() {
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<ConsultarResponse | null>(null)
   const [resendCooldown, setResendCooldown] = useState(0)
+  const [cancelTargetId, setCancelTargetId] = useState<string | null>(null)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
 
   useEffect(() => {
     setData(null)
@@ -276,8 +320,26 @@ export default function EletronicaConsultar() {
 
   const nothingFound = step === 'results' && data && data.requests.length === 0 && data.appointments.length === 0
 
+  const confirmCancel = async () => {
+    if (!cancelTargetId || !slug) return
+    const id = cancelTargetId
+    setCancellingId(id)
+    try {
+      await consultarCancel(slug, id, phone)
+      setData((prev) => prev ? { ...prev, requests: prev.requests.map((r) => (r.id === id ? { ...r, status: 'cancelled' } : r)) } : prev)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao cancelar')
+    } finally {
+      setCancellingId(null)
+      setCancelTargetId(null)
+    }
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#232327] to-[#0a0a0b]">
+      {cancelTargetId && (
+        <CancelModal onConfirm={confirmCancel} onDismiss={() => setCancelTargetId(null)} loading={cancellingId === cancelTargetId} />
+      )}
       <header className="px-5 pt-8 pb-6 text-white">
         <Link to={`/${withTenantSearch()}`} className="flex items-center gap-1.5 text-[#d4d4d8] hover:text-white text-sm mb-5 w-fit transition-colors">
           <ChevronLeft className="w-4 h-4" /> Início
@@ -419,6 +481,14 @@ export default function EletronicaConsultar() {
 
                   {req.owner_notes && (
                     <p className="text-xs text-gray-500 pl-6 italic border-l-2 border-gray-100 ml-1">{req.owner_notes}</p>
+                  )}
+
+                  {req.status === 'pending' && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <button onClick={() => setCancelTargetId(req.id)} className="text-xs text-rose-500 hover:text-rose-700 font-medium transition-colors">
+                        Cancelar solicitação
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
