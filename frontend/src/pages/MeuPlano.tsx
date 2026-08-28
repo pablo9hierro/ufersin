@@ -642,6 +642,38 @@ export default function MeuPlano() {
     })
   }
 
+  /** Salva só um dos 3 textos de CMS (selo/título/subtítulo) clicado no
+   * preview -- reaproveita o mesmo PUT de layout (é um recurso só, sem
+   * PATCH por campo), mas usa o valor do patch em vez do state (que ainda
+   * não re-renderizou) pra não salvar um texto antigo por engano. */
+  const saveLayoutField = (patch: { landingHeadline?: string; landingSub?: string; landingBadge?: string }) => {
+    const headline = patch.landingHeadline ?? landingHeadline
+    const sub = patch.landingSub ?? landingSub
+    const badge = patch.landingBadge ?? landingBadge
+    if (patch.landingHeadline != null) setLandingHeadline(patch.landingHeadline)
+    if (patch.landingSub != null) setLandingSub(patch.landingSub)
+    if (patch.landingBadge != null) setLandingBadge(patch.landingBadge)
+    saveOnboarding({
+      nome_loja: nomeLoja.trim(),
+      endereco: endereco.trim() || undefined,
+      endereco_numero: enderecoNumero.trim() || undefined,
+      logo_url: logoUrl.trim() || undefined,
+      cor_principal: corPrincipal,
+      layout_style: layoutStyle,
+      // Campo tocado neste patch manda o valor literal (mesmo vazio -- é
+      // exatamente o caso de "Restaurar padrão" quando o default é ""), pra
+      // não virar `undefined` e ser silenciosamente ignorado pelo backend
+      // (COALESCE mantém o valor antigo se o campo não vier no PUT).
+      landing_headline: patch.landingHeadline != null ? headline.trim() : headline.trim() || undefined,
+      landing_sub: patch.landingSub != null ? sub.trim() : sub.trim() || undefined,
+      landing_badge: patch.landingBadge != null ? badge.trim() : badge.trim() || undefined,
+      landing_hero_image_url: landingHeroImageUrl.trim() || '',
+      cart_fab_style: cartFabStyle,
+      cart_fab_animate: cartFabAnimate,
+      vende_mais_18: vendeMais18,
+    })
+  }
+
   const handleConnectMp = async () => {
     setError(null)
     setConnectingMp(true)
@@ -1303,6 +1335,7 @@ export default function MeuPlano() {
                   if (patch.cartFabStyle != null) setCartFabStyle(patch.cartFabStyle)
                   if (patch.cartFabAnimate != null) setCartFabAnimate(patch.cartFabAnimate)
                 }}
+                onSaveField={saveLayoutField}
                 publicUrl={publicUrl}
                 reloadToken={previewReloadKey}
                 vertical={me.vertical}

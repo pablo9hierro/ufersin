@@ -25,12 +25,12 @@ export default function Uiux3Landing() {
   const openState = storeStatus ? getStoreOpenState(storeStatus) : null
   const closed = !!openState && !openState.open
   const closedMsg = storeStatus && closed ? closedStoreMessage(storeStatus) : ''
-  const headline = tenantConfig?.landing_headline?.trim() || name
-  const sub =
-    tenantConfig?.landing_sub?.trim() ||
-    (tenantConfig?.vertical === 'eletronicos'
+  const defaultSub =
+    tenantConfig?.vertical === 'eletronicos'
       ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
-      : 'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.')
+      : 'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.'
+  const headline = tenantConfig?.landing_headline?.trim() || name
+  const sub = tenantConfig?.landing_sub?.trim() || defaultSub
   const essential = isEssentialStorefront(tenantConfig?.plano)
 
   return (
@@ -52,13 +52,20 @@ export default function Uiux3Landing() {
         )}
 
         <div className="u3-onboard-photo px-4 sm:px-8 pt-8 pb-10 text-center">
-          {tenantConfig?.landing_badge?.trim() && (
-            <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--u3-orange)' }}>
-              {tenantConfig.landing_badge}
-            </p>
-          )}
-          <p className="u3-wordmark text-3xl sm:text-4xl mb-2">{headline}</p>
-          <p className="u3-dim mb-7 max-w-sm mx-auto">{sub}</p>
+          <p
+            data-cms-editable="badge"
+            data-cms-default=""
+            className="text-xs font-bold uppercase tracking-wide mb-2 empty:mb-0 empty:h-0"
+            style={{ color: 'var(--u3-orange)' }}
+          >
+            {tenantConfig?.landing_badge?.trim() ?? ''}
+          </p>
+          <p data-cms-editable="headline" data-cms-default={name} className="u3-wordmark text-3xl sm:text-4xl mb-2">
+            {headline}
+          </p>
+          <p data-cms-editable="sub" data-cms-default={defaultSub} className="u3-dim mb-7 max-w-sm mx-auto">
+            {sub}
+          </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm sm:max-w-none mx-auto">
             <button onClick={() => navigate('/catalogo')} className="u3-pill-primary px-6 py-3 flex items-center justify-center gap-2">
               <ShoppingBag className="w-4 h-4" /> Ver produtos

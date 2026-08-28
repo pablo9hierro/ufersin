@@ -25,13 +25,14 @@ export default function Uiux4Landing() {
   const closed = !!openState && !openState.open
   const closedMsg = storeStatus && closed ? closedStoreMessage(storeStatus) : ''
   const isEletronicos = tenantConfig?.vertical === 'eletronicos'
-  const badge = tenantConfig?.landing_badge?.trim() || (isEletronicos ? 'Assistência técnica de confiança' : 'Feito na hora, todo dia')
-  const headline = tenantConfig?.landing_headline?.trim() || (isEletronicos ? 'Conserto\nrápido' : 'Fome\nagora')
-  const sub =
-    tenantConfig?.landing_sub?.trim() ||
-    (isEletronicos
-      ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
-      : 'Lanches, bebidas e sobremesas prontos em minutos. Peça pelo site ou chama a gente no WhatsApp.')
+  const defaultBadge = isEletronicos ? 'Assistência técnica de confiança' : 'Feito na hora, todo dia'
+  const defaultHeadline = isEletronicos ? 'Conserto\nrápido' : 'Fome\nagora'
+  const defaultSub = isEletronicos
+    ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
+    : 'Lanches, bebidas e sobremesas prontos em minutos. Peça pelo site ou chama a gente no WhatsApp.'
+  const badge = tenantConfig?.landing_badge?.trim() || defaultBadge
+  const headline = tenantConfig?.landing_headline?.trim() || defaultHeadline
+  const sub = tenantConfig?.landing_sub?.trim() || defaultSub
   const headlineLines = headline.split(/\n|\\n/)
   const essential = isEssentialStorefront(tenantConfig?.plano)
 
@@ -48,8 +49,10 @@ export default function Uiux4Landing() {
           <EssentialHeroCard imageUrl={tenantConfig?.landing_hero_image_url} variant="u4" alt={badge} />
         )}
         <div className="px-4 sm:px-8 pt-8 pb-10">
-          <span className="u4-tag inline-block px-2.5 py-1 text-xs mb-4">{badge}</span>
-          <h1 className="u4-display text-5xl sm:text-7xl mb-2">
+          <span data-cms-editable="badge" data-cms-default={defaultBadge} className="u4-tag inline-block px-2.5 py-1 text-xs mb-4">
+            {badge}
+          </span>
+          <h1 data-cms-editable="headline" data-cms-default={defaultHeadline} className="u4-display text-5xl sm:text-7xl mb-2">
             {headlineLines.length > 1 ? (
               <>
                 {headlineLines[0]}
@@ -60,7 +63,9 @@ export default function Uiux4Landing() {
               headline
             )}
           </h1>
-          <p className="u4-dim max-w-xs mb-6 text-sm">{sub}</p>
+          <p data-cms-editable="sub" data-cms-default={defaultSub} className="u4-dim max-w-xs mb-6 text-sm">
+            {sub}
+          </p>
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/catalogo')} className="u4-btn-primary px-6 py-3 text-sm">
               Ver produtos

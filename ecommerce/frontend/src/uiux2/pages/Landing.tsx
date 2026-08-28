@@ -40,13 +40,14 @@ export default function Uiux2Landing() {
   const closed = !!openState && !openState.open
   const closedMsg = storeStatus && closed ? closedStoreMessage(storeStatus) : ''
   const isEletronicos = tenantConfig?.vertical === 'eletronicos'
-  const badge = tenantConfig?.landing_badge?.trim() || (isEletronicos ? 'Assistência técnica de confiança' : 'Feito na hora, todo dia')
-  const headline = tenantConfig?.landing_headline?.trim() || (isEletronicos ? 'Seu aparelho no melhor cuidado' : 'Fome? A gente entrega em minutos')
-  const sub =
-    tenantConfig?.landing_sub?.trim() ||
-    (isEletronicos
-      ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
-      : 'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.')
+  const defaultBadge = isEletronicos ? 'Assistência técnica de confiança' : 'Feito na hora, todo dia'
+  const defaultHeadline = isEletronicos ? 'Seu aparelho no melhor cuidado' : 'Fome? A gente entrega em minutos'
+  const defaultSub = isEletronicos
+    ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
+    : 'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.'
+  const badge = tenantConfig?.landing_badge?.trim() || defaultBadge
+  const headline = tenantConfig?.landing_headline?.trim() || defaultHeadline
+  const sub = tenantConfig?.landing_sub?.trim() || defaultSub
   const DESTAQUES = isEletronicos ? DESTAQUES_ELETRONICOS : DESTAQUES_ECOMMERCE
   const essential = isEssentialStorefront(tenantConfig?.plano)
 
@@ -70,8 +71,18 @@ export default function Uiux2Landing() {
             <span className="u2-mesh-blob u2-mesh-blob-c" />
           </div>
           <div className="relative z-[1] px-4 sm:px-8 pt-8 pb-16 text-center max-w-2xl mx-auto">
-            <span className="u2-badge inline-flex px-3 py-1.5 text-xs font-bold mb-4">{badge}</span>
-            <h1 className="u2-oncanvas text-3xl sm:text-4xl font-black leading-tight mb-3">
+            <span
+              data-cms-editable="badge"
+              data-cms-default={defaultBadge}
+              className="u2-badge inline-flex px-3 py-1.5 text-xs font-bold mb-4"
+            >
+              {badge}
+            </span>
+            <h1
+              data-cms-editable="headline"
+              data-cms-default={defaultHeadline}
+              className="u2-oncanvas text-3xl sm:text-4xl font-black leading-tight mb-3"
+            >
               {headline.includes('A gente entrega') ? (
                 <>
                   {headline.split('A gente entrega')[0]}
@@ -82,7 +93,9 @@ export default function Uiux2Landing() {
                 headline
               )}
             </h1>
-            <p className="u2-oncanvas-dim mb-7">{sub}</p>
+            <p data-cms-editable="sub" data-cms-default={defaultSub} className="u2-oncanvas-dim mb-7">
+              {sub}
+            </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
               <button onClick={() => navigate('/catalogo')} className="u2-btn-primary px-6 py-3 flex items-center justify-center gap-2">
                 <ShoppingBag className="w-4 h-4" /> Ver catálogo

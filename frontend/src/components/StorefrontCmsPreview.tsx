@@ -1,11 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
-import { ExternalLink, RefreshCw, ShoppingBag } from 'lucide-react'
+import { Check, ExternalLink, RefreshCw, RotateCcw, ShoppingBag, X } from 'lucide-react'
 import { STOREFRONT_STYLES, type StorefrontStyle } from '../lib/storefrontStyles'
 
 const PREVIEW_W = 390
 const PREVIEW_H = 760
 
 export type CartFabStyle = 'sacola' | 'cart_icon'
+
+/** Campos de texto da landing clicáveis dentro do preview (data-cms-editable
+ * no DOM real da vitrine -- uiux2/3/4 Landing.tsx). */
+type CmsTextField = 'badge' | 'headline' | 'sub'
+
+const FIELD_TO_VALUE_KEY: Record<CmsTextField, 'landingBadge' | 'landingHeadline' | 'landingSub'> = {
+  badge: 'landingBadge',
+  headline: 'landingHeadline',
+  sub: 'landingSub',
+}
+
+const FIELD_LABEL: Record<CmsTextField, string> = {
+  badge: 'Selo de destaque',
+  headline: 'Título da vitrine',
+  sub: 'Subtítulo da vitrine',
+}
 
 export interface StorefrontCmsValues {
   corPrincipal: string
@@ -17,18 +33,25 @@ export interface StorefrontCmsValues {
   cartFabAnimate: boolean
 }
 
-/** Preview 1:1 — carrega a vitrine real (mesmo componente que o cliente vê) via iframe.
- * Reflete só o que já foi salvo; textos/estilo têm inputs próprios abaixo, não são
- * mais editáveis clicando na prévia (a prévia agora É a loja real, não um mock). */
+/** Preview 1:1 — carrega a vitrine real (mesmo componente que o cliente vê) via
+ * iframe same-origin (`/loja/...` no mesmo domínio). Os 3 textos (selo/título/
+ * subtítulo) são clicáveis direto no preview (`data-cms-editable` no DOM da
+ * Landing real) -- clicar seleciona o campo e mostra Cancelar/Restaurar
+ * padrão/Salvar ao lado do input correspondente; digitar sincroniza ao vivo
+ * no preview (grava direto no textContent do nó, sem esperar salvar). */
 export default function StorefrontCmsPreview({
   values,
   onChange,
+  onSaveField,
   publicUrl,
   reloadToken,
   vertical,
 }: {
   values: StorefrontCmsValues
   onChange: (patch: Partial<StorefrontCmsValues>) => void
+  /** Persiste já (Restaurar padrão / Salvar do campo selecionado) -- o pai
+   * decide como (o layout inteiro é um recurso só, sem PATCH por campo). */
+  onSaveField: (patch: Partial<StorefrontCmsValues>) => void
   publicUrl: string | null
   reloadToken: number
   /** Ramo eletrônica tem UMA vitrine só (o próprio vrtech) -- não faz
@@ -37,9 +60,14 @@ export default function StorefrontCmsPreview({
   vertical?: string
 }) {
   const frameRef = useRef<HTMLDivElement>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
   const [scale, setScale] = useState(0.7)
   const active = STOREFRONT_STYLES.find((s) => s.key === values.layoutStyle) ?? STOREFRONT_STYLES[0]
   const accent = values.corPrincipal.trim() || active.preview.accent
+
+  const [selectedField, setSelectedField] = useState<CmsTextField | null>(null)
+  const [fieldOriginal, setFieldOriginal] = useState('')
+  const [fieldDefault, setFieldDefault] = useState('')
 
   useEffect(() => {
     const el = frameRef.current
@@ -51,6 +79,91 @@ export default function StorefrontCmsPreview({
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  const cmsNode = (field: CmsTextField) =>
+    iframeRef.current?.contentDocument?.querySelector<HTMLElement>(`[data-cms-editable="${field}"]`) ?? null
+
+  // Preview só mostra o que está salvo por padrão (reloadToken/src) -- mas
+  // enquanto o admin digita, sincroniza o rascunho direto no DOM do iframe
+  // (same-origin) pra ele ver o resultado sem precisar salvar antes.
+  useEffect(() => {
+    const badgeNode = cmsNode('badge')
+    if (badgeNode) badgeNode.textContent = values.landingBadge
+    const headlineNode = cmsNode('headline')
+    if (headlineNode) headlineNode.textContent = values.landingHeadline || headlineNode.getAttribute('data-cms-default') || ''
+    const subNode = cmsNode('sub')
+    if (subNode) subNode.textContent = values.landingSub || subNode.getAttribute('data-cms-default') || ''
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values.landingBadge, values.landingHeadline, values.landingSub, reloadToken])
+
+  const handlePreviewLoad = () => {
+    const doc = iframeRef.current?.contentDocument
+    if (!doc) return
+    ;(['badge', 'headline', 'sub'] as CmsTextField[]).forEach((field) => {
+      const node = doc.querySelector<HTMLElement>(`[data-cms-editable="${field}"]`)
+      if (!node) return
+      node.style.cursor = 'pointer'
+      node.addEventListener('click', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setSelectedField(field)
+        setFieldOriginal(values[FIELD_TO_VALUE_KEY[field]])
+        setFieldDefault(node.getAttribute('data-cms-default') ?? '')
+      })
+    })
+    // Já reaplica o rascunho atual assim que o iframe termina de carregar
+    // (senão ele mostraria só o valor salvo até o próximo keystroke).
+    const badgeNode = doc.querySelector<HTMLElement>('[data-cms-editable="badge"]')
+    if (badgeNode) badgeNode.textContent = values.landingBadge
+    const headlineNode = doc.querySelector<HTMLElement>('[data-cms-editable="headline"]')
+    if (headlineNode) headlineNode.textContent = values.landingHeadline || headlineNode.getAttribute('data-cms-default') || ''
+    const subNode = doc.querySelector<HTMLElement>('[data-cms-editable="sub"]')
+    if (subNode) subNode.textContent = values.landingSub || subNode.getAttribute('data-cms-default') || ''
+  }
+
+  const cancelFieldEdit = () => {
+    if (selectedField) onChange({ [FIELD_TO_VALUE_KEY[selectedField]]: fieldOriginal })
+    setSelectedField(null)
+  }
+
+  const restoreFieldDefault = () => {
+    if (!selectedField) return
+    onSaveField({ [FIELD_TO_VALUE_KEY[selectedField]]: fieldDefault })
+  }
+
+  const saveField = () => {
+    if (!selectedField) return
+    onSaveField({ [FIELD_TO_VALUE_KEY[selectedField]]: values[FIELD_TO_VALUE_KEY[selectedField]] })
+  }
+
+  function FieldEditorButtons({ field }: { field: CmsTextField }) {
+    if (selectedField !== field) return null
+    return (
+      <div className="flex items-center gap-1.5 mt-1.5">
+        <button
+          type="button"
+          onClick={cancelFieldEdit}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-white/10 text-uf-silver-dim hover:text-uf-silver"
+        >
+          <X className="w-3 h-3" /> Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={restoreFieldDefault}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-white/10 text-uf-silver-dim hover:text-uf-silver"
+        >
+          <RotateCcw className="w-3 h-3" /> Restaurar padrão
+        </button>
+        <button
+          type="button"
+          onClick={saveField}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border border-uf-blue bg-uf-blue/10 text-uf-blue"
+        >
+          <Check className="w-3 h-3" /> Salvar
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -89,32 +202,59 @@ export default function StorefrontCmsPreview({
       </div>
 
       <div>
-        <label className="label mb-1 block">Selo de destaque</label>
+        <label className="label mb-1 flex items-center gap-1.5">
+          {FIELD_LABEL.badge}
+          {selectedField === 'badge' && <span className="text-uf-blue text-[10px] font-normal">(clicado no preview)</span>}
+        </label>
         <input
-          className="input-field w-full text-sm"
+          className={`input-field w-full text-sm ${selectedField === 'badge' ? 'border-uf-blue' : ''}`}
           value={values.landingBadge}
+          onFocus={() => {
+            setSelectedField('badge')
+            setFieldOriginal(values.landingBadge)
+            setFieldDefault(cmsNode('badge')?.getAttribute('data-cms-default') ?? '')
+          }}
           onChange={(e) => onChange({ landingBadge: e.target.value })}
           placeholder="Ex: Feito na hora, todo dia"
         />
+        <FieldEditorButtons field="badge" />
       </div>
       <div>
-        <label className="label mb-1 block">Título da vitrine</label>
+        <label className="label mb-1 flex items-center gap-1.5">
+          {FIELD_LABEL.headline}
+          {selectedField === 'headline' && <span className="text-uf-blue text-[10px] font-normal">(clicado no preview)</span>}
+        </label>
         <input
-          className="input-field w-full text-sm"
+          className={`input-field w-full text-sm ${selectedField === 'headline' ? 'border-uf-blue' : ''}`}
           value={values.landingHeadline}
+          onFocus={() => {
+            setSelectedField('headline')
+            setFieldOriginal(values.landingHeadline)
+            setFieldDefault(cmsNode('headline')?.getAttribute('data-cms-default') ?? '')
+          }}
           onChange={(e) => onChange({ landingHeadline: e.target.value })}
           placeholder="Ex: Fome? A gente entrega em minutos."
         />
+        <FieldEditorButtons field="headline" />
       </div>
       <div>
-        <label className="label mb-1 block">Subtítulo da vitrine</label>
+        <label className="label mb-1 flex items-center gap-1.5">
+          {FIELD_LABEL.sub}
+          {selectedField === 'sub' && <span className="text-uf-blue text-[10px] font-normal">(clicado no preview)</span>}
+        </label>
         <textarea
-          className="input-field w-full text-sm resize-y"
+          className={`input-field w-full text-sm resize-y ${selectedField === 'sub' ? 'border-uf-blue' : ''}`}
           rows={2}
           value={values.landingSub}
+          onFocus={() => {
+            setSelectedField('sub')
+            setFieldOriginal(values.landingSub)
+            setFieldDefault(cmsNode('sub')?.getAttribute('data-cms-default') ?? '')
+          }}
           onChange={(e) => onChange({ landingSub: e.target.value })}
           placeholder="Ex: Lanches, bebidas e sobremesas feitos com carinho."
         />
+        <FieldEditorButtons field="sub" />
       </div>
 
       <div>
@@ -174,7 +314,7 @@ export default function StorefrontCmsPreview({
         </div>
         <p className="text-[11px] text-uf-silver-dim mb-3 leading-snug flex items-center gap-1.5">
           <RefreshCw className="w-3 h-3 shrink-0" />
-          Mostra o que já está salvo. Salve o layout pra atualizar.
+          Clique no selo, título ou subtítulo dentro do preview pra editar ao vivo.
         </p>
 
         <div ref={frameRef} className="w-full overflow-hidden flex justify-center">
@@ -188,6 +328,8 @@ export default function StorefrontCmsPreview({
                 {publicUrl ? (
                   <iframe
                     key={reloadToken}
+                    ref={iframeRef}
+                    onLoad={handlePreviewLoad}
                     src={publicUrl}
                     title="Preview da vitrine"
                     className="w-full h-full border-0"
