@@ -311,14 +311,14 @@ export const eletronicosAdmin = {
   },
   catalogCategories: {
     list: () =>
-      req<{ id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }[]>(`${BASE}/catalog-categories`),
-    create: (input: { name: string; device_type: string; image_url?: string; sort_order?: number }) =>
-      req<{ id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }>(`${BASE}/catalog-categories`, {
+      req<{ id: string; name: string; slug: string; sort_order: number; device_type: string; device_types: string[] }[]>(`${BASE}/catalog-categories`),
+    create: (input: { name: string; device_types: string[]; sort_order?: number }) =>
+      req<{ id: string; name: string; slug: string; sort_order: number; device_type: string; device_types: string[] }>(`${BASE}/catalog-categories`, {
         method: 'POST',
         body: JSON.stringify(input),
       }),
-    update: (id: string, input: { name: string; device_type: string; image_url?: string; sort_order?: number }) =>
-      req<{ id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }>(`${BASE}/catalog-categories/${id}`, {
+    update: (id: string, input: { name: string; device_types: string[]; sort_order?: number }) =>
+      req<{ id: string; name: string; slug: string; sort_order: number; device_type: string; device_types: string[] }>(`${BASE}/catalog-categories/${id}`, {
         method: 'PUT',
         body: JSON.stringify(input),
       }),

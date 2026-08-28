@@ -68,6 +68,7 @@ const EletronicaCatalogoServico = lazyWithReload(() => import('./pages/eletronic
 const EletronicaAdminLayout = lazyWithReload(() => import('./pages/eletronicos/EletronicaAdminLayout'))
 const EletronicaAdminDashboard = lazyWithReload(() => import('./pages/eletronicos/EletronicaAdminDashboard'))
 const EletronicaAdminEstoque = lazyWithReload(() => import('./pages/eletronicos/EletronicaAdminEstoque'))
+const EletronicaEstoquePage = lazyWithReload(() => import('./pages/eletronicos/EletronicaEstoquePage'))
 const EletronicaAdminAgenda = lazyWithReload(() => import('./pages/eletronicos/EletronicaAdminAgenda'))
 const EletronicaAdminPdv = lazyWithReload(() => import('./pages/eletronicos/EletronicaAdminPdv'))
 const EletronicaAdminTemplates = lazyWithReload(() => import('./pages/eletronicos/EletronicaAdminTemplates'))
@@ -358,6 +359,7 @@ export default function App() {
             <Route path="pdv" element={<EletronicaAdminPdv />} />
             <Route path="agenda" element={<EletronicaAdminAgenda />} />
             <Route path="produtos" element={<EletronicaAdminEstoque />} />
+            <Route path="estoque" element={<EletronicaEstoquePage />} />
             <Route path="servicodeslocamento" element={<EletronicaServicoDeslocamento />} />
             <Route path="relatorios" element={<EletronicaRelatorios />} />
             <Route path="template-zap" element={<EletronicaAdminTemplates />} />

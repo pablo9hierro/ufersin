@@ -7,7 +7,7 @@ import { DeviceTypeIcon, BrandIcon } from '../../lib/deviceBrandIcons'
 import LocationPicker, { type LocationPickerResult } from '../../components/checkout/LocationPicker'
 
 type DeviceTypeRow = { id: string; name: string; slug: string; icon_key: string; sort_order: number }
-type BrandRow = { id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }
+type BrandRow = { id: string; name: string; slug: string; sort_order: number; device_type: string; device_types: string[] }
 
 // Port 1:1 (adaptado) de src/components/dashboard/NovoServicoDialog.tsx do
 // vrtech -- "PDV de serviço": lojista registra um atendimento já combinado
@@ -197,7 +197,7 @@ function DeviceBrandModelPicker({
   }, [])
 
   const selectedDeviceType = deviceTypes.find((d) => d.id === deviceTypeId) ?? null
-  const brandsForType = selectedDeviceType ? brands.filter((b) => b.device_type === selectedDeviceType.slug) : []
+  const brandsForType = selectedDeviceType ? brands.filter((b) => (b.device_types ?? [b.device_type]).includes(selectedDeviceType.slug)) : []
   const selectedBrand = brands.find((b) => b.id === brandId) ?? null
 
   if (loading) {

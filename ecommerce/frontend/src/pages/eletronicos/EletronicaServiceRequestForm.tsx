@@ -158,7 +158,7 @@ export default function EletronicaServiceRequestForm({
   }, [catalogItems.length])
 
   const brandsForType = useMemo(
-    () => brands.filter((b) => b.device_type === selectedDeviceType),
+    () => brands.filter((b) => (b.device_types ?? [b.device_type]).includes(selectedDeviceType ?? '')),
     [brands, selectedDeviceType],
   )
 

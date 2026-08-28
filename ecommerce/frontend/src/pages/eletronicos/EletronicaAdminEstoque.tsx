@@ -1,38 +1,37 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Check, DollarSign, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Search, Smartphone, Trash2, Wrench, X } from 'lucide-react'
+import { ArrowDownCircle, ArrowUpCircle, Check, DollarSign, ImagePlus, Loader2, Package, Pencil, Plus, Search, Smartphone, Trash2, Wrench, X } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
+import { BrandIcon } from '../../lib/deviceBrandIcons'
 import type { EletronicaAdminCatalogItem } from '../../lib/eletronicosAdminApi'
 import { adminService } from '../../services/adminService'
 import type { Product } from '../../types/product'
 
 // Port de src/app/dashboard/produtos/ProdutosClient.tsx + ProdutosTab.tsx +
-// ServicosTab.tsx do vrtech -- mesmas 6 abas (Produtos/Serviços/Estoque/
-// Aparelho·Marca·Modelo/Alerta de reposição/Em falta). "Produtos" é CRUD
-// próprio embutido na mesma página (não um redirect pra outra tela) com o
-// mesmo vínculo multi-select aparelho(s)/marca(s)/modelo(s) via
-// product_devices/brands/models, agrupamento por modelo e filtro por marca
-// -- reaproveita adminService.products (mesma tabela `products` que a
-// vitrine /loja já lê) só pros campos comerciais (nome/preço/qtd/imagem).
-// Serviços tem o vínculo equivalente via service_item_devices/brands/
-// models, peças de estoque como dependência de custo
-// (service_catalog_item_parts) e custos avulsos
-// (service_catalog_item_extra_costs) -- mesmas tabelas do schema espelhado
-// do vrtech.
+// ServicosTab.tsx do vrtech -- só as abas Produtos/Serviços (CRUD comercial
+// dos itens vendidos/oferecidos). Estoque/Aparelho/Marca/Modelo/Alerta de
+// reposição/Em falta viraram uma página própria (EletronicaEstoquePage.tsx,
+// rota /estoque) -- os componentes (DevicesSection/MarcasTab/ModelsSection/
+// EstoqueTab/StockAlertList) continuam definidos aqui e são importados de
+// lá, pra não duplicar código. "Produtos" é CRUD próprio embutido na mesma
+// página (não um redirect pra outra tela) com o mesmo vínculo multi-select
+// aparelho(s)/marca(s)/modelo(s) via product_devices/brands/models,
+// agrupamento por modelo e filtro por marca -- reaproveita
+// adminService.products (mesma tabela `products` que a vitrine /loja já
+// lê) só pros campos comerciais (nome/preço/qtd/imagem). Serviços tem o
+// vínculo equivalente via service_item_devices/brands/models, peças de
+// estoque como dependência de custo (service_catalog_item_parts) e custos
+// avulsos (service_catalog_item_extra_costs).
 
 const TABS = [
   { key: 'produtos', label: 'Produtos', icon: Package },
   { key: 'servicos', label: 'Serviços', icon: Wrench },
-  { key: 'estoque', label: 'Estoque', icon: Package },
-  { key: 'marcas', label: 'Aparelho/Marca/Modelo', icon: Smartphone },
-  { key: 'alerta', label: 'Alerta de reposição', icon: AlertTriangle },
-  { key: 'falta', label: 'Em falta', icon: PackageX },
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 
-const INPUT = 'w-full rounded-xl border border-white/10 bg-[#0a0a0b] px-3 py-2 text-sm text-white placeholder:text-[#d4d4d8]/30 outline-none focus:border-[#e0211a] transition-colors'
+export const INPUT = 'w-full rounded-xl border border-white/10 bg-[#0a0a0b] px-3 py-2 text-sm text-white placeholder:text-[#d4d4d8]/30 outline-none focus:border-[#e0211a] transition-colors'
 
-type Category = { id: string; name: string; slug: string; sort_order: number; device_type: string; image_url: string | null }
-type StockItem = {
+export type Category = { id: string; name: string; slug: string; sort_order: number; device_type: string; device_types: string[] }
+export type StockItem = {
   id: string
   name: string
   unit: string
@@ -43,13 +42,11 @@ type StockItem = {
   units_per_box?: number | null
 }
 
-const DEVICE_TYPES = ['celular', 'tablet', 'notebook', 'computador']
-
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
 }
 
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
       <div className="bg-[#161618] border border-white/10 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -65,15 +62,15 @@ function Dialog({ title, onClose, children }: { title: string; onClose: () => vo
   )
 }
 
-type DeviceType = { id: string; name: string; slug: string; icon_key: string; sort_order: number }
-type CatalogModelRow = { id: string; brand_id: string; name: string; sort_order: number }
+export type DeviceType = { id: string; name: string; slug: string; icon_key: string; sort_order: number }
+export type CatalogModelRow = { id: string; brand_id: string; name: string; sort_order: number }
 type StockItemRow = { id: string; name: string; unit: string; price: number | null; quantity: number }
 type SelectedPart = { stock_item_id: string; name: string; unit: string; price: number; quantity: number }
 type ExtraCostRow = { name: string; value: number }
 
 // Multi-select com busca + criação inline -- port funcional (não visual
 // pixel-a-pixel) de components/ui/SearchCreateMultiSelect.tsx do vrtech.
-function SearchCreateMultiSelect({
+export function SearchCreateMultiSelect({
   label,
   placeholder,
   options,
@@ -906,7 +903,7 @@ function ServicosTab({ categories, onCategoriesChanged }: { categories: Category
               }}
               onCreate={async (name) => {
                 const deviceType = deviceIds[0] ? deviceTypes.find((d) => d.id === deviceIds[0])?.slug ?? deviceTypes[0]?.slug ?? 'geral' : deviceTypes[0]?.slug ?? 'geral'
-                const created = await eletronicosAdmin.catalogCategories.create({ name, device_type: deviceType, sort_order: categories.length })
+                const created = await eletronicosAdmin.catalogCategories.create({ name, device_types: [deviceType], sort_order: categories.length })
                 onCategoriesChanged()
                 return created
               }}
@@ -1079,11 +1076,13 @@ function ServicosTab({ categories, onCategoriesChanged }: { categories: Category
   )
 }
 
-function DevicesSection({ deviceTypes, setDeviceTypes }: { deviceTypes: DeviceType[]; setDeviceTypes: React.Dispatch<React.SetStateAction<DeviceType[]>> }) {
+export function DevicesSection({ deviceTypes, setDeviceTypes }: { deviceTypes: DeviceType[]; setDeviceTypes: React.Dispatch<React.SetStateAction<DeviceType[]>> }) {
   const [editing, setEditing] = useState<DeviceType | 'new' | null>(null)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [toDelete, setToDelete] = useState<DeviceType | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const save = async () => {
     if (!name.trim()) return
@@ -1105,12 +1104,17 @@ function DevicesSection({ deviceTypes, setDeviceTypes }: { deviceTypes: DeviceTy
     }
   }
 
-  const remove = async (id: string) => {
+  const confirmDelete = async () => {
+    if (!toDelete) return
+    setDeleting(true)
     try {
-      await eletronicosAdmin.deviceTypes.delete(id)
-      setDeviceTypes((prev) => prev.filter((d) => d.id !== id))
+      await eletronicosAdmin.deviceTypes.delete(toDelete.id)
+      setDeviceTypes((prev) => prev.filter((d) => d.id !== toDelete.id))
+      setToDelete(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'erro ao excluir (verifique se não há marcas usando esse aparelho)')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -1130,7 +1134,7 @@ function DevicesSection({ deviceTypes, setDeviceTypes }: { deviceTypes: DeviceTy
           <div key={d.id} className="flex items-center gap-1 bg-[#0a0a0b] border border-white/10 rounded-lg px-3 py-1.5">
             <span className="text-sm text-white">{d.name}</span>
             <button onClick={() => { setName(d.name); setEditing(d) }} className="text-[#d4d4d8]/30 hover:text-[#e0211a] transition-colors ml-1"><Pencil className="w-3 h-3" /></button>
-            <button onClick={() => remove(d.id)} className="text-[#d4d4d8]/30 hover:text-red-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
+            <button onClick={() => setToDelete(d)} className="text-[#d4d4d8]/30 hover:text-red-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
           </div>
         ))}
         {deviceTypes.length === 0 && <p className="text-xs text-[#d4d4d8]/40">Nenhum aparelho cadastrado.</p>}
@@ -1143,11 +1147,24 @@ function DevicesSection({ deviceTypes, setDeviceTypes }: { deviceTypes: DeviceTy
           </button>
         </Dialog>
       )}
+      {toDelete && (
+        <Dialog title={`Excluir "${toDelete.name}"?`} onClose={() => setToDelete(null)}>
+          <p className="text-sm text-[#d4d4d8]/60">Essa ação não pode ser desfeita.</p>
+          <div className="flex gap-2">
+            <button onClick={() => setToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-white/10 text-white text-sm font-medium hover:bg-white/5 transition-colors">
+              Cancelar
+            </button>
+            <button onClick={confirmDelete} disabled={deleting} className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2">
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Excluir
+            </button>
+          </div>
+        </Dialog>
+      )}
     </div>
   )
 }
 
-function ModelsSection({
+export function ModelsSection({
   categories, models, setModels,
 }: { categories: Category[]; models: CatalogModelRow[]; setModels: React.Dispatch<React.SetStateAction<CatalogModelRow[]>> }) {
   const [editing, setEditing] = useState<CatalogModelRow | 'new' | null>(null)
@@ -1176,12 +1193,20 @@ function ModelsSection({
     }
   }
 
-  const remove = async (id: string) => {
+  const [toDelete, setToDelete] = useState<CatalogModelRow | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const confirmDelete = async () => {
+    if (!toDelete) return
+    setDeleting(true)
     try {
-      await eletronicosAdmin.catalogModels.delete(id)
-      setModels((prev) => prev.filter((m) => m.id !== id))
+      await eletronicosAdmin.catalogModels.delete(toDelete.id)
+      setModels((prev) => prev.filter((m) => m.id !== toDelete.id))
+      setToDelete(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'erro ao excluir')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -1206,7 +1231,7 @@ function ModelsSection({
             <span className="text-sm text-white">{m.name}</span>
             <span className="text-[10px] text-[#d4d4d8]/40">{categories.find((c) => c.id === m.brand_id)?.name ?? '—'}</span>
             <button onClick={() => { setName(m.name); setBrandId(m.brand_id); setEditing(m) }} className="text-[#d4d4d8]/30 hover:text-[#e0211a] transition-colors ml-1"><Pencil className="w-3 h-3" /></button>
-            <button onClick={() => remove(m.id)} className="text-[#d4d4d8]/30 hover:text-red-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
+            <button onClick={() => setToDelete(m)} className="text-[#d4d4d8]/30 hover:text-red-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
           </div>
         ))}
         {models.length === 0 && <p className="text-xs text-[#d4d4d8]/40">Nenhum modelo cadastrado.</p>}
@@ -1225,45 +1250,60 @@ function ModelsSection({
           </button>
         </Dialog>
       )}
+      {toDelete && (
+        <Dialog title={`Excluir "${toDelete.name}"?`} onClose={() => setToDelete(null)}>
+          <p className="text-sm text-[#d4d4d8]/60">Essa ação não pode ser desfeita.</p>
+          <div className="flex gap-2">
+            <button onClick={() => setToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-white/10 text-white text-sm font-medium hover:bg-white/5 transition-colors">
+              Cancelar
+            </button>
+            <button onClick={confirmDelete} disabled={deleting} className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2">
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Excluir
+            </button>
+          </div>
+        </Dialog>
+      )}
     </div>
   )
 }
 
-function MarcasTab({ categories, onChanged }: { categories: Category[]; onChanged: () => void }) {
+// Marca associada a mais de um tipo de aparelho (ex: "Samsung" vale pra
+// celular E tablet, sem precisar cadastrar "Samsung Tablet" à parte) --
+// checkbox simples em vez de SearchCreateMultiSelect porque a lista de
+// aparelhos é curta e fixa, não precisa de busca. Sem campo de imagem de
+// propósito: ícone da marca (Simple Icons) resolvido por nome via
+// BrandIcon, sem imagem livre pra cadastrar.
+export function MarcasTab({ categories, onChanged, deviceTypes }: { categories: Category[]; onChanged: () => void; deviceTypes: DeviceType[] }) {
   const [editing, setEditing] = useState<Category | 'new' | null>(null)
   const [name, setName] = useState('')
-  const [deviceType, setDeviceType] = useState(DEVICE_TYPES[0])
-  const [imageUrl, setImageUrl] = useState('')
+  const [selectedDeviceTypes, setSelectedDeviceTypes] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([])
-  const [models, setModels] = useState<CatalogModelRow[]>([])
-
-  useEffect(() => {
-    eletronicosAdmin.deviceTypes.list().then(setDeviceTypes).catch(() => {})
-    eletronicosAdmin.catalogModels.list().then(setModels).catch(() => {})
-  }, [])
+  const [toDelete, setToDelete] = useState<Category | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   function openNew() {
     setName('')
-    setDeviceType(DEVICE_TYPES[0])
-    setImageUrl('')
+    setSelectedDeviceTypes(deviceTypes[0] ? [deviceTypes[0].slug] : [])
     setEditing('new')
   }
 
   function openEdit(c: Category) {
     setName(c.name)
-    setDeviceType(c.device_type)
-    setImageUrl(c.image_url ?? '')
+    setSelectedDeviceTypes(c.device_types?.length ? c.device_types : [c.device_type])
     setEditing(c)
   }
 
+  function toggleDeviceType(slug: string) {
+    setSelectedDeviceTypes((prev) => (prev.includes(slug) ? prev.filter((d) => d !== slug) : [...prev, slug]))
+  }
+
   async function save() {
-    if (!name.trim()) return
+    if (!name.trim() || selectedDeviceTypes.length === 0) return
     setSaving(true)
     setError(null)
     try {
-      const payload = { name: name.trim(), device_type: deviceType, image_url: imageUrl.trim() || undefined }
+      const payload = { name: name.trim(), device_types: selectedDeviceTypes }
       if (editing === 'new') await eletronicosAdmin.catalogCategories.create(payload)
       else if (editing) await eletronicosAdmin.catalogCategories.update(editing.id, payload)
       setEditing(null)
@@ -1275,19 +1315,22 @@ function MarcasTab({ categories, onChanged }: { categories: Category[]; onChange
     }
   }
 
-  async function remove(id: string) {
+  async function confirmDelete() {
+    if (!toDelete) return
+    setDeleting(true)
     try {
-      await eletronicosAdmin.catalogCategories.delete(id)
+      await eletronicosAdmin.catalogCategories.delete(toDelete.id)
       onChanged()
+      setToDelete(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'erro ao excluir (verifique se não há serviços usando essa marca)')
+    } finally {
+      setDeleting(false)
     }
   }
 
   return (
     <div className="space-y-4">
-      <DevicesSection deviceTypes={deviceTypes} setDeviceTypes={setDeviceTypes} />
-
       <div className="flex items-center justify-between">
         <p className="text-sm text-[#d4d4d8]/50">{categories.length} marca{categories.length === 1 ? '' : 's'}</p>
         <button onClick={openNew} className="flex items-center gap-1.5 bg-[#e0211a] hover:bg-[#a3140f] text-white text-sm font-medium px-3.5 py-2 rounded-xl transition-colors">
@@ -1299,15 +1342,15 @@ function MarcasTab({ categories, onChanged }: { categories: Category[]; onChange
         {categories.map((c) => (
           <div key={c.id} className="bg-[#161618] rounded-xl border border-white/5 p-3">
             <div className="aspect-video bg-[#0a0a0b] rounded-lg overflow-hidden mb-2 flex items-center justify-center">
-              {c.image_url ? <img src={c.image_url} alt={c.name} className="w-full h-full object-cover" /> : <Smartphone className="w-6 h-6 text-[#d4d4d8]/20" />}
+              <BrandIcon name={c.name} className="w-8 h-8 text-[#d4d4d8]/60" />
             </div>
             <p className="text-sm font-semibold text-white truncate">{c.name}</p>
-            <p className="text-xs text-[#d4d4d8]/50">{c.device_type}</p>
+            <p className="text-xs text-[#d4d4d8]/50 truncate">{(c.device_types?.length ? c.device_types : [c.device_type]).join(', ')}</p>
             <div className="flex items-center gap-2 mt-2">
               <button onClick={() => openEdit(c)} className="text-xs text-[#d4d4d8]/70 hover:text-white flex items-center gap-1">
                 <Pencil className="w-3 h-3" /> Editar
               </button>
-              <button onClick={() => remove(c.id)} className="text-xs text-[#d4d4d8]/70 hover:text-red-400 flex items-center gap-1">
+              <button onClick={() => setToDelete(c)} className="text-xs text-[#d4d4d8]/70 hover:text-red-400 flex items-center gap-1">
                 <Trash2 className="w-3 h-3" /> Excluir
               </button>
             </div>
@@ -1316,30 +1359,62 @@ function MarcasTab({ categories, onChanged }: { categories: Category[]; onChange
         {categories.length === 0 && <p className="text-sm text-[#d4d4d8]/40 py-4 col-span-full">Nenhuma marca cadastrada.</p>}
       </div>
 
-      <ModelsSection categories={categories} models={models} setModels={setModels} />
-
       {editing && (
-        <Dialog title={editing === 'new' ? 'Nova marca/aparelho' : 'Editar marca/aparelho'} onClose={() => setEditing(null)}>
+        <Dialog title={editing === 'new' ? 'Nova marca' : 'Editar marca'} onClose={() => setEditing(null)}>
           <div>
             <label className="block text-sm text-[#d4d4d8] mb-1.5">Nome</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} placeholder="Ex: iPhone" />
+            <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT} placeholder="Ex: Samsung" />
           </div>
           <div>
-            <label className="block text-sm text-[#d4d4d8] mb-1.5">Tipo de aparelho</label>
-            <select value={deviceType} onChange={(e) => setDeviceType(e.target.value)} className={INPUT}>
-              {DEVICE_TYPES.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
+            <label className="block text-sm text-[#d4d4d8] mb-1.5">Tipos de aparelho</label>
+            {deviceTypes.length === 0 ? (
+              <p className="text-xs text-[#d4d4d8]/40">Cadastre um aparelho primeiro na aba "Aparelho".</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {deviceTypes.map((d) => {
+                  const sel = selectedDeviceTypes.includes(d.slug)
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => toggleDeviceType(d.slug)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                        sel ? 'bg-[#e0211a] border-[#e0211a] text-white' : 'bg-[#0a0a0b] border-white/10 text-[#d4d4d8]'
+                      }`}
+                    >
+                      {d.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
           <button
             onClick={save}
-            disabled={saving || !name.trim()}
+            disabled={saving || !name.trim() || selectedDeviceTypes.length === 0}
             className="w-full bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Salvar
           </button>
+        </Dialog>
+      )}
+
+      {toDelete && (
+        <Dialog title={`Excluir "${toDelete.name}"?`} onClose={() => setToDelete(null)}>
+          <p className="text-sm text-[#d4d4d8]/60">Essa ação não pode ser desfeita. Serviços vinculados a essa marca podem ficar sem marca.</p>
+          <div className="flex gap-2">
+            <button onClick={() => setToDelete(null)} className="flex-1 py-2.5 rounded-xl border border-white/10 text-white text-sm font-medium hover:bg-white/5 transition-colors">
+              Cancelar
+            </button>
+            <button
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Excluir
+            </button>
+          </div>
         </Dialog>
       )}
     </div>
@@ -1351,7 +1426,7 @@ type StockMovement = { id: string; item_id: string; item_name: string | null; ty
 // Port 1:1 de EstoqueTab.tsx real -- cadastro completo (unidade/caixa
 // com unidades por caixa, custo, garantia, alerta), popup de ações
 // (registrar saída/editar/deletar), lista de últimas movimentações.
-function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged: () => void }) {
+export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged: () => void }) {
   const [movements, setMovements] = useState<StockMovement[]>([])
 
   const [newName, setNewName] = useState('')
@@ -1715,7 +1790,7 @@ type AlertItem =
 // E peças de estoque (stock_items) na mesma lista de alerta, busca os
 // dados de forma independente (não compartilha state com as outras
 // abas) pra refletir qualquer cadastro/edição feito em qualquer aba.
-function StockAlertList({ title, emptyMessage, filter }: { title: string; emptyMessage: string; filter: (quantity: number, threshold: number | null) => boolean }) {
+export function StockAlertList({ title, emptyMessage, filter }: { title: string; emptyMessage: string; filter: (quantity: number, threshold: number | null) => boolean }) {
   const [loading, setLoading] = useState(true)
   const [products, setProducts] = useState<Product[]>([])
   const [stockItems, setStockItems] = useState<StockItem[]>([])
@@ -1827,7 +1902,6 @@ function StockAlertList({ title, emptyMessage, filter }: { title: string; emptyM
 export default function EletronicaAdminEstoque() {
   const [tab, setTab] = useState<TabKey>('produtos')
   const [categories, setCategories] = useState<Category[] | null>(null)
-  const [stockItems, setStockItems] = useState<StockItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function loadCategories() {
@@ -1837,21 +1911,10 @@ export default function EletronicaAdminEstoque() {
       setError(e instanceof Error ? e.message : 'erro ao carregar')
     }
   }
-  async function loadStock() {
-    try {
-      setStockItems(await eletronicosAdmin.stockItems.list())
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'erro ao carregar')
-    }
-  }
 
   useEffect(() => {
     loadCategories()
-    loadStock()
   }, [])
-
-  const lowStockCount = useMemo(() => (stockItems ?? []).filter((it) => it.low_stock_threshold != null && it.quantity <= it.low_stock_threshold).length, [stockItems])
-  const outOfStockCount = useMemo(() => (stockItems ?? []).filter((it) => it.quantity <= 0).length, [stockItems])
 
   return (
     <div className="max-w-4xl mx-auto space-y-5">
@@ -1869,8 +1932,6 @@ export default function EletronicaAdminEstoque() {
           >
             <t.icon className="w-3.5 h-3.5" />
             {t.label}
-            {t.key === 'alerta' && lowStockCount > 0 && <span className="ml-1 bg-white/20 rounded-full px-1.5 text-xs">{lowStockCount}</span>}
-            {t.key === 'falta' && outOfStockCount > 0 && <span className="ml-1 bg-white/20 rounded-full px-1.5 text-xs">{outOfStockCount}</span>}
           </button>
         ))}
       </div>
@@ -1880,19 +1941,6 @@ export default function EletronicaAdminEstoque() {
       {tab === 'produtos' && (categories ? <ProdutosTab categories={categories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
 
       {tab === 'servicos' && (categories ? <ServicosTab categories={categories} onCategoriesChanged={loadCategories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
-      {tab === 'marcas' && (categories ? <MarcasTab categories={categories} onChanged={loadCategories} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
-      {tab === 'estoque' &&
-        (stockItems ? <EstoqueTab items={stockItems} onChanged={loadStock} /> : <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-[#e0211a]" /></div>)}
-      {tab === 'alerta' && (
-        <StockAlertList
-          title="Alerta de reposição"
-          emptyMessage="Nenhum item em baixo estoque no momento."
-          filter={(quantity, threshold) => threshold != null && quantity > 0 && quantity <= threshold}
-        />
-      )}
-      {tab === 'falta' && (
-        <StockAlertList title="Em falta" emptyMessage="Nenhum item em falta no momento." filter={(quantity) => quantity <= 0} />
-      )}
     </div>
   )
 }

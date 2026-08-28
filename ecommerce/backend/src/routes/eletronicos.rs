@@ -3593,16 +3593,6 @@ pub async fn set_service_order_pdf(
 // ============================================================================
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
-pub struct CatalogCategoryDto {
-    pub id: String,
-    pub name: String,
-    pub slug: String,
-    pub sort_order: i32,
-    pub device_type: String,
-    pub image_url: Option<String>,
-}
-
-#[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct CatalogItemDto {
     pub id: String,
     pub category_id: String,
@@ -3614,9 +3604,36 @@ pub struct CatalogItemDto {
     pub tags: Vec<String>,
 }
 
+/// Categoria pro catálogo PÚBLICO -- diferente de AdminCatalogCategoryDto:
+/// mantém `image_url` (banner decorativo atrás do nome da marca na vitrine
+/// de serviços, ex. EletronicaCatalogoServico.tsx -- feature própria, já
+/// com banners reais cadastrados). O que o audit pediu pra remover foi só
+/// o campo de imagem do FORM DE CADASTRO DE MARCA no admin (substituído
+/// por ícone da marca via BrandIcon) -- não essa vitrine pública.
+#[derive(Debug, Serialize)]
+pub struct PublicCatalogCategoryDto {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub sort_order: i32,
+    pub device_type: String,
+    pub device_types: Vec<String>,
+    pub image_url: Option<String>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct PublicCatalogCategoryDtoBase {
+    id: String,
+    name: String,
+    slug: String,
+    sort_order: i32,
+    device_type: String,
+    image_url: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CatalogResponse {
-    pub categories: Vec<CatalogCategoryDto>,
+    pub categories: Vec<PublicCatalogCategoryDto>,
     pub items: Vec<CatalogItemDto>,
     /// Modelos "de verdade" (eletronicos.catalog_models -- cadastro real de
     /// Produtos/Serviços > Aparelho/Marca/Modelo), separado de
@@ -3642,7 +3659,7 @@ pub async fn get_public_catalog(
     let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
 
-    let categories: Vec<CatalogCategoryDto> = sqlx::query_as(
+    let category_base: Vec<PublicCatalogCategoryDtoBase> = sqlx::query_as(
         "SELECT id::text, name, slug, sort_order, device_type, image_url \
          FROM eletronicos.service_catalog_categories \
          WHERE tenant_id = $1 AND slug NOT LIKE 'servicos-%' ORDER BY sort_order",
@@ -3650,6 +3667,34 @@ pub async fn get_public_catalog(
     .bind(&store.id)
     .fetch_all(&mut *tx)
     .await?;
+    let cat_ids: Vec<String> = category_base.iter().map(|c| c.id.clone()).collect();
+    let dt_rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT category_id::text, device_type FROM eletronicos.category_device_types \
+         WHERE tenant_id = $1 AND category_id = ANY($2::uuid[])",
+    )
+    .bind(&store.id)
+    .bind(&cat_ids)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut dt_by_cat: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for (cid, dt) in dt_rows {
+        dt_by_cat.entry(cid).or_default().push(dt);
+    }
+    let categories: Vec<PublicCatalogCategoryDto> = category_base
+        .into_iter()
+        .map(|c| {
+            let device_types = dt_by_cat.remove(&c.id).unwrap_or_else(|| vec![c.device_type.clone()]);
+            PublicCatalogCategoryDto {
+                id: c.id,
+                name: c.name,
+                slug: c.slug,
+                sort_order: c.sort_order,
+                device_type: c.device_type,
+                device_types,
+                image_url: c.image_url,
+            }
+        })
+        .collect();
 
     let items: Vec<CatalogItemDto> = sqlx::query_as(
         "SELECT id::text, category_id::text, model_name, repair_type, price::float8, description, image_url, \
@@ -3690,24 +3735,72 @@ pub struct AdminCatalogCategoryDto {
     pub slug: String,
     pub sort_order: i32,
     pub device_type: String,
-    pub image_url: Option<String>,
+    /// Todos os tipos de aparelho que essa marca atende -- `device_type`
+    /// acima é só o primeiro (compat). Ícone de marca resolvido no
+    /// frontend (Simple Icons); sem campo de imagem, removido de propósito
+    /// (achado de UX: imagem livre não fazia sentido pra marca conhecida).
+    pub device_types: Vec<String>,
 }
 
-const ADMIN_CAT_COLUMNS: &str = "id::text, name, slug, sort_order, device_type, image_url";
+const ADMIN_CAT_COLUMNS: &str = "id::text, name, slug, sort_order, device_type";
+
+async fn attach_category_device_types(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    rows: Vec<AdminCatalogCategoryDtoBase>,
+) -> Result<Vec<AdminCatalogCategoryDto>, AppError> {
+    let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+    let dt_rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT category_id::text, device_type FROM eletronicos.category_device_types \
+         WHERE tenant_id = $1 AND category_id = ANY($2::uuid[])",
+    )
+    .bind(tenant_id)
+    .bind(&ids)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut by_cat: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for (cid, dt) in dt_rows {
+        by_cat.entry(cid).or_default().push(dt);
+    }
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let device_types = by_cat.remove(&r.id).unwrap_or_else(|| vec![r.device_type.clone()]);
+            AdminCatalogCategoryDto {
+                id: r.id,
+                name: r.name,
+                slug: r.slug,
+                sort_order: r.sort_order,
+                device_type: r.device_type,
+                device_types,
+            }
+        })
+        .collect())
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct AdminCatalogCategoryDtoBase {
+    id: String,
+    name: String,
+    slug: String,
+    sort_order: i32,
+    device_type: String,
+}
 
 pub async fn list_admin_categories(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
 ) -> Result<Json<Vec<AdminCatalogCategoryDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    let rows: Vec<AdminCatalogCategoryDto> = sqlx::query_as(&format!(
+    let rows: Vec<AdminCatalogCategoryDtoBase> = sqlx::query_as(&format!(
         "SELECT {ADMIN_CAT_COLUMNS} FROM eletronicos.service_catalog_categories WHERE tenant_id = $1 ORDER BY sort_order"
     ))
     .bind(&claims.tenant_id)
     .fetch_all(&mut *tx)
     .await?;
+    let out = attach_category_device_types(&mut *tx, &claims.tenant_id, rows).await?;
     tx.commit().await?;
-    Ok(Json(rows))
+    Ok(Json(out))
 }
 
 fn slugify(s: &str) -> String {
@@ -3725,9 +3818,33 @@ fn slugify(s: &str) -> String {
 #[derive(Debug, Deserialize)]
 pub struct SaveCategoryInput {
     pub name: String,
-    pub device_type: String,
-    pub image_url: Option<String>,
+    pub device_types: Vec<String>,
     pub sort_order: Option<i32>,
+}
+
+async fn replace_category_device_types(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    category_id: &str,
+    device_types: &[String],
+) -> Result<(), AppError> {
+    sqlx::query("DELETE FROM eletronicos.category_device_types WHERE tenant_id = $1 AND category_id = $2::uuid")
+        .bind(tenant_id)
+        .bind(category_id)
+        .execute(&mut *tx)
+        .await?;
+    for dt in device_types {
+        sqlx::query(
+            "INSERT INTO eletronicos.category_device_types (tenant_id, category_id, device_type) \
+             VALUES ($1, $2::uuid, $3) ON CONFLICT (category_id, device_type) DO NOTHING",
+        )
+        .bind(tenant_id)
+        .bind(category_id)
+        .bind(dt.trim())
+        .execute(&mut *tx)
+        .await?;
+    }
+    Ok(())
 }
 
 pub async fn create_admin_category(
@@ -3738,29 +3855,34 @@ pub async fn create_admin_category(
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("nome é obrigatório".to_string()));
     }
+    let device_types: Vec<String> = input.device_types.into_iter().map(|d| d.trim().to_string()).filter(|d| !d.is_empty()).collect();
+    if device_types.is_empty() {
+        return Err(AppError::BadRequest("selecione ao menos um tipo de aparelho".to_string()));
+    }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let id = Uuid::new_v4().to_string();
     let slug = slugify(&input.name);
     sqlx::query(
-        "INSERT INTO eletronicos.service_catalog_categories (id, tenant_id, name, slug, device_type, image_url, sort_order) \
-         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO eletronicos.service_catalog_categories (id, tenant_id, name, slug, device_type, sort_order) \
+         VALUES ($1::uuid, $2, $3, $4, $5, $6)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
     .bind(input.name.trim())
     .bind(&slug)
-    .bind(input.device_type.trim())
-    .bind(input.image_url.as_deref())
+    .bind(&device_types[0])
     .bind(input.sort_order.unwrap_or(0))
     .execute(&mut *tx)
     .await?;
-    let row: AdminCatalogCategoryDto = sqlx::query_as(&format!(
+    replace_category_device_types(&mut *tx, &claims.tenant_id, &id, &device_types).await?;
+    let base: AdminCatalogCategoryDtoBase = sqlx::query_as(&format!(
         "SELECT {ADMIN_CAT_COLUMNS} FROM eletronicos.service_catalog_categories WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
+    let row = attach_category_device_types(&mut *tx, &claims.tenant_id, vec![base]).await?.remove(0);
     tx.commit().await?;
     Ok(Json(row))
 }
@@ -3774,30 +3896,35 @@ pub async fn update_admin_category(
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("nome é obrigatório".to_string()));
     }
+    let device_types: Vec<String> = input.device_types.into_iter().map(|d| d.trim().to_string()).filter(|d| !d.is_empty()).collect();
+    if device_types.is_empty() {
+        return Err(AppError::BadRequest("selecione ao menos um tipo de aparelho".to_string()));
+    }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let updated = sqlx::query(
         "UPDATE eletronicos.service_catalog_categories \
-         SET name = $3, device_type = $4, image_url = $5, sort_order = COALESCE($6, sort_order) \
+         SET name = $3, device_type = $4, sort_order = COALESCE($5, sort_order) \
          WHERE tenant_id = $1 AND id = $2::uuid",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
     .bind(input.name.trim())
-    .bind(input.device_type.trim())
-    .bind(input.image_url.as_deref())
+    .bind(&device_types[0])
     .bind(input.sort_order)
     .execute(&mut *tx)
     .await?;
     if updated.rows_affected() == 0 {
         return Err(AppError::NotFound("categoria não encontrada".to_string()));
     }
-    let row: AdminCatalogCategoryDto = sqlx::query_as(&format!(
+    replace_category_device_types(&mut *tx, &claims.tenant_id, &id, &device_types).await?;
+    let base: AdminCatalogCategoryDtoBase = sqlx::query_as(&format!(
         "SELECT {ADMIN_CAT_COLUMNS} FROM eletronicos.service_catalog_categories WHERE tenant_id = $1 AND id = $2::uuid"
     ))
     .bind(&claims.tenant_id)
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
+    let row = attach_category_device_types(&mut *tx, &claims.tenant_id, vec![base]).await?.remove(0);
     tx.commit().await?;
     Ok(Json(row))
 }

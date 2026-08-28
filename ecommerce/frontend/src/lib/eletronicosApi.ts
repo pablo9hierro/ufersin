@@ -31,6 +31,7 @@ export interface CatalogCategory {
   slug: string
   sort_order: number
   device_type: string
+  device_types: string[]
   image_url: string | null
 }
 
