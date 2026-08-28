@@ -111,7 +111,6 @@ export default function EletronicaServiceRequestForm({
   const [selfPickup, setSelfPickup] = useState(apenasRetirada)
   const [showMap, setShowMap] = useState(false)
   const [location, setLocation] = useState<LocationPickerResult | null>(null)
-  const [gettingLocation, setGettingLocation] = useState(false)
 
   const [brands, setBrands] = useState<CatalogCategory[]>([])
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
@@ -216,24 +215,11 @@ export default function EletronicaServiceRequestForm({
     setShowMap(false)
   }, [])
 
+  // LocationPicker abre já mostrando o mapa e busca o GPS sozinho em
+  // paralelo (ver useEffect interno dele) -- não tem mais motivo pra
+  // esperar getCurrentPosition (até 8s) ANTES de nem abrir a tela.
   const handleOpenMap = useCallback(() => {
-    setGettingLocation(true)
-    if (!navigator.geolocation) {
-      setGettingLocation(false)
-      setShowMap(true)
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      () => {
-        setGettingLocation(false)
-        setShowMap(true)
-      },
-      () => {
-        setGettingLocation(false)
-        setShowMap(true)
-      },
-      { timeout: 8000, maximumAge: 0 },
-    )
+    setShowMap(true)
   }, [])
 
   function validateStep1(): boolean {
@@ -748,10 +734,8 @@ export default function EletronicaServiceRequestForm({
                     <button
                       type="button"
                       onClick={handleOpenMap}
-                      disabled={gettingLocation}
-                      className="text-xs text-[#e0211a]/70 hover:text-[#e0211a] transition-colors flex-none flex items-center gap-1 disabled:opacity-50"
+                      className="text-xs text-[#e0211a]/70 hover:text-[#e0211a] transition-colors flex-none"
                     >
-                      {gettingLocation && <Loader2 className="w-3 h-3 animate-spin" />}
                       Alterar
                     </button>
                   </div>
@@ -759,21 +743,14 @@ export default function EletronicaServiceRequestForm({
                   <button
                     type="button"
                     onClick={handleOpenMap}
-                    disabled={gettingLocation}
-                    className="flex items-center gap-3 border-2 border-dashed border-white/15 rounded-xl p-4 hover:border-[#e0211a]/40 hover:bg-[#e0211a]/5 transition-all text-left disabled:opacity-60"
+                    className="flex items-center gap-3 border-2 border-dashed border-white/15 rounded-xl p-4 hover:border-[#e0211a]/40 hover:bg-[#e0211a]/5 transition-all text-left"
                   >
                     <div className="w-10 h-10 rounded-full bg-[#e0211a]/10 flex items-center justify-center flex-none">
-                      {gettingLocation ? (
-                        <Loader2 className="w-5 h-5 text-[#e0211a] animate-spin" />
-                      ) : (
-                        <MapPin className="w-5 h-5 text-[#e0211a]" />
-                      )}
+                      <MapPin className="w-5 h-5 text-[#e0211a]" />
                     </div>
                     <div>
-                      <div className="text-sm font-medium text-white">
-                        {gettingLocation ? 'Obtendo sua localização...' : 'Selecionar endereço no mapa'}
-                      </div>
-                      <div className="text-xs text-[#d4d4d8]/50">{gettingLocation ? 'Aguarde um momento' : 'Toque para abrir o mapa interativo'}</div>
+                      <div className="text-sm font-medium text-white">Selecionar endereço no mapa</div>
+                      <div className="text-xs text-[#d4d4d8]/50">Toque para abrir o mapa interativo</div>
                     </div>
                   </button>
                 )}

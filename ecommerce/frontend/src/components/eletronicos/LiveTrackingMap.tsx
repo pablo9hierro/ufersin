@@ -70,7 +70,7 @@ export default function LiveTrackingMap({
   destLng,
   driver,
   minutesPerKm = 3,
-  heightClassName = 'h-64',
+  heightClassName = 'h-[21rem]',
 }: {
   destLat: number
   destLng: number
@@ -93,7 +93,7 @@ export default function LiveTrackingMap({
   // fitBounds nos dois pontos (isso mostraria o trajeto inteiro de longe,
   // não "a rua que ele está agora"). Mesma dinâmica do Uber/99/iFood: o
   // enquadramento geral só acontece uma vez, ao abrir.
-  const DRIVER_FOLLOW_ZOOM = 17
+  const DRIVER_FOLLOW_ZOOM = 18
   const recenterOnDriver = () => {
     const map = mapRef.current
     const marker = driverMarkerRef.current
@@ -120,7 +120,7 @@ export default function LiveTrackingMap({
     mapRef.current = map
 
     const bounds = L.latLngBounds([[destLat, destLng], [origin.lat, origin.lng]])
-    map.fitBounds(bounds, { paddingTopLeft: [30, 30], paddingBottomRight: [30, 30], maxZoom: 17 })
+    map.fitBounds(bounds, { paddingTopLeft: [30, 30], paddingBottomRight: [30, 30], maxZoom: 18 })
 
     fetchRoute(origin, { lat: destLat, lng: destLng }).then((coords) => {
       if (mapRef.current !== map || !coords) return
@@ -179,6 +179,16 @@ export default function LiveTrackingMap({
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#161618]">
             <Loader2 className="w-5 h-5 animate-spin text-[#d4d4d8]/30" />
+          </div>
+        )}
+        {/* Bússola -- mapa nunca gira (sempre norte-pra-cima), essa seta fixa
+            deixa isso explícito visualmente, igual apps de navegação. */}
+        {!loading && (
+          <div className="absolute top-2 right-2 z-[400] w-7 h-7 rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L14.5 10L12 22L9.5 10L12 2Z" fill="#e0211a" />
+            </svg>
+            <span className="absolute -top-0.5 text-[7px] font-bold text-white">N</span>
           </div>
         )}
       </div>

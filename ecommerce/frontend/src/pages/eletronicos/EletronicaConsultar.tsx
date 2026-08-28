@@ -195,7 +195,7 @@ function RequestStatusTimeline({
           </ol>
           {showLiveMap && (
             <div className="mt-3">
-              <LiveTrackingMap destLat={request.address_lat!} destLng={request.address_lng!} driver={driverLoc} heightClassName="h-56" />
+              <LiveTrackingMap destLat={request.address_lat!} destLng={request.address_lng!} driver={driverLoc} heightClassName="h-[18rem]" />
             </div>
           )}
         </div>

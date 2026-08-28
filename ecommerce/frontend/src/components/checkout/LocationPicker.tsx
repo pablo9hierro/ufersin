@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import { ArrowLeft, Loader2, LocateFixed, MapPin, Pencil, Search, X } from 'lucide-react'
 import { buscarEnderecos, enderecoDe } from '../../lib/geo/geocodificacao'
 import { obterLocalizacao } from '../../lib/geo/localizacao'
-import { FALLBACK, monitorarTiles, TILE_ATTR, TILE_URL } from '../../lib/geo/mapa'
+import { FALLBACK, monitorarTiles, TILE_ATTR, TILE_MAX_ZOOM, TILE_URL } from '../../lib/geo/mapa'
 import { anexarGestoMapa } from '../../lib/geo/rotacaoMapa'
 import type { EnderecoResultado, Ponto } from '../../lib/geo/tipos'
 import { shippingService } from '../../services/shippingService'
@@ -53,7 +53,7 @@ function MapaCentro({
   useEffect(() => {
     if (!divRef.current) return
     const map = L.map(divRef.current, { zoomControl: false, zoomSnap: 0, zoomDelta: 0.5 }).setView([centro.lat, centro.lng], zoom)
-    const tileLayer = L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 20, keepBuffer: 4, updateWhenZooming: false }).addTo(map)
+    const tileLayer = L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: TILE_MAX_ZOOM, keepBuffer: 4, updateWhenZooming: false }).addTo(map)
     const pararMonitor = onTileStatus ? monitorarTiles(tileLayer, onTileStatus) : undefined
     if (onMoveStart) map.on('movestart', onMoveStart)
     if (onMoveEnd) map.on('moveend', () => onMoveEnd(map.getCenter()))
@@ -90,13 +90,18 @@ function MapaCentro({
       className="absolute"
       style={{ inset: '-80%', transform: `rotate(${rotation}deg)`, transition: 'transform .15s linear', willChange: 'transform' }}
     >
-      <div ref={divRef} className="absolute inset-0 dark-tile-map" />
+      <div ref={divRef} className="absolute inset-0" />
     </div>
   )
 }
 
 export default function LocationPicker({ initial, onClose, onConfirm }: LocationPickerProps) {
-  const [step, setStep] = useState<'busca' | 'ajuste'>(initial ? 'ajuste' : 'busca')
+  // Sempre abre direto na tela de mapa (nunca mais na tela de busca "pelada"
+  // sem mapa nenhum) -- o campo de endereço já é editável ali mesmo (ver
+  // labelEditing/labelQuery abaixo), então não tem motivo pra ter duas
+  // telas separadas: usuário já vê o mapa E pode digitar a rua ao mesmo
+  // tempo, sem esperar o GPS resolver primeiro.
+  const [step, setStep] = useState<'busca' | 'ajuste'>('ajuste')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<EnderecoResultado[]>([])
   const [searching, setSearching] = useState(false)
@@ -242,6 +247,28 @@ export default function LocationPicker({ initial, onClose, onConfirm }: Location
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, ajusteCentro])
+
+  // Ao abrir sem posição inicial (fluxo normal, não veio de edição de
+  // endereço já salvo), busca o GPS de verdade em paralelo -- o mapa já
+  // está visível na hora (FALLBACK) e o usuário já pode digitar a rua
+  // enquanto isso resolve; quando o GPS volta, o mapa desliza sozinho pro
+  // ponto real e o efeito de reverse-geocode acima troca "Localizando…"
+  // pelo nome de rua de verdade.
+  useEffect(() => {
+    if (initial) return
+    let cancelled = false
+    obterLocalizacao()
+      .then((p) => {
+        if (!cancelled) abrirAjuste(p)
+      })
+      .catch(() => {
+        /* sem permissão/indisponível -- fica no FALLBACK, usuário busca ou arrasta manualmente */
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function abrirAjuste(centro: Ponto, addr?: { label?: string; bairro?: string }) {
     setAjusteCentro(centro)
@@ -509,7 +536,11 @@ export default function LocationPicker({ initial, onClose, onConfirm }: Location
               </p>
             )}
 
-            <button onClick={confirmar} disabled={confirming || moving || foraDoAlcance} className="btn-primary w-full py-3.5">
+            <button
+              onClick={confirmar}
+              disabled={confirming || moving || foraDoAlcance || label === 'Localizando…'}
+              className="btn-primary w-full py-3.5"
+            >
               {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {foraDoAlcance ? 'Fora do raio de entrega' : 'Confirmar localização'}
             </button>

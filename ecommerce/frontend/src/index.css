@@ -20,53 +20,16 @@
   color-scheme: dark;
 }
 
-/* O Leaflet pinta a área do mapa com cinza claro (#ddd) por padrão até o
-   tile de verdade terminar de carregar — igual pro tile escuro "Dark
-   Matter" que a gente usa. Toda vez que uma parte nova do mapa entra na
-   tela (arrastando/dando zoom) e aquele tile ainda não baixou da CARTO,
-   aparece esse cinza claro por baixo por uma fração de segundo: é ISSO que
-   parecia "piscar entre claro e escuro" durante o gesto, não é o tile
-   trocando de cor. Fundo escuro aqui garante que qualquer brecha de
-   carregamento mostra escuro, nunca claro. */
-.dark-tile-map.leaflet-container {
+/* CARTO dark_all (usado antes em LocationPicker.tsx) passou a exigir API
+   key própria -- tile vinha com selo "API KEY REQUIRED" atravessado.
+   Trocado por Esri Dark Gray Canvas (ver lib/geo/mapa.ts), que já é
+   escuro/legível de fábrica sem precisar de nenhum filtro CSS de
+   brilho/contraste -- as regras antigas (.dark-tile-map, brightness(3.5))
+   foram removidas junto, não têm mais função nenhuma.
+   O Leaflet pinta a área do mapa com cinza claro (#ddd) por padrão até o
+   tile de verdade terminar de carregar -- flash incômodo num mapa escuro. */
+.leaflet-container {
   background: #060a08;
-}
-
-/* Tile "Dark Matter" já é escuro de fábrica (ver lib/geo/mapa.ts), mas a
-   rua residencial nele é cinza ~40/255 sobre fundo ~12/255 — quase igual.
-   O contrast() do CSS gira em torno do meio-tom (50%): como AMBAS as cores
-   ficam bem abaixo dele, aumentar contrast() sozinho empurrava as duas
-   pra baixo, pra perto do preto, JUNTAS (testei com números reais: cinza
-   40 vira 6.8/255 com brightness 1.6 + contrast 1.9 — praticamente preto
-   igual o fundo, por isso não tinha jeito de ver rua nenhuma). A correção
-   de verdade é dar bastante brightness ANTES pra tirar as duas cores lá de
-   baixo, só DEPOIS o contrast tem "sobra" pra separar de verdade (mesma
-   conta, mas com brightness 3.5: o cinza da rua sobe pra ~147/255, bem
-   visível, e o fundo continua ~0, preto solido). */
-/* O filter mora nos TILES individuais (.leaflet-tile), não no pane pai —
-   com zoomSnap:0 (zoom contínuo, usado em todo mapa deste app), cada frame
-   do gesto de pinça reescala o PANE inteiro via transform pra simular o
-   zoom fracionário (os tiles de verdade só existem em zoom inteiro; o
-   fracionário é a textura atual esticada/encolhida). Isolar o pane na
-   própria camada de composição (tentativa anterior, will-change+translateZ
-   nele) não bastava: o filter continuava sendo recalculado a cada frame
-   EM CIMA desse escalonamento contínuo, e com brightness(3.5) — bem
-   extremo — qualquer artefato de reamostragem durante o scale virava um
-   branco estourado por cima do mapa inteiro até o dedo soltar (aí sim o
-   Leaflet assenta no zoom final e troca pelos tiles de verdade). Com o
-   filter já "assado" em cada tile ANTES do pane escalar, o gesto só
-   estica um bitmap já filtrado — escala pura, sem recalcular filter em
-   cada frame. */
-/* Escopado só pro mapa escuro do checkout (dark-tile-map, ver
-   LocationPicker.tsx) -- sem essa classe, esse brightness(3.5) tomava
-   conta de QUALQUER mapa Leaflet da página (mesmos nomes de classe
-   .leaflet-tile-pane/.leaflet-tile em qualquer instância) e estourava tile
-   já claro (Esri/CARTO Voyager do LiveTrackingMap.tsx) pra branco puro --
-   achado assim: imagem carregava certinho (200, pixel real), mas o filter
-   global relia ela pra fora da faixa visível antes de pintar na tela. */
-.dark-tile-map .leaflet-tile-pane .leaflet-tile {
-  filter: brightness(3.5) contrast(1.6) saturate(1.4);
-  will-change: filter;
 }
 
 /* Atribuição do OSM/CARTO é obrigatória pelos termos de uso dos tiles
