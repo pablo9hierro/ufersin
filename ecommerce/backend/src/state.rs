@@ -54,4 +54,7 @@ pub struct AppState {
     /// validar assinatura (ainda assim sempre rebusca o pagamento na API da
     /// MP antes de gravar qualquer coisa — nunca confia só no corpo).
     pub mercadopago_webhook_secret: Arc<Option<String>>,
+    /// Limitador de tentativas de login por conta (achado no audit de
+    /// segurança do Paulo Ferro) -- ver rate_limit.rs.
+    pub login_limiter: Arc<crate::rate_limit::LoginAttemptLimiter>,
 }

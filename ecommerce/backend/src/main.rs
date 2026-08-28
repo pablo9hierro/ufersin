@@ -12,6 +12,7 @@ mod models;
 mod openapi;
 mod order_expiration;
 mod orders_common;
+mod rate_limit;
 mod routes;
 mod seed;
 mod state;
@@ -220,6 +221,7 @@ async fn main() -> anyhow::Result<()> {
         internal_api_key: Arc::new(internal_api_key),
         whatsapp_connect_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         mercadopago_webhook_secret: Arc::new(mercadopago_webhook_secret),
+        login_limiter: Arc::new(rate_limit::LoginAttemptLimiter::default()),
     };
 
     // CORS_ORIGINS: comma-separated list of allowed frontend origins. Defaults

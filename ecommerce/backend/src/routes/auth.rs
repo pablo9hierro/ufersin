@@ -36,6 +36,17 @@ pub async fn admin_login(
         return Err(AppError::Unauthorized("invalid credentials".to_string()));
     }
 
+    // Achado no audit de segurança do Paulo Ferro: login sem rate limit
+    // nenhum -- script podia tentar senha infinita contra a mesma conta.
+    // Chave por email (não IP) pra não trancar rede compartilhada; conta
+    // só as tentativas ERRADAS, sucesso zera o contador.
+    let limiter_key = email.to_lowercase();
+    if let Err(retry_after) = state.login_limiter.check(&limiter_key) {
+        return Err(AppError::TooManyRequests(format!(
+            "muitas tentativas de login — tente de novo em {retry_after} segundos"
+        )));
+    }
+
     if let Some(slug) = normalize_slug(input.tenant_slug.as_deref()) {
         let tenant_id = resolve_tenant_id(&state, &slug).await?;
         let row: Option<(String, String, String)> = sqlx::query_as(
@@ -47,11 +58,14 @@ pub async fn admin_login(
         .await?;
 
         let Some((id, hash, name)) = row else {
+            state.login_limiter.record_failure(&limiter_key);
             return Err(AppError::Unauthorized("invalid credentials".to_string()));
         };
         if !verify_password(&input.password, &hash) {
+            state.login_limiter.record_failure(&limiter_key);
             return Err(AppError::Unauthorized("invalid credentials".to_string()));
         }
+        state.login_limiter.reset(&limiter_key);
 
         let token = make_token(&state.jwt_secret, &id, &tenant_id, "admin", &name);
         return Ok(Json(LoginResponse {
@@ -88,8 +102,12 @@ pub async fn admin_login(
 
     match matches.len() {
         0 if offline_only => Err(AppError::Unauthorized(LOJA_OFFLINE_MSG.to_string())),
-        0 => Err(AppError::Unauthorized("invalid credentials".to_string())),
+        0 => {
+            state.login_limiter.record_failure(&limiter_key);
+            Err(AppError::Unauthorized("invalid credentials".to_string()))
+        }
         1 => {
+            state.login_limiter.reset(&limiter_key);
             let (id, name, tenant_id, slug) = matches.remove(0);
             let token = make_token(&state.jwt_secret, &id, &tenant_id, "admin", &name);
             Ok(Json(LoginResponse {
