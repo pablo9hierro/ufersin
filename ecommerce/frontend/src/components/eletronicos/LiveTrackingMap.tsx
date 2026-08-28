@@ -12,12 +12,15 @@ import { Loader2 } from 'lucide-react'
 // (nunca gira com o rumo, igual o Leaflet já faz por padrão).
 // tile.openstreetmap.org direto (o que o original usa) bloqueia esse tipo
 // de acesso agora -- confirmado ao vivo (header `x-blocked`, política deles
-// mudou). CARTO Voyager: mesma base OSM, colorido (rua/nome de rua
-// visível, não é o dark_all usado no LocationPicker), já é o provedor que
-// o resto do app usa sem bloqueio.
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
-const TILE_ATTR =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+// mudou). CARTO (rastertiles OU o endpoint novo sem "rastertiles/", dark_all
+// e voyager, todos testados) agora exige API key própria -- toda tile vem
+// com selo "API KEY REQUIRED" por cima, o que no zoom pequeno do card
+// parece só "mapa branco". Esri World Street Map: colorido, rua/nome de
+// rua visível, sem marca d'água, sem chave -- confirmado com curl direto.
+// Atenção: Esri usa a ordem {z}/{y}/{x} (trocada da XYZ padrão) e um único
+// servidor (sem {s}).
+const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+const TILE_ATTR = 'Tiles &copy; Esri &mdash; Source: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P'
 const RECENTER_IDLE_MS = 5000
 
 const destIcon = L.divIcon({
@@ -110,7 +113,7 @@ export default function LiveTrackingMap({
     // mostram esses controles nativos do Leaflet). rotate nunca é ligado
     // aqui -- fica sempre norte-pra-cima por padrão.
     const map = L.map(divRef.current, { zoomControl: false, attributionControl: false }).setView([destLat, destLng], 14)
-    L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 20, detectRetina: true }).addTo(map)
+    L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 19 }).addTo(map)
     L.control.attribution({ prefix: false }).addTo(map)
     L.marker([destLat, destLng], { icon: destIcon }).addTo(map)
     driverMarkerRef.current = L.marker([origin.lat, origin.lng], { icon: driverIcon }).addTo(map)
