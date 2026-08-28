@@ -170,6 +170,25 @@ function migrateTenantSlugKey() {
 }
 migrateTenantSlugKey()
 
+// Slug capturado UMA VEZ na primeira URL desta aba/iframe -- nunca muda
+// depois, mesmo que uma navegação interna (SPA) perca o `?tenant=` da URL.
+// Bug real encontrado ao vivo: o fallback pra localStorage abaixo é
+// GLOBAL na origin inteira -- visitar `?tenant=vrtech` numa aba e depois
+// perder o `?tenant=` numa navegação interna de OUTRA aba/iframe (ainda em
+// `?tenant=resusu`) fazia essa segunda aba herdar "vrtech" do localStorage
+// e trocar de loja inteira sem aviso (inclusive o vertical eletrônica x
+// ecommerce, que troca a árvore de rotas inteira). Capturar o slug real
+// desta aba já na carga inicial e preferir ele ANTES do fallback cross-tab
+// torna cada aba/iframe imune ao que outra aba escreveu no localStorage.
+const INITIAL_SLUG = (() => {
+  if (typeof window === 'undefined') return ''
+  try {
+    return new URLSearchParams(window.location.search).get('tenant')?.trim().toLowerCase() ?? ''
+  } catch {
+    return ''
+  }
+})()
+
 /** Session cache: Meu plano muda raramente; focus só revalida após TTL. */
 const CACHE_TTL_MS = 5 * 60_000
 
@@ -245,6 +264,11 @@ export function resolveTenantSlug(): string {
   } catch {
     /* ignore */
   }
+  // Slug com que ESTA aba/iframe abriu -- prioridade sobre o fallback
+  // cross-tab abaixo, senão uma navegação interna que perca o `?tenant=`
+  // (bug separado, mas acontece) herdaria o tenant de OUTRA aba/iframe
+  // que por acaso escreveu por último no localStorage compartilhado.
+  if (INITIAL_SLUG) return INITIAL_SLUG
   try {
     const fromAuth = localStorage.getItem(SLUG_STORAGE_KEY)?.trim()
     if (fromAuth) return fromAuth.toLowerCase()
