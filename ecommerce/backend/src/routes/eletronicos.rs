@@ -1228,11 +1228,48 @@ pub async fn update_shipping_settings(
 // navigator.geolocation.watchPosition no browser do lojista logado.
 // ============================================================================
 
-#[derive(Debug, Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize)]
 pub struct DriverLocationDto {
     pub lat: f64,
     pub lng: f64,
-    pub updated_at: String,
+    /// None quando é o fallback (endereço fixo da loja, ninguém enviou GPS
+    /// ainda/recente) -- Some quando é posição real ao vivo.
+    pub updated_at: Option<String>,
+    /// false = fallback (endereço fixo da loja). O mapa mostra a mesma
+    /// forma nos dois casos (nunca fica sem A pra mostrar), só o rótulo
+    /// muda ("ao vivo" vs "endereço da loja").
+    pub is_live: bool,
+}
+
+/// Localização mais recente do tenant: linha real em driver_location (se
+/// existir) -- senão o endereço fixo da loja (shipping_settings), pra
+/// nunca deixar o mapa sem ponto A. Mesmo mecanismo do LiveTrackingMap
+/// real original: ele nunca teve GPS ao vivo de verdade em produção, só
+/// usava a loja fixa -- ao vivo é aditivo aqui, não substitui esse
+/// fallback quando ainda não tem fix nenhum.
+async fn resolve_driver_location(tx: &mut sqlx::PgConnection, tenant_id: &str) -> Result<Option<DriverLocationDto>, AppError> {
+    // "Viva" só se atualizada nos últimos 10 minutos -- evita mostrar um
+    // pino parado de horas atrás (browser fechado/sem sinal) como se fosse
+    // ao vivo; cai pro fallback da loja nesse caso.
+    let live: Option<(f64, f64, String)> = sqlx::query_as(
+        "SELECT lat, lng, updated_at::text FROM eletronicos.driver_location \
+         WHERE tenant_id = $1 AND id = $1 AND updated_at > now() - interval '10 minutes'",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some((lat, lng, updated_at)) = live {
+        return Ok(Some(DriverLocationDto { lat, lng, updated_at: Some(updated_at), is_live: true }));
+    }
+    let store: Option<(Option<f64>, Option<f64>)> =
+        sqlx::query_as("SELECT store_lat, store_lng FROM eletronicos.shipping_settings WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    if let Some((Some(lat), Some(lng))) = store {
+        return Ok(Some(DriverLocationDto { lat, lng, updated_at: None, is_live: false }));
+    }
+    Ok(None)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1270,14 +1307,9 @@ pub async fn get_driver_location_admin(
     AdminUser(claims): AdminUser,
 ) -> Result<Json<Option<DriverLocationDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    let row: Option<DriverLocationDto> = sqlx::query_as(
-        "SELECT lat, lng, updated_at::text FROM eletronicos.driver_location WHERE tenant_id = $1 AND id = $1",
-    )
-    .bind(&claims.tenant_id)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let result = resolve_driver_location(&mut tx, &claims.tenant_id).await?;
     tx.commit().await?;
-    Ok(Json(row))
+    Ok(Json(result))
 }
 
 /// Público -- usado em /consultar (cliente acompanhando a própria
@@ -1289,14 +1321,9 @@ pub async fn get_driver_location_public(
 ) -> Result<Json<Option<DriverLocationDto>>, AppError> {
     let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
-    let row: Option<DriverLocationDto> = sqlx::query_as(
-        "SELECT lat, lng, updated_at::text FROM eletronicos.driver_location WHERE tenant_id = $1 AND id = $1",
-    )
-    .bind(&store.id)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let result = resolve_driver_location(&mut tx, &store.id).await?;
     tx.commit().await?;
-    Ok(Json(row))
+    Ok(Json(result))
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

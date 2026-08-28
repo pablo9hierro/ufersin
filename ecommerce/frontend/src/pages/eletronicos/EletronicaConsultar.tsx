@@ -26,7 +26,6 @@ import {
   consultarOtpVerify,
   consultarCancel,
   fetchDriverLocation,
-  isDriverLocationFresh,
   type ConsultarResponse,
   type ServiceRequestDto,
 } from '../../lib/eletronicosApi'
@@ -129,7 +128,7 @@ function RequestStatusTimeline({
     if (!slug) return
     const poll = () => {
       fetchDriverLocation(slug)
-        .then((loc) => setDriverLoc(loc && isDriverLocationFresh(loc.updated_at) ? loc : null))
+        .then((loc) => setDriverLoc(loc))
         .catch(() => {})
     }
     poll()

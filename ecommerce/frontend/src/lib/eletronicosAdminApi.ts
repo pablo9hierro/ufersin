@@ -556,7 +556,7 @@ export const eletronicosAdmin = {
     }) => req(`${BASE}/shipping-settings`, { method: 'PUT', body: JSON.stringify(input) }),
   },
   driverLocation: {
-    get: () => req<{ lat: number; lng: number; updated_at: string } | null>(`${BASE}/driver-location`),
+    get: () => req<{ lat: number; lng: number; updated_at: string | null; is_live: boolean } | null>(`${BASE}/driver-location`),
     update: (lat: number, lng: number) =>
       req<void>(`${BASE}/driver-location`, { method: 'PUT', body: JSON.stringify({ lat, lng }) }),
   },

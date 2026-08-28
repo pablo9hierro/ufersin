@@ -10,8 +10,14 @@ import { Loader2 } from 'lucide-react'
 // mapa grande (não thumbnail), pinça-zoom livre, mas 5s depois de parar de
 // mexer volta sozinho a reenquadrar os dois pontos -- sempre norte-pra-cima
 // (nunca gira com o rumo, igual o Leaflet já faz por padrão).
-const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+// tile.openstreetmap.org direto (o que o original usa) bloqueia esse tipo
+// de acesso agora -- confirmado ao vivo (header `x-blocked`, política deles
+// mudou). CARTO Voyager: mesma base OSM, colorido (rua/nome de rua
+// visível, não é o dark_all usado no LocationPicker), já é o provedor que
+// o resto do app usa sem bloqueio.
+const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
+const TILE_ATTR =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
 const RECENTER_IDLE_MS = 5000
 
 const destIcon = L.divIcon({
@@ -79,16 +85,22 @@ export default function LiveTrackingMap({
 
   const origin = driver
 
-  const refit = () => {
+  // Recentro (depois de pinçado/zoomado e parado por RECENTER_IDLE_MS) foca
+  // de perto na rua ATUAL do técnico -- zoom fixo nível de rua, não um
+  // fitBounds nos dois pontos (isso mostraria o trajeto inteiro de longe,
+  // não "a rua que ele está agora"). Mesma dinâmica do Uber/99/iFood: o
+  // enquadramento geral só acontece uma vez, ao abrir.
+  const DRIVER_FOLLOW_ZOOM = 17
+  const recenterOnDriver = () => {
     const map = mapRef.current
-    if (!map || !origin) return
-    const bounds = L.latLngBounds([[destLat, destLng], [origin.lat, origin.lng]])
-    map.fitBounds(bounds, { paddingTopLeft: [30, 30], paddingBottomRight: [30, 30], maxZoom: 17 })
+    const marker = driverMarkerRef.current
+    if (!map || !marker) return
+    map.setView(marker.getLatLng(), DRIVER_FOLLOW_ZOOM, { animate: true })
   }
 
   const scheduleRecenter = () => {
     if (recenterTimerRef.current) clearTimeout(recenterTimerRef.current)
-    recenterTimerRef.current = setTimeout(refit, RECENTER_IDLE_MS)
+    recenterTimerRef.current = setTimeout(recenterOnDriver, RECENTER_IDLE_MS)
   }
 
   useEffect(() => {
@@ -98,7 +110,7 @@ export default function LiveTrackingMap({
     // mostram esses controles nativos do Leaflet). rotate nunca é ligado
     // aqui -- fica sempre norte-pra-cima por padrão.
     const map = L.map(divRef.current, { zoomControl: false, attributionControl: false }).setView([destLat, destLng], 14)
-    L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 19 }).addTo(map)
+    L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 20, detectRetina: true }).addTo(map)
     L.control.attribution({ prefix: false }).addTo(map)
     L.marker([destLat, destLng], { icon: destIcon }).addTo(map)
     driverMarkerRef.current = L.marker([origin.lat, origin.lng], { icon: driverIcon }).addTo(map)
@@ -132,7 +144,9 @@ export default function LiveTrackingMap({
   }, [destLat, destLng, Boolean(origin)])
 
   // Posição ao vivo mudou (novo poll) -- move o pino e redesenha a rota
-  // sem recriar o mapa inteiro (evita piscar).
+  // sem recriar o mapa inteiro (evita piscar), e reagenda o recentro
+  // (só dispara depois de RECENTER_IDLE_MS parado, não empurra o mapa na
+  // hora -- se o lojista está mexendo/olhando outro trecho, não interrompe).
   useEffect(() => {
     if (!mapRef.current || !origin || !driverMarkerRef.current) return
     driverMarkerRef.current.setLatLng([origin.lat, origin.lng])
@@ -140,6 +154,7 @@ export default function LiveTrackingMap({
       if (!coords || !routeLayerRef.current) return
       routeLayerRef.current.setLatLngs(coords)
     })
+    scheduleRecenter()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [origin?.lat, origin?.lng])
 

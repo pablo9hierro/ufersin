@@ -109,7 +109,7 @@ export default function EletronicaAdminDashboard() {
     const poll = () => {
       eletronicosAdmin.driverLocation
         .get()
-        .then((loc) => setDriverLoc(loc && Date.now() - new Date(loc.updated_at).getTime() < 10 * 60_000 ? loc : null))
+        .then((loc) => setDriverLoc(loc))
         .catch(() => {})
     }
     poll()
