@@ -414,7 +414,20 @@ export default function AdminLayoutCliente() {
   const [previewNonce, setPreviewNonce] = useState(0)
   const bgInputRef = useRef<HTMLInputElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
   const draggingId = useRef<string | null>(null)
+
+  // Edição rápida "clique no preview" dos badges da landing -- items/layout
+  // vêm do mesmo site_settings da BadgesSettingsCard (fonte única), mas o
+  // estado de seleção/rascunho aqui é local e só existe entre clicar num
+  // badge no iframe e Cancelar/Restaurar padrão/Salvar.
+  const [badgeItems, setBadgeItems] = useState<LandingBadge[] | null>(null)
+  const [badgeSettings, setBadgeSettings] = useState<{ layout: BadgesLayout; gap: number; offsetY: number } | null>(null)
+  const [selectedBadgeIdx, setSelectedBadgeIdx] = useState<number | null>(null)
+  const [badgeDraft, setBadgeDraft] = useState('')
+  const [badgeOriginal, setBadgeOriginal] = useState('')
+  const [badgeDefault, setBadgeDefault] = useState('')
+  const [badgeSaving, setBadgeSaving] = useState(false)
 
   useEffect(() => {
     pageDecorationService
@@ -427,6 +440,97 @@ export default function AdminLayoutCliente() {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    siteSettingsService.get().then((s) => {
+      setBadgeItems(s.badges)
+      setBadgeSettings({ layout: s.badges_layout, gap: s.badges_gap, offsetY: s.badges_offset_y })
+    })
+  }, [])
+
+  // Items base pra salvar: se nunca foi customizado (array vazio), a landing
+  // renderiza os defaults -- seed a partir do que está de fato no DOM do
+  // iframe (data-cms-default de cada badge), nunca inventando um array
+  // paralelo desalinhado do que o cliente realmente vê.
+  const buildBaseBadgeItems = (): LandingBadge[] => {
+    if (badgeItems && badgeItems.length > 0) return badgeItems
+    const doc = iframeRef.current?.contentDocument
+    const nodes = doc ? Array.from(doc.querySelectorAll<HTMLElement>('[data-cms-editable^="badge:"]')) : []
+    return nodes.map((n) => ({
+      id: crypto.randomUUID(),
+      text: n.getAttribute('data-cms-default') ?? n.textContent ?? '',
+      bold: false,
+    }))
+  }
+
+  const badgeNode = (idx: number) =>
+    iframeRef.current?.contentDocument?.querySelector<HTMLElement>(`[data-cms-editable="badge:${idx}"]`) ?? null
+
+  const handlePreviewLoad = () => {
+    if (pageKey !== 'landing') return
+    const doc = iframeRef.current?.contentDocument
+    if (!doc) return
+    doc.querySelectorAll<HTMLElement>('[data-cms-editable^="badge:"]').forEach((node) => {
+      node.style.cursor = 'pointer'
+      node.addEventListener('click', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        const key = node.getAttribute('data-cms-editable') ?? ''
+        const idx = parseInt(key.split(':')[1] ?? '-1', 10)
+        if (idx < 0) return
+        const defText = node.getAttribute('data-cms-default') ?? node.textContent ?? ''
+        const currentText = badgeItems?.[idx]?.text?.trim() || defText
+        setSelectedBadgeIdx(idx)
+        setBadgeDraft(currentText)
+        setBadgeOriginal(currentText)
+        setBadgeDefault(defText)
+      })
+    })
+  }
+
+  const updateBadgeDraft = (text: string) => {
+    setBadgeDraft(text)
+    if (selectedBadgeIdx === null) return
+    const node = badgeNode(selectedBadgeIdx)
+    if (node) node.textContent = text || ' '
+  }
+
+  const cancelBadgeEdit = () => {
+    if (selectedBadgeIdx !== null) {
+      const node = badgeNode(selectedBadgeIdx)
+      if (node) node.textContent = badgeOriginal
+    }
+    setSelectedBadgeIdx(null)
+  }
+
+  const saveBadgeEdit = async (textOverride?: string) => {
+    if (selectedBadgeIdx === null || !badgeSettings) return
+    const text = (textOverride ?? badgeDraft).trim()
+    if (!text) return
+    setBadgeSaving(true)
+    try {
+      const base = buildBaseBadgeItems()
+      const updated = base.map((b, i) => (i === selectedBadgeIdx ? { ...b, text } : b))
+      await adminService.siteSettings.updateBadges({
+        badges: updated,
+        badges_layout: badgeSettings.layout,
+        badges_gap: badgeSettings.gap,
+        badges_offset_y: badgeSettings.offsetY,
+      })
+      setBadgeItems(updated)
+      setBadgeDraft(text)
+      setBadgeOriginal(text)
+      const node = badgeNode(selectedBadgeIdx)
+      if (node) node.textContent = text
+    } finally {
+      setBadgeSaving(false)
+    }
+  }
+
+  const restoreBadgeDefault = () => {
+    updateBadgeDraft(badgeDefault)
+    saveBadgeEdit(badgeDefault)
+  }
+
   const current = byPage[pageKey] ?? emptyDecoration(pageKey)
   const selectedEl = current.elements.find((e) => e.id === selectedElId) ?? null
 
@@ -438,6 +542,7 @@ export default function AdminLayoutCliente() {
   const switchPage = (key: PageKey) => {
     setPageKey(key)
     setSelectedElId(null)
+    setSelectedBadgeIdx(null)
     setError(null)
     setSaved(false)
   }
@@ -587,10 +692,12 @@ export default function AdminLayoutCliente() {
                 >
                   <iframe
                     key={pageKey}
+                    ref={iframeRef}
+                    onLoad={handlePreviewLoad}
                     src={`${previewPath}${previewPath.includes('?') ? '&' : '?'}_layoutPreview=${previewNonce}`}
                     title={`Preview ${activeTab.label}`}
                     className="absolute inset-0 w-full h-full border-0"
-                    style={{ pointerEvents: 'none' }}
+                    style={{ pointerEvents: pageKey === 'landing' ? 'auto' : 'none' }}
                   />
                   {current.elements.map((el) => (
                     <div
@@ -617,6 +724,48 @@ export default function AdminLayoutCliente() {
           </div>
 
           <div className="space-y-4">
+            {pageKey === 'landing' && (
+              <Card className="p-5">
+                <p className="font-bold text-white mb-1">Editor rápido</p>
+                {selectedBadgeIdx === null ? (
+                  <p className="text-xs text-son-silver-dim">Clique em um badge no preview ao lado pra editar o texto dele aqui.</p>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="label">Texto do badge</label>
+                      <input
+                        key={selectedBadgeIdx}
+                        autoFocus
+                        className="input-field w-full"
+                        value={badgeDraft}
+                        onChange={(e) => updateBadgeDraft(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={cancelBadgeEdit} className="btn-secondary text-xs py-2 px-3 flex-1">
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={restoreBadgeDefault}
+                        disabled={badgeSaving}
+                        className="btn-secondary text-xs py-2 px-3 flex-1"
+                      >
+                        Restaurar padrão
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => saveBadgeEdit()}
+                        disabled={badgeSaving}
+                        className="btn-primary text-xs py-2 px-3 flex-1 flex items-center justify-center gap-1"
+                      >
+                        {badgeSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Salvar'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
             {pageKey !== 'cart_icon' && (
             <Card className="p-5">
               <p className="font-bold text-white mb-1">Imagem de fundo</p>

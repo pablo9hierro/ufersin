@@ -334,12 +334,19 @@ export default function Landing() {
           className="flex flex-wrap justify-center items-center mt-10"
           style={{ flexDirection: badgesLayout === 'column' ? 'column' : 'row', gap: `${badgesGap}px` }}
         >
-          {/* Lista de badges editável em /admin/conta (texto + negrito +
-              layout lado-a-lado/empilhado + espaçamento + posição
-              vertical). Fica embaixo dos botões de catálogo/consulta. */}
-          {badges.map((b) => (
+          {/* Lista de badges editável em /admin/layout-cliente (clique no
+              texto dentro do preview lá) -- texto + negrito + layout
+              lado-a-lado/empilhado + espaçamento + posição vertical. Fica
+              embaixo dos botões de catálogo/consulta.
+              data-cms-editable + data-cms-default: o editor lê essas duas
+              coisas do próprio DOM (mesma origem, sem duplicar a lógica de
+              "qual é o default" aqui vs lá) pra saber o que destacar ao
+              clicar e pra que texto voltar em "Restaurar padrão". */}
+          {badges.map((b, i) => (
             <span key={b.id} className="sunset-shine-badge">
               <span
+                data-cms-editable={`badge:${i}`}
+                data-cms-default={defaultBadges[i]?.text ?? b.text}
                 className={`sunset-shine-badge-inner px-4 py-2 text-xs sm:text-sm ${b.bold ? 'font-bold' : 'font-medium'} text-son-gold`}
               >
                 {b.text}
