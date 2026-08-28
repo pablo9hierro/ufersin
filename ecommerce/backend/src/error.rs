@@ -25,6 +25,18 @@ impl IntoResponse for AppError {
 
 impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
+        // Erro real achado pelo Paulo Ferro (teste de injeção): um id
+        // malformado (não-UUID) num `Path(id)` que a query casta com
+        // `::uuid` vira erro do Postgres (22P02 invalid_text_representation),
+        // que caía direto como 500 "erro ao acessar o banco" -- resposta
+        // errada pra um erro de INPUT do cliente. Mapeado pra 400 aqui,
+        // uma vez só, cobre todo endpoint que faz esse cast, não só o que
+        // foi pego no teste.
+        if let sqlx::Error::Database(db_err) = &e {
+            if db_err.code().as_deref() == Some("22P02") {
+                return AppError::BadRequest("identificador inválido".to_string());
+            }
+        }
         tracing::error!("db error: {e}");
         AppError::Internal("erro ao acessar o banco — tente de novo".to_string())
     }

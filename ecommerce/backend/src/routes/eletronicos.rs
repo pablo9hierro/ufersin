@@ -2200,10 +2200,19 @@ async fn log_stock_event(
     entity_id: &str,
     entity_name: &str,
     event_type: &str,
-) {
-    let _ = sqlx::query(
+) -> Result<(), sqlx::Error> {
+    // entity_id é `uuid` na tabela (não text) -- BUG REAL achado pelo Paulo
+    // Ferro: sem o cast ::uuid aqui, o bind de string falha silenciosamente
+    // e ABORTA a transação inteira no Postgres; como o erro era descartado
+    // (`let _ =`) e log_stock_event roda ANTES do tx.commit(), o commit()
+    // numa transação já abortada faz um ROLLBACK implícito e retorna OK pro
+    // Rust -- o handler respondia 200 com dado que nunca foi de fato salvo
+    // (create/update/delete/entrada/saída de estoque inteiros perdidos em
+    // silêncio). Agora propaga o erro (nunca mais silencioso) E corrige o
+    // cast (nunca mais deveria falhar em operação normal).
+    sqlx::query(
         "INSERT INTO eletronicos.stock_activity_log (tenant_id, entity_type, entity_id, entity_name, event_type) \
-         VALUES ($1, $2, $3, $4, $5)",
+         VALUES ($1, $2, $3::uuid, $4, $5)",
     )
     .bind(tenant_id)
     .bind(entity_type)
@@ -2211,7 +2220,8 @@ async fn log_stock_event(
     .bind(entity_name)
     .bind(event_type)
     .execute(&mut *tx)
-    .await;
+    .await?;
+    Ok(())
 }
 
 /// Compara quantidade anterior/nova contra o threshold e retorna o evento de
@@ -2292,7 +2302,7 @@ pub async fn create_stock_item(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
-    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "created").await;
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "created").await?;
     tx.commit().await?;
     Ok(Json(row))
 }
@@ -2350,9 +2360,9 @@ pub async fn stock_entry(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
-    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "stock_updated").await;
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "stock_updated").await?;
     if let Some(evt) = stock_transition_event(before.quantity, row.quantity, row.low_stock_threshold) {
-        log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, evt).await;
+        log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, evt).await?;
     }
     tx.commit().await?;
     Ok(Json(row))
@@ -2404,9 +2414,9 @@ pub async fn update_stock_item(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
-    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "updated").await;
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "updated").await?;
     if let Some(evt) = stock_transition_event(before.quantity, row.quantity, row.low_stock_threshold) {
-        log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, evt).await;
+        log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, evt).await?;
     }
     tx.commit().await?;
     Ok(Json(row))
@@ -2431,7 +2441,7 @@ pub async fn delete_stock_item(
         .bind(&id)
         .execute(&mut *tx)
         .await?;
-    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &name, "deleted").await;
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &name, "deleted").await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2484,9 +2494,9 @@ pub async fn stock_exit(
     .bind(&id)
     .fetch_one(&mut *tx)
     .await?;
-    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "stock_updated").await;
+    log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, "stock_updated").await?;
     if let Some(evt) = stock_transition_event(before.quantity, row.quantity, row.low_stock_threshold) {
-        log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, evt).await;
+        log_stock_event(&mut tx, &claims.tenant_id, "stock_item", &id, &row.name, evt).await?;
     }
     tx.commit().await?;
     Ok(Json(row))
