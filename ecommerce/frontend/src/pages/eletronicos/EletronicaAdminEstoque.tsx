@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowDownCircle, ArrowUpCircle, Check, DollarSign, ImagePlus, Loader2, Package, Pencil, Plus, Search, Smartphone, Trash2, Wrench, X } from 'lucide-react'
 import { eletronicosAdmin, unitsInSameFamily, unitFamilyOf, STOCK_UNIT_FAMILIES } from '../../lib/eletronicosAdminApi'
 import { BrandIcon } from '../../lib/deviceBrandIcons'
+import CentsInput from '../../components/eletronicos/CentsInput'
 import type { EletronicaAdminCatalogItem } from '../../lib/eletronicosAdminApi'
 
 // Espelha unit_family()/convert_stock_unit() do backend (routes/eletronicos.rs)
@@ -1514,7 +1515,7 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
   const [newQuantity, setNewQuantity] = useState('')
   const [newUnit, setNewUnit] = useState('unidade')
   const [newUnitsPerBox, setNewUnitsPerBox] = useState('')
-  const [newPrice, setNewPrice] = useState('')
+  const [newPrice, setNewPrice] = useState(0)
   const [newWarrantyDays, setNewWarrantyDays] = useState('')
   const [newLowStockThreshold, setNewLowStockThreshold] = useState('')
   const [creating, setCreating] = useState(false)
@@ -1531,7 +1532,7 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
   const [editQuantity, setEditQuantity] = useState('')
   const [editUnit, setEditUnit] = useState('unidade')
   const [editUnitsPerBox, setEditUnitsPerBox] = useState('')
-  const [editPrice, setEditPrice] = useState('')
+  const [editPrice, setEditPrice] = useState(0)
   const [editWarrantyDays, setEditWarrantyDays] = useState('')
   const [editLowStockThreshold, setEditLowStockThreshold] = useState('')
   const [editError, setEditError] = useState<string | null>(null)
@@ -1557,10 +1558,10 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
     setCreateError(null)
     const trimmedName = newName.trim()
     const qty = parseFloat(newQuantity)
-    const priceNum = parseFloat(newPrice)
+    const priceNum = newPrice
     if (!trimmedName) { setCreateError('Informe o nome do item.'); return }
     if (!newQuantity || isNaN(qty) || qty < 0) { setCreateError('Informe uma quantidade válida.'); return }
-    if (!newPrice || isNaN(priceNum) || priceNum < 0) { setCreateError('Informe o custo do item.'); return }
+    if (!priceNum || priceNum <= 0) { setCreateError('Informe o custo do item.'); return }
     const unitsPerBoxNum = newUnit === 'caixa' ? parseFloat(newUnitsPerBox) : undefined
     if (newUnit === 'caixa' && (!newUnitsPerBox || isNaN(unitsPerBoxNum!) || unitsPerBoxNum! <= 0)) {
       setCreateError('Informe quantas unidades tem em cada caixa.')
@@ -1581,7 +1582,7 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
         low_stock_threshold: newLowStockThreshold.trim() ? Number(newLowStockThreshold) : Math.round(qty * 0.35 * 100) / 100,
         origin_type: newMode,
       })
-      setNewName(''); setNewQuantity(''); setNewUnit('unidade'); setNewUnitsPerBox(''); setNewPrice(''); setNewWarrantyDays(''); setNewLowStockThreshold('')
+      setNewName(''); setNewQuantity(''); setNewUnit('unidade'); setNewUnitsPerBox(''); setNewPrice(0); setNewWarrantyDays(''); setNewLowStockThreshold('')
       onChanged()
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Não foi possível cadastrar o item.')
@@ -1599,7 +1600,7 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
     setEditQuantity(String(item.quantity))
     setEditUnit(item.unit)
     setEditUnitsPerBox(item.units_per_box != null ? String(item.units_per_box) : '')
-    setEditPrice(item.price != null ? String(item.price) : '')
+    setEditPrice(item.price ?? 0)
     setEditWarrantyDays(item.warranty_days != null ? String(item.warranty_days) : '')
     setEditLowStockThreshold(item.low_stock_threshold != null ? String(item.low_stock_threshold) : '')
     setEditError(null)
@@ -1610,10 +1611,10 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
     setEditError(null)
     const trimmedName = editName.trim()
     const qty = parseFloat(editQuantity)
-    const priceNum = parseFloat(editPrice)
+    const priceNum = editPrice
     if (!trimmedName) { setEditError('Informe o nome do item.'); return }
     if (!editQuantity || isNaN(qty) || qty < 0) { setEditError('Informe uma quantidade válida.'); return }
-    if (!editPrice || isNaN(priceNum) || priceNum < 0) { setEditError('Informe o custo do item.'); return }
+    if (!priceNum || priceNum <= 0) { setEditError('Informe o custo do item.'); return }
     const editUnitsPerBoxNum = editUnit === 'caixa' ? parseFloat(editUnitsPerBox) : undefined
     if (editUnit === 'caixa' && (!editUnitsPerBox || isNaN(editUnitsPerBoxNum!) || editUnitsPerBoxNum! <= 0)) {
       setEditError('Informe quantas unidades tem em cada caixa.')
@@ -1736,10 +1737,10 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
             <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">
               {newMode === 'erp_formulation' ? 'Custo do lote (R$) *' : 'Custo do item (R$) *'}
             </label>
-            <input type="number" step="0.01" min="0" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} placeholder="0,00" className={`${INPUT} mt-1`} />
-            {newMode === 'erp_formulation' && newPrice && newQuantity && parseFloat(newQuantity) > 0 && (
+            <CentsInput value={newPrice} onChange={setNewPrice} className={`${INPUT} mt-1`} />
+            {newMode === 'erp_formulation' && newPrice > 0 && newQuantity && parseFloat(newQuantity) > 0 && (
               <p className="text-[10px] text-[#d4d4d8]/40 mt-1">
-                = {currency((parseFloat(newPrice) || 0) / parseFloat(newQuantity))}/{newUnit}
+                = {currency(newPrice / parseFloat(newQuantity))}/{newUnit}
               </p>
             )}
           </div>
@@ -1874,7 +1875,7 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Custo do item (R$) *</label>
-              <input type="number" step="0.01" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} placeholder="0,00" className={`${INPUT} mt-1`} />
+              <CentsInput value={editPrice} onChange={setEditPrice} className={`${INPUT} mt-1`} />
             </div>
             <div>
               <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Garantia (dias)</label>
