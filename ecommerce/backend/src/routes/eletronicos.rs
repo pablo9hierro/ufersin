@@ -3613,6 +3613,21 @@ pub struct CatalogItemDto {
 pub struct CatalogResponse {
     pub categories: Vec<CatalogCategoryDto>,
     pub items: Vec<CatalogItemDto>,
+    /// Modelos "de verdade" (eletronicos.catalog_models -- cadastro real de
+    /// Produtos/Serviços > Aparelho/Marca/Modelo), separado de
+    /// service_catalog_items.model_name: esse campo em items nem sempre é
+    /// um modelo (alguns itens usam pra guardar o próprio rótulo do
+    /// serviço, ex. "Reparo de Flash Motorola") -- misturar os dois no
+    /// step "Qual o modelo?" do form público mostrava serviço como se
+    /// fosse modelo. `models` é a fonte única de verdade pra essa etapa.
+    pub models: Vec<PublicCatalogModelDto>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct PublicCatalogModelDto {
+    pub id: String,
+    pub brand_id: String,
+    pub name: String,
 }
 
 pub async fn get_public_catalog(
@@ -3641,8 +3656,16 @@ pub async fn get_public_catalog(
     .fetch_all(&mut *tx)
     .await?;
 
+    let models: Vec<PublicCatalogModelDto> = sqlx::query_as(
+        "SELECT id::text, brand_id::text, name FROM eletronicos.catalog_models \
+         WHERE tenant_id = $1 ORDER BY sort_order, name",
+    )
+    .bind(&store.id)
+    .fetch_all(&mut *tx)
+    .await?;
+
     tx.commit().await?;
-    Ok(Json(CatalogResponse { categories, items }))
+    Ok(Json(CatalogResponse { categories, items, models }))
 }
 
 // ============================================================================

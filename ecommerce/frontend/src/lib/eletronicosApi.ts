@@ -45,9 +45,16 @@ export interface CatalogItem {
   tags: string[]
 }
 
+export interface PublicCatalogModel {
+  id: string
+  brand_id: string
+  name: string
+}
+
 export interface CatalogResponse {
   categories: CatalogCategory[]
   items: CatalogItem[]
+  models: PublicCatalogModel[]
 }
 
 export interface ServiceRequestDto {

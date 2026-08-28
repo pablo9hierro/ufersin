@@ -25,6 +25,7 @@ import {
   uploadPublicMedia,
   type CatalogCategory,
   type CatalogItem,
+  type PublicCatalogModel,
 } from '../../lib/eletronicosApi'
 import { DeviceTypeIcon, BrandIcon } from '../../lib/deviceBrandIcons'
 import LocationPicker, { type LocationPickerResult } from '../../components/checkout/LocationPicker'
@@ -114,6 +115,7 @@ export default function EletronicaServiceRequestForm({
 
   const [brands, setBrands] = useState<CatalogCategory[]>([])
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
+  const [catalogModels, setCatalogModels] = useState<PublicCatalogModel[]>([])
   const [loadingCatalog, setLoadingCatalog] = useState(false)
   const [selectedDeviceType, setSelectedDeviceType] = useState<DeviceType | null>(null)
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null)
@@ -139,6 +141,7 @@ export default function EletronicaServiceRequestForm({
       .then((res) => {
         setBrands(res.categories)
         setCatalogItems(res.items)
+        setCatalogModels(res.models)
       })
       .catch(() => {})
       .finally(() => setLoadingCatalog(false))
@@ -161,18 +164,8 @@ export default function EletronicaServiceRequestForm({
 
   const modelList = useMemo(() => {
     if (!selectedBrandId) return []
-    const seen = new Set<string>()
-    return catalogItems
-      .filter((i) => i.category_id === selectedBrandId && i.model_name)
-      .reduce<string[]>((acc, i) => {
-        if (!seen.has(i.model_name!)) {
-          seen.add(i.model_name!)
-          acc.push(i.model_name!)
-        }
-        return acc
-      }, [])
-      .sort()
-  }, [catalogItems, selectedBrandId])
+    return catalogModels.filter((m) => m.brand_id === selectedBrandId).map((m) => m.name)
+  }, [catalogModels, selectedBrandId])
 
   const servicesForModel = useMemo(() => {
     if (!selectedBrandId || (!selectedModelName && !modelSkipped)) return []
