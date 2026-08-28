@@ -7,6 +7,7 @@ pub enum AppError {
     Unauthorized(String),
     Forbidden(String),
     NotFound(String),
+    Conflict(String),
     Internal(String),
 }
 
@@ -17,6 +18,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized(m) => (StatusCode::UNAUTHORIZED, m),
             AppError::Forbidden(m) => (StatusCode::FORBIDDEN, m),
             AppError::NotFound(m) => (StatusCode::NOT_FOUND, m),
+            AppError::Conflict(m) => (StatusCode::CONFLICT, m),
             AppError::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
         };
         (status, Json(json!({ "error": msg }))).into_response()
@@ -32,9 +34,15 @@ impl From<sqlx::Error> for AppError {
         // errada pra um erro de INPUT do cliente. Mapeado pra 400 aqui,
         // uma vez só, cobre todo endpoint que faz esse cast, não só o que
         // foi pego no teste.
+        // Achado no mesmo teste: nome duplicado em stock_items (UNIQUE
+        // tenant_id+name) também caía como 500 genérico em vez de um 409
+        // dizendo que já existe -- mesma ideia, mapeado uma vez só pra
+        // cobrir qualquer UNIQUE violation.
         if let sqlx::Error::Database(db_err) = &e {
-            if db_err.code().as_deref() == Some("22P02") {
-                return AppError::BadRequest("identificador inválido".to_string());
+            match db_err.code().as_deref() {
+                Some("22P02") => return AppError::BadRequest("identificador inválido".to_string()),
+                Some("23505") => return AppError::Conflict("já existe um registro com esse valor".to_string()),
+                _ => {}
             }
         }
         tracing::error!("db error: {e}");
