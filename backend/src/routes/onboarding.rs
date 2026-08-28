@@ -462,6 +462,8 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub landing_highlights: Option<serde_json::Value>,
     #[serde(default)]
+    pub landing_texts: Option<serde_json::Value>,
+    #[serde(default)]
     pub landing_hero_image_url: Option<String>,
     #[serde(default)]
     pub cart_fab_style: Option<String>,
@@ -596,6 +598,7 @@ pub async fn editar_onboarding(
          coleta_gratis = COALESCE($30, coleta_gratis), \
          entrega_reparado_gratis = COALESCE($31, entrega_reparado_gratis), \
          landing_highlights = COALESCE($32, landing_highlights), \
+         landing_texts = COALESCE($33, landing_texts), \
          onboarding_status = CASE \
            WHEN onboarding_status = 'aguardando_onboarding' THEN 'provisionado' \
            ELSE onboarding_status END, \
@@ -643,6 +646,7 @@ pub async fn editar_onboarding(
         (_, v) => v,
     })
     .bind(&body.landing_highlights)
+    .bind(&body.landing_texts)
     .execute(&state.pool)
     .await?;
 
@@ -969,6 +973,7 @@ pub struct TenantConfigResponse {
     pub landing_sub: Option<String>,
     pub landing_badge: Option<String>,
     pub landing_highlights: Option<serde_json::Value>,
+    pub landing_texts: Option<serde_json::Value>,
     pub landing_hero_image_url: Option<String>,
     pub cart_fab_style: String,
     pub cart_fab_animate: bool,
@@ -1003,6 +1008,7 @@ struct TenantConfigRow {
     landing_sub: Option<String>,
     landing_badge: Option<String>,
     landing_highlights: Option<serde_json::Value>,
+    landing_texts: Option<serde_json::Value>,
     landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
@@ -1031,7 +1037,7 @@ pub async fn tenant_config(
          COALESCE(entrega_somente_pix, false) as entrega_somente_pix, \
          COALESCE(pagamento_manual, false) as pagamento_manual, \
          endereco, endereco_numero, instagram, facebook, logo_url, \
-         landing_headline, landing_sub, landing_badge, landing_highlights, landing_hero_image_url, \
+         landing_headline, landing_sub, landing_badge, landing_highlights, landing_texts, landing_hero_image_url, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
          COALESCE(cart_fab_animate, false) as cart_fab_animate \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
@@ -1078,6 +1084,7 @@ pub async fn tenant_config(
         landing_sub: row.landing_sub,
         landing_badge: row.landing_badge,
         landing_highlights: row.landing_highlights,
+        landing_texts: row.landing_texts,
         landing_hero_image_url: row.landing_hero_image_url,
         cart_fab_style: match row.cart_fab_style.as_str() {
             "cart_icon" => "cart_icon".to_string(),

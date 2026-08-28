@@ -17,6 +17,11 @@ type CmsField = string
 
 const HIGHLIGHT_RE = /^highlight:(\d+):(title|desc)$/
 
+/** Rótulo padrão pra quem não é badge/headline/sub/highlight -- usado só
+ * como fallback; o rótulo de verdade vem de `data-cms-label` no próprio nó
+ * (lido no momento do clique/descoberta, ver `bindClickListeners`) porque
+ * esse componente não tem como saber de antemão todo texto avulso
+ * (`text:*`) que cada layout/vertical decide marcar como editável. */
 function fieldLabel(field: CmsField): string {
   if (field === 'badge') return 'Selo de destaque'
   if (field === 'headline') return 'Título da vitrine'
@@ -39,6 +44,7 @@ function getFieldValue(values: StorefrontCmsValues, field: CmsField): string {
     const part = m[2] as 'title' | 'desc'
     return values.landingHighlights[idx]?.[part] ?? ''
   }
+  if (field.startsWith('text:')) return values.landingTexts[field.slice(5)] ?? ''
   return ''
 }
 
@@ -57,6 +63,9 @@ function patchForField(values: StorefrontCmsValues, field: CmsField, value: stri
     arr[idx] = { ...arr[idx], [part]: value }
     return { landingHighlights: arr }
   }
+  if (field.startsWith('text:')) {
+    return { landingTexts: { ...values.landingTexts, [field.slice(5)]: value } }
+  }
   return {}
 }
 
@@ -67,6 +76,7 @@ export interface StorefrontCmsValues {
   landingSub: string
   landingBadge: string
   landingHighlights: { title: string; desc: string }[]
+  landingTexts: Record<string, string>
   cartFabStyle: CartFabStyle
   cartFabAnimate: boolean
 }
@@ -104,12 +114,22 @@ export default function StorefrontCmsPreview({
   const accent = values.corPrincipal.trim() || active.preview.accent
 
   const [selectedField, setSelectedField] = useState<CmsField | null>(null)
+  const [selectedLabel, setSelectedLabel] = useState('')
   const [fieldOriginal, setFieldOriginal] = useState('')
   const [fieldDefault, setFieldDefault] = useState('')
+  // O listener de clique do preview é anexado uma vez só (idempotente,
+  // sobrevive a re-renders) -- sem essa ref ele ficaria preso lendo o
+  // `values` de quando foi anexado, mostrando texto desatualizado se o
+  // admin editar mais de um campo na mesma sessão sem dar reload.
+  const valuesRef = useRef(values)
+  valuesRef.current = values
   // Quais campos existem NESTE layoutStyle/vertical -- varia (3 destaques
-  // no motor genérico, 4 na eletrônica) -- descoberto lendo o DOM do
-  // preview, não fixo, pro seletor "escolha direto" bater com a realidade.
-  const [availableFields, setAvailableFields] = useState<string[]>([])
+  // no motor genérico, 4 na eletrônica, mais qualquer `text:*` avulso que
+  // aquele layout decidiu marcar) -- descoberto lendo o DOM do preview,
+  // não fixo, pro seletor "escolha direto" bater com a realidade. Rótulo
+  // vem de `data-cms-label` no próprio nó (texto avulso não tem um nome
+  // fixo conhecido de antemão como badge/headline/sub/highlight têm).
+  const [availableFields, setAvailableFields] = useState<{ field: string; label: string }[]>([])
 
   useEffect(() => {
     const el = frameRef.current
@@ -127,7 +147,8 @@ export default function StorefrontCmsPreview({
 
   const selectField = (field: CmsField, node: HTMLElement) => {
     setSelectedField(field)
-    setFieldOriginal(getFieldValue(values, field))
+    setSelectedLabel(node.getAttribute('data-cms-label') || fieldLabel(field))
+    setFieldOriginal(getFieldValue(valuesRef.current, field))
     setFieldDefault(node.getAttribute('data-cms-default') ?? '')
   }
 
@@ -148,24 +169,44 @@ export default function StorefrontCmsPreview({
   useEffect(() => {
     syncDraftIntoIframe()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.landingBadge, values.landingHeadline, values.landingSub, values.landingHighlights, reloadToken])
+  }, [values.landingBadge, values.landingHeadline, values.landingSub, values.landingHighlights, values.landingTexts, reloadToken])
 
   const bindClickListeners = (doc: Document) => {
     const nodes = Array.from(doc.querySelectorAll<HTMLElement>('[data-cms-editable]'))
-    setAvailableFields(nodes.map((n) => n.getAttribute('data-cms-editable') ?? '').filter(Boolean))
+    setAvailableFields(
+      nodes
+        .map((n) => {
+          const field = n.getAttribute('data-cms-editable') ?? ''
+          return { field, label: n.getAttribute('data-cms-label') || fieldLabel(field) }
+        })
+        .filter((f) => f.field),
+    )
     nodes.forEach((node) => {
-      const field = node.getAttribute('data-cms-editable')
-      // Guard idempotente -- iframe.onLoad e o polling de segurança abaixo
-      // podem correr pro mesmo documento, sem isso duplicaria o listener.
-      if (!field || node.dataset.cmsBound) return
-      node.dataset.cmsBound = '1'
       node.style.cursor = 'pointer'
-      node.addEventListener('click', (e) => {
+    })
+    // Um único listener no CAPTURE do documento, não por nó -- bloqueia
+    // QUALQUER clique dentro do preview de navegar/executar a ação real
+    // (botão "Produtos", link do carrinho, etc. -- eles são a vitrine de
+    // verdade, teriam o mesmo comportamento de clicar de verdade neles),
+    // e só quando o clique cai dentro de um `[data-cms-editable]` que
+    // seleciona o campo pra editar. Capture no documento roda ANTES de
+    // qualquer handler React da própria vitrine, então stopPropagation
+    // aqui impede o clique de chegar neles -- por isso não dá mais pra
+    // depender de um listener por nó (ele nunca seria alcançado).
+    if (doc.body.dataset.cmsClickBlockerBound) return
+    doc.body.dataset.cmsClickBlockerBound = '1'
+    doc.addEventListener(
+      'click',
+      (e) => {
         e.preventDefault()
         e.stopPropagation()
-        selectField(field, node)
-      })
-    })
+        const target = e.target as HTMLElement | null
+        const editable = target?.closest<HTMLElement>('[data-cms-editable]')
+        const field = editable?.getAttribute('data-cms-editable')
+        if (editable && field) selectField(field, editable)
+      },
+      true,
+    )
   }
 
   // `iframe.onLoad` sozinho é uma corrida real: quando o documento
@@ -381,7 +422,7 @@ export default function StorefrontCmsPreview({
                   Clique em qualquer texto dentro do preview ao lado pra editar aqui. Ou escolha direto:
                 </p>
                 <div className="flex flex-col gap-2">
-                  {availableFields.map((field) => (
+                  {availableFields.map(({ field, label }) => (
                     <button
                       key={field}
                       type="button"
@@ -391,14 +432,14 @@ export default function StorefrontCmsPreview({
                       }}
                       className="text-left px-3 py-2.5 rounded-xl border border-white/10 bg-white/[0.03] hover:border-white/20 text-xs font-semibold text-uf-silver"
                     >
-                      {fieldLabel(field)}
+                      {label}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
               <div className="space-y-2.5">
-                <label className="label mb-0 block">{fieldLabel(selectedField)}</label>
+                <label className="label mb-0 block">{selectedLabel}</label>
                 {selectedField === 'sub' || selectedField.endsWith(':desc') ? (
                   <textarea
                     autoFocus

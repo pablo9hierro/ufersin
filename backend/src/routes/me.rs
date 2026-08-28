@@ -57,6 +57,7 @@ struct SubscriberRow {
     landing_sub: Option<String>,
     landing_badge: Option<String>,
     landing_highlights: Option<serde_json::Value>,
+    landing_texts: Option<serde_json::Value>,
     landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
@@ -124,6 +125,7 @@ pub struct MeResponse {
     pub landing_sub: Option<String>,
     pub landing_badge: Option<String>,
     pub landing_highlights: Option<serde_json::Value>,
+    pub landing_texts: Option<serde_json::Value>,
     /// Essential: imagem retangular do hero (Management/Premium usam promo banners).
     pub landing_hero_image_url: Option<String>,
     pub cart_fab_style: String,
@@ -155,7 +157,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 COALESCE(pagamento_na_retirada, false) as pagamento_na_retirada,
                 COALESCE(entrega_somente_pix, false) as entrega_somente_pix,
                 COALESCE(pagamento_manual, false) as pagamento_manual, coupon_code,
-                landing_headline, landing_sub, landing_badge, landing_highlights, landing_hero_image_url,
+                landing_headline, landing_sub, landing_badge, landing_highlights, landing_texts, landing_hero_image_url,
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
                 COALESCE(cart_fab_animate, false) as cart_fab_animate,
                 COALESCE(vertical, 'ecommerce') as vertical
@@ -240,6 +242,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         landing_sub: row.landing_sub,
         landing_badge: row.landing_badge,
         landing_highlights: row.landing_highlights,
+        landing_texts: row.landing_texts,
         landing_hero_image_url: row.landing_hero_image_url,
         cart_fab_style: row.cart_fab_style,
         cart_fab_animate: row.cart_fab_animate,

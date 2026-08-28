@@ -75,8 +75,14 @@ export default function EletronicaHome() {
           com <span className="text-[#e0211a]">rapidez</span>, <span className="text-[#e0211a]">qualidade</span> e{' '}
           <span className="text-[#e0211a]">garantia</span>
         </h1>
-        <p className="text-[#d4d4d8]/70 max-w-xl mx-auto mb-8">
-          Buscamos, consertamos e devolvemos seu aparelho no seu endereço. Peça um orçamento gratuito agora mesmo.
+        <p
+          data-cms-editable="text:hero-desc"
+          data-cms-label="Descrição do topo"
+          data-cms-default="Buscamos, consertamos e devolvemos seu aparelho no seu endereço. Peça um orçamento gratuito agora mesmo."
+          className="text-[#d4d4d8]/70 max-w-xl mx-auto mb-8"
+        >
+          {tenantConfig?.landing_texts?.['hero-desc']?.trim() ||
+            'Buscamos, consertamos e devolvemos seu aparelho no seu endereço. Peça um orçamento gratuito agora mesmo.'}
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
@@ -84,29 +90,49 @@ export default function EletronicaHome() {
             className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200"
           >
             <ShoppingBag className="w-4 h-4" />
-            Produtos
+            <span data-cms-editable="text:btn-produtos" data-cms-label="Botão — Produtos" data-cms-default="Produtos">
+              {tenantConfig?.landing_texts?.['btn-produtos']?.trim() || 'Produtos'}
+            </span>
           </Link>
           <Link
             to={`/catalogo-servico${withTenantSearch()}`}
             className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#161618] hover:bg-[#232327] text-white font-semibold py-3 px-6 rounded-xl border border-white/10 transition-all duration-200"
           >
             <Wrench className="w-4 h-4" />
-            Serviços e Orçamento
+            <span data-cms-editable="text:btn-servicos" data-cms-label="Botão — Serviços e Orçamento" data-cms-default="Serviços e Orçamento">
+              {tenantConfig?.landing_texts?.['btn-servicos']?.trim() || 'Serviços e Orçamento'}
+            </span>
           </Link>
           <Link
             to={`/consultar${withTenantSearch()}`}
             className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#161618] hover:bg-[#232327] text-white font-semibold py-3 px-6 rounded-xl border border-white/10 transition-all duration-200"
           >
             <ClipboardList className="w-4 h-4" />
-            Meu pedido
+            <span data-cms-editable="text:btn-acompanhar" data-cms-label="Botão — Meu pedido" data-cms-default="Meu pedido">
+              {tenantConfig?.landing_texts?.['btn-acompanhar']?.trim() || 'Meu pedido'}
+            </span>
           </Link>
         </div>
       </section>
 
       <section className="px-5 sm:px-10 py-12 bg-[#161618]/40 border-y border-white/5">
         <div className="max-w-6xl mx-auto">
-          <h2 className="text-center text-2xl sm:text-3xl font-bold mb-2">Nossos serviços</h2>
-          <p className="text-center text-[#d4d4d8]/60 mb-10 text-sm">Foco total em assistência técnica de celulares</p>
+          <h2
+            data-cms-editable="text:secao-servicos-titulo"
+            data-cms-label="Título — Nossos serviços"
+            data-cms-default="Nossos serviços"
+            className="text-center text-2xl sm:text-3xl font-bold mb-2"
+          >
+            {tenantConfig?.landing_texts?.['secao-servicos-titulo']?.trim() || 'Nossos serviços'}
+          </h2>
+          <p
+            data-cms-editable="text:secao-servicos-sub"
+            data-cms-label="Subtítulo — Nossos serviços"
+            data-cms-default="Foco total em assistência técnica de celulares"
+            className="text-center text-[#d4d4d8]/60 mb-10 text-sm"
+          >
+            {tenantConfig?.landing_texts?.['secao-servicos-sub']?.trim() || 'Foco total em assistência técnica de celulares'}
+          </p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {SERVICES.map((s, i) => {
               const h = tenantConfig?.landing_highlights?.[i]
@@ -132,14 +158,25 @@ export default function EletronicaHome() {
 
       <section className="px-5 sm:px-10 py-12 max-w-6xl mx-auto">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {HIGHLIGHTS.map((h) => (
-            <div key={h.label} className="flex flex-col items-center text-center gap-2 p-4">
-              <div className="w-12 h-12 rounded-full bg-[#e0211a]/10 text-[#e0211a] flex items-center justify-center">
-                <h.icon className="w-5 h-5" />
+          {HIGHLIGHTS.map((h, i) => {
+            const key = `selo${i}`
+            const label = tenantConfig?.landing_texts?.[key]?.trim() || h.label
+            return (
+              <div key={h.label} className="flex flex-col items-center text-center gap-2 p-4">
+                <div className="w-12 h-12 rounded-full bg-[#e0211a]/10 text-[#e0211a] flex items-center justify-center">
+                  <h.icon className="w-5 h-5" />
+                </div>
+                <span
+                  data-cms-editable={`text:${key}`}
+                  data-cms-label={`Selo ${i + 1}`}
+                  data-cms-default={h.label}
+                  className="text-sm font-medium text-[#d4d4d8]"
+                >
+                  {label}
+                </span>
               </div>
-              <span className="text-sm font-medium text-[#d4d4d8]">{h.label}</span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </section>
 
@@ -147,7 +184,14 @@ export default function EletronicaHome() {
         <div className="max-w-6xl mx-auto flex flex-col items-center gap-6 text-center">
           <div>
             <p className="font-black text-lg">{lojaNome}</p>
-            <p className="text-[10px] tracking-[0.2em] uppercase text-[#d4d4d8]/40 mt-0.5">Assistência técnica especializada</p>
+            <p
+              data-cms-editable="text:rodape-tagline"
+              data-cms-label="Rodapé — texto abaixo do nome"
+              data-cms-default="Assistência técnica especializada"
+              className="text-[10px] tracking-[0.2em] uppercase text-[#d4d4d8]/40 mt-0.5"
+            >
+              {tenantConfig?.landing_texts?.['rodape-tagline']?.trim() || 'Assistência técnica especializada'}
+            </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4">
             {SERVICES.map((s) => (

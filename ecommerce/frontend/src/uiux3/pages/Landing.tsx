@@ -68,19 +68,34 @@ export default function Uiux3Landing() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-sm sm:max-w-none mx-auto">
             <button onClick={() => navigate('/catalogo')} className="u3-pill-primary px-6 py-3 flex items-center justify-center gap-2">
-              <ShoppingBag className="w-4 h-4" /> Ver produtos
+              <ShoppingBag className="w-4 h-4" />{' '}
+              <span data-cms-editable="text:btn-produtos" data-cms-label="Botão — Ver produtos" data-cms-default="Ver produtos">
+                {tenantConfig?.landing_texts?.['btn-produtos']?.trim() || 'Ver produtos'}
+              </span>
             </button>
             <button onClick={() => navigate('/servicos')} className="u3-pill-secondary px-6 py-3 flex items-center justify-center gap-2">
-              <Wrench className="w-4 h-4" /> Ver serviços
+              <Wrench className="w-4 h-4" />{' '}
+              <span data-cms-editable="text:btn-servicos" data-cms-label="Botão — Ver serviços" data-cms-default="Ver serviços">
+                {tenantConfig?.landing_texts?.['btn-servicos']?.trim() || 'Ver serviços'}
+              </span>
             </button>
             <button onClick={() => (customerAuth.token ? navigate('/consultar') : setShowAuthModal(true))} className="u3-pill-secondary px-6 py-3 flex items-center justify-center gap-2">
-              Acompanhar entrega
+              <span data-cms-editable="text:btn-acompanhar" data-cms-label="Botão — Acompanhar entrega" data-cms-default="Acompanhar entrega">
+                {tenantConfig?.landing_texts?.['btn-acompanhar']?.trim() || 'Acompanhar entrega'}
+              </span>
             </button>
           </div>
         </div>
 
         <div className="px-4 sm:px-8 pb-16 max-w-xl mx-auto">
-          <p className="font-black text-sm uppercase tracking-wide u3-dim mb-3">Por que pedir com a gente</p>
+          <p
+            data-cms-editable="text:secao-destaques-titulo"
+            data-cms-label="Título — Por que pedir com a gente"
+            data-cms-default="Por que pedir com a gente"
+            className="font-black text-sm uppercase tracking-wide u3-dim mb-3"
+          >
+            {tenantConfig?.landing_texts?.['secao-destaques-titulo']?.trim() || 'Por que pedir com a gente'}
+          </p>
           <div className="grid sm:grid-cols-3 gap-3 mb-8">
             {[
               { title: 'Entrega rápida', desc: 'Pronto em até 20 min' },

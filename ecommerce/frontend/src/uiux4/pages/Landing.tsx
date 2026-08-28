@@ -68,13 +68,19 @@ export default function Uiux4Landing() {
           </p>
           <div className="flex items-center gap-3">
             <button onClick={() => navigate('/catalogo')} className="u4-btn-primary px-6 py-3 text-sm">
-              Ver produtos
+              <span data-cms-editable="text:btn-produtos" data-cms-label="Botão — Ver produtos" data-cms-default="Ver produtos">
+                {tenantConfig?.landing_texts?.['btn-produtos']?.trim() || 'Ver produtos'}
+              </span>
             </button>
             <button onClick={() => navigate('/servicos')} className="u4-btn-secondary px-6 py-3 text-sm">
-              Ver serviços
+              <span data-cms-editable="text:btn-servicos" data-cms-label="Botão — Ver serviços" data-cms-default="Ver serviços">
+                {tenantConfig?.landing_texts?.['btn-servicos']?.trim() || 'Ver serviços'}
+              </span>
             </button>
             <button onClick={() => (customerAuth.token ? navigate('/consultar') : setShowAuthModal(true))} className="u4-btn-secondary px-6 py-3 text-sm">
-              Acompanhar entrega
+              <span data-cms-editable="text:btn-acompanhar" data-cms-label="Botão — Acompanhar entrega" data-cms-default="Acompanhar entrega">
+                {tenantConfig?.landing_texts?.['btn-acompanhar']?.trim() || 'Acompanhar entrega'}
+              </span>
             </button>
           </div>
         </div>
