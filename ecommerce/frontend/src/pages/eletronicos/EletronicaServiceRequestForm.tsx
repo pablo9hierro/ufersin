@@ -7,14 +7,10 @@ import {
   Check,
   CheckCircle,
   ChevronLeft,
-  HelpCircle,
   Loader2,
-  Laptop,
   MapPin,
   MessageCircle,
-  Monitor,
   Smartphone,
-  Tablet,
   Truck,
   User,
   Wrench,
@@ -30,21 +26,25 @@ import {
   type CatalogCategory,
   type CatalogItem,
 } from '../../lib/eletronicosApi'
+import { DeviceTypeIcon, BrandIcon } from '../../lib/deviceBrandIcons'
 import LocationPicker, { type LocationPickerResult } from '../../components/checkout/LocationPicker'
 
-// Port 1:1 de src/components/ServiceRequestForm.tsx do vrtech -- mesmo
-// wizard de 3 passos, mesmas cores (vr-red/vr-black/vr-graphite/vr-silver,
-// ver globals.css do projeto original), mesmo texto, mesmas props. Única
-// troca real é a fonte de dados: Supabase direto -> endpoints do motor Rust
-// (/api/public/eletronicos/{slug}/...).
+// Port 1:1 (adaptado) de src/components/ServiceRequestForm.tsx do vrtech --
+// mesmo wizard de 3 passos, mesmas cores (vr-red/vr-black/vr-graphite/
+// vr-silver, ver globals.css do projeto original), mesmo texto, mesmas
+// props. Troca real: fonte de dados (Supabase direto -> endpoints do motor
+// Rust) e o passo "Sobre o aparelho" -- aparelho e marca agora são SEMPRE
+// obrigatórios (com ícone real por tipo/marca, mesmo esquema do form
+// "Registrar serviço" do admin), modelo vira opcional ("não sei o modelo"
+// pula direto pra descrição do problema).
 
 type DeviceType = 'celular' | 'tablet' | 'notebook' | 'computador'
 
-const DEVICE_TYPES: { key: DeviceType; label: string; icon: React.ReactNode }[] = [
-  { key: 'celular', label: 'Celular', icon: <Smartphone className="w-6 h-6" /> },
-  { key: 'tablet', label: 'Tablet', icon: <Tablet className="w-6 h-6" /> },
-  { key: 'notebook', label: 'Notebook', icon: <Laptop className="w-6 h-6" /> },
-  { key: 'computador', label: 'Computador', icon: <Monitor className="w-6 h-6" /> },
+const DEVICE_TYPES: { key: DeviceType; label: string }[] = [
+  { key: 'celular', label: 'Celular' },
+  { key: 'tablet', label: 'Tablet' },
+  { key: 'notebook', label: 'Notebook' },
+  { key: 'computador', label: 'Computador' },
 ]
 
 const INPUT =
@@ -118,9 +118,11 @@ export default function EletronicaServiceRequestForm({
   const [selectedDeviceType, setSelectedDeviceType] = useState<DeviceType | null>(null)
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null)
   const [selectedModelName, setSelectedModelName] = useState<string | null>(null)
+  // true assim que o cliente escolhe "Não sei o modelo" -- distingue de
+  // "ainda não chegou nessa etapa" (selectedModelName null nos dois casos).
+  const [modelSkipped, setModelSkipped] = useState(false)
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([])
   const [phoneModel, setPhoneModel] = useState<string | undefined>()
-  const [diagnosisMode, setDiagnosisMode] = useState(diagnosisOnly)
 
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
@@ -128,10 +130,6 @@ export default function EletronicaServiceRequestForm({
   useEffect(() => {
     if (apenasRetirada) setSelfPickup(true)
   }, [apenasRetirada])
-
-  useEffect(() => {
-    if (diagnosisOnly) setDiagnosisMode(true)
-  }, [diagnosisOnly])
 
   useEffect(() => {
     if (!slug || brands.length > 0) return
@@ -153,7 +151,6 @@ export default function EletronicaServiceRequestForm({
     setSelectedModelName(initialSelection.modelName)
     setSelectedServiceIds([initialSelection.serviceId])
     setPhoneModel(initialSelection.modelName)
-    setDiagnosisMode(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogItems.length])
 
@@ -178,11 +175,13 @@ export default function EletronicaServiceRequestForm({
   }, [catalogItems, selectedBrandId])
 
   const servicesForModel = useMemo(() => {
-    if (!selectedBrandId || !selectedModelName) return []
+    if (!selectedBrandId || (!selectedModelName && !modelSkipped)) return []
     return catalogItems.filter(
       (i) => i.category_id === selectedBrandId && (i.model_name === selectedModelName || i.model_name === null),
     )
-  }, [catalogItems, selectedBrandId, selectedModelName])
+  }, [catalogItems, selectedBrandId, selectedModelName, modelSkipped])
+
+  const selectedBrand = useMemo(() => brands.find((b) => b.id === selectedBrandId) ?? null, [brands, selectedBrandId])
 
   const estimatedTotal = useMemo(
     () =>
@@ -200,9 +199,10 @@ export default function EletronicaServiceRequestForm({
     if (newIds.length > 0) {
       const lastId = newIds[newIds.length - 1]
       const lastItem = catalogItems.find((i) => i.id === lastId)
-      setPhoneModel(lastItem?.model_name ?? selectedModelName ?? undefined)
+      const model = lastItem?.model_name ?? selectedModelName
+      setPhoneModel(model ? `${selectedBrand?.name ?? ''} ${model}`.trim() : (selectedBrand?.name ?? undefined))
     } else {
-      setPhoneModel(undefined)
+      setPhoneModel(selectedBrand?.name ?? undefined)
     }
   }
 
@@ -255,7 +255,11 @@ export default function EletronicaServiceRequestForm({
 
   function validateStep2(): boolean {
     const errs: Record<string, string> = {}
-    if (!diagnosisMode && !phoneModel) errs.phone_model = 'Selecione o modelo e um serviço'
+    if (!selectedDeviceType) errs.device_type = 'Selecione o tipo de aparelho'
+    else if (!selectedBrandId) errs.brand = 'Selecione a marca'
+    else if (!diagnosisOnly && !selectedModelName && !modelSkipped) errs.phone_model = 'Selecione o modelo ou toque em "Não sei o modelo"'
+    else if (!diagnosisOnly && (selectedModelName || modelSkipped) && selectedServiceIds.length === 0)
+      errs.phone_model = 'Selecione ao menos um serviço'
     if (!problemDescription.trim()) errs.problem_description = 'Descreva o problema'
     setFieldErrors(errs)
     return Object.keys(errs).length === 0
@@ -286,7 +290,7 @@ export default function EletronicaServiceRequestForm({
         customer_email: customerEmail.trim() || undefined,
         phone_model: phoneModel ?? undefined,
         problem_description: problemDescription.trim(),
-        diagnosis_requested: diagnosisMode,
+        diagnosis_requested: diagnosisOnly,
         estimated_quote_value: selectedServiceIds.length > 0 ? estimatedTotal : undefined,
         self_pickup: apenasRetirada || selfPickup,
         address_street: apenasRetirada || selfPickup ? undefined : location?.label,
@@ -335,7 +339,7 @@ export default function EletronicaServiceRequestForm({
             setSelectedDeviceType(null)
             setSelectedBrandId(null)
             setSelectedModelName(null)
-            setDiagnosisMode(diagnosisOnly)
+            setModelSkipped(false)
             setCustomerName('')
             setCustomerPhone('')
             setCustomerEmail('')
@@ -419,173 +423,165 @@ export default function EletronicaServiceRequestForm({
               <h3 className="font-semibold text-white">Sobre o aparelho</h3>
             </div>
 
-            {!diagnosisOnly && (
-              <label className="flex items-start gap-3 bg-[#0a0a0b] border border-white/10 rounded-xl p-3.5 cursor-pointer hover:border-[#e0211a]/30 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={diagnosisMode}
-                  onChange={(e) => {
-                    const checked = e.target.checked
-                    setDiagnosisMode(checked)
-                    if (checked) {
-                      setSelectedDeviceType(null)
-                      setSelectedBrandId(null)
-                      setSelectedModelName(null)
-                      setSelectedServiceIds([])
-                      setPhoneModel(undefined)
-                    }
-                  }}
-                  className="w-4 h-4 mt-0.5 accent-[#e0211a] flex-none"
-                />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <HelpCircle className="w-3.5 h-3.5 text-[#e0211a] flex-none" />
-                    <span className="text-sm font-semibold text-white">Não sei o modelo do meu aparelho</span>
-                  </div>
-                  <p className="text-xs text-[#d4d4d8]/50 mt-0.5">Orçamento após diagnóstico físico do aparelho</p>
-                </div>
-              </label>
-            )}
-
-            {!diagnosisMode && (
+            {loadingCatalog ? (
+              <div className="flex items-center gap-2 text-[#d4d4d8]/50 text-sm py-2">
+                <Loader2 className="w-4 h-4 animate-spin text-[#e0211a]" />
+                Carregando catálogo...
+              </div>
+            ) : (
               <>
-                {loadingCatalog ? (
-                  <div className="flex items-center gap-2 text-[#d4d4d8]/50 text-sm py-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-[#e0211a]" />
-                    Carregando catálogo...
+                {!selectedDeviceType && (
+                  <div>
+                    <p className="text-xs font-semibold text-[#d4d4d8]/60 mb-2">Que tipo de aparelho é?</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {DEVICE_TYPES.map((d) => (
+                        <button
+                          key={d.key}
+                          type="button"
+                          onClick={() => setSelectedDeviceType(d.key)}
+                          className="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-[#161618] border border-white/5 text-[#d4d4d8] hover:border-[#e0211a]/40 hover:text-white transition-all"
+                        >
+                          <DeviceTypeIcon slug={d.key} className="w-6 h-6" />
+                          <span className="text-[11px] font-semibold">{d.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {fieldErrors.device_type && <p className={ERR}>{fieldErrors.device_type}</p>}
                   </div>
-                ) : brands.length > 0 ? (
-                  <>
-                    {!selectedDeviceType && (
-                      <div>
-                        <p className="text-xs font-semibold text-[#d4d4d8]/60 mb-2">Que tipo de aparelho é?</p>
-                        <div className="grid grid-cols-4 gap-2">
-                          {DEVICE_TYPES.map((d) => (
+                )}
+
+                {selectedDeviceType && !selectedBrandId && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDeviceType(null)
+                        setSelectedBrandId(null)
+                        setSelectedModelName(null)
+                        setModelSkipped(false)
+                        setSelectedServiceIds([])
+                        setPhoneModel(undefined)
+                      }}
+                      className="flex items-center gap-1 text-xs text-[#d4d4d8]/50 hover:text-white mb-2"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Trocar tipo de aparelho
+                    </button>
+                    {brandsForType.length === 0 ? (
+                      <p className="text-center text-[#d4d4d8]/40 text-sm py-4">
+                        Ainda não temos marcas cadastradas pra esse tipo de aparelho.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-xs font-semibold text-[#d4d4d8]/60 mb-2">Qual a marca?</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {brandsForType.map((b) => (
                             <button
-                              key={d.key}
+                              key={b.id}
                               type="button"
-                              onClick={() => setSelectedDeviceType(d.key)}
+                              onClick={() => {
+                                setSelectedBrandId(b.id)
+                                setSelectedModelName(null)
+                                setModelSkipped(false)
+                                setSelectedServiceIds([])
+                                setPhoneModel(undefined)
+                              }}
                               className="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-[#161618] border border-white/5 text-[#d4d4d8] hover:border-[#e0211a]/40 hover:text-white transition-all"
                             >
-                              {d.icon}
-                              <span className="text-[11px] font-semibold">{d.label}</span>
+                              <BrandIcon name={b.name} className="w-5 h-5" />
+                              <span className="text-[11px] font-semibold">{b.name}</span>
                             </button>
                           ))}
                         </div>
+                      </>
+                    )}
+                    {fieldErrors.brand && <p className={ERR}>{fieldErrors.brand}</p>}
+                  </div>
+                )}
+
+                {selectedBrandId && !selectedModelName && !modelSkipped && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedBrandId(null)
+                        setSelectedModelName(null)
+                        setModelSkipped(false)
+                        setSelectedServiceIds([])
+                        setPhoneModel(undefined)
+                      }}
+                      className="flex items-center gap-1 text-xs text-[#d4d4d8]/50 hover:text-white mb-2"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Trocar marca
+                    </button>
+                    <p className="text-xs font-semibold text-[#d4d4d8]/60 mb-2">Qual o modelo?</p>
+                    {modelList.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {modelList.map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              setSelectedModelName(m)
+                              setPhoneModel(`${selectedBrand?.name ?? ''} ${m}`.trim())
+                            }}
+                            className="px-3.5 py-2 rounded-xl text-sm font-semibold bg-[#161618] border border-white/5 text-[#d4d4d8] hover:border-[#e0211a]/40 hover:text-white transition-all"
+                          >
+                            {m}
+                          </button>
+                        ))}
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModelSkipped(true)
+                        setPhoneModel(selectedBrand?.name ?? undefined)
+                      }}
+                      className="text-sm font-semibold text-[#e0211a] hover:text-[#e0211a]/80 transition-colors"
+                    >
+                      Não sei o modelo
+                    </button>
+                  </div>
+                )}
 
-                    {selectedDeviceType && !selectedBrandId && (
+                {selectedBrandId && (selectedModelName || modelSkipped) && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedModelName(null)
+                        setModelSkipped(false)
+                        setSelectedServiceIds([])
+                        setPhoneModel(selectedBrand?.name ?? undefined)
+                      }}
+                      className="flex items-center gap-1 text-xs text-[#d4d4d8]/50 hover:text-white"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Trocar modelo
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <div className="w-10 h-10 rounded-xl bg-[#161618] border border-white/10 shrink-0 flex items-center justify-center">
+                        <BrandIcon name={selectedBrand?.name ?? ''} className="w-5 h-5 text-[#d4d4d8]/70" />
+                      </div>
                       <div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedDeviceType(null)
-                            setSelectedBrandId(null)
-                            setSelectedModelName(null)
-                            setSelectedServiceIds([])
-                            setPhoneModel(undefined)
-                          }}
-                          className="flex items-center gap-1 text-xs text-[#d4d4d8]/50 hover:text-white mb-2"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" /> Trocar tipo de aparelho
-                        </button>
-                        {brandsForType.length === 0 ? (
-                          <p className="text-center text-[#d4d4d8]/40 text-sm py-4">
-                            Ainda não temos marcas cadastradas pra esse tipo de aparelho.
+                        <h4 className="text-white font-bold text-sm">
+                          {selectedBrand?.name}
+                          {selectedModelName ? ` ${selectedModelName}` : ''}
+                          {modelSkipped && !selectedModelName && (
+                            <span className="text-[#d4d4d8]/40 font-normal"> (modelo não informado)</span>
+                          )}
+                        </h4>
+                        {!diagnosisOnly && (
+                          <p className="text-[#d4d4d8]/40 text-xs">
+                            {servicesForModel.length} serviço{servicesForModel.length !== 1 ? 's' : ''} sugerido
+                            {servicesForModel.length !== 1 ? 's' : ''}
                           </p>
-                        ) : (
-                          <>
-                            <p className="text-xs font-semibold text-[#d4d4d8]/60 mb-2">Qual a marca?</p>
-                            <div className="grid grid-cols-3 gap-2">
-                              {brandsForType.map((b) => (
-                                <button
-                                  key={b.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedBrandId(b.id)
-                                    setSelectedModelName(null)
-                                    setSelectedServiceIds([])
-                                    setPhoneModel(undefined)
-                                  }}
-                                  className="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-[#161618] border border-white/5 text-[#d4d4d8] hover:border-[#e0211a]/40 hover:text-white transition-all"
-                                >
-                                  <Smartphone className="w-5 h-5" />
-                                  <span className="text-[11px] font-semibold">{b.name}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </>
                         )}
                       </div>
-                    )}
+                    </div>
 
-                    {selectedBrandId && !selectedModelName && (
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedBrandId(null)
-                            setSelectedModelName(null)
-                            setSelectedServiceIds([])
-                            setPhoneModel(undefined)
-                          }}
-                          className="flex items-center gap-1 text-xs text-[#d4d4d8]/50 hover:text-white mb-2"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" /> Trocar marca
-                        </button>
-                        {modelList.length === 0 ? (
-                          <p className="text-center text-[#d4d4d8]/40 text-sm py-4">Nenhum modelo cadastrado pra essa marca ainda.</p>
-                        ) : (
-                          <>
-                            <p className="text-xs font-semibold text-[#d4d4d8]/60 mb-2">Qual o modelo?</p>
-                            <div className="flex flex-wrap gap-2">
-                              {modelList.map((m) => (
-                                <button
-                                  key={m}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedModelName(m)
-                                    setPhoneModel(m)
-                                  }}
-                                  className="px-3.5 py-2 rounded-xl text-sm font-semibold bg-[#161618] border border-white/5 text-[#d4d4d8] hover:border-[#e0211a]/40 hover:text-white transition-all"
-                                >
-                                  {m}
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-
-                    {selectedBrandId && selectedModelName && (
+                    {!diagnosisOnly && (
                       <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedModelName(null)
-                            setSelectedServiceIds([])
-                            setPhoneModel(undefined)
-                          }}
-                          className="flex items-center gap-1 text-xs text-[#d4d4d8]/50 hover:text-white"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" /> Trocar modelo
-                        </button>
-
-                        <div className="flex items-center gap-2">
-                          <div className="w-10 h-10 rounded-xl bg-[#161618] border border-white/10 shrink-0 flex items-center justify-center">
-                            <Smartphone className="w-5 h-5 text-[#d4d4d8]/30" />
-                          </div>
-                          <div>
-                            <h4 className="text-white font-bold text-sm">{selectedModelName}</h4>
-                            <p className="text-[#d4d4d8]/40 text-xs">
-                              {servicesForModel.length} serviço{servicesForModel.length !== 1 ? 's' : ''} sugerido
-                              {servicesForModel.length !== 1 ? 's' : ''}
-                            </p>
-                          </div>
-                        </div>
-
                         {servicesForModel.length === 0 ? (
                           <p className="text-center text-[#d4d4d8]/40 text-sm py-4">Nenhum serviço cadastrado pra esse modelo ainda.</p>
                         ) : (
@@ -649,12 +645,12 @@ export default function EletronicaServiceRequestForm({
                             </p>
                           </div>
                         )}
-
-                        {fieldErrors.phone_model && <p className={ERR}>{fieldErrors.phone_model}</p>}
                       </>
                     )}
+
+                    {fieldErrors.phone_model && <p className={ERR}>{fieldErrors.phone_model}</p>}
                   </>
-                ) : null}
+                )}
               </>
             )}
 
