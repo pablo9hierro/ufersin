@@ -261,6 +261,28 @@ pub async fn connect(state: &AppState, instance: &str) -> Result<serde_json::Val
         }
     }
 
+    // Se a instância já está genuinamente conectada, NUNCA força logout — só
+    // devolve o estado atual sem QR. Sem essa guarda, qualquer chamada extra
+    // a /connect (aba antiga esquecida aberta com o timer de refresh de QR
+    // ainda rodando, duplo clique, retry, etc.) derruba uma sessão que
+    // acabou de ser pareada com sucesso, mesmo que o usuário já tenha visto
+    // "Conectado" na tela — bug real observado em produção no tenant
+    // resusu (conectou, poucos minutos depois caiu sozinho). O force-logout
+    // abaixo só é necessário pro caso descrito no comentário original
+    // (socket morto mas Evolution ainda marca "open"), não pro caso comum.
+    if let Ok(status) = connection_status(state, instance).await {
+        let is_open = status
+            .get("instance")
+            .and_then(|i| i.get("state"))
+            .or_else(|| status.get("state"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.eq_ignore_ascii_case("open"))
+            .unwrap_or(false);
+        if is_open {
+            return Ok(status);
+        }
+    }
+
     // Força a sessão atual (se houver) a encerrar antes de pedir um QR novo —
     // testado ao vivo: pedir QR com a instância ainda marcada "open" (mesmo
     // que o socket já esteja morto, ex: WhatsApp deslogou o aparelho) faz o
