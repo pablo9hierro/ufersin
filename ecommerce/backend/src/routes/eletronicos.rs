@@ -2513,7 +2513,7 @@ pub async fn list_stock_activity_log(
 ) -> Result<Json<Vec<StockActivityLogDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<StockActivityLogDto> = sqlx::query_as(
-        "SELECT id::text, entity_type, entity_id, entity_name, event_type, created_at::text \
+        "SELECT id::text, entity_type, entity_id::text, entity_name, event_type, created_at::text \
          FROM eletronicos.stock_activity_log WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100",
     )
     .bind(&claims.tenant_id)
