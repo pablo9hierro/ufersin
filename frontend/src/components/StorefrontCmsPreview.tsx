@@ -404,14 +404,14 @@ export default function StorefrontCmsPreview({
                     autoFocus
                     className="input-field w-full text-sm resize-y border-uf-blue"
                     rows={3}
-                    value={getFieldValue(values, selectedField)}
+                    value={getFieldValue(values, selectedField) || fieldDefault}
                     onChange={(e) => onChange(patchForField(values, selectedField, e.target.value))}
                   />
                 ) : (
                   <input
                     autoFocus
                     className="input-field w-full text-sm border-uf-blue"
-                    value={getFieldValue(values, selectedField)}
+                    value={getFieldValue(values, selectedField) || fieldDefault}
                     onChange={(e) => onChange(patchForField(values, selectedField, e.target.value))}
                   />
                 )}
