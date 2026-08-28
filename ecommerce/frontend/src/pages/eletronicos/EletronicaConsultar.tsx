@@ -21,8 +21,17 @@ import {
   XCircle,
 } from 'lucide-react'
 import { resolveTenantSlug, withTenantSearch } from '../../lib/tenantConfig'
-import { consultarOtpCheck, consultarOtpVerify, consultarCancel, type ConsultarResponse, type ServiceRequestDto } from '../../lib/eletronicosApi'
+import {
+  consultarOtpCheck,
+  consultarOtpVerify,
+  consultarCancel,
+  fetchDriverLocation,
+  isDriverLocationFresh,
+  type ConsultarResponse,
+  type ServiceRequestDto,
+} from '../../lib/eletronicosApi'
 import EletronicaLogo from './EletronicaLogo'
+import LiveTrackingMap from '../../components/eletronicos/LiveTrackingMap'
 
 // Port 1:1 de src/app/consultar/ConsultarView.tsx do vrtech -- mesmo tema
 // (gradiente vr-graphite->vr-black, card branco, timeline com etapas
@@ -107,6 +116,26 @@ function RequestStatusTimeline({
   const current = STATUS_MAP[request.status] ?? STATUS_MAP.pending
   const isInterrupted = request.status === 'rejected' || request.status === 'cancelled'
   const currentIdx = stageIndexForStatus(request.status)
+
+  // Mapa de trajetória (loja/técnico -> você) -- só busca posição ao vivo
+  // enquanto de fato está em deslocamento, pra não gastar polling à toa.
+  const showLiveMap =
+    (request.status === 'em_busca' || request.status === 'em_entrega') &&
+    !request.self_pickup && request.address_lat != null && request.address_lng != null
+  const [driverLoc, setDriverLoc] = useState<{ lat: number; lng: number } | null>(null)
+  useEffect(() => {
+    if (!showLiveMap) return
+    const slug = resolveTenantSlug()
+    if (!slug) return
+    const poll = () => {
+      fetchDriverLocation(slug)
+        .then((loc) => setDriverLoc(loc && isDriverLocationFresh(loc.updated_at) ? loc : null))
+        .catch(() => {})
+    }
+    poll()
+    const id = setInterval(poll, 15_000)
+    return () => clearInterval(id)
+  }, [showLiveMap])
   const visibleStages = isInterrupted ? [] : STAGES.slice(0, currentIdx + 1)
 
   return (
@@ -165,6 +194,11 @@ function RequestStatusTimeline({
               })
             )}
           </ol>
+          {showLiveMap && (
+            <div className="mt-3">
+              <LiveTrackingMap destLat={request.address_lat!} destLng={request.address_lng!} driver={driverLoc} heightClassName="h-56" />
+            </div>
+          )}
         </div>
       )}
     </div>

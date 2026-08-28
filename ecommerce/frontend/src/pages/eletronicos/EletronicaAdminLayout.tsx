@@ -6,6 +6,7 @@ import { withTenantSearch } from '../../lib/tenantConfig'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import EletronicaLogo from './EletronicaLogo'
+import { useDriverLocationPush } from '../../hooks/useDriverLocationPush'
 
 // Port 1:1 de src/components/dashboard/DashboardSidebar.tsx do vrtech --
 // mesmos 9 itens, mesmos ícones, mesma ordem. AdminLink (Next Link) vira
@@ -28,6 +29,10 @@ export default function EletronicaAdminLayout() {
   const { token, tenantSlug, logout } = useAdminAuth()
   const tenantConfig = useTenantConfig()
   const navigate = useNavigate()
+
+  // Alimenta o mapa de trajetória (loja/técnico -> cliente) -- enquanto
+  // logado, empurra a posição real do navegador pro backend a cada 15s.
+  useDriverLocationPush(Boolean(token))
 
   // Sessão de admin fica num único registro global no localStorage (não
   // por tenant) -- se o usuário logou antes noutra loja nesta mesma aba e

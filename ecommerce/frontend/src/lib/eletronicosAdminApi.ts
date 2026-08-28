@@ -555,6 +555,11 @@ export const eletronicosAdmin = {
       cobrar_entrega: boolean
     }) => req(`${BASE}/shipping-settings`, { method: 'PUT', body: JSON.stringify(input) }),
   },
+  driverLocation: {
+    get: () => req<{ lat: number; lng: number; updated_at: string } | null>(`${BASE}/driver-location`),
+    update: (lat: number, lng: number) =>
+      req<void>(`${BASE}/driver-location`, { method: 'PUT', body: JSON.stringify({ lat, lng }) }),
+  },
   templates: {
     list: () => req<EletronicaTemplate[]>(`${BASE}/templates`),
     updateContent: (key: string, content: string) =>

@@ -171,6 +171,19 @@ export async function fetchCatalog(slug: string): Promise<CatalogResponse> {
   return parseOrThrow(res)
 }
 
+export type DriverLocation = { lat: number; lng: number; updated_at: string }
+
+export async function fetchDriverLocation(slug: string): Promise<DriverLocation | null> {
+  const res = await fetch(`${API_BASE}/api/public/eletronicos/${encodeURIComponent(slug)}/driver-location`)
+  return parseOrThrow(res)
+}
+
+/** Posição considerada "viva" só se atualizada nos últimos N minutos --
+ * evita mostrar um pino parado de horas atrás como se fosse ao vivo. */
+export function isDriverLocationFresh(updatedAt: string, maxAgeMinutes = 10): boolean {
+  return Date.now() - new Date(updatedAt).getTime() < maxAgeMinutes * 60_000
+}
+
 export async function consultarOtpCheck(slug: string, phone: string, send: boolean): Promise<{ found: boolean; sent: boolean }> {
   const res = await fetch(`${API_BASE}/api/public/eletronicos/${encodeURIComponent(slug)}/consultar-otp`, {
     method: 'POST',

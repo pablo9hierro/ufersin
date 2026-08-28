@@ -1219,6 +1219,86 @@ pub async fn update_shipping_settings(
     Ok(Json(row))
 }
 
+// ============================================================================
+// Localização ao vivo do lojista/técnico -- mapa de trajetória (loja/técnico
+// -> endereço do cliente) no dashboard admin E em /consultar do cliente
+// quando a solicitação está em deslocamento. Port do conceito de
+// driver_location do vrtech (uma linha 'default' por tenant -- loja de
+// técnico só, sem frota de motoboys) + push periódico via
+// navigator.geolocation.watchPosition no browser do lojista logado.
+// ============================================================================
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct DriverLocationDto {
+    pub lat: f64,
+    pub lng: f64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateDriverLocationInput {
+    pub lat: f64,
+    pub lng: f64,
+}
+
+pub async fn update_driver_location(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<UpdateDriverLocationInput>,
+) -> Result<StatusCode, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    // `id` é a PK sozinha nessa tabela (mirror de um schema single-tenant
+    // original, nunca migrado pra composite key) -- usar tenant_id como id
+    // em vez do literal 'default' evita colisão entre tenants (loja de
+    // técnico só, uma linha por tenant já basta).
+    sqlx::query(
+        "INSERT INTO eletronicos.driver_location (id, tenant_id, lat, lng, updated_at) \
+         VALUES ($1, $1, $2, $3, now()) \
+         ON CONFLICT (id) DO UPDATE SET lat = $2, lng = $3, updated_at = now()",
+    )
+    .bind(&claims.tenant_id)
+    .bind(input.lat)
+    .bind(input.lng)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_driver_location_admin(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Option<DriverLocationDto>>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let row: Option<DriverLocationDto> = sqlx::query_as(
+        "SELECT lat, lng, updated_at::text FROM eletronicos.driver_location WHERE tenant_id = $1 AND id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
+/// Público -- usado em /consultar (cliente acompanhando a própria
+/// solicitação) e reaproveitado pelo próprio mapa do admin (mesma
+/// resposta, não expõe nada sensível: só lat/lng/hora).
+pub async fn get_driver_location_public(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Option<DriverLocationDto>>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+    let row: Option<DriverLocationDto> = sqlx::query_as(
+        "SELECT lat, lng, updated_at::text FROM eletronicos.driver_location WHERE tenant_id = $1 AND id = $1",
+    )
+    .bind(&store.id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(row))
+}
+
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct AgendaSettingsDto {
     pub appointment_ai_enabled: bool,

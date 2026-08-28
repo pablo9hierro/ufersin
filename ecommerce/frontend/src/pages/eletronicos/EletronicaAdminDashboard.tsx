@@ -5,6 +5,7 @@ import type { ServiceRequestDto } from '../../lib/eletronicosApi'
 import EletronicaRequestDetailModal from './EletronicaRequestDetailModal'
 import EletronicaVendasTab from './EletronicaVendasTab'
 import EletronicaNovoServicoDialog from './EletronicaNovoServicoDialog'
+import LiveTrackingMap from '../../components/eletronicos/LiveTrackingMap'
 
 // Port 1:1 de src/app/dashboard/DashboardClient.tsx do vrtech: mesmo
 // STATUS_CONFIG (14 status, mesma cor/label), mesmos 7 baldes de
@@ -87,6 +88,7 @@ export default function EletronicaAdminDashboard() {
   const [selected, setSelected] = useState<ServiceRequestDto | null>(null)
   const [tab, setTab] = useState<'solicitacoes' | 'pedidos'>('solicitacoes')
   const [novoServicoOpen, setNovoServicoOpen] = useState(false)
+  const [driverLoc, setDriverLoc] = useState<{ lat: number; lng: number } | null>(null)
 
   async function load() {
     try {
@@ -98,6 +100,21 @@ export default function EletronicaAdminDashboard() {
 
   useEffect(() => {
     load()
+  }, [])
+
+  // Mapa de trajetória do card "em deslocamento" -- posição do
+  // lojista/técnico atualizada a cada 15s (mesmo intervalo do push em
+  // useDriverLocationPush), só considerada "viva" se recente.
+  useEffect(() => {
+    const poll = () => {
+      eletronicosAdmin.driverLocation
+        .get()
+        .then((loc) => setDriverLoc(loc && Date.now() - new Date(loc.updated_at).getTime() < 10 * 60_000 ? loc : null))
+        .catch(() => {})
+    }
+    poll()
+    const id = setInterval(poll, 15_000)
+    return () => clearInterval(id)
   }, [])
 
   const filtered = (requests ?? []).filter((r) => STATUS_GROUP[r.status as ServiceStatus] === groupFilter)
@@ -200,14 +217,16 @@ export default function EletronicaAdminDashboard() {
         ) : (
           filtered.map((req) => {
             const sc = STATUS_CONFIG[req.status as ServiceStatus]
+            // Mapa ao vivo só faz sentido em deslocamento de verdade
+            // (técnico indo buscar/entregar) e só com endereço real --
+            // retirada_local/aguardando aparelho é o cliente que se
+            // desloca, não a loja.
+            const showLiveMap =
+              (req.status === 'em_busca' || req.status === 'em_entrega') &&
+              !req.self_pickup && req.address_lat != null && req.address_lng != null
             return (
-              <button
-                key={req.id}
-                type="button"
-                onClick={() => setSelected(req)}
-                className="w-full bg-[#161618] rounded-2xl border border-white/5 overflow-hidden hover:border-[#e0211a]/30 transition-all group text-left"
-              >
-                <div className="p-4">
+              <div key={req.id} className="w-full bg-[#161618] rounded-2xl border border-white/5 overflow-hidden hover:border-[#e0211a]/30 transition-all group">
+                <button type="button" onClick={() => setSelected(req)} className="w-full p-4 text-left">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -244,8 +263,13 @@ export default function EletronicaAdminDashboard() {
                       <ChevronRight className="w-4 h-4 text-[#d4d4d8]/30 group-hover:text-[#e0211a] transition-colors" />
                     </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                {showLiveMap && (
+                  <div className="px-4 pb-4">
+                    <LiveTrackingMap destLat={req.address_lat!} destLng={req.address_lng!} driver={driverLoc} />
+                  </div>
+                )}
+              </div>
             )
           })
         )}

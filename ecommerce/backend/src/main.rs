@@ -348,6 +348,10 @@ async fn main() -> anyhow::Result<()> {
             get(routes::eletronicos::get_public_catalog),
         )
         .route(
+            "/api/public/eletronicos/{slug}/driver-location",
+            get(routes::eletronicos::get_driver_location_public),
+        )
+        .route(
             "/api/admin/eletronicos/upload",
             post(routes::eletronicos::upload_admin_media),
         )
@@ -366,6 +370,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/admin/eletronicos/mercadopago-status",
             get(routes::eletronicos::get_mercadopago_status),
+        )
+        .route(
+            "/api/admin/eletronicos/driver-location",
+            get(routes::eletronicos::get_driver_location_admin).put(routes::eletronicos::update_driver_location),
         )
         .route(
             "/api/admin/eletronicos/service-requests/{id}/credential",
