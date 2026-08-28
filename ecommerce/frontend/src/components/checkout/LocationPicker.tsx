@@ -90,7 +90,7 @@ function MapaCentro({
       className="absolute"
       style={{ inset: '-80%', transform: `rotate(${rotation}deg)`, transition: 'transform .15s linear', willChange: 'transform' }}
     >
-      <div ref={divRef} className="absolute inset-0" />
+      <div ref={divRef} className="absolute inset-0 dark-tile-map" />
     </div>
   )
 }

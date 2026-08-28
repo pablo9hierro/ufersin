@@ -28,7 +28,7 @@
    parecia "piscar entre claro e escuro" durante o gesto, não é o tile
    trocando de cor. Fundo escuro aqui garante que qualquer brecha de
    carregamento mostra escuro, nunca claro. */
-.leaflet-container {
+.dark-tile-map.leaflet-container {
   background: #060a08;
 }
 
@@ -57,7 +57,14 @@
    filter já "assado" em cada tile ANTES do pane escalar, o gesto só
    estica um bitmap já filtrado — escala pura, sem recalcular filter em
    cada frame. */
-.leaflet-tile-pane .leaflet-tile {
+/* Escopado só pro mapa escuro do checkout (dark-tile-map, ver
+   LocationPicker.tsx) -- sem essa classe, esse brightness(3.5) tomava
+   conta de QUALQUER mapa Leaflet da página (mesmos nomes de classe
+   .leaflet-tile-pane/.leaflet-tile em qualquer instância) e estourava tile
+   já claro (Esri/CARTO Voyager do LiveTrackingMap.tsx) pra branco puro --
+   achado assim: imagem carregava certinho (200, pixel real), mas o filter
+   global relia ela pra fora da faixa visível antes de pintar na tela. */
+.dark-tile-map .leaflet-tile-pane .leaflet-tile {
   filter: brightness(3.5) contrast(1.6) saturate(1.4);
   will-change: filter;
 }
