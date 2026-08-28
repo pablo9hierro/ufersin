@@ -19,6 +19,40 @@ export type StockItemDto = {
   warranty_days: number | null
   units_per_box: number | null
   low_stock_threshold: number | null
+  origin_type: 'manual' | 'erp_formulation'
+}
+
+// Unidades de medida do módulo eletrônica -- agrupadas por família (só
+// converte dentro da mesma família: massa/volume/comprimento; discretas
+// não convertem entre si). Mesma lista usada pelo backend
+// (routes/eletronicos.rs::unit_family) -- manter em sincronia.
+export const STOCK_UNIT_FAMILIES: { family: string; label: string; units: { value: string; label: string }[] }[] = [
+  { family: 'discreta', label: 'Discreta', units: [
+    { value: 'unidade', label: 'Unidade' },
+    { value: 'caixa', label: 'Caixa' },
+    { value: 'par', label: 'Par' },
+    { value: 'pacote', label: 'Pacote' },
+    { value: 'rolo', label: 'Rolo' },
+  ] },
+  { family: 'massa', label: 'Massa', units: [
+    { value: 'g', label: 'Grama (g)' },
+    { value: 'kg', label: 'Quilo (kg)' },
+  ] },
+  { family: 'volume', label: 'Volume', units: [
+    { value: 'ml', label: 'Mililitro (ml)' },
+    { value: 'l', label: 'Litro (l)' },
+  ] },
+  { family: 'comprimento', label: 'Comprimento', units: [
+    { value: 'cm', label: 'Centímetro (cm)' },
+    { value: 'm', label: 'Metro (m)' },
+  ] },
+]
+export const ALL_STOCK_UNITS = STOCK_UNIT_FAMILIES.flatMap((f) => f.units)
+export function unitFamilyOf(unit: string): string | null {
+  return STOCK_UNIT_FAMILIES.find((f) => f.units.some((u) => u.value === unit))?.family ?? null
+}
+export function unitsInSameFamily(unit: string): { value: string; label: string }[] {
+  return STOCK_UNIT_FAMILIES.find((f) => f.units.some((u) => u.value === unit))?.units ?? ALL_STOCK_UNITS
 }
 
 export type PdvSaleDetail = {
@@ -337,7 +371,7 @@ export const eletronicosAdmin = {
         device_ids: string[]
         brand_ids: string[]
         model_ids: string[]
-        parts: { stock_item_id: string; quantity: number }[]
+        parts: { stock_item_id: string; quantity: number; unit: string }[]
         extra_costs: { name: string; value: number }[]
       },
     ) => req<void>(`${BASE}/catalog-items/${id}/links`, { method: 'PUT', body: JSON.stringify(input) }),
@@ -345,9 +379,20 @@ export const eletronicosAdmin = {
     brands: () => req<{ service_catalog_item_id: string; brand_id: string }[]>(`${BASE}/catalog-items-brands`),
     models: () => req<{ service_catalog_item_id: string; model_id: string }[]>(`${BASE}/catalog-items-models`),
     parts: () =>
-      req<{ id: string; service_catalog_item_id: string; stock_item_id: string; quantity: number; name: string; unit: string; price: number }[]>(
-        `${BASE}/catalog-items-parts`,
-      ),
+      req<
+        {
+          id: string
+          service_catalog_item_id: string
+          stock_item_id: string
+          quantity: number
+          unit: string
+          name: string
+          stock_unit: string
+          stock_quantity: number
+          price: number
+          origin_type: 'manual' | 'erp_formulation'
+        }[]
+      >(`${BASE}/catalog-items-parts`),
     extraCosts: () =>
       req<{ id: string; service_catalog_item_id: string; name: string; value: number }[]>(`${BASE}/catalog-items-extra-costs`),
   },
@@ -397,6 +442,7 @@ export const eletronicosAdmin = {
       warranty_days?: number
       units_per_box?: number
       low_stock_threshold?: number
+      origin_type?: 'manual' | 'erp_formulation'
     }) => req<StockItemDto>(`${BASE}/stock-items`, { method: 'POST', body: JSON.stringify(input) }),
     update: (
       id: string,

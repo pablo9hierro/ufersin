@@ -630,7 +630,19 @@ pub struct ChecklistItem {
     pub note: Option<String>,
     pub warranty_days: Option<i32>,
     pub stock_item_id: Option<String>,
+    /// Quantidade consumida da peça vinculada, na unidade abaixo -- default
+    /// 1/'unidade' preserva o comportamento antigo (checklist criado antes
+    /// desses campos existirem, ou item ligado a peça 'unidade'/'caixa'
+    /// simples, sem completar nada).
+    #[serde(default = "default_checklist_quantity")]
+    pub quantity: f64,
+    #[serde(default = "default_unit")]
+    pub unit: String,
     pub added_at: Option<String>,
+}
+
+fn default_checklist_quantity() -> f64 {
+    1.0
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -922,23 +934,42 @@ pub async fn complete_service_order(
             new_total += item.value.unwrap_or(0.0);
             // Decrementa estoque de verdade -- so pra itens realmente novos
             // desde a ultima conclusao (nunca duplica saida numa reabertura).
+            // Achado no audit: antes fixo em "1 unidade" mesmo pra peça ERP
+            // formulação (ex: pasta térmica em g) -- agora respeita a
+            // quantidade/unidade completadas no checklist, convertidas pra
+            // unidade real da peça (convert_stock_unit rejeita família
+            // incompatível, nunca deduz errado silenciosamente).
             if let Some(stock_item_id) = &item.stock_item_id {
+                let stock_unit: Option<String> = sqlx::query_scalar(
+                    "SELECT unit FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid",
+                )
+                .bind(&claims.tenant_id)
+                .bind(stock_item_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+                let Some(stock_unit) = stock_unit else {
+                    return Err(AppError::BadRequest("peça de estoque não encontrada".to_string()));
+                };
+                let delta = convert_stock_unit(item.quantity.max(0.0), &item.unit, &stock_unit)?;
                 sqlx::query(
                     "INSERT INTO eletronicos.stock_movements \
                      (id, tenant_id, item_id, type, quantity, unit) \
-                     VALUES ($1::uuid, $2, $3::uuid, 'saida', 1, 'unidade')",
+                     VALUES ($1::uuid, $2, $3::uuid, 'saida', $4, $5)",
                 )
                 .bind(Uuid::new_v4().to_string())
                 .bind(&claims.tenant_id)
                 .bind(stock_item_id)
+                .bind(delta)
+                .bind(&stock_unit)
                 .execute(&mut *tx)
                 .await?;
                 sqlx::query(
-                    "UPDATE eletronicos.stock_items SET quantity = quantity - 1, updated_at = now() \
+                    "UPDATE eletronicos.stock_items SET quantity = quantity - $3, updated_at = now() \
                      WHERE tenant_id = $1 AND id = $2::uuid",
                 )
                 .bind(&claims.tenant_id)
                 .bind(stock_item_id)
+                .bind(delta)
                 .execute(&mut *tx)
                 .await?;
             }
@@ -2185,10 +2216,51 @@ pub struct StockItemDto {
     pub warranty_days: Option<i32>,
     pub units_per_box: Option<f64>,
     pub low_stock_threshold: Option<f64>,
+    /// 'manual' (padrão) = `price` é o custo de 1 unidade, edição direta.
+    /// 'erp_formulation' = insumo cadastrado em lote (ex: 100g por R$100,
+    /// custo por unidade de medida = price/quantity) -- usado quando um
+    /// serviço declara consumo parcial dele (`service_catalog_item_parts.
+    /// unit`), custo do serviço vem da conversão, nunca editável direto.
+    pub origin_type: String,
 }
 
-const STOCK_COLUMNS: &str =
-    "id::text, name, unit, quantity::float8, price::float8, warranty_days, units_per_box::float8, low_stock_threshold::float8";
+const STOCK_COLUMNS: &str = "id::text, name, unit, quantity::float8, price::float8, warranty_days, \
+     units_per_box::float8, low_stock_threshold::float8, origin_type";
+
+/// Família de unidade de medida -- só converte dentro da mesma família
+/// (massa: g/kg; volume: ml/l; comprimento: cm/m). Discretas (unidade,
+/// caixa, par, pacote, rolo) cada uma é a própria família, sem conversão
+/// possível entre si -- errado por design (proibido cadastrar em metros e
+/// completar em gramas, por exemplo).
+fn unit_family(unit: &str) -> Result<(&'static str, f64), AppError> {
+    match unit {
+        "g" => Ok(("massa", 1.0)),
+        "kg" => Ok(("massa", 1000.0)),
+        "ml" => Ok(("volume", 1.0)),
+        "l" => Ok(("volume", 1000.0)),
+        "cm" => Ok(("comprimento", 1.0)),
+        "m" => Ok(("comprimento", 100.0)),
+        "unidade" => Ok(("unidade", 1.0)),
+        "caixa" => Ok(("caixa", 1.0)),
+        "par" => Ok(("par", 1.0)),
+        "pacote" => Ok(("pacote", 1.0)),
+        "rolo" => Ok(("rolo", 1.0)),
+        other => Err(AppError::BadRequest(format!("unidade de medida inválida: {other}"))),
+    }
+}
+
+/// Converte `qty` de `from` pra `to` -- erro claro se as unidades não são
+/// da mesma família (nunca trunca/adivinha silenciosamente).
+fn convert_stock_unit(qty: f64, from: &str, to: &str) -> Result<f64, AppError> {
+    let (from_family, from_factor) = unit_family(from)?;
+    let (to_family, to_factor) = unit_family(to)?;
+    if from_family != to_family {
+        return Err(AppError::BadRequest(format!(
+            "unidade incompatível: \"{from}\" não é conversível pra \"{to}\""
+        )));
+    }
+    Ok(qty * from_factor / to_factor)
+}
 
 /// Grava um evento no feed de atividade de estoque (visto em Relatórios) --
 /// best-effort, nunca deixa a ação principal falhar por causa do log.
@@ -2267,6 +2339,8 @@ pub struct CreateStockItemInput {
     pub warranty_days: Option<i32>,
     pub units_per_box: Option<f64>,
     pub low_stock_threshold: Option<f64>,
+    #[serde(default)]
+    pub origin_type: Option<String>,
 }
 
 pub async fn create_stock_item(
@@ -2277,12 +2351,16 @@ pub async fn create_stock_item(
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("nome é obrigatório".to_string()));
     }
+    let origin_type = input.origin_type.as_deref().unwrap_or("manual");
+    if origin_type != "manual" && origin_type != "erp_formulation" {
+        return Err(AppError::BadRequest("origin_type inválido".to_string()));
+    }
     let id = Uuid::new_v4().to_string();
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     sqlx::query(
         "INSERT INTO eletronicos.stock_items \
-         (id, tenant_id, name, unit, quantity, price, warranty_days, units_per_box, low_stock_threshold) \
-         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9)",
+         (id, tenant_id, name, unit, quantity, price, warranty_days, units_per_box, low_stock_threshold, origin_type) \
+         VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -2293,6 +2371,7 @@ pub async fn create_stock_item(
     .bind(input.warranty_days)
     .bind(input.units_per_box)
     .bind(input.low_stock_threshold)
+    .bind(origin_type)
     .execute(&mut *tx)
     .await?;
     let row: StockItemDto = sqlx::query_as(&format!(
@@ -4554,16 +4633,25 @@ pub struct ItemPartDto {
     pub service_catalog_item_id: String,
     pub stock_item_id: String,
     pub quantity: f64,
-    pub name: String,
+    /// Unidade em que `quantity` foi completado no serviço (pode diferir da
+    /// unidade da peça, desde que da mesma família -- ex: peça em kg,
+    /// completo em g).
     pub unit: String,
+    pub name: String,
+    /// Unidade em que a peça está cadastrada no estoque.
+    pub stock_unit: String,
+    /// Quantidade em estoque da peça (no `stock_unit` acima) -- pra ERP
+    /// formulação, custo por unidade de medida = price / stock_quantity.
+    pub stock_quantity: f64,
     pub price: f64,
+    pub origin_type: String,
 }
 
 pub async fn list_item_parts(State(state): State<AppState>, AdminUser(claims): AdminUser) -> Result<Json<Vec<ItemPartDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<ItemPartDto> = sqlx::query_as(
-        "SELECT p.id::text, p.service_catalog_item_id::text, p.stock_item_id::text, p.quantity::float8, \
-         s.name, s.unit, s.price::float8 \
+        "SELECT p.id::text, p.service_catalog_item_id::text, p.stock_item_id::text, p.quantity::float8, p.unit, \
+         s.name, s.unit AS stock_unit, s.quantity::float8 AS stock_quantity, s.price::float8, s.origin_type \
          FROM eletronicos.service_catalog_item_parts p \
          JOIN eletronicos.stock_items s ON s.id = p.stock_item_id AND s.tenant_id = p.tenant_id \
          WHERE p.tenant_id = $1",
@@ -4600,6 +4688,12 @@ pub async fn list_item_extra_costs(State(state): State<AppState>, AdminUser(clai
 pub struct PartInput {
     pub stock_item_id: String,
     pub quantity: f64,
+    #[serde(default = "default_unit")]
+    pub unit: String,
+}
+
+fn default_unit() -> String {
+    "unidade".to_string()
 }
 #[derive(Debug, Deserialize)]
 pub struct ExtraCostInput {
@@ -4713,21 +4807,37 @@ pub async fn save_service_item_links(
         .await?;
     let mut parts_cost = 0.0f64;
     for part in &input.parts {
-        let price: Option<f64> = sqlx::query_scalar("SELECT price::float8 FROM eletronicos.stock_items WHERE tenant_id = $1 AND id = $2::uuid")
-            .bind(&claims.tenant_id)
-            .bind(&part.stock_item_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-        parts_cost += price.unwrap_or(0.0) * part.quantity;
+        let stock: Option<(f64, String, f64, String)> = sqlx::query_as(
+            "SELECT price::float8, unit, quantity::float8, origin_type FROM eletronicos.stock_items \
+             WHERE tenant_id = $1 AND id = $2::uuid",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&part.stock_item_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((price, stock_unit, stock_quantity, origin_type)) = stock else {
+            return Err(AppError::BadRequest("peça de estoque não encontrada".to_string()));
+        };
+        // Proibido cadastrar/completar em unidade de família diferente da
+        // registrada na peça (ex: peça em metros, serviço completando em
+        // gramas) -- convert_stock_unit já rejeita isso com erro claro.
+        let converted_qty = convert_stock_unit(part.quantity, &part.unit, &stock_unit)?;
+        let cost_per_stock_unit = if origin_type == "erp_formulation" && stock_quantity > 0.0 {
+            price / stock_quantity
+        } else {
+            price
+        };
+        parts_cost += converted_qty * cost_per_stock_unit;
         sqlx::query(
-            "INSERT INTO eletronicos.service_catalog_item_parts (id, tenant_id, service_catalog_item_id, stock_item_id, quantity) \
-             VALUES ($1::uuid, $2, $3::uuid, $4::uuid, $5)",
+            "INSERT INTO eletronicos.service_catalog_item_parts (id, tenant_id, service_catalog_item_id, stock_item_id, quantity, unit) \
+             VALUES ($1::uuid, $2, $3::uuid, $4::uuid, $5, $6)",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&claims.tenant_id)
         .bind(&id)
         .bind(&part.stock_item_id)
         .bind(part.quantity)
+        .bind(&part.unit)
         .execute(&mut *tx)
         .await?;
     }

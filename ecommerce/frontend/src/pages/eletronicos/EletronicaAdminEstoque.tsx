@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowDownCircle, ArrowUpCircle, Check, DollarSign, ImagePlus, Loader2, Package, Pencil, Plus, Search, Smartphone, Trash2, Wrench, X } from 'lucide-react'
-import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
+import { eletronicosAdmin, unitsInSameFamily, unitFamilyOf, STOCK_UNIT_FAMILIES } from '../../lib/eletronicosAdminApi'
 import { BrandIcon } from '../../lib/deviceBrandIcons'
 import type { EletronicaAdminCatalogItem } from '../../lib/eletronicosAdminApi'
+
+// Espelha unit_family()/convert_stock_unit() do backend (routes/eletronicos.rs)
+// -- preview instantâneo no form, mas o backend recalcula de verdade ao
+// salvar (fonte da verdade sempre lá).
+const UNIT_FACTORS: Record<string, number> = { g: 1, kg: 1000, ml: 1, l: 1000, cm: 1, m: 100, unidade: 1, caixa: 1, par: 1, pacote: 1, rolo: 1 }
+function convertUnit(qty: number, from: string, to: string): number | null {
+  if (unitFamilyOf(from) !== unitFamilyOf(to)) return null
+  return (qty * (UNIT_FACTORS[from] ?? 1)) / (UNIT_FACTORS[to] ?? 1)
+}
 import { adminService } from '../../services/adminService'
 import type { Product } from '../../types/product'
 
@@ -64,8 +73,21 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
 
 export type DeviceType = { id: string; name: string; slug: string; icon_key: string; sort_order: number }
 export type CatalogModelRow = { id: string; brand_id: string; name: string; sort_order: number }
-type StockItemRow = { id: string; name: string; unit: string; price: number | null; quantity: number }
-type SelectedPart = { stock_item_id: string; name: string; unit: string; price: number; quantity: number }
+type StockItemRow = { id: string; name: string; unit: string; price: number | null; quantity: number; origin_type: string }
+// unit = unidade de medida ESCOLHIDA no completo do vínculo (pode divergir
+// de stock_unit se for da mesma família, ex: peça em kg, completo em g).
+// stock_unit/stock_quantity/origin_type vêm fixos da peça, pra calcular o
+// custo (batch cost/quantity quando origin_type = erp_formulation).
+type SelectedPart = {
+  stock_item_id: string
+  name: string
+  unit: string
+  stock_unit: string
+  stock_quantity: number
+  price: number
+  quantity: number
+  origin_type: string
+}
 type ExtraCostRow = { name: string; value: number }
 
 // Multi-select com busca + criação inline -- port funcional (não visual
@@ -685,7 +707,9 @@ function ServicosTab({ categories, onCategoriesChanged }: { categories: Category
   const [itemDevices, setItemDevices] = useState<{ service_catalog_item_id: string; device_type_id: string }[]>([])
   const [itemBrands, setItemBrands] = useState<{ service_catalog_item_id: string; brand_id: string }[]>([])
   const [itemModels, setItemModels] = useState<{ service_catalog_item_id: string; model_id: string }[]>([])
-  const [itemParts, setItemParts] = useState<{ service_catalog_item_id: string; stock_item_id: string; quantity: number; name: string; unit: string; price: number }[]>([])
+  const [itemParts, setItemParts] = useState<
+    { service_catalog_item_id: string; stock_item_id: string; quantity: number; unit: string; name: string; stock_unit: string; stock_quantity: number; price: number; origin_type: string }[]
+  >([])
   const [itemExtraCosts, setItemExtraCosts] = useState<{ service_catalog_item_id: string; name: string; value: number }[]>([])
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<EletronicaAdminCatalogItem | 'new' | null>(null)
@@ -745,7 +769,15 @@ function ServicosTab({ categories, onCategoriesChanged }: { categories: Category
     return stockItems.filter((s) => s.name.toLowerCase().includes(q) && !selectedParts.some((p) => p.stock_item_id === s.id)).slice(0, 6)
   }, [partsQuery, stockItems, selectedParts])
 
-  const costPrice = selectedParts.reduce((sum, p) => sum + p.price * p.quantity, 0) + extraCosts.reduce((sum, c) => sum + c.value, 0)
+  // Mesma conversão/regra de custo do backend (formulation por lote quando
+  // origin_type = erp_formulation): convert_stock_unit + price/stock_quantity.
+  const partCost = (p: SelectedPart) => {
+    const converted = convertUnit(p.quantity, p.unit, p.stock_unit)
+    if (converted == null) return 0
+    const costPerStockUnit = p.origin_type === 'erp_formulation' && p.stock_quantity > 0 ? p.price / p.stock_quantity : p.price
+    return converted * costPerStockUnit
+  }
+  const costPrice = selectedParts.reduce((sum, p) => sum + partCost(p), 0) + extraCosts.reduce((sum, c) => sum + c.value, 0)
 
   function openNew() {
     setDeviceIds([])
@@ -773,7 +805,16 @@ function ServicosTab({ categories, onCategoriesChanged }: { categories: Category
     setSelectedParts(
       itemParts
         .filter((p) => p.service_catalog_item_id === item.id)
-        .map((p) => ({ stock_item_id: p.stock_item_id, name: p.name, unit: p.unit, price: p.price, quantity: p.quantity })),
+        .map((p) => ({
+          stock_item_id: p.stock_item_id,
+          name: p.name,
+          unit: p.unit,
+          stock_unit: p.stock_unit,
+          stock_quantity: p.stock_quantity,
+          price: p.price,
+          quantity: p.quantity,
+          origin_type: p.origin_type,
+        })),
     )
     setExtraCosts(itemExtraCosts.filter((c) => c.service_catalog_item_id === item.id).map((c) => ({ name: c.name, value: c.value })))
     setEditing(item)
@@ -803,7 +844,7 @@ function ServicosTab({ categories, onCategoriesChanged }: { categories: Category
         device_ids: deviceIds,
         brand_ids: brandIds,
         model_ids: modelIds,
-        parts: selectedParts.map((p) => ({ stock_item_id: p.stock_item_id, quantity: p.quantity })),
+        parts: selectedParts.map((p) => ({ stock_item_id: p.stock_item_id, quantity: p.quantity, unit: p.unit })),
         extra_costs: extraCosts,
       })
       setEditing(null)
@@ -959,7 +1000,19 @@ function ServicosTab({ categories, onCategoriesChanged }: { categories: Category
                       key={s.id}
                       type="button"
                       onClick={() => {
-                        setSelectedParts((prev) => [...prev, { stock_item_id: s.id, name: s.name, unit: s.unit, price: s.price ?? 0, quantity: 1 }])
+                        setSelectedParts((prev) => [
+                          ...prev,
+                          {
+                            stock_item_id: s.id,
+                            name: s.name,
+                            unit: s.unit,
+                            stock_unit: s.unit,
+                            stock_quantity: s.quantity,
+                            price: s.price ?? 0,
+                            quantity: 1,
+                            origin_type: s.origin_type,
+                          },
+                        ])
                         setPartsQuery('')
                       }}
                       className="w-full text-left px-3 py-2 text-sm text-white hover:bg-[#e0211a]/15 transition-colors flex items-center justify-between"
@@ -974,21 +1027,43 @@ function ServicosTab({ categories, onCategoriesChanged }: { categories: Category
             {selectedParts.length > 0 && (
               <div className="space-y-1.5">
                 {selectedParts.map((p) => (
-                  <div key={p.stock_item_id} className="flex items-center gap-2 bg-[#0a0a0b] border border-white/8 rounded-lg px-3 py-1.5">
-                    <span className="text-sm text-white flex-1 truncate">{p.name}</span>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={p.quantity}
-                      onChange={(e) => setSelectedParts((prev) => prev.map((x) => (x.stock_item_id === p.stock_item_id ? { ...x, quantity: Number(e.target.value) || 1 } : x)))}
-                      className="w-16 px-2 py-1 rounded bg-[#161618] border border-white/10 text-white text-xs text-center outline-none focus:border-[#e0211a]/50"
-                    />
-                    <span className="text-xs text-[#d4d4d8]/40 w-8">{p.unit}</span>
-                    <span className="text-xs text-[#d4d4d8]/60 w-20 text-right">{currency(p.price * p.quantity)}</span>
-                    <button onClick={() => setSelectedParts((prev) => prev.filter((x) => x.stock_item_id !== p.stock_item_id))} className="text-[#d4d4d8]/30 hover:text-red-400">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                  <div key={p.stock_item_id} className="bg-[#0a0a0b] border border-white/8 rounded-lg px-3 py-2 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-white flex-1 truncate">{p.name}</span>
+                      {p.origin_type === 'erp_formulation' && (
+                        <span className="text-[9px] uppercase font-bold text-[#e0211a] bg-[#e0211a]/10 px-1.5 py-0.5 rounded">ERP</span>
+                      )}
+                      <button onClick={() => setSelectedParts((prev) => prev.filter((x) => x.stock_item_id !== p.stock_item_id))} className="text-[#d4d4d8]/30 hover:text-red-400">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[#d4d4d8]/40 shrink-0">Consumo por atendimento:</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="0.01"
+                        step="0.01"
+                        value={p.quantity}
+                        onChange={(e) => setSelectedParts((prev) => prev.map((x) => (x.stock_item_id === p.stock_item_id ? { ...x, quantity: Number(e.target.value) || 0 } : x)))}
+                        className="w-16 px-2 py-1 rounded bg-[#161618] border border-white/10 text-white text-xs text-center outline-none focus:border-[#e0211a]/50"
+                      />
+                      <select
+                        value={p.unit}
+                        onChange={(e) => setSelectedParts((prev) => prev.map((x) => (x.stock_item_id === p.stock_item_id ? { ...x, unit: e.target.value } : x)))}
+                        className="px-2 py-1 rounded bg-[#161618] border border-white/10 text-white text-xs outline-none focus:border-[#e0211a]/50"
+                      >
+                        {unitsInSameFamily(p.stock_unit).map((u) => (
+                          <option key={u.value} value={u.value}>{u.label}</option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-[#d4d4d8]/60 ml-auto shrink-0">{currency(partCost(p))}</span>
+                    </div>
+                    {p.origin_type === 'erp_formulation' && (
+                      <p className="text-[10px] text-[#d4d4d8]/40">
+                        Estoque de "{p.name}": {p.stock_quantity} {p.stock_unit} · custo {currency(p.stock_quantity > 0 ? p.price / p.stock_quantity : 0)}/{p.stock_unit}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1429,6 +1504,12 @@ type StockMovement = { id: string; item_id: string; item_name: string | null; ty
 export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged: () => void }) {
   const [movements, setMovements] = useState<StockMovement[]>([])
 
+  // Dois modos de cadastro (mesmo form, campos extras/label mudam):
+  // 'manual' = preço é custo de 1 unidade, edição direta a qualquer hora.
+  // 'erp_formulation' = insumo cadastrado em lote (ex: 100g por R$100) --
+  // custo por unidade de medida é calculado (price/quantity), usado quando
+  // um serviço declara consumo parcial dele.
+  const [newMode, setNewMode] = useState<'manual' | 'erp_formulation'>('manual')
   const [newName, setNewName] = useState('')
   const [newQuantity, setNewQuantity] = useState('')
   const [newUnit, setNewUnit] = useState('unidade')
@@ -1494,7 +1575,11 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
         price: priceNum,
         units_per_box: unitsPerBoxNum,
         warranty_days: newWarrantyDays.trim() ? parseInt(newWarrantyDays, 10) : undefined,
-        low_stock_threshold: newLowStockThreshold.trim() ? Number(newLowStockThreshold) : undefined,
+        // Campo obrigatório na prática: se o lojista deixar em branco, o
+        // alerta é calculado como 35% da quantidade cadastrada, nunca fica
+        // sem threshold nenhum.
+        low_stock_threshold: newLowStockThreshold.trim() ? Number(newLowStockThreshold) : Math.round(qty * 0.35 * 100) / 100,
+        origin_type: newMode,
       })
       setNewName(''); setNewQuantity(''); setNewUnit('unidade'); setNewUnitsPerBox(''); setNewPrice(''); setNewWarrantyDays(''); setNewLowStockThreshold('')
       onChanged()
@@ -1592,21 +1677,51 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
   return (
     <div className="space-y-4">
       <form onSubmit={handleCreate} className="bg-[#161618] rounded-2xl border border-white/5 p-4 space-y-3">
-        <p className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Cadastrar item</p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setNewMode('manual')}
+            className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2 rounded-xl border transition-colors ${
+              newMode === 'manual' ? 'bg-[#e0211a] border-[#e0211a] text-white' : 'bg-[#0a0a0b] border-white/10 text-[#d4d4d8]'
+            }`}
+          >
+            Cadastrar item estoque
+          </button>
+          <button
+            type="button"
+            onClick={() => { setNewMode('erp_formulation'); if (newUnit === 'unidade' || newUnit === 'caixa') setNewUnit('g') }}
+            className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2 rounded-xl border transition-colors ${
+              newMode === 'erp_formulation' ? 'bg-[#e0211a] border-[#e0211a] text-white' : 'bg-[#0a0a0b] border-white/10 text-[#d4d4d8]'
+            }`}
+          >
+            Item ERP formulação
+          </button>
+        </div>
+        {newMode === 'erp_formulation' && (
+          <p className="text-[11px] text-[#d4d4d8]/40 bg-[#0a0a0b] border border-white/5 rounded-lg px-3 py-2">
+            Insumo cadastrado em lote (ex: 100g por R$ 100). O custo por {newUnit} é calculado sozinho — quando um serviço usa
+            uma parte dele, informa quanto consome e o custo daquele atendimento sai automático.
+          </p>
+        )}
         <div>
           <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Nome do item *</label>
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Ex: Tela iPhone 12" className={`${INPUT} mt-1`} />
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={newMode === 'erp_formulation' ? 'Ex: Pasta térmica' : 'Ex: Tela iPhone 12'} className={`${INPUT} mt-1`} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Quantidade *</label>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">{newMode === 'erp_formulation' ? 'Quantidade do lote *' : 'Quantidade *'}</label>
             <input type="number" step="0.01" min="0" value={newQuantity} onChange={(e) => setNewQuantity(e.target.value)} placeholder="0" className={`${INPUT} mt-1`} />
           </div>
           <div>
             <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Unidade *</label>
             <select value={newUnit} onChange={(e) => setNewUnit(e.target.value)} className={`${INPUT} mt-1`}>
-              <option value="unidade">Unidade</option>
-              <option value="caixa">Caixa</option>
+              {STOCK_UNIT_FAMILIES.map((fam) => (
+                <optgroup key={fam.family} label={fam.label}>
+                  {fam.units.map((u) => (
+                    <option key={u.value} value={u.value}>{u.label}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
         </div>
@@ -1618,8 +1733,15 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
         )}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Custo do item (R$) *</label>
+            <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">
+              {newMode === 'erp_formulation' ? 'Custo do lote (R$) *' : 'Custo do item (R$) *'}
+            </label>
             <input type="number" step="0.01" min="0" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} placeholder="0,00" className={`${INPUT} mt-1`} />
+            {newMode === 'erp_formulation' && newPrice && newQuantity && parseFloat(newQuantity) > 0 && (
+              <p className="text-[10px] text-[#d4d4d8]/40 mt-1">
+                = {currency((parseFloat(newPrice) || 0) / parseFloat(newQuantity))}/{newUnit}
+              </p>
+            )}
           </div>
           <div>
             <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Garantia (dias)</label>
@@ -1628,7 +1750,7 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
         </div>
         <div>
           <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Alertar baixo estoque quando chegar em:</label>
-          <input type="number" step="0.01" min="0" value={newLowStockThreshold} onChange={(e) => setNewLowStockThreshold(e.target.value)} placeholder="Opcional — ex: 5" className={`${INPUT} mt-1`} />
+          <input type="number" step="0.01" min="0" value={newLowStockThreshold} onChange={(e) => setNewLowStockThreshold(e.target.value)} placeholder={newQuantity ? `Em branco = ${(Math.round(parseFloat(newQuantity || '0') * 0.35 * 100) / 100) || 0} (35% da qtd.)` : 'Em branco = 35% da quantidade'} className={`${INPUT} mt-1`} />
         </div>
         {createError && <p className="text-xs text-red-400">{createError}</p>}
         <button type="submit" disabled={creating} className="w-full flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
@@ -1733,8 +1855,13 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
             <div>
               <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Unidade *</label>
               <select value={editUnit} onChange={(e) => setEditUnit(e.target.value)} className={`${INPUT} mt-1`}>
-                <option value="unidade">Unidade</option>
-                <option value="caixa">Caixa</option>
+                {STOCK_UNIT_FAMILIES.map((fam) => (
+                  <optgroup key={fam.family} label={fam.label}>
+                    {fam.units.map((u) => (
+                      <option key={u.value} value={u.value}>{u.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </div>
           </div>

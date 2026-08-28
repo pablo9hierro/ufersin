@@ -5,6 +5,12 @@ import { adminService } from '../../services/adminService'
 import type { Order } from '../../types'
 import EletronicaStockActivitySection from './EletronicaStockActivitySection'
 import EletronicaErrorLogSection from './EletronicaErrorLogSection'
+import DateDropdown from '../../components/eletronicos/DateDropdown'
+
+function todayKey() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 // Port 1:1 (parcial, gaps disclosed abaixo) de
 // src/app/dashboard/relatorios/RelatoriosClient.tsx do vrtech -- mesmos
@@ -278,19 +284,29 @@ export default function EletronicaRelatorios() {
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            type="date"
-            value={customFrom}
-            onChange={(e) => setCustomFrom(e.target.value)}
-            className="px-3 py-2.5 rounded-xl bg-[#161618] border border-white/10 text-white text-sm outline-none focus:border-[#e0211a] [color-scheme:dark]"
-          />
-          <input
-            type="date"
-            value={customTo}
-            onChange={(e) => setCustomTo(e.target.value)}
-            className="px-3 py-2.5 rounded-xl bg-[#161618] border border-white/10 text-white text-sm outline-none focus:border-[#e0211a] [color-scheme:dark]"
-          />
+        <div className="space-y-2">
+          <div>
+            <p className="text-xs text-[#d4d4d8]/40 mb-1">De</p>
+            <div className="flex items-center gap-2">
+              <DateDropdown value={customFrom || todayKey()} onChange={setCustomFrom} yearsBack={3} yearsForward={0} />
+              {customFrom && (
+                <button type="button" onClick={() => setCustomFrom('')} className="text-xs text-[#d4d4d8]/40 hover:text-white shrink-0">
+                  Limpar
+                </button>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-[#d4d4d8]/40 mb-1">Até</p>
+            <div className="flex items-center gap-2">
+              <DateDropdown value={customTo || todayKey()} onChange={setCustomTo} yearsBack={3} yearsForward={0} />
+              {customTo && (
+                <button type="button" onClick={() => setCustomTo('')} className="text-xs text-[#d4d4d8]/40 hover:text-white shrink-0">
+                  Limpar
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
