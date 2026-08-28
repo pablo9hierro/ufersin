@@ -1758,6 +1758,11 @@ pub async fn whatsapp_status(
     let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
     let status = whatsapp::connection_status(&state, &store.whatsapp_instance).await?;
     let new_state = extract_wa_state(&status);
+    tracing::info!(
+        "wa_status: tenant_id={} instance={} state={new_state}",
+        admin.tenant_id,
+        store.whatsapp_instance
+    );
     let event_type = if new_state == "open" {
         "connected"
     } else if matches!(new_state.as_str(), "close" | "closed" | "logout") {

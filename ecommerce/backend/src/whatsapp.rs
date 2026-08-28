@@ -220,11 +220,13 @@ const CONNECT_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(10)
 /// instance (ver `CONNECT_COOLDOWN`) — devolve a última resposta em cache
 /// em vez de bater no Evolution API de novo se chamado rápido demais.
 pub async fn connect(state: &AppState, instance: &str) -> Result<serde_json::Value, crate::error::AppError> {
+    tracing::info!("wa_connect: called instance={instance}");
     require_configured(state)?;
     {
         let cache = state.whatsapp_connect_cache.lock().await;
         if let Some((at, cached)) = cache.get(instance) {
             if at.elapsed() < CONNECT_COOLDOWN {
+                tracing::info!("wa_connect: instance={instance} short-circuit=cooldown");
                 return Ok(cached.clone());
             }
         }
@@ -279,9 +281,11 @@ pub async fn connect(state: &AppState, instance: &str) -> Result<serde_json::Val
             .map(|s| s.eq_ignore_ascii_case("open"))
             .unwrap_or(false);
         if is_open {
+            tracing::info!("wa_connect: instance={instance} short-circuit=already_open");
             return Ok(status);
         }
     }
+    tracing::info!("wa_connect: instance={instance} proceeding to force logout+reconnect");
 
     // Força a sessão atual (se houver) a encerrar antes de pedir um QR novo —
     // testado ao vivo: pedir QR com a instância ainda marcada "open" (mesmo
@@ -350,6 +354,7 @@ async fn set_webhook(state: &AppState, instance: &str) -> Result<(), crate::erro
 /// Logs out the WhatsApp session for the given instance (keeps it registered
 /// so it can reconnect later with a new QR code).
 pub async fn logout(state: &AppState, instance: &str) -> Result<(), crate::error::AppError> {
+    tracing::info!("wa_logout: called instance={instance}");
     require_configured(state)?;
     state.whatsapp_connect_cache.lock().await.remove(instance);
     let url = format!(
