@@ -2334,15 +2334,12 @@ pub async fn stock_entry(
     let Some(before) = before else {
         return Err(AppError::NotFound("item de estoque não encontrado".to_string()));
     };
-    sqlx::query(
-        "UPDATE eletronicos.stock_items SET quantity = quantity + $3, updated_at = now() \
-         WHERE tenant_id = $1 AND id = $2::uuid",
-    )
-    .bind(&claims.tenant_id)
-    .bind(&id)
-    .bind(input.quantity)
-    .execute(&mut *tx)
-    .await?;
+    // Achado pelo Paulo Ferro (teste de race): NÃO fazer UPDATE direto de
+    // quantity aqui -- eletronicos.stock_movements tem o trigger
+    // trg_elt_apply_stock_movement, que já aplica o delta em stock_items
+    // sozinho a cada INSERT. Fazer os dois (UPDATE direto + INSERT que
+    // dispara o trigger) contava a entrada/saída EM DOBRO (bug real: pedir
+    // +1 virava +2 na quantidade).
     sqlx::query(
         "INSERT INTO eletronicos.stock_movements (id, tenant_id, item_id, type, quantity, unit) \
          SELECT $1::uuid, $2, $3::uuid, 'entrada', $4, unit FROM eletronicos.stock_items WHERE tenant_id = $2 AND id = $3::uuid",
@@ -2471,12 +2468,10 @@ pub async fn stock_exit(
     if input.quantity > before.quantity {
         return Err(AppError::BadRequest("quantidade maior que o estoque disponível".to_string()));
     }
-    sqlx::query("UPDATE eletronicos.stock_items SET quantity = quantity - $3, updated_at = now() WHERE tenant_id = $1 AND id = $2::uuid")
-        .bind(&claims.tenant_id)
-        .bind(&id)
-        .bind(input.quantity)
-        .execute(&mut *tx)
-        .await?;
+    // Mesmo bug de stock_entry (achado pelo Paulo Ferro): não fazer UPDATE
+    // direto aqui -- o trigger trg_elt_apply_stock_movement já aplica o
+    // delta a partir do INSERT em stock_movements. UPDATE direto + trigger
+    // juntos descontava a saída em dobro.
     sqlx::query(
         "INSERT INTO eletronicos.stock_movements (id, tenant_id, item_id, type, quantity, unit) \
          SELECT $1::uuid, $2, $3::uuid, 'saida', $4, unit FROM eletronicos.stock_items WHERE tenant_id = $2 AND id = $3::uuid",
