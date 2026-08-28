@@ -87,12 +87,21 @@ export default function Uiux4Landing() {
               { title: 'Entrega rápida', desc: 'Pronto em até 20 min' },
               { title: 'Pague com Pix', desc: 'Aprovação na hora' },
               { title: 'Sempre fresco', desc: 'Feito na hora do pedido' },
-            ].map((d) => (
-              <div key={d.title} className="u4-panel p-4">
-                <p className="font-bold text-sm mb-0.5">{d.title}</p>
-                <p className="text-xs u4-dim">{d.desc}</p>
-              </div>
-            ))}
+            ].map((d, i) => {
+              const h = tenantConfig?.landing_highlights?.[i]
+              const title = h?.title?.trim() || d.title
+              const desc = h?.desc?.trim() || d.desc
+              return (
+                <div key={i} className="u4-panel p-4">
+                  <p data-cms-editable={`highlight:${i}:title`} data-cms-default={d.title} className="font-bold text-sm mb-0.5">
+                    {title}
+                  </p>
+                  <p data-cms-editable={`highlight:${i}:desc`} data-cms-default={d.desc} className="text-xs u4-dim">
+                    {desc}
+                  </p>
+                </div>
+              )
+            })}
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2.5 text-sm u4-dim">

@@ -250,6 +250,7 @@ export interface MeResponse {
   landing_headline: string | null
   landing_sub: string | null
   landing_badge: string | null
+  landing_highlights: { title: string; desc: string }[] | null
   /** Essential: rectangular hero image on landing (Management+ uses promo banners). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -345,6 +346,7 @@ export interface EditOnboardingInput {
   landing_headline?: string
   landing_sub?: string
   landing_badge?: string
+  landing_highlights?: { title: string; desc: string }[]
   landing_hero_image_url?: string
   cart_fab_style?: 'sacola' | 'cart_icon'
   cart_fab_animate?: boolean

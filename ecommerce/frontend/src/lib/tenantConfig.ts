@@ -52,6 +52,8 @@ export interface TenantConfig {
   landing_headline: string | null
   landing_sub: string | null
   landing_badge: string | null
+  /** 3-4 cards de destaque da landing (título + descrição) -- null/vazio = nunca customizado, usa os defaults do componente. */
+  landing_highlights: { title: string; desc: string }[] | null
   /** Essential landing hero image (Management/Premium use promo banners instead). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -133,6 +135,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   landing_headline: null,
   landing_sub: null,
   landing_badge: null,
+  landing_highlights: null,
   landing_hero_image_url: null,
   cart_fab_style: 'sacola',
   cart_fab_animate: false,
@@ -352,6 +355,11 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     landing_headline: data.landing_headline ? String(data.landing_headline) : null,
     landing_sub: data.landing_sub ? String(data.landing_sub) : null,
     landing_badge: data.landing_badge ? String(data.landing_badge) : null,
+    landing_highlights: Array.isArray(data.landing_highlights)
+      ? (data.landing_highlights as unknown[])
+          .filter((h): h is Record<string, unknown> => !!h && typeof h === 'object')
+          .map((h) => ({ title: String(h.title ?? ''), desc: String(h.desc ?? '') }))
+      : null,
     landing_hero_image_url: data.landing_hero_image_url ? String(data.landing_hero_image_url) : null,
     cart_fab_style: fab,
     cart_fab_animate: Boolean(data.cart_fab_animate),

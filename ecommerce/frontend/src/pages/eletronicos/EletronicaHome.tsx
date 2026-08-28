@@ -108,15 +108,24 @@ export default function EletronicaHome() {
           <h2 className="text-center text-2xl sm:text-3xl font-bold mb-2">Nossos serviços</h2>
           <p className="text-center text-[#d4d4d8]/60 mb-10 text-sm">Foco total em assistência técnica de celulares</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {SERVICES.map((s) => (
-              <div key={s.title} className="bg-[#161618] border border-white/5 rounded-2xl p-5 hover:border-[#e0211a]/40 transition-colors">
-                <div className="w-10 h-10 rounded-xl bg-[#e0211a]/10 text-[#e0211a] flex items-center justify-center mb-3">
-                  <s.icon className="w-5 h-5" />
+            {SERVICES.map((s, i) => {
+              const h = tenantConfig?.landing_highlights?.[i]
+              const title = h?.title?.trim() || s.title
+              const desc = h?.desc?.trim() || s.desc
+              return (
+                <div key={i} className="bg-[#161618] border border-white/5 rounded-2xl p-5 hover:border-[#e0211a]/40 transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-[#e0211a]/10 text-[#e0211a] flex items-center justify-center mb-3">
+                    <s.icon className="w-5 h-5" />
+                  </div>
+                  <h3 data-cms-editable={`highlight:${i}:title`} data-cms-default={s.title} className="font-bold mb-1">
+                    {title}
+                  </h3>
+                  <p data-cms-editable={`highlight:${i}:desc`} data-cms-default={s.desc} className="text-[#d4d4d8]/60 text-sm">
+                    {desc}
+                  </p>
                 </div>
-                <h3 className="font-bold mb-1">{s.title}</h3>
-                <p className="text-[#d4d4d8]/60 text-sm">{s.desc}</p>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </section>

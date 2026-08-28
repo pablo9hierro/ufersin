@@ -134,6 +134,7 @@ export default function MeuPlano() {
   const [landingHeadline, setLandingHeadline] = useState('')
   const [landingSub, setLandingSub] = useState('')
   const [landingBadge, setLandingBadge] = useState('')
+  const [landingHighlights, setLandingHighlights] = useState<{ title: string; desc: string }[]>([])
   const [landingHeroImageUrl, setLandingHeroImageUrl] = useState('')
   const [cartFabStyle, setCartFabStyle] = useState<CartFabStyle>('sacola')
   const [cartFabAnimate, setCartFabAnimate] = useState(false)
@@ -211,6 +212,7 @@ export default function MeuPlano() {
         setLandingHeadline(m.landing_headline ?? '')
         setLandingSub(m.landing_sub ?? '')
         setLandingBadge(m.landing_badge ?? '')
+        setLandingHighlights(m.landing_highlights ?? [])
         setLandingHeroImageUrl(m.landing_hero_image_url ?? '')
         setCartFabStyle(m.cart_fab_style === 'cart_icon' ? 'cart_icon' : 'sacola')
         setCartFabAnimate(!!m.cart_fab_animate)
@@ -635,6 +637,7 @@ export default function MeuPlano() {
       landing_headline: landingHeadline.trim() || undefined,
       landing_sub: landingSub.trim() || undefined,
       landing_badge: landingBadge.trim() || undefined,
+      landing_highlights: landingHighlights.length ? landingHighlights : undefined,
       landing_hero_image_url: landingHeroImageUrl.trim() || '',
       cart_fab_style: cartFabStyle,
       cart_fab_animate: cartFabAnimate,
@@ -642,17 +645,24 @@ export default function MeuPlano() {
     })
   }
 
-  /** Salva só um dos 3 textos de CMS (selo/título/subtítulo) clicado no
-   * preview -- reaproveita o mesmo PUT de layout (é um recurso só, sem
+  /** Salva só um dos textos de CMS (selo/título/subtítulo/destaques) clicado
+   * no preview -- reaproveita o mesmo PUT de layout (é um recurso só, sem
    * PATCH por campo), mas usa o valor do patch em vez do state (que ainda
    * não re-renderizou) pra não salvar um texto antigo por engano. */
-  const saveLayoutField = (patch: { landingHeadline?: string; landingSub?: string; landingBadge?: string }) => {
+  const saveLayoutField = (patch: {
+    landingHeadline?: string
+    landingSub?: string
+    landingBadge?: string
+    landingHighlights?: { title: string; desc: string }[]
+  }) => {
     const headline = patch.landingHeadline ?? landingHeadline
     const sub = patch.landingSub ?? landingSub
     const badge = patch.landingBadge ?? landingBadge
+    const highlights = patch.landingHighlights ?? landingHighlights
     if (patch.landingHeadline != null) setLandingHeadline(patch.landingHeadline)
     if (patch.landingSub != null) setLandingSub(patch.landingSub)
     if (patch.landingBadge != null) setLandingBadge(patch.landingBadge)
+    if (patch.landingHighlights != null) setLandingHighlights(patch.landingHighlights)
     saveOnboarding({
       nome_loja: nomeLoja.trim(),
       endereco: endereco.trim() || undefined,
@@ -667,6 +677,7 @@ export default function MeuPlano() {
       landing_headline: patch.landingHeadline != null ? headline.trim() : headline.trim() || undefined,
       landing_sub: patch.landingSub != null ? sub.trim() : sub.trim() || undefined,
       landing_badge: patch.landingBadge != null ? badge.trim() : badge.trim() || undefined,
+      landing_highlights: patch.landingHighlights != null ? highlights : highlights.length ? highlights : undefined,
       landing_hero_image_url: landingHeroImageUrl.trim() || '',
       cart_fab_style: cartFabStyle,
       cart_fab_animate: cartFabAnimate,
@@ -1324,6 +1335,7 @@ export default function MeuPlano() {
                   landingHeadline,
                   landingSub,
                   landingBadge,
+                  landingHighlights,
                   cartFabStyle,
                   cartFabAnimate,
                 }}
@@ -1332,6 +1344,7 @@ export default function MeuPlano() {
                   if (patch.landingHeadline != null) setLandingHeadline(patch.landingHeadline)
                   if (patch.landingSub != null) setLandingSub(patch.landingSub)
                   if (patch.landingBadge != null) setLandingBadge(patch.landingBadge)
+                  if (patch.landingHighlights != null) setLandingHighlights(patch.landingHighlights)
                   if (patch.cartFabStyle != null) setCartFabStyle(patch.cartFabStyle)
                   if (patch.cartFabAnimate != null) setCartFabAnimate(patch.cartFabAnimate)
                 }}

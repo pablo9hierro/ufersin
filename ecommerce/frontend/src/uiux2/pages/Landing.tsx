@@ -109,17 +109,26 @@ export default function Uiux2Landing() {
             </div>
 
             <div className="grid sm:grid-cols-3 gap-3 text-left mb-8">
-              {DESTAQUES.map((d) => (
-                <div key={d.title} className="u2-card p-4 flex items-center gap-3">
-                  <span className="u2-badge w-10 h-10 flex items-center justify-center shrink-0 !rounded-xl">
-                    <d.icon className="w-4 h-4" />
-                  </span>
-                  <div>
-                    <p className="font-bold text-sm">{d.title}</p>
-                    <p className="text-xs u2-dim">{d.desc}</p>
+              {DESTAQUES.map((d, i) => {
+                const h = tenantConfig?.landing_highlights?.[i]
+                const title = h?.title?.trim() || d.title
+                const desc = h?.desc?.trim() || d.desc
+                return (
+                  <div key={i} className="u2-card p-4 flex items-center gap-3">
+                    <span className="u2-badge w-10 h-10 flex items-center justify-center shrink-0 !rounded-xl">
+                      <d.icon className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <p data-cms-editable={`highlight:${i}:title`} data-cms-default={d.title} className="font-bold text-sm">
+                        {title}
+                      </p>
+                      <p data-cms-editable={`highlight:${i}:desc`} data-cms-default={d.desc} className="text-xs u2-dim">
+                        {desc}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             <div className="flex flex-col gap-3 text-sm u2-oncanvas-dim">

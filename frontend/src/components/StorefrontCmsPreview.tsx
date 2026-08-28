@@ -7,20 +7,57 @@ const PREVIEW_H = 760
 
 export type CartFabStyle = 'sacola' | 'cart_icon'
 
-/** Campos de texto da landing clicáveis dentro do preview (data-cms-editable
- * no DOM real da vitrine -- uiux2/3/4 Landing.tsx). */
-type CmsTextField = 'badge' | 'headline' | 'sub'
+/** Campo de texto da landing clicável dentro do preview -- id bate 1:1 com
+ * `data-cms-editable` no DOM real da vitrine (uiux2/3/4 + EletronicaHome):
+ * 'badge' | 'headline' | 'sub' | `highlight:{i}:title` | `highlight:{i}:desc`.
+ * String solta (não union fechada) porque a quantidade de cards de destaque
+ * varia por layoutStyle/vertical -- descoberta em runtime lendo o DOM, não
+ * fixa em tempo de compilação. */
+type CmsField = string
 
-const FIELD_TO_VALUE_KEY: Record<CmsTextField, 'landingBadge' | 'landingHeadline' | 'landingSub'> = {
-  badge: 'landingBadge',
-  headline: 'landingHeadline',
-  sub: 'landingSub',
+const HIGHLIGHT_RE = /^highlight:(\d+):(title|desc)$/
+
+function fieldLabel(field: CmsField): string {
+  if (field === 'badge') return 'Selo de destaque'
+  if (field === 'headline') return 'Título da vitrine'
+  if (field === 'sub') return 'Subtítulo da vitrine'
+  const m = field.match(HIGHLIGHT_RE)
+  if (m) {
+    const n = Number(m[1]) + 1
+    return `Destaque ${n} — ${m[2] === 'title' ? 'título' : 'descrição'}`
+  }
+  return field
 }
 
-const FIELD_LABEL: Record<CmsTextField, string> = {
-  badge: 'Selo de destaque',
-  headline: 'Título da vitrine',
-  sub: 'Subtítulo da vitrine',
+function getFieldValue(values: StorefrontCmsValues, field: CmsField): string {
+  if (field === 'badge') return values.landingBadge
+  if (field === 'headline') return values.landingHeadline
+  if (field === 'sub') return values.landingSub
+  const m = field.match(HIGHLIGHT_RE)
+  if (m) {
+    const idx = Number(m[1])
+    const part = m[2] as 'title' | 'desc'
+    return values.landingHighlights[idx]?.[part] ?? ''
+  }
+  return ''
+}
+
+/** Patch pro campo, preservando os demais itens de landingHighlights (que é
+ * salvo/trocado como array inteiro -- não existe PATCH por índice). */
+function patchForField(values: StorefrontCmsValues, field: CmsField, value: string): Partial<StorefrontCmsValues> {
+  if (field === 'badge') return { landingBadge: value }
+  if (field === 'headline') return { landingHeadline: value }
+  if (field === 'sub') return { landingSub: value }
+  const m = field.match(HIGHLIGHT_RE)
+  if (m) {
+    const idx = Number(m[1])
+    const part = m[2] as 'title' | 'desc'
+    const arr = values.landingHighlights.slice()
+    while (arr.length <= idx) arr.push({ title: '', desc: '' })
+    arr[idx] = { ...arr[idx], [part]: value }
+    return { landingHighlights: arr }
+  }
+  return {}
 }
 
 export interface StorefrontCmsValues {
@@ -29,6 +66,7 @@ export interface StorefrontCmsValues {
   landingHeadline: string
   landingSub: string
   landingBadge: string
+  landingHighlights: { title: string; desc: string }[]
   cartFabStyle: CartFabStyle
   cartFabAnimate: boolean
 }
@@ -65,9 +103,13 @@ export default function StorefrontCmsPreview({
   const active = STOREFRONT_STYLES.find((s) => s.key === values.layoutStyle) ?? STOREFRONT_STYLES[0]
   const accent = values.corPrincipal.trim() || active.preview.accent
 
-  const [selectedField, setSelectedField] = useState<CmsTextField | null>(null)
+  const [selectedField, setSelectedField] = useState<CmsField | null>(null)
   const [fieldOriginal, setFieldOriginal] = useState('')
   const [fieldDefault, setFieldDefault] = useState('')
+  // Quais campos existem NESTE layoutStyle/vertical -- varia (3 destaques
+  // no motor genérico, 4 na eletrônica) -- descoberto lendo o DOM do
+  // preview, não fixo, pro seletor "escolha direto" bater com a realidade.
+  const [availableFields, setAvailableFields] = useState<string[]>([])
 
   useEffect(() => {
     const el = frameRef.current
@@ -80,24 +122,24 @@ export default function StorefrontCmsPreview({
     return () => ro.disconnect()
   }, [])
 
-  const cmsNode = (field: CmsTextField) =>
+  const cmsNode = (field: CmsField) =>
     iframeRef.current?.contentDocument?.querySelector<HTMLElement>(`[data-cms-editable="${field}"]`) ?? null
 
-  const selectField = (field: CmsTextField, node: HTMLElement) => {
+  const selectField = (field: CmsField, node: HTMLElement) => {
     setSelectedField(field)
-    setFieldOriginal(values[FIELD_TO_VALUE_KEY[field]])
+    setFieldOriginal(getFieldValue(values, field))
     setFieldDefault(node.getAttribute('data-cms-default') ?? '')
   }
 
   const syncDraftIntoIframe = () => {
     const doc = iframeRef.current?.contentDocument
     if (!doc) return
-    const badgeNode = doc.querySelector<HTMLElement>('[data-cms-editable="badge"]')
-    if (badgeNode) badgeNode.textContent = values.landingBadge
-    const headlineNode = doc.querySelector<HTMLElement>('[data-cms-editable="headline"]')
-    if (headlineNode) headlineNode.textContent = values.landingHeadline || headlineNode.getAttribute('data-cms-default') || ''
-    const subNode = doc.querySelector<HTMLElement>('[data-cms-editable="sub"]')
-    if (subNode) subNode.textContent = values.landingSub || subNode.getAttribute('data-cms-default') || ''
+    doc.querySelectorAll<HTMLElement>('[data-cms-editable]').forEach((node) => {
+      const field = node.getAttribute('data-cms-editable')
+      if (!field) return
+      const draft = getFieldValue(values, field)
+      node.textContent = draft || node.getAttribute('data-cms-default') || ''
+    })
   }
 
   // Preview só mostra o que está salvo por padrão (reloadToken/src) -- mas
@@ -106,14 +148,16 @@ export default function StorefrontCmsPreview({
   useEffect(() => {
     syncDraftIntoIframe()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.landingBadge, values.landingHeadline, values.landingSub, reloadToken])
+  }, [values.landingBadge, values.landingHeadline, values.landingSub, values.landingHighlights, reloadToken])
 
   const bindClickListeners = (doc: Document) => {
-    ;(['badge', 'headline', 'sub'] as CmsTextField[]).forEach((field) => {
-      const node = doc.querySelector<HTMLElement>(`[data-cms-editable="${field}"]`)
+    const nodes = Array.from(doc.querySelectorAll<HTMLElement>('[data-cms-editable]'))
+    setAvailableFields(nodes.map((n) => n.getAttribute('data-cms-editable') ?? '').filter(Boolean))
+    nodes.forEach((node) => {
+      const field = node.getAttribute('data-cms-editable')
       // Guard idempotente -- iframe.onLoad e o polling de segurança abaixo
       // podem correr pro mesmo documento, sem isso duplicaria o listener.
-      if (!node || node.dataset.cmsBound) return
+      if (!field || node.dataset.cmsBound) return
       node.dataset.cmsBound = '1'
       node.style.cursor = 'pointer'
       node.addEventListener('click', (e) => {
@@ -160,21 +204,21 @@ export default function StorefrontCmsPreview({
   }
 
   const cancelFieldEdit = () => {
-    if (selectedField) onChange({ [FIELD_TO_VALUE_KEY[selectedField]]: fieldOriginal })
+    if (selectedField) onChange(patchForField(values, selectedField, fieldOriginal))
     setSelectedField(null)
   }
 
   const restoreFieldDefault = () => {
     if (!selectedField) return
-    onSaveField({ [FIELD_TO_VALUE_KEY[selectedField]]: fieldDefault })
+    onSaveField(patchForField(values, selectedField, fieldDefault))
   }
 
   const saveField = () => {
     if (!selectedField) return
-    onSaveField({ [FIELD_TO_VALUE_KEY[selectedField]]: values[FIELD_TO_VALUE_KEY[selectedField]] })
+    onSaveField(patchForField(values, selectedField, getFieldValue(values, selectedField)))
   }
 
-  function FieldEditorButtons({ field }: { field: CmsTextField }) {
+  function FieldEditorButtons({ field }: { field: CmsField }) {
     if (selectedField !== field) return null
     return (
       <div className="flex items-center gap-1.5 mt-1.5">
@@ -334,10 +378,10 @@ export default function StorefrontCmsPreview({
             {!selectedField ? (
               <div className="space-y-3">
                 <p className="text-xs text-uf-silver-dim leading-snug">
-                  Clique no selo, título ou subtítulo dentro do preview ao lado pra editar aqui. Ou escolha direto:
+                  Clique em qualquer texto dentro do preview ao lado pra editar aqui. Ou escolha direto:
                 </p>
                 <div className="flex flex-col gap-2">
-                  {(['badge', 'headline', 'sub'] as CmsTextField[]).map((field) => (
+                  {availableFields.map((field) => (
                     <button
                       key={field}
                       type="button"
@@ -347,30 +391,28 @@ export default function StorefrontCmsPreview({
                       }}
                       className="text-left px-3 py-2.5 rounded-xl border border-white/10 bg-white/[0.03] hover:border-white/20 text-xs font-semibold text-uf-silver"
                     >
-                      {FIELD_LABEL[field]}
+                      {fieldLabel(field)}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
               <div className="space-y-2.5">
-                <label className="label mb-0 block">{FIELD_LABEL[selectedField]}</label>
-                {selectedField === 'sub' ? (
+                <label className="label mb-0 block">{fieldLabel(selectedField)}</label>
+                {selectedField === 'sub' || selectedField.endsWith(':desc') ? (
                   <textarea
                     autoFocus
                     className="input-field w-full text-sm resize-y border-uf-blue"
                     rows={3}
-                    value={values.landingSub}
-                    onChange={(e) => onChange({ landingSub: e.target.value })}
-                    placeholder="Ex: Lanches, bebidas e sobremesas feitos com carinho."
+                    value={getFieldValue(values, selectedField)}
+                    onChange={(e) => onChange(patchForField(values, selectedField, e.target.value))}
                   />
                 ) : (
                   <input
                     autoFocus
                     className="input-field w-full text-sm border-uf-blue"
-                    value={values[FIELD_TO_VALUE_KEY[selectedField]]}
-                    onChange={(e) => onChange({ [FIELD_TO_VALUE_KEY[selectedField]]: e.target.value })}
-                    placeholder={selectedField === 'badge' ? 'Ex: Feito na hora, todo dia' : 'Ex: Fome? A gente entrega em minutos.'}
+                    value={getFieldValue(values, selectedField)}
+                    onChange={(e) => onChange(patchForField(values, selectedField, e.target.value))}
                   />
                 )}
                 <FieldEditorButtons field={selectedField} />

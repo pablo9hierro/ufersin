@@ -86,12 +86,21 @@ export default function Uiux3Landing() {
               { title: 'Entrega rápida', desc: 'Pronto em até 20 min' },
               { title: 'Pague com Pix', desc: 'Aprovação na hora' },
               { title: 'Feito na hora', desc: 'Sempre fresquinho' },
-            ].map((d) => (
-              <div key={d.title} className="rounded-3xl p-4 text-left" style={{ background: 'var(--u3-surface)' }}>
-                <p className="font-bold text-sm mb-0.5">{d.title}</p>
-                <p className="text-xs u3-dim">{d.desc}</p>
-              </div>
-            ))}
+            ].map((defaults, i) => {
+              const h = tenantConfig?.landing_highlights?.[i]
+              const title = h?.title?.trim() || defaults.title
+              const desc = h?.desc?.trim() || defaults.desc
+              return (
+                <div key={i} className="rounded-3xl p-4 text-left" style={{ background: 'var(--u3-surface)' }}>
+                  <p data-cms-editable={`highlight:${i}:title`} data-cms-default={defaults.title} className="font-bold text-sm mb-0.5">
+                    {title}
+                  </p>
+                  <p data-cms-editable={`highlight:${i}:desc`} data-cms-default={defaults.desc} className="text-xs u3-dim">
+                    {desc}
+                  </p>
+                </div>
+              )
+            })}
           </div>
 
           <div className="flex flex-col gap-3 text-sm u3-dim">
