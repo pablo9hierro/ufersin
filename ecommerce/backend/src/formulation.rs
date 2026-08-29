@@ -24,6 +24,10 @@ pub fn convert(qty: f64, from: &str, to: &str) -> Result<f64, AppError> {
             "ml" => Ok((1.0, "volume")),
             "l" => Ok((1000.0, "volume")),
             "un" => Ok((1.0, "unit")),
+            "mm" => Ok((1.0, "length")),
+            "cm" => Ok((10.0, "length")),
+            "m" => Ok((1000.0, "length")),
+            "km" => Ok((1_000_000.0, "length")),
             other => Err(AppError::BadRequest(format!("unidade inválida: {other}"))),
         }
     }

@@ -580,7 +580,7 @@ async fn save_service_lines(
         if line.quantity <= 0.0 {
             return Err(AppError::BadRequest("quantidade do insumo deve ser positiva".to_string()));
         }
-        formulation::convert(0.0, &line.unit, &line.unit)?;
+        assert_line_within_stock(tx, tenant_id, &line.ingredient_id, line.quantity, &line.unit).await?;
         sqlx::query(
             "INSERT INTO service_ingredients (id, tenant_id, service_id, ingredient_id, quantity, unit) \
              VALUES ($1, $2, $3, $4, $5, $6)",
@@ -828,6 +828,36 @@ pub async fn product_stock_entry(
     Ok(Json(row.into()))
 }
 
+/// Impede cadastrar/editar uma linha de formulação (produto OU serviço)
+/// pedindo mais do que existe fisicamente em estoque do insumo — a
+/// quantidade da linha é convertida (respeitando família de unidade,
+/// `formulation::convert` já rejeita cross-family) pra unidade do insumo
+/// antes de comparar com `ingredients.quantity`.
+async fn assert_line_within_stock(
+    tx: &mut sqlx::PgConnection,
+    tenant_id: &str,
+    ingredient_id: &str,
+    line_quantity: f64,
+    line_unit: &str,
+) -> Result<(), AppError> {
+    let ingredient: (String, f64, String) = sqlx::query_as(
+        "SELECT name, quantity, unit FROM ingredients WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(ingredient_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::BadRequest("insumo não encontrado".to_string()))?;
+    let (name, available, ingredient_unit) = ingredient;
+    let requested_in_stock_unit = formulation::convert(line_quantity, line_unit, &ingredient_unit)?;
+    if requested_in_stock_unit > available {
+        return Err(AppError::BadRequest(format!(
+            "quantidade de \"{name}\" ({line_quantity} {line_unit}) excede o estoque disponível ({available} {ingredient_unit})"
+        )));
+    }
+    Ok(())
+}
+
 async fn save_formulation_lines(
     tx: &mut sqlx::PgConnection,
     tenant_id: &str,
@@ -841,6 +871,7 @@ async fn save_formulation_lines(
         if line.quantity <= 0.0 {
             return Err(AppError::BadRequest("quantidade do insumo deve ser maior que zero".to_string()));
         }
+        assert_line_within_stock(tx, tenant_id, &line.ingredient_id, line.quantity, &line.unit).await?;
         sqlx::query(
             "INSERT INTO product_formulations (id, tenant_id, product_id, ingredient_id, quantity, unit) \
              VALUES ($1, $2, $3, $4, $5, $6)",

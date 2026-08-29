@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, Loader2, Pencil, Plus, Trash2, Wrench, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import CategorySelectField from '../../components/admin/CategorySelectField'
+import UnitAwareQuantityInput from '../../components/admin/UnitAwareQuantityInput'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
@@ -339,25 +340,12 @@ export default function AdminProdutosServicos() {
                         </option>
                       ))}
                     </select>
-                    <input
-                      className="input-field w-24"
-                      type="number"
-                      step="any"
-                      placeholder="Qtd"
-                      value={line.quantity}
-                      onChange={(e) => updateIngredientLine(idx, { quantity: e.target.value })}
+                    <UnitAwareQuantityInput
+                      ingredientUnit={ingredients.find((i) => i.id === line.ingredient_id)?.unit ?? null}
+                      quantity={line.quantity}
+                      unit={line.unit}
+                      onChange={(patch) => updateIngredientLine(idx, patch)}
                     />
-                    <select
-                      className="input-field w-24"
-                      value={line.unit}
-                      onChange={(e) => updateIngredientLine(idx, { unit: e.target.value as Ingredient['unit'] })}
-                    >
-                      {(['g', 'kg', 'ml', 'l', 'un'] as const).map((u) => (
-                        <option key={u} value={u}>
-                          {u}
-                        </option>
-                      ))}
-                    </select>
                     {form.ingredientLines.length > 1 && (
                       <button type="button" onClick={() => removeIngredientLine(idx)} className="btn-secondary text-sm py-2 px-3 hover:text-son-pink flex-shrink-0">
                         <Trash2 className="w-3.5 h-3.5" />

@@ -37,7 +37,7 @@ export type Product = z.infer<typeof ProductSchema>
 export const IngredientSchema = z.object({
   id: z.string(),
   name: z.string(),
-  unit: z.enum(['g', 'kg', 'ml', 'l', 'un']),
+  unit: z.enum(['g', 'kg', 'ml', 'l', 'un', 'mm', 'cm', 'm', 'km']),
   quantity: z.number(),
   cost_price: z.number(),
   low_stock_threshold: z.number().nullable().optional(),
@@ -80,7 +80,7 @@ export const ServiceIngredientSchema = z.object({
   ingredient_id: z.string(),
   ingredient_name: z.string(),
   quantity: z.number(),
-  unit: z.enum(['g', 'kg', 'ml', 'l', 'un']),
+  unit: z.enum(['g', 'kg', 'ml', 'l', 'un', 'mm', 'cm', 'm', 'km']),
 })
 
 export const ServiceExtraCostSchema = z.object({

@@ -18,10 +18,12 @@ import BarcodePreview from '../../components/admin/BarcodePreview'
 import CategorySelectField from '../../components/admin/CategorySelectField'
 import PackageUnitFields from '../../components/admin/PackageUnitFields'
 import StockEntryDialog from '../../components/admin/StockEntryDialog'
+import UnitAwareQuantityInput from '../../components/admin/UnitAwareQuantityInput'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
 import { buildProductPayload } from '../../lib/productHelpers'
+import { INGREDIENT_UNITS, convertUnit } from '../../lib/ingredientUnits'
 import {
   mergeUnitIntoDescription,
   parseUnitFromDescription,
@@ -30,14 +32,6 @@ import {
   type PackageContentUnit,
 } from '../../lib/catalogUnit'
 import type { Category, FormulationLinePayload, Ingredient, Product } from '../../types'
-
-const INGREDIENT_UNITS: { value: Ingredient['unit']; label: string }[] = [
-  { value: 'g', label: 'g (grama)' },
-  { value: 'kg', label: 'kg (quilo)' },
-  { value: 'ml', label: 'ml (mililitro)' },
-  { value: 'l', label: 'l (litro)' },
-  { value: 'un', label: 'un (unidade)' },
-]
 
 function generateBarcode(): string {
   return `${String(Date.now()).slice(-10)}${String(Math.floor(Math.random() * 90) + 10)}`
@@ -48,17 +42,6 @@ function currency(v: number) {
 }
 
 const DIALOG_MAX = 'max-w-[36.4rem]'
-
-const UNIT_FAMILY: Record<Ingredient['unit'], string> = { g: 'mass', kg: 'mass', ml: 'volume', l: 'volume', un: 'unit' }
-const UNIT_FACTOR: Record<Ingredient['unit'], number> = { g: 1, kg: 1000, ml: 1, l: 1000, un: 1 }
-
-/** Mesma fórmula do backend (`formulation::convert`) — só pra preview ao
- * vivo no formulário. O backend recalcula de novo ao salvar; é sempre a
- * fonte da verdade, isso aqui é só feedback visual instantâneo. */
-function convertUnit(qty: number, from: Ingredient['unit'], to: Ingredient['unit']): number | null {
-  if (UNIT_FAMILY[from] !== UNIT_FAMILY[to]) return null
-  return (qty * UNIT_FACTOR[from]) / UNIT_FACTOR[to]
-}
 
 type FormulationLine = { ingredient_id: string; quantity: string; unit: Ingredient['unit'] }
 
@@ -537,21 +520,12 @@ export default function AdminProdutosFormulacao() {
                           </option>
                         ))}
                       </select>
-                      <input
-                        className="input-field w-24"
-                        type="number"
-                        step="any"
-                        placeholder="Qtd"
-                        value={line.quantity}
-                        onChange={(e) => updateLine(idx, { quantity: e.target.value })}
+                      <UnitAwareQuantityInput
+                        ingredientUnit={ingredients.find((i) => i.id === line.ingredient_id)?.unit ?? null}
+                        quantity={line.quantity}
+                        unit={line.unit}
+                        onChange={(patch) => updateLine(idx, patch)}
                       />
-                      <select className="input-field w-24" value={line.unit} onChange={(e) => updateLine(idx, { unit: e.target.value as Ingredient['unit'] })}>
-                        {INGREDIENT_UNITS.map((u) => (
-                          <option key={u.value} value={u.value}>
-                            {u.value}
-                          </option>
-                        ))}
-                      </select>
                       {lines.length > 1 && (
                         <button type="button" onClick={() => removeLine(idx)} className="btn-secondary text-sm py-2 px-3 hover:text-son-pink flex-shrink-0">
                           <Trash2 className="w-3.5 h-3.5" />
