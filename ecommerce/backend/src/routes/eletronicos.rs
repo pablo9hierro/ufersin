@@ -1348,7 +1348,8 @@ pub async fn get_agenda_settings(
     sqlx::query(
         "INSERT INTO eletronicos.agenda_settings \
          (tenant_id, appointment_ai_enabled, default_duration_minutes, lead_time_minutes, max_advance_days, buffer_minutes) \
-         VALUES ($1, false, 60, 60, 30, 15) ON CONFLICT (tenant_id) DO NOTHING",
+         SELECT $1, false, 60, 60, 30, 15 \
+         WHERE NOT EXISTS (SELECT 1 FROM eletronicos.agenda_settings WHERE tenant_id = $1)",
     )
     .bind(&claims.tenant_id)
     .execute(&mut *tx)

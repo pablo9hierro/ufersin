@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Barcode, Check, FileUp, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, Wrench, X } from 'lucide-react'
+import { AlertTriangle, Barcode, Check, FileUp, ImagePlus, Loader2, Package, PackageX, Pencil, Plus, Sparkles, Trash2, TrendingUp, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import BarcodePreview from '../../components/admin/BarcodePreview'
 import CategorySelectField from '../../components/admin/CategorySelectField'
@@ -9,7 +9,6 @@ import StockEntryDialog from '../../components/admin/StockEntryDialog'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
-import { useTenantConfig } from '../../hooks/useTenantConfig'
 import {
   buildProductPayload,
   isLowStock,
@@ -57,8 +56,6 @@ const EMPTY_FORM = {
 type Tab = 'todos' | 'baixo' | 'falta'
 
 export default function AdminProdutos() {
-  const tenantConfig = useTenantConfig()
-  const ofereceServicos = tenantConfig?.vertical === 'eletronicos' || !!tenantConfig?.oferece_servicos
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -272,18 +269,13 @@ export default function AdminProdutos() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-black">Produtos/Serviços</h1>
+        <h1 className="text-2xl font-black">Produtos</h1>
         {tab === 'todos' && (
           <div className="flex items-center gap-2">
             <Link to="/admin/produtos/xml" className="btn-secondary text-sm py-2 px-4">
               <FileUp className="w-4 h-4" />
               {xmlPending > 0 ? `Importar XML (${xmlPending})` : 'Importar XML'}
             </Link>
-            {ofereceServicos && (
-              <Link to="/admin/produtos/servicos" className="btn-secondary text-sm py-2 px-4">
-                <Wrench className="w-4 h-4" /> Serviços
-              </Link>
-            )}
             <button onClick={openNew} className="btn-primary text-sm py-2 px-4">
               <Plus className="w-4 h-4" /> Novo produto
             </button>

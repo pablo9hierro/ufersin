@@ -16,6 +16,7 @@ import {
   Truck,
   Users,
   Wallet,
+  Wrench,
 } from 'lucide-react'
 import Logo from '../ui/Logo'
 import OnboardingGate from '../admin/OnboardingGate'
@@ -59,7 +60,8 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, requiredPlan: 'essential' },
   { href: '/admin/pdv', label: 'PDV', icon: ShoppingCart, requiredPlan: 'essential' },
-  { href: '/admin/produtos', label: 'Produtos/Serviços', icon: Package, requiredPlan: 'essential' },
+  { href: '/admin/produtos', label: 'Produtos', icon: Package, requiredPlan: 'essential' },
+  { href: '/admin/produtos/servicos', label: 'Serviços', icon: Wrench, requiredPlan: 'essential' },
   { href: '/admin/estoque', label: 'Estoque', icon: Boxes, requiredPlan: 'essential' },
   { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'essential', hideAtOrAbove: 'management' },
   { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
@@ -457,8 +459,13 @@ export default function AdminLayout() {
     if (i.href === '/admin/frete' && tenantConfig?.apenas_retirada) return false
     // Assistente IA: nativo pro ramo eletrônica, acessório pago (allowlist) pro ecommerce.
     if (i.href === '/admin/chat' && !isAssistantIaBetaTenant(tenantConfig?.slug, tenantConfig?.vertical)) return false
-    // Agendamentos só existe se a loja oferece serviços (eletrônica é sempre true, sem checkbox).
-    if (i.href === '/admin/agendamentos' && tenantConfig?.vertical !== 'eletronicos' && !tenantConfig?.oferece_servicos) return false
+    // Agendamentos e Serviços só existem se a loja oferece serviços (eletrônica é sempre true, sem checkbox).
+    if (
+      (i.href === '/admin/agendamentos' || i.href === '/admin/produtos/servicos') &&
+      tenantConfig?.vertical !== 'eletronicos' &&
+      !tenantConfig?.oferece_servicos
+    )
+      return false
     return true
   })
 
