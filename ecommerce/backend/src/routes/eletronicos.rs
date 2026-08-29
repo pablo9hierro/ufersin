@@ -1826,6 +1826,7 @@ pub async fn cancel_appointment(
     // Mensagem personalizada substitui o template inteiro, literal --
     // a justificativa (ou a mensagem customizada) nunca passa por
     // reescrita, mesma garantia do vrtech original.
+    let tenant = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
     let text = if !use_default {
         custom.trim().to_string()
     } else {
@@ -1833,11 +1834,11 @@ pub async fn cancel_appointment(
         vars.insert("nome".to_string(), customer_name.clone());
         vars.insert("servico".to_string(), service_label.clone());
         vars.insert("motivo".to_string(), justification.trim().to_string());
+        vars.insert("loja".to_string(), tenant.name.clone());
         render_whatsapp_template(&mut *tx, &claims.tenant_id, "appointment_cancelled", &vars)
             .await?
             .unwrap_or_else(|| build_cancellation_message(&customer_name, &service_label, starts_at, &justification))
     };
-    let tenant = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
     let digits: String = row.customer_phone.chars().filter(char::is_ascii_digit).collect();
     crate::whatsapp::notify(&state, &tenant.whatsapp_instance, &digits, &text);
 
@@ -2055,6 +2056,7 @@ pub async fn reschedule_appointment(
     .fetch_one(&mut *tx)
     .await?;
 
+    let tenant = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
     let text = if !use_default {
         custom.trim().to_string()
     } else {
@@ -2064,11 +2066,11 @@ pub async fn reschedule_appointment(
         vars.insert("data_hora".to_string(), fmt_store_dt(starts_at));
         vars.insert("horario_anterior".to_string(), fmt_store_dt(prev_starts_at));
         vars.insert("motivo".to_string(), input.justification.trim().to_string());
+        vars.insert("loja".to_string(), tenant.name.clone());
         render_whatsapp_template(&mut *tx, &claims.tenant_id, "appointment_rescheduled", &vars)
             .await?
             .unwrap_or_else(|| build_reschedule_message(&customer_name, &service_label, prev_starts_at, starts_at, &input.justification))
     };
-    let tenant = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
     let digits: String = customer_phone.chars().filter(char::is_ascii_digit).collect();
     crate::whatsapp::notify(&state, &tenant.whatsapp_instance, &digits, &text);
 
@@ -3233,38 +3235,62 @@ pub struct WhatsappTemplateDto {
 const TEMPLATE_COLUMNS: &str = "id::text, template_key, section, label, description, content, \
      required_variables, available_variables, editable, enabled, sort_order";
 
+/// Únicas chaves que fazem sentido fora do ramo eletrônica -- eletrônica tem
+/// `status_*` (diagnóstico/aparelho/garantia, amarrado a `service_requests`,
+/// que só existe nessa vertical) e outras seções (entrega e coleta, PDV,
+/// solicitação de serviço) que também são conceitos exclusivos daquele
+/// fluxo. Ecommerce genérico só tem agendamento de serviço na vitrine.
+const ECOMMERCE_TEMPLATE_KEYS: [&str; 2] = ["appointment_cancelled", "appointment_rescheduled"];
+
 pub async fn list_whatsapp_templates(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
 ) -> Result<Json<Vec<WhatsappTemplateDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    // Tenant que nunca abriu essa página (ex: ecommerce genérico) não tem
-    // linha nenhuma aqui -- semeia os templates de agendamento (os únicos
-    // efetivamente usados fora do fluxo `service_requests`, exclusivo de
-    // eletrônica) com copy genérica, editáveis.
-    let already_seeded: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM eletronicos.whatsapp_templates WHERE tenant_id = $1)",
-    )
-    .bind(&claims.tenant_id)
-    .fetch_one(&mut *tx)
-    .await?;
-    if !already_seeded {
+    let vertical: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT vertical FROM tenants WHERE id = $1")
+            .bind(&claims.tenant_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let is_eletronicos = matches!(vertical, Some((Some(v),)) if v == "eletronicos");
+    if !is_eletronicos {
+        // Tenant do ramo genérico não usa o catálogo cheio de eletrônica
+        // (diagnóstico/aparelho/garantia não existem aqui) -- limpa
+        // qualquer linha fora do escopo de agendamento (pode ter sobrado de
+        // um seed antigo/errado) e garante só os templates de agendamento,
+        // com copy genérica referenciando a loja, não um domínio fixo.
         sqlx::query(
-            "INSERT INTO eletronicos.whatsapp_templates \
-             (id, tenant_id, template_key, section, label, description, content, required_variables, available_variables, editable, enabled, sort_order) \
-             VALUES \
-             (gen_random_uuid(), $1, 'appointment_cancelled', 'agendamento', 'Agendamento cancelado', \
-              'Enviado ao cliente quando um agendamento é cancelado pelo lojista.', \
-              'Olá /nome, seu agendamento de /servico foi cancelado. Motivo: /motivo', \
-              ARRAY['nome','servico','motivo'], ARRAY['nome','servico','motivo'], true, true, 1), \
-             (gen_random_uuid(), $1, 'appointment_rescheduled', 'agendamento', 'Agendamento remarcado', \
-              'Enviado ao cliente quando um agendamento é remarcado pelo lojista.', \
-              'Olá /nome, seu agendamento foi remarcado de /horario_anterior para /data_hora. Motivo: /motivo', \
-              ARRAY['nome','data_hora','horario_anterior','motivo'], ARRAY['nome','data_hora','horario_anterior','motivo'], true, true, 2)",
+            "DELETE FROM eletronicos.whatsapp_templates \
+             WHERE tenant_id = $1 AND template_key != ALL($2)",
         )
         .bind(&claims.tenant_id)
+        .bind(&ECOMMERCE_TEMPLATE_KEYS[..])
         .execute(&mut *tx)
         .await?;
+        let already_seeded: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM eletronicos.whatsapp_templates WHERE tenant_id = $1)",
+        )
+        .bind(&claims.tenant_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !already_seeded {
+            sqlx::query(
+                "INSERT INTO eletronicos.whatsapp_templates \
+                 (id, tenant_id, template_key, section, label, description, content, required_variables, available_variables, editable, enabled, sort_order) \
+                 VALUES \
+                 (gen_random_uuid(), $1, 'appointment_cancelled', 'agendamento', 'Agendamento cancelado', \
+                  'Enviado ao cliente quando um agendamento é cancelado pelo lojista.', \
+                  'Olá /nome, seu agendamento de /servico na /loja foi cancelado. Motivo: /motivo', \
+                  ARRAY['nome','servico','motivo','loja'], ARRAY['nome','servico','motivo','loja'], true, true, 1), \
+                 (gen_random_uuid(), $1, 'appointment_rescheduled', 'agendamento', 'Agendamento remarcado', \
+                  'Enviado ao cliente quando um agendamento é remarcado pelo lojista.', \
+                  'Olá /nome, seu agendamento na /loja foi remarcado de /horario_anterior para /data_hora. Motivo: /motivo', \
+                  ARRAY['nome','data_hora','horario_anterior','motivo','loja'], ARRAY['nome','data_hora','horario_anterior','motivo','loja'], true, true, 2)",
+            )
+            .bind(&claims.tenant_id)
+            .execute(&mut *tx)
+            .await?;
+        }
     }
     let rows: Vec<WhatsappTemplateDto> = sqlx::query_as(&format!(
         "SELECT {TEMPLATE_COLUMNS} FROM eletronicos.whatsapp_templates \
