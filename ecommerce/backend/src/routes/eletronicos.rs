@@ -1835,6 +1835,7 @@ pub async fn cancel_appointment(
         vars.insert("servico".to_string(), service_label.clone());
         vars.insert("motivo".to_string(), justification.trim().to_string());
         vars.insert("loja".to_string(), tenant.name.clone());
+        vars.insert("endereco".to_string(), tenant.pickup_address.clone());
         render_whatsapp_template(&mut *tx, &claims.tenant_id, "appointment_cancelled", &vars)
             .await?
             .unwrap_or_else(|| build_cancellation_message(&customer_name, &service_label, starts_at, &justification))
@@ -2067,6 +2068,7 @@ pub async fn reschedule_appointment(
         vars.insert("horario_anterior".to_string(), fmt_store_dt(prev_starts_at));
         vars.insert("motivo".to_string(), input.justification.trim().to_string());
         vars.insert("loja".to_string(), tenant.name.clone());
+        vars.insert("endereco".to_string(), tenant.pickup_address.clone());
         render_whatsapp_template(&mut *tx, &claims.tenant_id, "appointment_rescheduled", &vars)
             .await?
             .unwrap_or_else(|| build_reschedule_message(&customer_name, &service_label, prev_starts_at, starts_at, &input.justification))
@@ -3267,6 +3269,30 @@ pub async fn list_whatsapp_templates(
         .bind(&ECOMMERCE_TEMPLATE_KEYS[..])
         .execute(&mut *tx)
         .await?;
+        // As 2 linhas de agendamento sobrevivem ao DELETE acima mesmo se o
+        // conteúdo ainda vier do seed antigo de eletrônica (ex: menciona
+        // "vrtech" hardcoded) -- reseta pra copy genérica quando isso
+        // acontece, mesmo texto/variáveis do INSERT abaixo.
+        sqlx::query(
+            "UPDATE eletronicos.whatsapp_templates SET \
+             content = 'Olá /nome, seu agendamento de /servico na /loja foi cancelado. Motivo: /motivo', \
+             required_variables = ARRAY['nome','servico','motivo','loja'], \
+             available_variables = ARRAY['nome','servico','motivo','loja','endereco'] \
+             WHERE tenant_id = $1 AND template_key = 'appointment_cancelled' AND content ILIKE '%vrtech%'",
+        )
+        .bind(&claims.tenant_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "UPDATE eletronicos.whatsapp_templates SET \
+             content = 'Olá /nome, seu agendamento na /loja foi remarcado de /horario_anterior para /data_hora. Motivo: /motivo', \
+             required_variables = ARRAY['nome','data_hora','horario_anterior','motivo','loja'], \
+             available_variables = ARRAY['nome','data_hora','horario_anterior','motivo','loja','endereco'] \
+             WHERE tenant_id = $1 AND template_key = 'appointment_rescheduled' AND content ILIKE '%vrtech%'",
+        )
+        .bind(&claims.tenant_id)
+        .execute(&mut *tx)
+        .await?;
         let already_seeded: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM eletronicos.whatsapp_templates WHERE tenant_id = $1)",
         )
@@ -3281,11 +3307,11 @@ pub async fn list_whatsapp_templates(
                  (gen_random_uuid(), $1, 'appointment_cancelled', 'agendamento', 'Agendamento cancelado', \
                   'Enviado ao cliente quando um agendamento é cancelado pelo lojista.', \
                   'Olá /nome, seu agendamento de /servico na /loja foi cancelado. Motivo: /motivo', \
-                  ARRAY['nome','servico','motivo','loja'], ARRAY['nome','servico','motivo','loja'], true, true, 1), \
+                  ARRAY['nome','servico','motivo','loja'], ARRAY['nome','servico','motivo','loja','endereco'], true, true, 1), \
                  (gen_random_uuid(), $1, 'appointment_rescheduled', 'agendamento', 'Agendamento remarcado', \
                   'Enviado ao cliente quando um agendamento é remarcado pelo lojista.', \
                   'Olá /nome, seu agendamento na /loja foi remarcado de /horario_anterior para /data_hora. Motivo: /motivo', \
-                  ARRAY['nome','data_hora','horario_anterior','motivo','loja'], ARRAY['nome','data_hora','horario_anterior','motivo','loja'], true, true, 2)",
+                  ARRAY['nome','data_hora','horario_anterior','motivo','loja'], ARRAY['nome','data_hora','horario_anterior','motivo','loja','endereco'], true, true, 2)",
             )
             .bind(&claims.tenant_id)
             .execute(&mut *tx)
