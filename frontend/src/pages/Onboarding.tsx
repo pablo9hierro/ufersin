@@ -94,6 +94,7 @@ function applyMePrefill(me: MeResponse): {
   venderExternamente: boolean
   vendeMais18: boolean
   apenasRetirada: boolean
+  ofereceServicos: boolean
   pagamentoNaRetirada: boolean
   entregaSomentePix: boolean
   layoutStyle: StorefrontStyle
@@ -117,6 +118,7 @@ function applyMePrefill(me: MeResponse): {
     venderExternamente: me.vender_externamente !== false,
     vendeMais18: Boolean(me.vende_mais_18),
     apenasRetirada: Boolean(me.apenas_retirada),
+    ofereceServicos: Boolean(me.oferece_servicos),
     pagamentoNaRetirada: Boolean(me.pagamento_na_retirada),
     entregaSomentePix: Boolean(me.entrega_somente_pix),
     layoutStyle: layout,
@@ -151,6 +153,7 @@ export default function Onboarding() {
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
+  const [ofereceServicos, setOfereceServicos] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
   // Regra fixa do plano essential — entrega só sai com pagamento prévio
   // (Pix/cartão), dinheiro só na retirada/PDV. Sem toggle: sempre true.
@@ -205,6 +208,7 @@ export default function Onboarding() {
         setVenderExternamente(pre.venderExternamente)
         setVendeMais18(pre.vendeMais18)
         setApenasRetirada(pre.apenasRetirada)
+        setOfereceServicos(pre.ofereceServicos)
         setPagamentoNaRetirada(pre.pagamentoNaRetirada)
         setLayoutStyle(pre.layoutStyle)
         setHasCreds(pre.hasCreds)
@@ -378,6 +382,7 @@ export default function Onboarding() {
           vender_externamente: venderExternamente,
           vende_mais_18: vendeMais18,
           apenas_retirada: apenasRetirada,
+          oferece_servicos: ofereceServicos,
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
           whatsapp_habilitado: true,
@@ -400,6 +405,7 @@ export default function Onboarding() {
           vender_externamente: venderExternamente,
           vende_mais_18: vendeMais18,
           apenas_retirada: apenasRetirada,
+          oferece_servicos: ofereceServicos,
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
           whatsapp_habilitado: true,
@@ -708,6 +714,19 @@ export default function Onboarding() {
                 <span className="text-xs text-uf-silver-dim">
                   <span className="block text-uf-silver font-semibold mb-0.5">Não ofereço serviço de entrega — retirada obrigatória na loja</span>
                   A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.
+                </span>
+              </label>
+
+              <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={ofereceServicos}
+                  onChange={(e) => setOfereceServicos(e.target.checked)}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span className="text-xs text-uf-silver-dim">
+                  <span className="block text-uf-silver font-semibold mb-0.5">Ofereço serviços</span>
+                  Além de produtos, sua vitrine ganha um botão "Ver serviços" e o painel ganha a aba de cadastro de serviços.
                 </span>
               </label>
             </>

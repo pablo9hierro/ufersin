@@ -252,6 +252,8 @@ export interface MeResponse {
   landing_badge: string | null
   landing_highlights: { title: string; desc: string }[] | null
   landing_texts: Record<string, string> | null
+  /** Generic motor only: subscriber offers services besides products. */
+  oferece_servicos: boolean
   /** Essential: rectangular hero image on landing (Management+ uses promo banners). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -306,6 +308,7 @@ export interface OnboardingInput {
   pagamento_na_retirada?: boolean
   entrega_somente_pix?: boolean
   pagamento_manual?: boolean
+  oferece_servicos?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -349,6 +352,7 @@ export interface EditOnboardingInput {
   landing_badge?: string
   landing_highlights?: { title: string; desc: string }[]
   landing_texts?: Record<string, string>
+  oferece_servicos?: boolean
   landing_hero_image_url?: string
   cart_fab_style?: 'sacola' | 'cart_icon'
   cart_fab_animate?: boolean

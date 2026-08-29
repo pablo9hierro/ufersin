@@ -145,6 +145,7 @@ export default function MeuPlano() {
   const [facebook, setFacebook] = useState('')
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
+  const [ofereceServicos, setOfereceServicos] = useState(false)
   const [coletaGratis, setColetaGratis] = useState(false)
   const [entregaReparadoGratis, setEntregaReparadoGratis] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
@@ -223,6 +224,7 @@ export default function MeuPlano() {
         setFacebook(m.facebook ?? '')
         setVendeMais18(!!m.vende_mais_18)
         setApenasRetirada(!!m.apenas_retirada)
+        setOfereceServicos(!!m.oferece_servicos)
         setColetaGratis(!!m.coleta_gratis)
         setEntregaReparadoGratis(!!m.entrega_reparado_gratis)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
@@ -744,6 +746,8 @@ export default function MeuPlano() {
       vende_mais_18: me.vertical === 'eletronicos' ? false : vendeMais18,
       vender_externamente: me.vertical === 'eletronicos' ? true : venderExternamente,
       apenas_retirada: apenasRetirada,
+      // Eletrônica sempre oferece serviço (sem checkbox, não pode ser diferente).
+      oferece_servicos: me.vertical === 'eletronicos' ? true : ofereceServicos,
       pagamento_na_retirada: pagamentoNaRetirada,
       entrega_somente_pix: entregaSomentePix,
       pagamento_manual: pagamentoManual,
@@ -990,6 +994,21 @@ export default function MeuPlano() {
                         : 'A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.'}
                     </span>
                   </label>
+                  {me.vertical !== 'eletronicos' && (
+                    <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={ofereceServicos}
+                        onChange={(e) => setOfereceServicos(e.target.checked)}
+                        className="w-4 h-4 mt-0.5"
+                        data-testid="pref-oferece-servicos"
+                      />
+                      <span className="text-xs text-uf-silver-dim">
+                        <span className="block text-uf-silver font-semibold mb-0.5">Ofereço serviços</span>
+                        Além de produtos, sua vitrine ganha um botão "Ver serviços" e o painel ganha a aba de cadastro de serviços.
+                      </span>
+                    </label>
+                  )}
                   {/* Cortesia de deslocamento só existe pra quem FAZ deslocamento —
                       marcar "apenas retirada" esconde (e o backend zera as duas). */}
                   {me.vertical === 'eletronicos' && !apenasRetirada && (

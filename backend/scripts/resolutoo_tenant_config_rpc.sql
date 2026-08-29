@@ -20,6 +20,7 @@ ALTER TABLE IF EXISTS resolutoo.subscribers
   ADD COLUMN IF NOT EXISTS landing_badge text,
   ADD COLUMN IF NOT EXISTS landing_highlights jsonb,
   ADD COLUMN IF NOT EXISTS landing_texts jsonb,
+  ADD COLUMN IF NOT EXISTS oferece_servicos boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS cart_fab_style text NOT NULL DEFAULT 'sacola',
   ADD COLUMN IF NOT EXISTS cart_fab_animate boolean NOT NULL DEFAULT false;
 
@@ -64,6 +65,7 @@ AS $$
     'landing_badge', landing_badge,
     'landing_highlights', coalesce(landing_highlights, 'null'::jsonb),
     'landing_texts', coalesce(landing_texts, '{}'::jsonb),
+    'oferece_servicos', coalesce(oferece_servicos, false),
     'cart_fab_style', coalesce(nullif(cart_fab_style, ''), 'sacola'),
     'cart_fab_animate', coalesce(cart_fab_animate, false)
   )

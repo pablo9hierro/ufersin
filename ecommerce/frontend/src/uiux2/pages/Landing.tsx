@@ -103,12 +103,14 @@ export default function Uiux2Landing() {
                   {tenantConfig?.landing_texts?.['btn-produtos']?.trim() || 'Ver catálogo'}
                 </span>
               </button>
-              <button onClick={() => navigate('/servicos')} className="u2-btn-secondary px-6 py-3 flex items-center justify-center gap-2">
-                <Wrench className="w-4 h-4" />{' '}
-                <span data-cms-editable="text:btn-servicos" data-cms-label="Botão — Ver serviços" data-cms-default="Ver serviços">
-                  {tenantConfig?.landing_texts?.['btn-servicos']?.trim() || 'Ver serviços'}
-                </span>
-              </button>
+              {tenantConfig?.oferece_servicos && (
+                <button onClick={() => navigate('/servicos')} className="u2-btn-secondary px-6 py-3 flex items-center justify-center gap-2">
+                  <Wrench className="w-4 h-4" />{' '}
+                  <span data-cms-editable="text:btn-servicos" data-cms-label="Botão — Ver serviços" data-cms-default="Ver serviços">
+                    {tenantConfig?.landing_texts?.['btn-servicos']?.trim() || 'Ver serviços'}
+                  </span>
+                </button>
+              )}
               <button onClick={() => (customerAuth.token ? navigate('/consultar') : setShowAuthModal(true))} className="u2-btn-secondary px-6 py-3 flex items-center justify-center gap-2">
                 <span data-cms-editable="text:btn-acompanhar" data-cms-label="Botão — Acompanhar entrega" data-cms-default="Acompanhar entrega">
                   {tenantConfig?.landing_texts?.['btn-acompanhar']?.trim() || 'Acompanhar entrega'}
