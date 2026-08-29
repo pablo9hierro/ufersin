@@ -1340,6 +1340,28 @@ pub async fn get_agenda_settings(
     AdminUser(claims): AdminUser,
 ) -> Result<Json<AgendaSettingsDto>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    // Tenant que ainda nunca abriu a agenda (ex: ecommerce genérico recém
+    // ligou "oferece serviços") não tem linha aqui -- cria com valores
+    // padrão na primeira leitura em vez de 500 (essas tabelas não fazem
+    // parte da migração automática do sqlx, foram provisionadas só pro
+    // tenant eletrônica original).
+    sqlx::query(
+        "INSERT INTO eletronicos.agenda_settings \
+         (tenant_id, appointment_ai_enabled, default_duration_minutes, lead_time_minutes, max_advance_days, buffer_minutes) \
+         VALUES ($1, false, 60, 60, 30, 15) ON CONFLICT (tenant_id) DO NOTHING",
+    )
+    .bind(&claims.tenant_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO eletronicos.agenda_business_hours (tenant_id, weekday, open_time, close_time) \
+         SELECT $1, w, '09:00'::time, CASE WHEN w = 6 THEN '13:00'::time ELSE '18:00'::time END \
+         FROM generate_series(1, 6) AS w \
+         WHERE NOT EXISTS (SELECT 1 FROM eletronicos.agenda_business_hours WHERE tenant_id = $1)",
+    )
+    .bind(&claims.tenant_id)
+    .execute(&mut *tx)
+    .await?;
     let row: AgendaSettingsDto = sqlx::query_as(
         "SELECT appointment_ai_enabled, default_duration_minutes, lead_time_minutes, \
          max_advance_days, buffer_minutes FROM eletronicos.agenda_settings WHERE tenant_id = $1",
@@ -3216,6 +3238,34 @@ pub async fn list_whatsapp_templates(
     AdminUser(claims): AdminUser,
 ) -> Result<Json<Vec<WhatsappTemplateDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    // Tenant que nunca abriu essa página (ex: ecommerce genérico) não tem
+    // linha nenhuma aqui -- semeia os templates de agendamento (os únicos
+    // efetivamente usados fora do fluxo `service_requests`, exclusivo de
+    // eletrônica) com copy genérica, editáveis.
+    let already_seeded: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM eletronicos.whatsapp_templates WHERE tenant_id = $1)",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !already_seeded {
+        sqlx::query(
+            "INSERT INTO eletronicos.whatsapp_templates \
+             (id, tenant_id, template_key, section, label, description, content, required_variables, available_variables, editable, enabled, sort_order) \
+             VALUES \
+             (gen_random_uuid(), $1, 'appointment_cancelled', 'agendamento', 'Agendamento cancelado', \
+              'Enviado ao cliente quando um agendamento é cancelado pelo lojista.', \
+              'Olá /nome, seu agendamento de /servico foi cancelado. Motivo: /motivo', \
+              ARRAY['nome','servico','motivo'], ARRAY['nome','servico','motivo'], true, true, 1), \
+             (gen_random_uuid(), $1, 'appointment_rescheduled', 'agendamento', 'Agendamento remarcado', \
+              'Enviado ao cliente quando um agendamento é remarcado pelo lojista.', \
+              'Olá /nome, seu agendamento foi remarcado de /horario_anterior para /data_hora. Motivo: /motivo', \
+              ARRAY['nome','data_hora','horario_anterior','motivo'], ARRAY['nome','data_hora','horario_anterior','motivo'], true, true, 2)",
+        )
+        .bind(&claims.tenant_id)
+        .execute(&mut *tx)
+        .await?;
+    }
     let rows: Vec<WhatsappTemplateDto> = sqlx::query_as(&format!(
         "SELECT {TEMPLATE_COLUMNS} FROM eletronicos.whatsapp_templates \
          WHERE tenant_id = $1 ORDER BY section, sort_order"

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { ArrowLeft, Loader2, Pencil, Plus, Trash2, Wrench, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import CategorySelectField from '../../components/admin/CategorySelectField'
@@ -7,6 +7,7 @@ import UnitAwareQuantityInput from '../../components/admin/UnitAwareQuantityInpu
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 import type { Category, Ingredient, Service } from '../../types'
 
 function currency(v: number) {
@@ -26,6 +27,8 @@ const EMPTY_EXTRA_COST_LINE: ExtraCostLine = { label: '', value: '' }
  * final é sempre digitado pelo lojista.
  */
 export default function AdminProdutosServicos() {
+  const tenantConfig = useTenantConfig()
+  const ofereceServicos = tenantConfig?.vertical === 'eletronicos' || !!tenantConfig?.oferece_servicos
   const { askConfirm, confirmDialogElement } = useConfirmDialog()
   const [services, setServices] = useState<Service[]>([])
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
@@ -175,6 +178,10 @@ export default function AdminProdutosServicos() {
       await adminService.services.delete(s.id)
       load()
     })
+
+  if (tenantConfig && !ofereceServicos) {
+    return <Navigate to="/admin/produtos" replace />
+  }
 
   return (
     <div>

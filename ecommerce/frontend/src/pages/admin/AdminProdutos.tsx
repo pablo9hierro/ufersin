@@ -9,6 +9,7 @@ import StockEntryDialog from '../../components/admin/StockEntryDialog'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 import {
   buildProductPayload,
   isLowStock,
@@ -56,6 +57,8 @@ const EMPTY_FORM = {
 type Tab = 'todos' | 'baixo' | 'falta'
 
 export default function AdminProdutos() {
+  const tenantConfig = useTenantConfig()
+  const ofereceServicos = tenantConfig?.vertical === 'eletronicos' || !!tenantConfig?.oferece_servicos
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -276,9 +279,11 @@ export default function AdminProdutos() {
               <FileUp className="w-4 h-4" />
               {xmlPending > 0 ? `Importar XML (${xmlPending})` : 'Importar XML'}
             </Link>
-            <Link to="/admin/produtos/servicos" className="btn-secondary text-sm py-2 px-4">
-              <Wrench className="w-4 h-4" /> Serviços
-            </Link>
+            {ofereceServicos && (
+              <Link to="/admin/produtos/servicos" className="btn-secondary text-sm py-2 px-4">
+                <Wrench className="w-4 h-4" /> Serviços
+              </Link>
+            )}
             <button onClick={openNew} className="btn-primary text-sm py-2 px-4">
               <Plus className="w-4 h-4" /> Novo produto
             </button>

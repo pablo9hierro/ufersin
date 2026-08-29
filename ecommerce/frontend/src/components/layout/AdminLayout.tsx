@@ -423,6 +423,13 @@ export default function AdminLayout() {
     return <Navigate to="/admin/pdv" replace />
   }
   if (
+    location.pathname.startsWith('/admin/agendamentos') &&
+    tenantConfig?.vertical !== 'eletronicos' &&
+    !tenantConfig?.oferece_servicos
+  ) {
+    return <Navigate to="/admin/pdv" replace />
+  }
+  if (
     (location.pathname === '/admin/pedidos' || location.pathname === '/admin/frete') &&
     !pedidosLiberado
   ) {
@@ -450,6 +457,8 @@ export default function AdminLayout() {
     if (i.href === '/admin/frete' && tenantConfig?.apenas_retirada) return false
     // Assistente IA: nativo pro ramo eletrônica, acessório pago (allowlist) pro ecommerce.
     if (i.href === '/admin/chat' && !isAssistantIaBetaTenant(tenantConfig?.slug, tenantConfig?.vertical)) return false
+    // Agendamentos só existe se a loja oferece serviços (eletrônica é sempre true, sem checkbox).
+    if (i.href === '/admin/agendamentos' && tenantConfig?.vertical !== 'eletronicos' && !tenantConfig?.oferece_servicos) return false
     return true
   })
 

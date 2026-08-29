@@ -31,8 +31,6 @@ const AdminPedidos = lazyWithReload(() => import('./pages/admin/AdminPedidos'))
 const AdminPdv = lazyWithReload(() => import('./pages/admin/AdminPdv'))
 const AdminProdutos = lazyWithReload(() => import('./pages/admin/AdminProdutos'))
 const AdminProdutosXml = lazyWithReload(() => import('./pages/admin/AdminProdutosXml'))
-const AdminAgendamentos = lazyWithReload(() => import('./pages/admin/AdminAgendamentos'))
-const AdminTemplate = lazyWithReload(() => import('./pages/admin/AdminTemplate'))
 const AdminEstoque = lazyWithReload(() => import('./pages/admin/AdminEstoque'))
 const AdminEstoqueXml = lazyWithReload(() => import('./pages/admin/AdminEstoqueXml'))
 const AdminProdutosServicos = lazyWithReload(() => import('./pages/admin/AdminProdutosServicos'))
@@ -380,8 +378,8 @@ export default function App() {
             <Route path="motoboys" element={<AdminMotoboys />} />
             <Route path="crm" element={<AdminCrm />} />
             <Route path="chat" element={<AdminChat />} />
-            <Route path="agendamentos" element={<AdminAgendamentos />} />
-            <Route path="template" element={<AdminTemplate />} />
+            <Route path="agendamentos" element={<EletronicaAdminAgenda />} />
+            <Route path="template" element={<EletronicaAdminTemplates />} />
             <Route path="promocoes" element={<AdminPromocoes />} />
             <Route path="layout-cliente" element={<AdminLayoutCliente />} />
             <Route path="relatorios" element={<AdminFinanceiro />} />
