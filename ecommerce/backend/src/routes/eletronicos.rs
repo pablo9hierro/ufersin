@@ -1368,12 +1368,19 @@ pub async fn get_agenda_settings(
     // ON CONFLICT DO NOTHING é atômico de verdade (uma corrida real entre
     // requisições concorrentes, já que a página de agenda faz polling, não
     // gera mais unique_violation nem linha fantasma).
+    // `id` (a PRIMARY KEY de verdade dessa tabela) tem DEFAULT 'default' --
+    // resquício de quando essa tabela guardava só a config do tenant
+    // eletrônica original, uma linha só. Sem passar um `id` próprio aqui, a
+    // segunda linha (deste tenant) colide no PK contra a linha 'default'
+    // já existente -- ON CONFLICT (tenant_id) não pega esse conflito (é
+    // noutra constraint), o INSERT falha silenciosamente e nunca semeia
+    // nada. Usa o próprio tenant_id como id -- já é único.
     seed_idempotent(
         &state.pool,
         &claims.tenant_id,
         "INSERT INTO eletronicos.agenda_settings \
-         (tenant_id, appointment_ai_enabled, default_duration_minutes, lead_time_minutes, max_advance_days, buffer_minutes) \
-         VALUES ($1, false, 60, 60, 30, 15) \
+         (id, tenant_id, appointment_ai_enabled, default_duration_minutes, lead_time_minutes, max_advance_days, buffer_minutes) \
+         VALUES ($1, $1, false, 60, 60, 30, 15) \
          ON CONFLICT (tenant_id) DO NOTHING",
     )
     .await?;
