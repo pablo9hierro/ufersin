@@ -480,6 +480,18 @@ export default function AdminLayout() {
     return true
   })
 
+  // Item ativo do menu: precisa ser o match MAIS ESPECÍFICO (maior href que
+  // bate), não "qualquer item cujo href seja prefixo do path atual" -- senão
+  // /admin/produtos/servicos casava com "Produtos" (/admin/produtos) E
+  // "Serviços" (/admin/produtos/servicos) ao mesmo tempo, os dois ficavam
+  // destacados juntos na sidebar.
+  const activeHref = visibleItems.reduce<string | null>((best, i) => {
+    const matches = location.pathname === i.href || location.pathname.startsWith(`${i.href}/`)
+    if (!matches) return best
+    if (best === null || i.href.length > best.length) return i.href
+    return best
+  }, null)
+
   const lojaLabel = tenantConfig?.loja_nome?.trim() || tenantConfig?.slug || null
 
   return (
@@ -492,7 +504,7 @@ export default function AdminLayout() {
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {visibleItems.map(({ href, label, icon: Icon }) => {
-            const active = location.pathname === href || location.pathname.startsWith(`${href}/`)
+            const active = href === activeHref
             return (
               <Link
                 key={href}
@@ -528,7 +540,7 @@ export default function AdminLayout() {
         </header>
         <nav className="md:hidden flex gap-2 overflow-x-auto px-4 py-3 bg-son-black border-b border-white/5 scrollbar-hide sticky top-[65px] z-10">
           {visibleItems.map(({ href, label, icon: Icon }) => {
-            const active = location.pathname === href || location.pathname.startsWith(`${href}/`)
+            const active = href === activeHref
             return (
               <Link
                 key={href}
