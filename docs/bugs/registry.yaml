@@ -373,6 +373,39 @@
   regression_test_id: "BUG-013"
   manual_verification: null
 
+- id: BUG-017
+  title: "Painel deslogava sozinho achando a loja offline/inadimplente com um único blip de rede"
+  area: [frontend]
+  service: ecommerce/frontend
+  severity: critical
+  status: fixed
+  reported_at: "2026-08-30"
+  fixed_at: "2026-08-30"
+  symptom: >
+    Sessão do painel caiu sozinha e voltou pra tela de login mostrando
+    "loja offline — assine novamente no Resolutoo pra reativar o painel",
+    SEM o usuário ter feito logout manual. Confirmado que a assinatura do
+    tenant (resusu) estava genuinamente ativa e paga (status='ativo' em
+    resolutoo.subscribers) no momento -- não era falta de pagamento real.
+  root_cause: >
+    fetchTenantConfig() tentava buscar a config do tenant (Supabase RPC +
+    fallback ecommerce-api) UMA única vez em paralelo; se as duas
+    falhassem juntas por qualquer motivo transitório (timeout de
+    cold-start, blip de rede), o código tratava isso exatamente igual a
+    "loja cancelada/inadimplente de verdade" (ativa=false), o que
+    AdminLayout.tsx usa pra forçar logout. Mesma classe de bug do
+    BUG-016 (WhatsApp): nunca tolerava um erro/timeout isolado como
+    "não sei o estado real", tratava como certeza.
+  fix_commit: "ufersin:6fe0dc9"
+  fix_files: ["ecommerce/frontend/src/lib/tenantConfig.ts"]
+  regression_test_id: null
+  manual_verification: >
+    Com o painel de um tenant ativo aberto, simular falha temporária de
+    rede na busca de tenant-config (ex: DevTools throttling/offline por
+    alguns segundos) e confirmar que o painel NÃO desloga sozinho --
+    fetchTenantConfig deve tentar 3x antes de considerar a loja
+    genuinamente offline.
+
 - id: BUG-015
   title: "Sessão de admin vazava entre tenants -- clicar link de outra loja entrava logado no painel dela"
   area: [frontend]
