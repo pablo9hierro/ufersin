@@ -130,6 +130,29 @@ export default function AdminProdutos() {
   }
 
   const save = async () => {
+    if (!form.name.trim()) {
+      setUploadError('Informe o nome do produto.')
+      return
+    }
+    const price = Number(form.price)
+    if (!Number.isFinite(price) || price <= 0 || form.price.trim() === '') {
+      setUploadError('Informe o preço.')
+      return
+    }
+    const quantity = Number(form.quantity)
+    if (!Number.isFinite(quantity) || quantity < 0 || form.quantity.trim() === '') {
+      setUploadError('Informe o estoque.')
+      return
+    }
+    const costPrice = Number(form.cost_price)
+    if (!Number.isFinite(costPrice) || costPrice < 0 || form.cost_price.trim() === '') {
+      setUploadError('Informe o valor de custo.')
+      return
+    }
+    if (!form.category_id) {
+      setUploadError('Escolha uma categoria.')
+      return
+    }
     const lowStock = Number(form.low_stock_threshold)
     if (
       !Number.isFinite(lowStock) ||

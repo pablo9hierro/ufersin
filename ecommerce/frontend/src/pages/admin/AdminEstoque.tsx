@@ -521,7 +521,13 @@ export default function AdminEstoque() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="space-y-3">
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                saveIngredient()
+              }}
+            >
               <div>
                 <label className="label">Nome</label>
                 <input
@@ -529,6 +535,7 @@ export default function AdminEstoque() {
                   value={ingredientForm.name}
                   onChange={(e) => setIngredientForm({ ...ingredientForm, name: e.target.value })}
                   autoFocus
+                  required
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -554,6 +561,7 @@ export default function AdminEstoque() {
                     step="any"
                     value={ingredientForm.quantity}
                     onChange={(e) => setIngredientForm({ ...ingredientForm, quantity: e.target.value })}
+                    required
                   />
                 </div>
               </div>
@@ -565,6 +573,7 @@ export default function AdminEstoque() {
                   step="0.01"
                   value={ingredientForm.cost_price}
                   onChange={(e) => setIngredientForm({ ...ingredientForm, cost_price: e.target.value })}
+                  required
                 />
               </div>
               <div>
@@ -579,11 +588,11 @@ export default function AdminEstoque() {
                 />
               </div>
               {ingredientError && <p className="error-msg">{ingredientError}</p>}
-              <button onClick={saveIngredient} disabled={ingredientSaving} className="btn-primary w-full mt-2">
+              <button type="submit" disabled={ingredientSaving} className="btn-primary w-full mt-2">
                 {ingredientSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Salvar
               </button>
-            </div>
+            </form>
           </div>
         </div>
       )}
