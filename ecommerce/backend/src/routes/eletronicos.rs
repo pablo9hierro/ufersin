@@ -1335,34 +1335,53 @@ pub struct AgendaSettingsDto {
     pub buffer_minutes: i32,
 }
 
+/// Executa um INSERT idempotente (guardado por `WHERE NOT EXISTS`) na sua
+/// PRÓPRIA transação curta -- a página de agenda faz polling, então duas
+/// requisições concorrentes podem passar pela checagem `NOT EXISTS` ao
+/// mesmo tempo e uma delas esbarra num unique_violation real ao inserir.
+/// Rodar isolado (não dentro da transação principal do handler) evita que
+/// esse erro aborte a transação inteira -- um erro de unique_violation aqui
+/// só significa "a outra requisição já inseriu", segue o fluxo normal.
+async fn seed_idempotent(pool: &sqlx::PgPool, tenant_id: &str, sql: &str) -> Result<(), AppError> {
+    let mut tx = tenant::tenant_tx(pool, tenant_id).await?;
+    match sqlx::query(sql).bind(tenant_id).execute(&mut *tx).await {
+        Ok(_) => tx.commit().await?,
+        Err(sqlx::Error::Database(db)) if db.is_unique_violation() => {
+            tx.rollback().await?;
+        }
+        Err(e) => return Err(e.into()),
+    }
+    Ok(())
+}
+
 pub async fn get_agenda_settings(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
 ) -> Result<Json<AgendaSettingsDto>, AppError> {
-    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     // Tenant que ainda nunca abriu a agenda (ex: ecommerce genérico recém
     // ligou "oferece serviços") não tem linha aqui -- cria com valores
     // padrão na primeira leitura em vez de 500 (essas tabelas não fazem
     // parte da migração automática do sqlx, foram provisionadas só pro
     // tenant eletrônica original).
-    sqlx::query(
+    seed_idempotent(
+        &state.pool,
+        &claims.tenant_id,
         "INSERT INTO eletronicos.agenda_settings \
          (tenant_id, appointment_ai_enabled, default_duration_minutes, lead_time_minutes, max_advance_days, buffer_minutes) \
          SELECT $1, false, 60, 60, 30, 15 \
          WHERE NOT EXISTS (SELECT 1 FROM eletronicos.agenda_settings WHERE tenant_id = $1)",
     )
-    .bind(&claims.tenant_id)
-    .execute(&mut *tx)
     .await?;
-    sqlx::query(
+    seed_idempotent(
+        &state.pool,
+        &claims.tenant_id,
         "INSERT INTO eletronicos.agenda_business_hours (tenant_id, weekday, open_time, close_time) \
          SELECT $1, w, '09:00'::time, CASE WHEN w = 6 THEN '13:00'::time ELSE '18:00'::time END \
          FROM generate_series(1, 6) AS w \
          WHERE NOT EXISTS (SELECT 1 FROM eletronicos.agenda_business_hours WHERE tenant_id = $1)",
     )
-    .bind(&claims.tenant_id)
-    .execute(&mut *tx)
     .await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let row: AgendaSettingsDto = sqlx::query_as(
         "SELECT appointment_ai_enabled, default_duration_minutes, lead_time_minutes, \
          max_advance_days, buffer_minutes FROM eletronicos.agenda_settings WHERE tenant_id = $1",
@@ -3294,30 +3313,30 @@ pub async fn list_whatsapp_templates(
         .bind(&claims.tenant_id)
         .execute(&mut *tx)
         .await?;
-        let already_seeded: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM eletronicos.whatsapp_templates WHERE tenant_id = $1)",
+        tx.commit().await?;
+        // INSERT isolado na própria transação curta (mesmo motivo de
+        // `seed_idempotent`): a página pode disparar chamadas concorrentes,
+        // e um unique_violation aqui não pode abortar a transação de leitura
+        // que vem a seguir.
+        seed_idempotent(
+            &state.pool,
+            &claims.tenant_id,
+            "INSERT INTO eletronicos.whatsapp_templates \
+             (id, tenant_id, template_key, section, label, description, content, required_variables, available_variables, editable, enabled, sort_order) \
+             SELECT * FROM (VALUES \
+             (gen_random_uuid(), $1, 'appointment_cancelled', 'agendamento', 'Agendamento cancelado', \
+              'Enviado ao cliente quando um agendamento é cancelado pelo lojista.', \
+              'Olá /nome, seu agendamento de /servico na /loja foi cancelado. Motivo: /motivo', \
+              ARRAY['nome','servico','motivo','loja'], ARRAY['nome','servico','motivo','loja','endereco'], true, true, 1), \
+             (gen_random_uuid(), $1, 'appointment_rescheduled', 'agendamento', 'Agendamento remarcado', \
+              'Enviado ao cliente quando um agendamento é remarcado pelo lojista.', \
+              'Olá /nome, seu agendamento na /loja foi remarcado de /horario_anterior para /data_hora. Motivo: /motivo', \
+              ARRAY['nome','data_hora','horario_anterior','motivo','loja'], ARRAY['nome','data_hora','horario_anterior','motivo','loja','endereco'], true, true, 2) \
+             ) AS v \
+             WHERE NOT EXISTS (SELECT 1 FROM eletronicos.whatsapp_templates WHERE tenant_id = $1)",
         )
-        .bind(&claims.tenant_id)
-        .fetch_one(&mut *tx)
         .await?;
-        if !already_seeded {
-            sqlx::query(
-                "INSERT INTO eletronicos.whatsapp_templates \
-                 (id, tenant_id, template_key, section, label, description, content, required_variables, available_variables, editable, enabled, sort_order) \
-                 VALUES \
-                 (gen_random_uuid(), $1, 'appointment_cancelled', 'agendamento', 'Agendamento cancelado', \
-                  'Enviado ao cliente quando um agendamento é cancelado pelo lojista.', \
-                  'Olá /nome, seu agendamento de /servico na /loja foi cancelado. Motivo: /motivo', \
-                  ARRAY['nome','servico','motivo','loja'], ARRAY['nome','servico','motivo','loja','endereco'], true, true, 1), \
-                 (gen_random_uuid(), $1, 'appointment_rescheduled', 'agendamento', 'Agendamento remarcado', \
-                  'Enviado ao cliente quando um agendamento é remarcado pelo lojista.', \
-                  'Olá /nome, seu agendamento na /loja foi remarcado de /horario_anterior para /data_hora. Motivo: /motivo', \
-                  ARRAY['nome','data_hora','horario_anterior','motivo','loja'], ARRAY['nome','data_hora','horario_anterior','motivo','loja','endereco'], true, true, 2)",
-            )
-            .bind(&claims.tenant_id)
-            .execute(&mut *tx)
-            .await?;
-        }
+        tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     }
     let rows: Vec<WhatsappTemplateDto> = sqlx::query_as(&format!(
         "SELECT {TEMPLATE_COLUMNS} FROM eletronicos.whatsapp_templates \
