@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { migrateLocalStorageKey } from '../lib/migrateStorageKey'
+import { resolveTenantSlug } from '../lib/tenantConfig'
 
 // Sessão do admin — separada de vendedor (useVendedorAuth) e motoboy
 // (useMotoboyAuth), cada uma com chave própria no localStorage. Já foi
@@ -28,6 +29,25 @@ interface AdminAuthState {
   tenantSlug: string | null
   login: (token: string, name: string, tenantSlug?: string | null) => void
   logout: () => void
+}
+
+/**
+ * Sessão de admin fica num único registro global no localStorage (não
+ * por tenant) -- se o usuário logou antes noutra loja nesta mesma aba e
+ * clica num link (vitrine ou painel) pra outro tenant sem passar pelo
+ * /admin/login de novo, o token antigo (de outro tenant_id) fica "válido"
+ * pro backend só de token existir, mas todo dado que a tela busca vem
+ * vazio/errado/de outro tenant. Detecta o descompasso comparando o
+ * `tenantSlug` que o token carrega contra o tenant que a navegação atual
+ * resolveu (`resolveTenantSlug()` -- já prioriza `?tenant=`, cai pra
+ * INITIAL_SLUG por aba, nunca herda sessão de outra aba) -- usado por
+ * AdminLayout.tsx e EletronicaAdminLayout.tsx, os dois únicos consumidores
+ * desta sessão.
+ */
+export function detectAdminTenantMismatch(token: string | null, tenantSlug: string | null): boolean {
+  if (!token || !tenantSlug) return false
+  const currentSlug = resolveTenantSlug()
+  return Boolean(currentSlug && currentSlug !== tenantSlug)
 }
 
 export const useAdminAuth = create<AdminAuthState>()(

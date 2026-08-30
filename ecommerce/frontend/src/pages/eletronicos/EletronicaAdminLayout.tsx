@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Boxes, CalendarDays, ClipboardList, LogOut, MessageCircle, MessageSquare, Package, ShoppingCart, Truck, UserCog, Wallet } from 'lucide-react'
-import { useAdminAuth } from '../../store/adminAuth'
+import { useAdminAuth, detectAdminTenantMismatch } from '../../store/adminAuth'
 import { withTenantSearch } from '../../lib/tenantConfig'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
@@ -34,14 +34,14 @@ export default function EletronicaAdminLayout() {
   // logado, empurra a posição real do navegador pro backend a cada 15s.
   useDriverLocationPush(Boolean(token))
 
-  // Sessão de admin fica num único registro global no localStorage (não
-  // por tenant) -- se o usuário logou antes noutra loja nesta mesma aba e
-  // navega direto pra ?tenant=X sem passar pelo /admin/login de novo, o
-  // token antigo (de outro tenant_id) fica "válido" pro backend mas todo
-  // dado eletronicos.* vem vazio/"no rows" pra esse tenant. Detecta o
-  // descompasso e força novo login em vez de deixar a tela quebrar.
-  const urlTenant = new URLSearchParams(window.location.search).get('tenant')?.trim().toLowerCase() || null
-  const tenantMismatch = Boolean(token && urlTenant && tenantSlug && urlTenant !== tenantSlug)
+  // BUG-015: sessão de admin fica num único registro global no
+  // localStorage (não por tenant) -- se o usuário logou antes noutra loja
+  // nesta mesma aba e navega/clica pra ?tenant=X sem passar pelo
+  // /admin/login de novo, o token antigo (de outro tenant_id) fica
+  // "válido" pro backend mas todo dado eletronicos.* vem vazio/"no rows"
+  // pra esse tenant. Detecta o descompasso e força novo login em vez de
+  // deixar a tela quebrar. Ver detectAdminTenantMismatch.
+  const tenantMismatch = detectAdminTenantMismatch(token, tenantSlug)
 
   useEffect(() => {
     if (tenantMismatch) {

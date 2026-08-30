@@ -113,7 +113,15 @@ export default function WhatsAppConnection({
       if (!cancelled && s === 'open') setQr(null)
     }, POLL_STATUS_MS)
 
+    // BUG-016: esse timer chama connect() de verdade no backend, que pode
+    // forçar logout de uma sessão que acabou de conectar (ver whatsapp.rs).
+    // Uma aba esquecida em segundo plano (troca de app no celular, outra
+    // aba do desktop em foco) continuava disparando isso a cada 25s sem
+    // ninguém olhando a tela — nunca deveria estar "refrescando QR" de uma
+    // aba que o usuário nem está vendo. Só chama enquanto a aba está
+    // visível.
     const qrTimer = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
       try {
         const data = await api.connect()
         if (!cancelled) setQr(data)

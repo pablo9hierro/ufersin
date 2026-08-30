@@ -373,6 +373,82 @@
   regression_test_id: "BUG-013"
   manual_verification: null
 
+- id: BUG-015
+  title: "Sessão de admin vazava entre tenants -- clicar link de outra loja entrava logado no painel dela"
+  area: [frontend]
+  service: ecommerce/frontend
+  severity: critical
+  status: fixed
+  reported_at: "2026-08-30"
+  fixed_at: "2026-08-30"
+  symptom: >
+    Logado no painel do tenant A, ao clicar num link de vitrine/painel de
+    um tenant B (sem fazer logout), o site entrava automaticamente
+    LOGADO no painel do tenant B, usando o token do tenant A.
+  root_cause: >
+    useAdminAuth (Zustand) persiste a sessão num ÚNICO registro global no
+    localStorage (resolutoo_loja_admin_auth), não namespaced por tenant.
+    AdminLayout.tsx (o layout usado pela maioria dos tenants, incluindo
+    resusu) só checava "existe token?" pra decidir "logado" -- nunca
+    comparava o tenant_id/tenantSlug que o token carrega contra o tenant
+    que a navegação atual resolveu. EletronicaAdminLayout.tsx já tinha
+    essa checagem (tenantMismatch) desde antes, mas o fix nunca foi
+    portado pro layout principal, que é o que a maioria dos tenants usa.
+  fix_commit: "ufersin:PENDING"
+  fix_files:
+    - "ecommerce/frontend/src/store/adminAuth.ts"
+    - "ecommerce/frontend/src/components/layout/AdminLayout.tsx"
+    - "ecommerce/frontend/src/pages/eletronicos/EletronicaAdminLayout.tsx"
+  regression_test_id: null
+  manual_verification: >
+    Logar no painel do tenant A (ex: resusu), sem deslogar, navegar direto
+    pra ?tenant=B (outro tenant) ou clicar num link de loja diferente --
+    deve cair na tela de login, nunca mostrar o painel de B usando a
+    sessão de A. Repetir com /admin (ecommerce) e /admin-eletronica.
+
+- id: BUG-016
+  title: "Sessão WhatsApp caía sozinha -- mobile preso em tela de QR enquanto desktop mostrava conectado"
+  area: [backend, frontend, evolution-api]
+  service: ecommerce-api / ecommerce/frontend
+  severity: critical
+  status: fixed
+  reported_at: "2026-08-30"
+  fixed_at: "2026-08-30"
+  symptom: >
+    Painel aberto no celular ficava preso na tela de conectar WhatsApp
+    (QR code, "reconecte") mesmo com a sessão real conectada -- desktop,
+    ao mesmo tempo, mostrava normal/conectado. Depois de um tempo a
+    conexão caía também no desktop, sem ninguém ter clicado em
+    "Desconectar".
+  root_cause: >
+    Dois bugs compostos. (1) backend: whatsapp::connect() só pulava o
+    force-logout quando o status lido era EXATAMENTE "open" -- qualquer
+    outro resultado, incluindo o estado normal "connecting" (logo após
+    parear) e até erro de rede na PRÓPRIA checagem de status contra o
+    Evolution API, caía direto num logout forçado da sessão real. (2)
+    frontend: WhatsAppConnection.tsx mantém um timer que chama connect()
+    de verdade a cada 25s enquanto a tela de QR está aberta, MESMO numa
+    aba esquecida em segundo plano (comum em mobile ao trocar de app) --
+    cada chamada é uma chance de bater no bug (1) e derrubar a sessão. E
+    OnboardingGate.tsx tratava QUALQUER erro/blip de rede no status check
+    inicial como "desconectado" sem retry nenhum -- rede de celular é bem
+    mais sujeita a isso que desktop cabeado, explicando a divergência
+    mobile-vs-desktop pro MESMO estado real do servidor (não existe cache
+    por dispositivo, o estado é sempre lido ao vivo do Evolution API).
+  fix_commit: "ufersin:PENDING"
+  fix_files:
+    - "ecommerce/backend/src/whatsapp.rs"
+    - "ecommerce/frontend/src/components/admin/OnboardingGate.tsx"
+    - "ecommerce/frontend/src/components/ui/WhatsAppConnection.tsx"
+  regression_test_id: null
+  manual_verification: >
+    Conectar o WhatsApp de um tenant de teste, deixar uma aba com a tela
+    de QR aberta e esquecida em segundo plano (ou minimizada no celular)
+    por 2+ minutos -- a sessão deve continuar "Conectado" tanto nessa aba
+    quanto em outra aba/dispositivo aberto na mesma conta, sem cair
+    sozinha. Só deve desconectar ao clicar explicitamente em
+    "Desconectar".
+
 - id: BUG-014
   title: "Cálculo de valor de entrega sempre falhava (OSRM público bloqueava a chamada)"
   area: [backend, ai-pipeline]

@@ -80,20 +80,37 @@ export default function OnboardingGate({
 
     let cancelled = false
     ;(async () => {
-      try {
-        const verdict = classifyWaStatusPayload(await adminService.whatsapp.status())
+      // BUG-016: um único blip de rede (comum em mobile) fazia esse efeito
+      // cair direto em "desconectado" e mostrar a tela cheia de reconectar
+      // — mesmo com o WhatsApp real conectado (visível normalmente no
+      // desktop na mesma hora). Mesmo padrão de retry do bootstrapGate do
+      // AdminLayout: só desiste depois de algumas tentativas, nunca no
+      // primeiro erro/estado transitório.
+      for (let attempt = 0; attempt < 4; attempt++) {
         if (cancelled) return
-        if (verdict === 'open') {
-          setWaConnected(true)
-          if (hoursDoneRef.current) onUnlocked()
-        } else {
-          // closed OR pending: stay on gate (pending = still connecting / QR).
-          setWaConnected(false)
+        try {
+          const verdict = classifyWaStatusPayload(await adminService.whatsapp.status())
+          if (cancelled) return
+          if (verdict === 'open') {
+            setWaConnected(true)
+            if (hoursDoneRef.current) onUnlocked()
+            setBootstrapping(false)
+            return
+          }
+          if (verdict === 'closed' && attempt === 3) {
+            // Definitivo (não pending) e já esgotou as tentativas.
+            setWaConnected(false)
+            setBootstrapping(false)
+            return
+          }
+        } catch {
+          // Rede falhou — trata como transitório, tenta de novo.
         }
-      } catch {
-        if (!cancelled) setWaConnected(false)
-      } finally {
-        if (!cancelled) setBootstrapping(false)
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 500))
+      }
+      if (!cancelled) {
+        setWaConnected(false)
+        setBootstrapping(false)
       }
     })()
 

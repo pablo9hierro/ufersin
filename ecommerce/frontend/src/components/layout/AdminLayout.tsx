@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import Logo from '../ui/Logo'
 import OnboardingGate from '../admin/OnboardingGate'
-import { useAdminAuth } from '../../store/adminAuth'
+import { useAdminAuth, detectAdminTenantMismatch } from '../../store/adminAuth'
 import {
   clearDemoStaffSession,
   getDemoStaffSession,
@@ -101,7 +101,7 @@ function AdminRouteFallback() {
 }
 
 export default function AdminLayout() {
-  const { token, name, logout } = useAdminAuth()
+  const { token, name, tenantSlug, logout } = useAdminAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const demo = isDemoModeActive()
@@ -109,6 +109,17 @@ export default function AdminLayout() {
   const demoAdmin = demo && demoStaff?.role === 'admin'
   const effectiveToken = token || (demoAdmin ? demoStaff!.token : null)
   const effectiveName = demoAdmin ? demoStaff!.name : name
+  // BUG-015: token de um tenant ficava "válido" ao navegar/clicar pra
+  // outro tenant sem logout explícito, porque a sessão de admin é um único
+  // registro global no localStorage. Ver detectAdminTenantMismatch.
+  const tenantMismatch = !demo && detectAdminTenantMismatch(token, tenantSlug)
+
+  useEffect(() => {
+    if (tenantMismatch) {
+      gateSession = null
+      logout()
+    }
+  }, [tenantMismatch, logout])
   const tenantConfig = useTenantConfig()
   const tenantPlano = tenantConfig?.plano
   const pedidosLiberado = tenantConfig?.vender_externamente !== false
@@ -346,7 +357,7 @@ export default function AdminLayout() {
     }
   }, [demo, whatsappRequired, gateLocked, applyVerdict])
 
-  if (!effectiveToken) return <Navigate to="/admin/login" state={{ from: location }} replace />
+  if (!effectiveToken || tenantMismatch) return <Navigate to="/admin/login" state={{ from: location }} replace />
 
   // Wait for Resolutoo tenant-config before rendering the shell — cancelado
   // must not flash the painel from a warm WA-gate session cache.

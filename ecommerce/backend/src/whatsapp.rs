@@ -263,38 +263,53 @@ pub async fn connect(state: &AppState, instance: &str) -> Result<serde_json::Val
         }
     }
 
-    // Se a instância já está genuinamente conectada, NUNCA força logout — só
-    // devolve o estado atual sem QR. Sem essa guarda, qualquer chamada extra
-    // a /connect (aba antiga esquecida aberta com o timer de refresh de QR
-    // ainda rodando, duplo clique, retry, etc.) derruba uma sessão que
-    // acabou de ser pareada com sucesso, mesmo que o usuário já tenha visto
-    // "Conectado" na tela — bug real observado em produção no tenant
-    // resusu (conectou, poucos minutos depois caiu sozinho). O force-logout
-    // abaixo só é necessário pro caso descrito no comentário original
-    // (socket morto mas Evolution ainda marca "open"), não pro caso comum.
-    if let Ok(status) = connection_status(state, instance).await {
-        let is_open = status
-            .get("instance")
-            .and_then(|i| i.get("state"))
-            .or_else(|| status.get("state"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.eq_ignore_ascii_case("open"))
-            .unwrap_or(false);
-        if is_open {
-            tracing::info!("wa_connect: instance={instance} short-circuit=already_open");
-            return Ok(status);
+    // BUG-016: a versão anterior desta guarda só pulava o force-logout
+    // quando o status lido agora mesmo era EXATAMENTE "open" -- qualquer
+    // outro resultado (inclusive "connecting", um estado normal logo após
+    // parear ou durante uma reconexão breve do socket, e inclusive um ERRO
+    // de rede na própria checagem de status contra o Evolution API) caía
+    // direto no force-logout abaixo, matando uma sessão genuinamente viva.
+    // Isso combinado com o timer de refresh de QR do frontend (chama
+    // connect() a cada ~25s enquanto uma aba mostra a tela de QR, mesmo
+    // esquecida em segundo plano) derrubava sessões reais em produção --
+    // sintoma relatado: painel mobile preso na tela de QR enquanto desktop
+    // mostrava conectado, e a sessão caía nos dois depois de um tempo.
+    // Agora só força logout quando o estado é CONFIRMADAMENTE "close" (ou
+    // ausente) -- "connecting" é tratado igual a "open" (não mexe, só
+    // devolve o status atual) e erro de rede na checagem é tratado como
+    // "não sei o estado real, não arrisco derrubar" em vez de "assume
+    // morto". O caso original que motivou o force-logout (Evolution preso
+    // marcando "open" com o socket já morto, BUG-002) segue coberto: uma
+    // vez que o socket cai de verdade, o Evolution eventualmente reporta
+    // "close", e é só nesse caso que ainda forçamos logout antes do QR novo.
+    match connection_status(state, instance).await {
+        Ok(status) => {
+            let state_str = status
+                .get("instance")
+                .and_then(|i| i.get("state"))
+                .or_else(|| status.get("state"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if state_str == "open" || state_str == "connecting" {
+                tracing::info!("wa_connect: instance={instance} short-circuit=state:{state_str}");
+                return Ok(status);
+            }
+            tracing::info!("wa_connect: instance={instance} state={state_str} proceeding to force logout+reconnect");
+            // Força a sessão atual (se houver) a encerrar antes de pedir um QR
+            // novo — testado ao vivo: pedir QR com a instância ainda marcada
+            // "open" (mesmo que o socket já esteja morto) faz o Evolution API
+            // devolver o connect SEM QR/pairing code, porque ele acha que não
+            // precisa reconectar. Best-effort — erro aqui não impede a
+            // tentativa de connect logo abaixo. Nunca chama /instance/delete.
+            let _ = logout(state, instance).await;
+        }
+        Err(e) => {
+            tracing::warn!(
+                "wa_connect: instance={instance} status check failed ({e:?}), skipping force-logout (estado real desconhecido)"
+            );
         }
     }
-    tracing::info!("wa_connect: instance={instance} proceeding to force logout+reconnect");
-
-    // Força a sessão atual (se houver) a encerrar antes de pedir um QR novo —
-    // testado ao vivo: pedir QR com a instância ainda marcada "open" (mesmo
-    // que o socket já esteja morto, ex: WhatsApp deslogou o aparelho) faz o
-    // Evolution API devolver o connect SEM nenhum QR/pairing code, porque
-    // ele acha que não precisa reconectar. Best-effort — erro aqui (ex:
-    // sessão já nem existia) não impede a tentativa de connect logo abaixo.
-    // Nunca chama /instance/delete — não apaga histórico de mensagens.
-    let _ = logout(state, instance).await;
 
     // Best-effort: point this instance's webhook at us so incoming messages
     // (customer sharing their location) reach /api/webhooks/evolution. Not
