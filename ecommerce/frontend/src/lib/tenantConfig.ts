@@ -429,14 +429,25 @@ async function fetchTenantConfigFromApi(slug: string): Promise<TenantConfig | nu
 async function fetchTenantConfig(slug: string): Promise<TenantConfig> {
   if (!slug) return DEFAULT_CONFIG
 
-  // Parallel: Supabase preferred when both succeed (layout_style source of truth).
-  // Sequential waterfall was adding cold-start latency on every admin boot.
-  const [fromSb, fromApi] = await Promise.all([
-    fetchTenantConfigFromSupabase(slug),
-    fetchTenantConfigFromApi(slug),
-  ])
-  if (fromSb) return fromSb
-  if (fromApi) return fromApi
+  // BUG-017: um único blip (timeout de cold-start, RPC do Supabase demorando
+  // pra responder, rede instável) fazia as duas fontes falharem juntas UMA
+  // vez e isso já era tratado como "loja cancelada/inadimplente de verdade"
+  // -- derrubava o painel pro /admin/login sem nenhum logout manual, mesmo
+  // com a assinatura genuinamente ativa e paga (confirmado: status='ativo'
+  // no subscribers, sem qualquer cancelamento real). Mesma classe de bug do
+  // BUG-016 (WhatsApp): nunca tratar UM erro/timeout como "definitivamente
+  // offline" -- só decide isso depois de confirmar em mais de uma tentativa.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Parallel: Supabase preferred when both succeed (layout_style source of truth).
+    // Sequential waterfall was adding cold-start latency on every admin boot.
+    const [fromSb, fromApi] = await Promise.all([
+      fetchTenantConfigFromSupabase(slug),
+      fetchTenantConfigFromApi(slug),
+    ])
+    if (fromSb) return fromSb
+    if (fromApi) return fromApi
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 400))
+  }
   // Slug conhecido sem config ativa = loja offline (cancelado / inadimplente).
   // Não cair no DEFAULT (que liberaria vitrine falsa); vender_externamente=false
   // faz o StyleAware mostrar página indisponível. `ativa: false` derruba o painel.
