@@ -1363,13 +1363,18 @@ pub async fn get_agenda_settings(
     // padrão na primeira leitura em vez de 500 (essas tabelas não fazem
     // parte da migração automática do sqlx, foram provisionadas só pro
     // tenant eletrônica original).
+    // migration 0039 garante as constraints UNIQUE que faltavam nessas
+    // tabelas (provisionadas à mão fora do fluxo de migração) -- com elas,
+    // ON CONFLICT DO NOTHING é atômico de verdade (uma corrida real entre
+    // requisições concorrentes, já que a página de agenda faz polling, não
+    // gera mais unique_violation nem linha fantasma).
     seed_idempotent(
         &state.pool,
         &claims.tenant_id,
         "INSERT INTO eletronicos.agenda_settings \
          (tenant_id, appointment_ai_enabled, default_duration_minutes, lead_time_minutes, max_advance_days, buffer_minutes) \
-         SELECT $1, false, 60, 60, 30, 15 \
-         WHERE NOT EXISTS (SELECT 1 FROM eletronicos.agenda_settings WHERE tenant_id = $1)",
+         VALUES ($1, false, 60, 60, 30, 15) \
+         ON CONFLICT (tenant_id) DO NOTHING",
     )
     .await?;
     seed_idempotent(
@@ -1378,7 +1383,7 @@ pub async fn get_agenda_settings(
         "INSERT INTO eletronicos.agenda_business_hours (tenant_id, weekday, open_time, close_time) \
          SELECT $1, w, '09:00'::time, CASE WHEN w = 6 THEN '13:00'::time ELSE '18:00'::time END \
          FROM generate_series(1, 6) AS w \
-         WHERE NOT EXISTS (SELECT 1 FROM eletronicos.agenda_business_hours WHERE tenant_id = $1)",
+         ON CONFLICT (tenant_id, weekday) DO NOTHING",
     )
     .await?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
@@ -3323,7 +3328,7 @@ pub async fn list_whatsapp_templates(
             &claims.tenant_id,
             "INSERT INTO eletronicos.whatsapp_templates \
              (id, tenant_id, template_key, section, label, description, content, required_variables, available_variables, editable, enabled, sort_order) \
-             SELECT * FROM (VALUES \
+             VALUES \
              (gen_random_uuid(), $1, 'appointment_cancelled', 'agendamento', 'Agendamento cancelado', \
               'Enviado ao cliente quando um agendamento é cancelado pelo lojista.', \
               'Olá /nome, seu agendamento de /servico na /loja foi cancelado. Motivo: /motivo', \
@@ -3332,8 +3337,7 @@ pub async fn list_whatsapp_templates(
               'Enviado ao cliente quando um agendamento é remarcado pelo lojista.', \
               'Olá /nome, seu agendamento na /loja foi remarcado de /horario_anterior para /data_hora. Motivo: /motivo', \
               ARRAY['nome','data_hora','horario_anterior','motivo','loja'], ARRAY['nome','data_hora','horario_anterior','motivo','loja','endereco'], true, true, 2) \
-             ) AS v \
-             WHERE NOT EXISTS (SELECT 1 FROM eletronicos.whatsapp_templates WHERE tenant_id = $1)",
+             ON CONFLICT (tenant_id, template_key) DO NOTHING",
         )
         .await?;
         tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
