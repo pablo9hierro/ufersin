@@ -394,7 +394,7 @@
     que a navegação atual resolveu. EletronicaAdminLayout.tsx já tinha
     essa checagem (tenantMismatch) desde antes, mas o fix nunca foi
     portado pro layout principal, que é o que a maioria dos tenants usa.
-  fix_commit: "ufersin:PENDING"
+  fix_commit: "ufersin:968ba54"
   fix_files:
     - "ecommerce/frontend/src/store/adminAuth.ts"
     - "ecommerce/frontend/src/components/layout/AdminLayout.tsx"
@@ -435,7 +435,7 @@
     mais sujeita a isso que desktop cabeado, explicando a divergência
     mobile-vs-desktop pro MESMO estado real do servidor (não existe cache
     por dispositivo, o estado é sempre lido ao vivo do Evolution API).
-  fix_commit: "ufersin:PENDING"
+  fix_commit: "ufersin:968ba54"
   fix_files:
     - "ecommerce/backend/src/whatsapp.rs"
     - "ecommerce/frontend/src/components/admin/OnboardingGate.tsx"
