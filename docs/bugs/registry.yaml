@@ -373,6 +373,43 @@
   regression_test_id: "BUG-013"
   manual_verification: null
 
+- id: BUG-018
+  title: "Assistente IA nunca via serviços da loja -- oferece_servicos sempre resolvia false por bater na URL errada"
+  area: [ai-pipeline, backend]
+  service: "assistant-ia (a-vrtek-gente)"
+  severity: critical
+  status: fixed
+  reported_at: "2026-08-30"
+  fixed_at: "2026-08-30"
+  symptom: >
+    Cliente perguntava "tem serviço? qual?" no WhatsApp e a Assistente IA
+    respondia "não temos serviços disponíveis" mesmo com a loja (resusu)
+    tendo 6 serviços reais cadastrados E a preferência "Ofereço serviços"
+    ligada. Reproduzido ao vivo -- tool buscar_servicos nunca aparecia no
+    conjunto de ferramentas da IA pra essa conversa.
+  root_cause: >
+    resolveOfereceServicos() (tenantVertical.ts) buscava
+    `${ECOMMERCE_API_URL}/api/public/tenant-config/{slug}` -- essa rota
+    NUNCA existiu no ecommerce-api (confirmado 404 ao vivo), porque
+    `oferece_servicos` é config de assinatura/plano, dona do backend da
+    PLATAFORMA (ufersin-api), não do motor de e-commerce. Toda chamada
+    falhava silenciosamente (`res.ok` false), a função caía no default
+    `value = false`, e esse `false` ficava cacheado 5 minutos -- então
+    toolsForTenant() removia buscar_servicos/agendar_horario/etc pra
+    QUALQUER tenant do ramo genérico, sempre, mesmo com a preferência
+    ligada e serviços cadastrados. Nunca funcionou desde que a feature
+    de tools por tenant foi criada.
+  fix_commit: "a-vrtek-gente:3943453"
+  fix_files: ["a-vrtek-gente/backend/src/services/tenantVertical.ts"]
+  regression_test_id: null
+  manual_verification: >
+    Numa loja do ramo ecommerce com "Ofereço serviços" ligado e pelo menos
+    1 serviço cadastrado, perguntar pra Assistente IA no WhatsApp "vocês
+    têm serviço?" -- deve listar os serviços reais (rodando buscar_servicos
+    de verdade), nunca dizer que não tem. Checar
+    curl https://ufersin-api-production.up.railway.app/api/public/tenant-config/{slug}
+    retorna "oferece_servicos":true pra confirmar a fonte de verdade.
+
 - id: BUG-017
   title: "Painel deslogava sozinho achando a loja offline/inadimplente com um único blip de rede"
   area: [frontend]
