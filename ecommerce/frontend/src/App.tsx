@@ -22,6 +22,7 @@ import './uiux4/theme.css'
 import AdminLayout from './components/layout/AdminLayout'
 import VendedorLayout from './components/layout/VendedorLayout'
 import MotoboyLayout from './components/layout/MotoboyLayout'
+import CozinhaLayout from './components/layout/CozinhaLayout'
 
 // Admin + storefront pages are route-split so /admin/* does not download
 // three full CMS themes, leaflet checkout maps, or every admin screen.
@@ -386,6 +387,9 @@ export default function App() {
             <Route path="relatorios" element={<AdminFinanceiro />} />
             <Route path="financeiro" element={<TenantNavigate to="/admin/relatorios" replace />} />
             <Route path="conta" element={<AdminSenha />} />
+          </Route>
+          <Route path="/cozinha" element={<CozinhaLayout />}>
+            <Route index element={<AdminPedidos />} />
           </Route>
           <Route path="/funcionarios/vendedor" element={<VendedorLayout />}>
             <Route index element={<Navigate to="/funcionarios/vendedor/pdv" replace />} />

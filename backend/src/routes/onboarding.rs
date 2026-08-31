@@ -62,6 +62,9 @@ pub struct OnboardingInput {
     /// Entrega feita por motoboy próprio (fila do motoboy) em vez de terceiro/99pop.
     #[serde(default)]
     pub tem_motoboy_proprio: bool,
+    /// Loja vai precisar de conta de usuário vendedor (PDV).
+    #[serde(default)]
+    pub precisa_vendedor: bool,
 
     // WhatsApp: só a flag aqui; QR connect fica na etapa 2 do painel da loja.
     #[serde(default = "default_true")]
@@ -266,7 +269,7 @@ pub async fn onboarding(
          facebook = $22, apenas_retirada = $23, pagamento_na_retirada = $24, \
          entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, \
          coleta_gratis = $28, entrega_reparado_gratis = $29, oferece_servicos = $30, \
-         precisa_tela_cozinha = $31, tem_motoboy_proprio = $32, updated_at = now() \
+         precisa_tela_cozinha = $31, tem_motoboy_proprio = $32, precisa_vendedor = $33, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -305,6 +308,7 @@ pub async fn onboarding(
     .bind(body.oferece_servicos)
     .bind(body.precisa_tela_cozinha)
     .bind(body.tem_motoboy_proprio)
+    .bind(body.precisa_vendedor)
     .execute(&state.pool)
     .await?;
 
@@ -320,6 +324,19 @@ pub async fn onboarding(
     .await
     {
         tracing::warn!("sync-payment-credentials after onboarding failed: {e:?}");
+    }
+
+    // Necessidade operacional (checkboxes) libera motoboy/funcionários
+    // independente do plano — ver sync_feature_flags.
+    if let Err(e) = sync_feature_flags(
+        &state,
+        &slug,
+        body.tem_motoboy_proprio,
+        body.precisa_vendedor || body.tem_motoboy_proprio || body.precisa_tela_cozinha,
+    )
+    .await
+    {
+        tracing::warn!("sync-feature-flags after onboarding failed: {e:?}");
     }
 
     Ok(Json(OnboardingOutput { tenant_id: parsed.tenant_id, slug, admin_login_hint: email }))
@@ -483,6 +500,8 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub tem_motoboy_proprio: Option<bool>,
     #[serde(default)]
+    pub precisa_vendedor: Option<bool>,
+    #[serde(default)]
     pub landing_hero_image_url: Option<String>,
     #[serde(default)]
     pub cart_fab_style: Option<String>,
@@ -621,6 +640,7 @@ pub async fn editar_onboarding(
          oferece_servicos = COALESCE($34, oferece_servicos), \
          precisa_tela_cozinha = COALESCE($35, precisa_tela_cozinha), \
          tem_motoboy_proprio = COALESCE($36, tem_motoboy_proprio), \
+         precisa_vendedor = COALESCE($37, precisa_vendedor), \
          onboarding_status = CASE \
            WHEN onboarding_status = 'aguardando_onboarding' THEN 'provisionado' \
            ELSE onboarding_status END, \
@@ -672,6 +692,7 @@ pub async fn editar_onboarding(
     .bind(body.oferece_servicos)
     .bind(body.precisa_tela_cozinha)
     .bind(body.tem_motoboy_proprio)
+    .bind(body.precisa_vendedor)
     .execute(&state.pool)
     .await?;
 
@@ -727,6 +748,28 @@ pub async fn editar_onboarding(
         }
     }
 
+    // Necessidade operacional (checkboxes) libera motoboy/funcionários
+    // independente do plano — ver sync_feature_flags. Sempre lê o valor
+    // salvo (não o do body, que pode ter vindo parcial/None no PATCH).
+    let flags_row: Option<(bool, bool, bool)> = sqlx::query_as(
+        "SELECT tem_motoboy_proprio, precisa_vendedor, precisa_tela_cozinha FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    if let Some((tem_motoboy_proprio, precisa_vendedor, precisa_tela_cozinha)) = flags_row {
+        if let Err(e) = sync_feature_flags(
+            &state,
+            &slug,
+            tem_motoboy_proprio,
+            precisa_vendedor || tem_motoboy_proprio || precisa_tela_cozinha,
+        )
+        .await
+        {
+            tracing::warn!("sync-feature-flags after edit failed: {e:?}");
+        }
+    }
+
     Ok(Json(serde_json::json!({ "updated": true })))
 }
 
@@ -764,6 +807,44 @@ pub(crate) async fn sync_store_payment_credentials(
         return Err(AppError::Internal(format!(
             "sync-payment-credentials failed: {status} {text}"
         )));
+    }
+    Ok(())
+}
+
+/// Espelho de `sync_store_payment_credentials` — libera as features
+/// "motoboy"/"funcionarios" no ecommerce-api (override em `feature_flags`,
+/// independente do plano) sempre que a loja marca precisar de motoboy
+/// próprio, vendedor ou tela de cozinha em /meu-plano.
+pub(crate) async fn sync_feature_flags(
+    state: &AppState,
+    slug: &str,
+    needs_motoboy: bool,
+    needs_funcionarios: bool,
+) -> Result<(), AppError> {
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Ok(());
+    }
+    let url = format!(
+        "{}/internal/sync-feature-flags",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "tenant_slug": slug,
+            "needs_motoboy": needs_motoboy,
+            "needs_funcionarios": needs_funcionarios,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("sync-feature-flags unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!("sync-feature-flags failed: {status} {text}")));
     }
     Ok(())
 }
@@ -1002,6 +1083,7 @@ pub struct TenantConfigResponse {
     pub oferece_servicos: bool,
     pub precisa_tela_cozinha: bool,
     pub tem_motoboy_proprio: bool,
+    pub precisa_vendedor: bool,
     pub landing_hero_image_url: Option<String>,
     pub cart_fab_style: String,
     pub cart_fab_animate: bool,
@@ -1040,6 +1122,7 @@ struct TenantConfigRow {
     oferece_servicos: bool,
     precisa_tela_cozinha: bool,
     tem_motoboy_proprio: bool,
+    precisa_vendedor: bool,
     landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
@@ -1071,7 +1154,8 @@ pub async fn tenant_config(
          landing_headline, landing_sub, landing_badge, landing_highlights, landing_texts, \
          COALESCE(oferece_servicos, false) as oferece_servicos, \
          COALESCE(precisa_tela_cozinha, false) as precisa_tela_cozinha, \
-         COALESCE(tem_motoboy_proprio, false) as tem_motoboy_proprio, landing_hero_image_url, \
+         COALESCE(tem_motoboy_proprio, false) as tem_motoboy_proprio, \
+         COALESCE(precisa_vendedor, false) as precisa_vendedor, landing_hero_image_url, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
          COALESCE(cart_fab_animate, false) as cart_fab_animate \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
@@ -1122,6 +1206,7 @@ pub async fn tenant_config(
         oferece_servicos: row.oferece_servicos,
         precisa_tela_cozinha: row.precisa_tela_cozinha,
         tem_motoboy_proprio: row.tem_motoboy_proprio,
+        precisa_vendedor: row.precisa_vendedor,
         landing_hero_image_url: row.landing_hero_image_url,
         cart_fab_style: match row.cart_fab_style.as_str() {
             "cart_icon" => "cart_icon".to_string(),

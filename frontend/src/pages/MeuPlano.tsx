@@ -16,6 +16,7 @@ import {
   Share2,
   Sparkles,
   Store,
+  Truck,
   Upload,
   X,
 } from 'lucide-react'
@@ -29,7 +30,7 @@ import {
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlanMap, planDisplayName, priceForCycle } from '../lib/plans'
-import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
+import { storeAdminLoginUrl, storeCozinhaLoginUrl, storeFuncionarioLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import { needsOnboardingLock } from '../lib/postPayRedirect'
 import AddressField from '../components/AddressField'
 import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
@@ -153,6 +154,7 @@ export default function MeuPlano() {
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
   const [entregaSomentePix, setEntregaSomentePix] = useState(true)
   const [temMotoboyProprio, setTemMotoboyProprio] = useState(false)
+  const [precisaVendedor, setPrecisaVendedor] = useState(false)
   const [pagamentoManual, setPagamentoManual] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [hasCredenciais, setHasCredenciais] = useState(false)
@@ -228,6 +230,7 @@ export default function MeuPlano() {
         setOfereceServicos(!!m.oferece_servicos)
         setPrecisaTelaCozinha(!!m.precisa_tela_cozinha)
         setTemMotoboyProprio(!!m.tem_motoboy_proprio)
+        setPrecisaVendedor(!!m.precisa_vendedor)
         setColetaGratis(!!m.coleta_gratis)
         setEntregaReparadoGratis(!!m.entrega_reparado_gratis)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
@@ -355,6 +358,8 @@ export default function MeuPlano() {
   // admin do ecommerce, só um shell/tema diferente) -- storeAdminLoginUrl
   // já funciona igual pros dois ramos, sem ponte de sessão nenhuma.
   const panelUrl = storeSlug ? storeAdminLoginUrl(storeSlug, me.email) : null
+  const cozinhaUrl = storeSlug ? storeCozinhaLoginUrl(storeSlug, me.email) : null
+  const funcionarioUrl = storeSlug ? storeFuncionarioLoginUrl(storeSlug) : null
   const publicUrl = storeSlug ? storePublicUrl(storeSlug) : null
 
   const handleLogout = async () => {
@@ -755,6 +760,7 @@ export default function MeuPlano() {
       // Eletrônica não tem conceito de cozinha (não é F&B).
       precisa_tela_cozinha: me.vertical === 'eletronicos' ? false : precisaTelaCozinha,
       tem_motoboy_proprio: !apenasRetirada && temMotoboyProprio,
+      precisa_vendedor: precisaVendedor,
       pagamento_na_retirada: pagamentoNaRetirada,
       entrega_somente_pix: entregaSomentePix,
       pagamento_manual: pagamentoManual,
@@ -829,9 +835,9 @@ export default function MeuPlano() {
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
-              {panelUrl && precisaTelaCozinha && (
+              {cozinhaUrl && precisaTelaCozinha && (
                 <a
-                  href={panelUrl}
+                  href={cozinhaUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="btn-secondary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"
@@ -839,6 +845,19 @@ export default function MeuPlano() {
                 >
                   <ChefHat className="w-4 h-4" />
                   Tela cozinha
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
+              {funcionarioUrl && (temMotoboyProprio || precisaVendedor) && (
+                <a
+                  href={funcionarioUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-secondary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"
+                  data-testid="abrir-login-funcionario"
+                >
+                  <Truck className="w-4 h-4" />
+                  Vendedor / Motoboy
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
@@ -1046,6 +1065,19 @@ export default function MeuPlano() {
                       </span>
                     </label>
                   )}
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={precisaVendedor}
+                      onChange={(e) => setPrecisaVendedor(e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                      data-testid="pref-precisa-vendedor"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">Vou precisar de usuário vendedor (PDV)</span>
+                      Libera a tela de cadastro de funcionário e o login separado de vendedor pra bater venda no PDV.
+                    </span>
+                  </label>
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"

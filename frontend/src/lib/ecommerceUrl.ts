@@ -66,6 +66,20 @@ export function storeAdminLoginUrl(slug: string, email: string): string {
   return `${base}/admin/login?${q.toString()}`
 }
 
+/** Login da tela de cozinha (mesma credencial do admin, pousa em /cozinha em vez do painel cheio). */
+export function storeCozinhaLoginUrl(slug: string, email: string): string {
+  const base = ecommerceFrontendUrl()
+  const q = new URLSearchParams({ tenant: slug, email, redirect: 'cozinha' })
+  return `${base}/admin/login?${q.toString()}`
+}
+
+/** Login de vendedor/motoboy (credencial própria, cadastrada em Funcionários — não é a do admin). */
+export function storeFuncionarioLoginUrl(slug: string): string {
+  const base = ecommerceFrontendUrl()
+  const q = new URLSearchParams({ tenant: slug })
+  return `${base}/funcionarios/login?${q.toString()}`
+}
+
 /** URL pública exibida da loja (ainda path-based via /loja até subdomínio real). */
 export function storePublicUrl(slug: string): string {
   const host = typeof window !== 'undefined' ? window.location.hostname : ''

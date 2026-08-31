@@ -37,6 +37,9 @@ export default function AdminLogin() {
   // Sem tenant, ignorar ?email= evita vazar e-mail de outra sessão/plataforma.
   const tenantFromUrl = (searchParams.get('tenant') || '').trim().toLowerCase()
   const emailFromUrl = tenantFromUrl ? (searchParams.get('email') || '').trim() : ''
+  // Deep link "Tela cozinha" do hub /meu-plano: pousa direto na tela de
+  // cozinha (layout próprio, sem sidebar de admin) em vez do painel cheio.
+  const postLoginPath = searchParams.get('redirect') === 'cozinha' ? '/cozinha' : '/admin/pedidos'
 
   const [email, setEmail] = useState(emailFromUrl)
   const [password, setPassword] = useState('')
@@ -83,7 +86,7 @@ export default function AdminLogin() {
     if (staff?.role === 'admin') return <Navigate to="/admin/pedidos" replace />
     return <Navigate to="/" replace />
   }
-  if (token) return <Navigate to="/admin/pedidos" replace />
+  if (token) return <Navigate to={postLoginPath} replace />
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -118,7 +121,7 @@ export default function AdminLogin() {
       persistTenantSlug(resolvedSlug)
       resetTenantConfigCache()
       login(res.token, res.name, resolvedSlug)
-      navigate('/admin/pedidos')
+      navigate(postLoginPath)
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Erro ao entrar.'
       setError(msg)

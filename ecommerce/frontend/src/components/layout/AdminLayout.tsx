@@ -69,7 +69,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
   { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar, requiredPlan: 'essential' },
   { href: '/admin/template', label: 'Mensagens', icon: MessageSquareText, requiredPlan: 'essential' },
-  { href: '/admin/motoboys', label: 'Funcionários', icon: Truck, requiredPlan: 'management' },
+  // requiredPlan aqui é só o "chão": management+ sempre libera. Essential
+  // também libera quando o lojista marcou precisar de motoboy/cozinha/
+  // vendedor em /meu-plano — ver visibleItems (a necessidade operacional
+  // sobrepõe o plano, mesma lógica do sync-feature-flags no backend).
+  { href: '/admin/motoboys', label: 'Funcionários', icon: Truck, requiredPlan: 'essential' },
   { href: '/admin/crm', label: 'CRM', icon: Users, requiredPlan: 'premium' },
   { href: '/admin/promocoes', label: 'Promoções', icon: Megaphone, requiredPlan: 'management' },
   { href: '/admin/relatorios', label: 'Relatórios', icon: Wallet, requiredPlan: 'essential' },
@@ -81,6 +85,7 @@ const NAV_ITEMS: NavItem[] = [
 const NAV_GROUPS: Record<string, { id: string; label: string }> = {
   '/admin/pedidos': { id: 'solicitacoes', label: 'Solicitações' },
   '/admin/cozinha': { id: 'solicitacoes', label: 'Solicitações' },
+  '/admin/agendamentos': { id: 'solicitacoes', label: 'Solicitações' },
   '/admin/produtos': { id: 'cadastros', label: 'Cadastros' },
   '/admin/produtos/servicos': { id: 'cadastros', label: 'Cadastros' },
   '/admin/estoque': { id: 'cadastros', label: 'Cadastros' },
@@ -489,6 +494,17 @@ export default function AdminLayout() {
       (i.href === '/admin/agendamentos' || i.href === '/admin/produtos/servicos') &&
       tenantConfig?.vertical !== 'eletronicos' &&
       !tenantConfig?.oferece_servicos
+    )
+      return false
+    // Funcionários (motoboy/vendedor/cozinha): management+ sempre libera;
+    // essential libera só se o lojista marcou precisar de algum desses em
+    // /meu-plano (mesma necessidade que libera o backend via feature_flags).
+    if (
+      i.href === '/admin/motoboys' &&
+      !planoAtLeast(tenantPlano ?? 'essential', 'management') &&
+      !tenantConfig?.tem_motoboy_proprio &&
+      !tenantConfig?.precisa_tela_cozinha &&
+      !tenantConfig?.precisa_vendedor
     )
       return false
     return true

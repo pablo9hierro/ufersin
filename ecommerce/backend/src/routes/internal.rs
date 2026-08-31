@@ -251,6 +251,67 @@ pub async fn sync_pickup_address(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SyncFeatureFlagsInput {
+    pub tenant_slug: String,
+    /// Loja marcou "tenho motoboy próprio" / "vou precisar de tela de
+    /// cozinha" / "vou precisar de usuário vendedor" em /meu-plano — essas
+    /// necessidades operacionais liberam as features correspondentes
+    /// independente do plano (override em `feature_flags`, nunca muda o
+    /// plano em si). `false` remove o override (volta a valer só o plano).
+    pub needs_motoboy: bool,
+    pub needs_funcionarios: bool,
+}
+
+/// Resolutoo (ufersin/backend) chama sempre que o lojista salva as
+/// preferências de venda em /meu-plano — as features "motoboy" e
+/// "funcionarios" (por padrão só no plano management+) passam a ser
+/// liberadas por necessidade operacional (checkboxes), não só por plano.
+pub async fn sync_feature_flags(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SyncFeatureFlagsInput>,
+) -> Result<StatusCode, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = input.tenant_slug.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest("tenant_slug obrigatório".to_string()));
+    }
+    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((tenant_id,)) = row else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    for (code, needed) in [
+        ("motoboy", input.needs_motoboy),
+        ("funcionarios", input.needs_funcionarios),
+    ] {
+        if needed {
+            sqlx::query(
+                "INSERT INTO feature_flags (id, tenant_id, feature_code, enabled) \
+                 VALUES ($1, $2, $3, true) \
+                 ON CONFLICT (tenant_id, feature_code) DO UPDATE SET enabled = true",
+            )
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(&tenant_id)
+            .bind(code)
+            .execute(&state.pool)
+            .await?;
+        } else {
+            sqlx::query("DELETE FROM feature_flags WHERE tenant_id = $1 AND feature_code = $2")
+                .bind(&tenant_id)
+                .bind(code)
+                .execute(&state.pool)
+                .await?;
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }

@@ -258,6 +258,8 @@ export interface MeResponse {
   precisa_tela_cozinha: boolean
   /** Delivery done by the store's own motoboy queue instead of 3rd-party/99pop. */
   tem_motoboy_proprio: boolean
+  /** Store will need a vendedor (PDV) staff account. */
+  precisa_vendedor: boolean
   /** Essential: rectangular hero image on landing (Management+ uses promo banners). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -315,6 +317,7 @@ export interface OnboardingInput {
   oferece_servicos?: boolean
   precisa_tela_cozinha?: boolean
   tem_motoboy_proprio?: boolean
+  precisa_vendedor?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -361,6 +364,7 @@ export interface EditOnboardingInput {
   oferece_servicos?: boolean
   precisa_tela_cozinha?: boolean
   tem_motoboy_proprio?: boolean
+  precisa_vendedor?: boolean
   landing_hero_image_url?: string
   cart_fab_style?: 'sacola' | 'cart_icon'
   cart_fab_animate?: boolean

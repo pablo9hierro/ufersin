@@ -845,6 +845,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::internal::sync_pickup_address),
         )
         .route(
+            "/internal/sync-feature-flags",
+            post(routes::internal::sync_feature_flags),
+        )
+        .route(
             "/internal/mint-admin-token",
             post(routes::internal::mint_admin_token),
         )

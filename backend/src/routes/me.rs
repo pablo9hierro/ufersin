@@ -61,6 +61,7 @@ struct SubscriberRow {
     oferece_servicos: bool,
     precisa_tela_cozinha: bool,
     tem_motoboy_proprio: bool,
+    precisa_vendedor: bool,
     landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
@@ -137,6 +138,8 @@ pub struct MeResponse {
     pub precisa_tela_cozinha: bool,
     /// Entrega feita por motoboy próprio (fila do motoboy) em vez de terceiro/99pop.
     pub tem_motoboy_proprio: bool,
+    /// Loja vai precisar de conta de usuário vendedor (PDV).
+    pub precisa_vendedor: bool,
     /// Essential: imagem retangular do hero (Management/Premium usam promo banners).
     pub landing_hero_image_url: Option<String>,
     pub cart_fab_style: String,
@@ -171,7 +174,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 landing_headline, landing_sub, landing_badge, landing_highlights, landing_texts, \
                 COALESCE(oferece_servicos, false) as oferece_servicos, \
                 COALESCE(precisa_tela_cozinha, false) as precisa_tela_cozinha,
-                COALESCE(tem_motoboy_proprio, false) as tem_motoboy_proprio, landing_hero_image_url,
+                COALESCE(tem_motoboy_proprio, false) as tem_motoboy_proprio,
+                COALESCE(precisa_vendedor, false) as precisa_vendedor, landing_hero_image_url,
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
                 COALESCE(cart_fab_animate, false) as cart_fab_animate,
                 COALESCE(vertical, 'ecommerce') as vertical
@@ -260,6 +264,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         oferece_servicos: row.oferece_servicos,
         precisa_tela_cozinha: row.precisa_tela_cozinha,
         tem_motoboy_proprio: row.tem_motoboy_proprio,
+        precisa_vendedor: row.precisa_vendedor,
         landing_hero_image_url: row.landing_hero_image_url,
         cart_fab_style: row.cart_fab_style,
         cart_fab_animate: row.cart_fab_animate,
