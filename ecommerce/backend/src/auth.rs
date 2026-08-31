@@ -103,6 +103,29 @@ impl FromRequestParts<AppState> for AdminUser {
     }
 }
 
+/// Extractor: requires role == admin OR role == cozinha. Cozinha tem conta
+/// própria (`cozinha_users`, login em /api/auth/cozinha/login) mas só
+/// enxerga a tela de Pedidos/Cozinha — usado só nos 3 handlers de pedido que
+/// essa tela chama (listar, avançar status, cancelar), nunca no resto do
+/// admin.
+pub struct AdminOrCozinhaUser(pub Claims);
+
+impl FromRequestParts<AppState> for AdminOrCozinhaUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let AuthUser(claims) = AuthUser::from_request_parts(parts, state).await?;
+        if claims.role != "admin" && claims.role != "cozinha" {
+            return Err(AppError::Forbidden("admin or cozinha role required".to_string()));
+        }
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
+        Ok(AdminOrCozinhaUser(claims))
+    }
+}
+
 /// Admin autenticado via JWT (Resolutoo multi-tenant) **ou** sessão opaca
 /// `sunset.sessions` (Sunset legado). Só devolve o `tenant_id` — suficiente
 /// pras rotas de WhatsApp/upload que não precisam do subject.

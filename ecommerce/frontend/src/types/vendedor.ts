@@ -11,6 +11,14 @@ export const VendedorSchema = z.object({
 })
 export type Vendedor = z.infer<typeof VendedorSchema>
 
+export const CozinhaUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  active: z.boolean(),
+})
+export type CozinhaUser = z.infer<typeof CozinhaUserSchema>
+
 export const PdvSaleItemInputSchema = z.object({
   product_id: z.string().optional(),
   service_id: z.string().optional(),

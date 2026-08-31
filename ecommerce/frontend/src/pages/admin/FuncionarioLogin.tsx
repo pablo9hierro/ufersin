@@ -1,27 +1,23 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Loader2, Lock, Store, Truck } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Lock } from 'lucide-react'
 import Logo from '../../components/ui/Logo'
 import { ApiError } from '../../lib/apiError'
 import { getDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
 import { authService } from '../../services/authService'
 import { useVendedorAuth } from '../../store/vendedorAuth'
 import { useMotoboyAuth } from '../../store/motoboyAuth'
+import { useCozinhaAuth } from '../../store/cozinhaAuth'
 
-type Role = 'vendedor' | 'motoboy'
-
-// Login exclusivo de vendedor/motoboy, separado do login do admin
-// (/admin/login) — cada aba chama SÓ a RPC daquele papel específico, sem
-// nenhuma tentativa em cascata contra outro papel. Elimina qualquer chance
-// de um funcionário acabar logado numa conta que não é a dele. Vendedor
-// grava em useVendedorAuth, motoboy em useMotoboyAuth — chaves de
-// localStorage totalmente separadas entre si e do admin (useAdminAuth):
-// logar ou deslogar qualquer um dos três nunca mais afeta os outros dois.
+// Login único de funcionário — o site identifica sozinho qual papel bate
+// com o e-mail/senha (motoboy, vendedor ou cozinha), tentando cada login em
+// sequência com a MESMA credencial, e manda pra tela certa. Sem seletor de
+// papel: cada funcionário tem só uma conta, então só um dos três bate.
 export default function FuncionarioLogin() {
   const { token: vendedorToken, login: vendedorLogin } = useVendedorAuth()
   const { token: motoboyToken, login: motoboyLogin } = useMotoboyAuth()
+  const { token: cozinhaToken, login: cozinhaLogin } = useCozinhaAuth()
   const navigate = useNavigate()
-  const [role, setRole] = useState<Role>('vendedor')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -36,23 +32,34 @@ export default function FuncionarioLogin() {
   }
   if (motoboyToken) return <Navigate to="/funcionarios/motoboy" replace />
   if (vendedorToken) return <Navigate to="/funcionarios/vendedor" replace />
+  if (cozinhaToken) return <Navigate to="/cozinha" replace />
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
     try {
-      if (role === 'vendedor') {
-        const res = await authService.staff.vendedorLogin(email, password)
-        vendedorLogin(res.token, res.name)
-        navigate('/funcionarios/vendedor')
-      } else {
+      try {
         const res = await authService.staff.motoboyLogin(email, password)
         motoboyLogin(res.token, res.name)
         navigate('/funcionarios/motoboy')
+        return
+      } catch {
+        /* não é motoboy, tenta o próximo papel */
       }
+      try {
+        const res = await authService.staff.vendedorLogin(email, password)
+        vendedorLogin(res.token, res.name)
+        navigate('/funcionarios/vendedor')
+        return
+      } catch {
+        /* não é vendedor, tenta o próximo papel */
+      }
+      const res = await authService.staff.cozinhaLogin(email, password)
+      cozinhaLogin(res.token, res.name)
+      navigate('/cozinha')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao entrar.')
+      setError(err instanceof ApiError ? err.message : 'E-mail ou senha incorretos.')
     } finally {
       setLoading(false)
     }
@@ -64,27 +71,7 @@ export default function FuncionarioLogin() {
         <div className="text-center mb-6">
           <Logo size="lg" />
           <p className="text-son-silver-dim text-sm mt-2">Login de funcionário</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setRole('vendedor')}
-            className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-              role === 'vendedor' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
-            }`}
-          >
-            <Store className="w-3.5 h-3.5" /> Vendedor
-          </button>
-          <button
-            type="button"
-            onClick={() => setRole('motoboy')}
-            className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-              role === 'motoboy' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
-            }`}
-          >
-            <Truck className="w-3.5 h-3.5" /> Motoboy
-          </button>
+          <p className="text-son-silver-dim text-xs mt-1">Vendedor, motoboy ou cozinha — a gente identifica sozinho.</p>
         </div>
 
         <div className="space-y-4">
@@ -117,8 +104,7 @@ export default function FuncionarioLogin() {
             <div>
               <p className="error-msg">{error}</p>
               <p className="text-xs text-son-silver-dim mt-1">
-                Confira se a aba certa ({role === 'vendedor' ? 'Vendedor' : 'Motoboy'}) está selecionada acima, e se o
-                e-mail/senha são os mesmos cadastrados pelo admin em Funcionários.
+                Confira o e-mail/senha — são os mesmos cadastrados pelo admin em Funcionários.
               </p>
             </div>
           )}
@@ -126,9 +112,6 @@ export default function FuncionarioLogin() {
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Entrar
           </button>
-          <p className="text-center text-xs text-son-silver-dim">
-            Esqueceu a senha? Peça pro admin ver/redefinir em Funcionários.
-          </p>
           <Link to="/admin/login" className="btn-secondary w-full flex items-center justify-center gap-2 text-sm">
             <Lock className="w-4 h-4" /> Sou admin
           </Link>

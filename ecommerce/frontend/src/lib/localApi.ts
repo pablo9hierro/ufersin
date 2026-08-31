@@ -1128,6 +1128,10 @@ async function vendedorLogin(email: string, password: string): Promise<{ token: 
   return { token: `local-vendedor:${v.id}`, name: v.name }
 }
 
+async function cozinhaLogin(_email: string, _password: string): Promise<{ token: string; name: string }> {
+  throw new ApiError(400, 'Cozinha não está disponível no modo demo.')
+}
+
 async function adminListVendedores(): Promise<Vendedor[]> {
   const db = loadDb()
   return (db.vendedores ?? []).map(stripVendedorPassword).sort((a, b) => a.name.localeCompare(b.name))
@@ -2905,7 +2909,7 @@ export const localApi = {
     cancel: customerCancelOrder,
     notifyCreated: async () => {},
   },
-  auth: { adminLogin, motoboyLogin, vendedorLogin, setAdminPassword },
+  auth: { adminLogin, motoboyLogin, vendedorLogin, cozinhaLogin, setAdminPassword },
   customerAuth: {
     register: customerRegister,
     login: customerLogin,
@@ -2992,6 +2996,12 @@ export const localApi = {
       update: updateVendedor,
       delete: deleteVendedor,
       getPassword: getVendedorPassword,
+    },
+    cozinhaUsers: {
+      list: async () => [],
+      create: async () => { throw new ApiError(400, 'Cozinha não está disponível no modo demo.') },
+      update: async () => { throw new ApiError(400, 'Cozinha não está disponível no modo demo.') },
+      delete: async () => {},
     },
     coupons: {
       list: adminListCoupons,

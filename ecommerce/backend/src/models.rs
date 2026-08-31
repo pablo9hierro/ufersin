@@ -358,6 +358,48 @@ pub struct VendedorInput {
     pub commission_percent: Option<f64>,
 }
 
+// ---------- Cozinha users ----------
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct CozinhaUserRow {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    #[allow(dead_code)]
+    pub password_hash: String,
+    pub active: i64,
+    #[allow(dead_code)]
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CozinhaUserDto {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub active: bool,
+}
+
+impl From<CozinhaUserRow> for CozinhaUserDto {
+    fn from(r: CozinhaUserRow) -> Self {
+        CozinhaUserDto {
+            id: r.id,
+            name: r.name,
+            email: r.email,
+            active: r.active != 0,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CozinhaUserInput {
+    pub name: String,
+    pub email: String,
+    pub password: Option<String>,
+    #[serde(default)]
+    pub active: Option<bool>,
+}
+
 // ---------- Orders ----------
 
 #[derive(Debug, sqlx::FromRow, Clone)]

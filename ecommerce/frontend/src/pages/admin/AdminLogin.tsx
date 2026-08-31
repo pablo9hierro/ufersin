@@ -37,9 +37,6 @@ export default function AdminLogin() {
   // Sem tenant, ignorar ?email= evita vazar e-mail de outra sessão/plataforma.
   const tenantFromUrl = (searchParams.get('tenant') || '').trim().toLowerCase()
   const emailFromUrl = tenantFromUrl ? (searchParams.get('email') || '').trim() : ''
-  // Deep link "Tela cozinha" do hub /meu-plano: pousa direto na tela de
-  // cozinha (layout próprio, sem sidebar de admin) em vez do painel cheio.
-  const postLoginPath = searchParams.get('redirect') === 'cozinha' ? '/cozinha' : '/admin/pedidos'
 
   const [email, setEmail] = useState(emailFromUrl)
   const [password, setPassword] = useState('')
@@ -86,7 +83,7 @@ export default function AdminLogin() {
     if (staff?.role === 'admin') return <Navigate to="/admin/pedidos" replace />
     return <Navigate to="/" replace />
   }
-  if (token) return <Navigate to={postLoginPath} replace />
+  if (token) return <Navigate to="/admin/pedidos" replace />
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -121,7 +118,7 @@ export default function AdminLogin() {
       persistTenantSlug(resolvedSlug)
       resetTenantConfigCache()
       login(res.token, res.name, resolvedSlug)
-      navigate(postLoginPath)
+      navigate('/admin/pedidos')
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Erro ao entrar.'
       setError(msg)
@@ -207,7 +204,7 @@ export default function AdminLogin() {
               to="/funcionarios/login"
               className="w-full flex items-center justify-center gap-2 text-sm bg-[#0a0a0b] border border-white/10 text-[#d4d4d8] hover:text-white py-2.5 rounded-xl transition-colors"
             >
-              <Users className="w-4 h-4" /> Sou vendedor ou motoboy
+              <Users className="w-4 h-4" /> Sou funcionário
             </Link>
           </div>
         </form>
@@ -278,7 +275,7 @@ export default function AdminLogin() {
             Entrar
           </button>
           <Link to="/funcionarios/login" className="btn-secondary w-full flex items-center justify-center gap-2 text-sm">
-            <Users className="w-4 h-4" /> Sou vendedor ou motoboy
+            <Users className="w-4 h-4" /> Sou funcionário
           </Link>
         </div>
       </form>

@@ -4,7 +4,6 @@ import { motion } from 'framer-motion'
 import {
   AlertTriangle,
   AtSign,
-  ChefHat,
   CheckCircle2,
   CreditCard,
   ExternalLink,
@@ -30,7 +29,7 @@ import {
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
 import { isKnownPlatformAdminEmail } from '../lib/platformAdmin'
 import { fetchPlans, formatBRL, getPlanMap, planDisplayName, priceForCycle } from '../lib/plans'
-import { storeAdminLoginUrl, storeCozinhaLoginUrl, storeFuncionarioLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
+import { storeAdminLoginUrl, storeFuncionarioLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import { needsOnboardingLock } from '../lib/postPayRedirect'
 import AddressField from '../components/AddressField'
 import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
@@ -358,7 +357,6 @@ export default function MeuPlano() {
   // admin do ecommerce, só um shell/tema diferente) -- storeAdminLoginUrl
   // já funciona igual pros dois ramos, sem ponte de sessão nenhuma.
   const panelUrl = storeSlug ? storeAdminLoginUrl(storeSlug, me.email) : null
-  const cozinhaUrl = storeSlug ? storeCozinhaLoginUrl(storeSlug, me.email) : null
   const funcionarioUrl = storeSlug ? storeFuncionarioLoginUrl(storeSlug) : null
   const publicUrl = storeSlug ? storePublicUrl(storeSlug) : null
 
@@ -835,20 +833,7 @@ export default function MeuPlano() {
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
-              {cozinhaUrl && precisaTelaCozinha && (
-                <a
-                  href={cozinhaUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-secondary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"
-                  data-testid="abrir-tela-cozinha"
-                >
-                  <ChefHat className="w-4 h-4" />
-                  Tela cozinha
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-              {funcionarioUrl && (temMotoboyProprio || precisaVendedor) && (
+              {funcionarioUrl && (temMotoboyProprio || precisaVendedor || precisaTelaCozinha) && (
                 <a
                   href={funcionarioUrl}
                   target="_blank"
@@ -857,7 +842,7 @@ export default function MeuPlano() {
                   data-testid="abrir-login-funcionario"
                 >
                   <Truck className="w-4 h-4" />
-                  Vendedor / Motoboy
+                  Login de funcionário
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}

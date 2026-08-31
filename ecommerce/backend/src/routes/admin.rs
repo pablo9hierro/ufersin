@@ -1297,6 +1297,138 @@ pub async fn delete_vendedor(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ---------- Cozinha users ----------
+
+pub async fn list_cozinha_users(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<crate::models::CozinhaUserDto>>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<crate::models::CozinhaUserRow> =
+        sqlx::query_as("SELECT * FROM cozinha_users WHERE tenant_id = $1 ORDER BY name")
+            .bind(&claims.tenant_id)
+            .fetch_all(&mut *tx)
+            .await?;
+    tx.commit().await?;
+    Ok(Json(rows.into_iter().map(crate::models::CozinhaUserDto::from).collect()))
+}
+
+pub async fn create_cozinha_user(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<crate::models::CozinhaUserInput>,
+) -> Result<Json<crate::models::CozinhaUserDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await?;
+    let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) else {
+        return Err(AppError::BadRequest("password is required to create a cozinha user".to_string()));
+    };
+    let hash = hash_password(password)?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    let active = input.active.unwrap_or(true);
+
+    sqlx::query(
+        "INSERT INTO cozinha_users (id, tenant_id, name, email, password_hash, active) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(&input.name)
+    .bind(&input.email)
+    .bind(&hash)
+    .bind(active as i64)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db) if db.is_unique_violation() => {
+            AppError::BadRequest("email already in use".to_string())
+        }
+        other => other.into(),
+    })?;
+
+    let row: crate::models::CozinhaUserRow =
+        sqlx::query_as("SELECT * FROM cozinha_users WHERE tenant_id = $1 AND id = $2")
+            .bind(&claims.tenant_id)
+            .bind(&id)
+            .fetch_one(&mut *tx)
+            .await?;
+    tx.commit().await?;
+    Ok(Json(row.into()))
+}
+
+pub async fn update_cozinha_user(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<crate::models::CozinhaUserInput>,
+) -> Result<Json<crate::models::CozinhaUserDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let active = input.active.unwrap_or(true);
+
+    if let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) {
+        let hash = hash_password(password)?;
+        let result = sqlx::query(
+            "UPDATE cozinha_users SET name = $1, email = $2, password_hash = $3, active = $4 \
+             WHERE tenant_id = $5 AND id = $6",
+        )
+        .bind(&input.name)
+        .bind(&input.email)
+        .bind(&hash)
+        .bind(active as i64)
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("cozinha user not found".to_string()));
+        }
+    } else {
+        let result = sqlx::query(
+            "UPDATE cozinha_users SET name = $1, email = $2, active = $3 WHERE tenant_id = $4 AND id = $5",
+        )
+        .bind(&input.name)
+        .bind(&input.email)
+        .bind(active as i64)
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("cozinha user not found".to_string()));
+        }
+    }
+
+    let row: crate::models::CozinhaUserRow =
+        sqlx::query_as("SELECT * FROM cozinha_users WHERE tenant_id = $1 AND id = $2")
+            .bind(&claims.tenant_id)
+            .bind(&id)
+            .fetch_one(&mut *tx)
+            .await?;
+    tx.commit().await?;
+    Ok(Json(row.into()))
+}
+
+pub async fn delete_cozinha_user(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let result = sqlx::query("DELETE FROM cozinha_users WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("cozinha user not found".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ---------- Orders ----------
 
 #[derive(Debug, Deserialize)]
@@ -1306,7 +1438,7 @@ pub struct OrdersQuery {
 
 pub async fn list_orders(
     State(state): State<AppState>,
-    AdminUser(claims): AdminUser,
+    crate::auth::AdminOrCozinhaUser(claims): crate::auth::AdminOrCozinhaUser,
     Query(q): Query<OrdersQuery>,
 ) -> Result<Json<Vec<OrderDto>>, AppError> {
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
@@ -1347,7 +1479,7 @@ pub async fn list_orders(
 
 pub async fn update_order_status(
     State(state): State<AppState>,
-    AdminUser(claims): AdminUser,
+    crate::auth::AdminOrCozinhaUser(claims): crate::auth::AdminOrCozinhaUser,
     Path(id): Path<String>,
     Json(input): Json<UpdateStatusInput>,
 ) -> Result<Json<OrderDto>, AppError> {
@@ -1498,7 +1630,7 @@ pub async fn update_order_status(
 
 pub async fn cancel_order(
     State(state): State<AppState>,
-    AdminUser(claims): AdminUser,
+    crate::auth::AdminOrCozinhaUser(claims): crate::auth::AdminOrCozinhaUser,
     Path(id): Path<String>,
     Json(input): Json<crate::models::AdminCancelInput>,
 ) -> Result<Json<OrderDto>, AppError> {

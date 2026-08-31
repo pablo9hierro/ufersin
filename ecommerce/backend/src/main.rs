@@ -246,6 +246,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/admin/login", post(routes::auth::admin_login))
         .route("/api/auth/motoboy/login", post(routes::auth::motoboy_login))
         .route("/api/auth/vendedor/login", post(routes::auth::vendedor_login))
+        .route("/api/auth/cozinha/login", post(routes::auth::cozinha_login))
         // Demo pública da plataforma Rodoletas (/demo lá) — só enxerga o
         // tenant fixo "loja-demo" seedado por seed::seed_demo_tenant,
         // nunca uma loja real. Ver routes/demo.rs.
@@ -591,6 +592,14 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/admin/vendedores/{id}",
             put(routes::admin::update_vendedor).delete(routes::admin::delete_vendedor),
+        )
+        .route(
+            "/api/admin/cozinha-users",
+            get(routes::admin::list_cozinha_users).post(routes::admin::create_cozinha_user),
+        )
+        .route(
+            "/api/admin/cozinha-users/{id}",
+            put(routes::admin::update_cozinha_user).delete(routes::admin::delete_cozinha_user),
         )
         .route("/api/admin/orders", get(routes::admin::list_orders))
         .route(

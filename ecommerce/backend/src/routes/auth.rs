@@ -189,3 +189,39 @@ pub async fn vendedor_login(
         tenant_slug: slug,
     }))
 }
+
+/// Cozinha ganha conta própria (`cozinha_users`) em vez de reaproveitar a
+/// credencial do admin -- login unificado em /funcionarios/login tenta
+/// motoboy/vendedor/cozinha em sequência com a mesma credencial e identifica
+/// sozinho qual bateu. Mesmo padrão de motoboy_login/vendedor_login acima.
+pub async fn cozinha_login(
+    State(state): State<AppState>,
+    Json(input): Json<LoginInput>,
+) -> Result<Json<LoginResponse>, AppError> {
+    let slug = normalize_slug(input.tenant_slug.as_deref()).ok_or_else(|| {
+        AppError::Unauthorized("invalid credentials".to_string())
+    })?;
+    let tenant_id = resolve_tenant_id(&state, &slug).await?;
+
+    let row: Option<(String, String, String, i64)> = sqlx::query_as(
+        "SELECT id, password_hash, name, active FROM cozinha_users WHERE tenant_id = $1 AND email = $2",
+    )
+    .bind(&tenant_id)
+    .bind(&input.email)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let Some((id, hash, name, active)) = row else {
+        return Err(AppError::Unauthorized("invalid credentials".to_string()));
+    };
+    if active == 0 || !verify_password(&input.password, &hash) {
+        return Err(AppError::Unauthorized("invalid credentials".to_string()));
+    }
+
+    let token = make_token(&state.jwt_secret, &id, &tenant_id, "cozinha", &name);
+    Ok(Json(LoginResponse {
+        token,
+        name,
+        tenant_slug: slug,
+    }))
+}

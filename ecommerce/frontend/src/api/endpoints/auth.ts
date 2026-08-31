@@ -16,5 +16,6 @@ export const authEndpoint = {
     validate(LoginResultSchema, await api.auth.adminLogin(email, password, tenantSlug), 'auth.adminLogin'),
   motoboyLogin: async (email: string, password: string) => validate(LoginResultSchema, await api.auth.motoboyLogin(email, password), 'auth.motoboyLogin'),
   vendedorLogin: async (email: string, password: string) => validate(LoginResultSchema, await api.auth.vendedorLogin(email, password), 'auth.vendedorLogin'),
+  cozinhaLogin: async (email: string, password: string) => validate(LoginResultSchema, await api.auth.cozinhaLogin(email, password), 'auth.cozinhaLogin'),
   setAdminPassword: async (newPassword: string) => api.auth.setAdminPassword(newPassword),
 }

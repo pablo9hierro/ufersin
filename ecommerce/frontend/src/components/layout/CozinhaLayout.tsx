@@ -2,24 +2,20 @@ import { Suspense } from 'react'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ChefHat, Loader2, LogOut } from 'lucide-react'
 import Logo from '../ui/Logo'
-import { clearDemoStaffSession, getDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
-import { useAdminAuth } from '../../store/adminAuth'
+import { clearDemoStaffSession, isDemoModeActive } from '../../lib/demoMode'
+import { useCozinhaAuth } from '../../store/cozinhaAuth'
 
 // Tela de cozinha: layout próprio, sem sidebar de admin (só o board de
-// pedidos) — login continua sendo o mesmo do admin da loja (não é um papel
-// novo), só a URL/visual não devem parecer "entrei no painel geral".
+// pedidos) — conta própria (cozinha_users), login em /funcionarios/login
+// junto com vendedor/motoboy (identificação automática de role).
 export default function CozinhaLayout() {
-  const { token, name, logout } = useAdminAuth()
+  const { token, name, logout } = useCozinhaAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const demo = isDemoModeActive()
-  const demoStaff = getDemoStaffSession()
-  const demoAdmin = demo && demoStaff?.role === 'admin'
-  const effectiveToken = token || (demoAdmin ? demoStaff!.token : null)
-  const effectiveName = demoAdmin ? demoStaff!.name : name
 
-  if (!effectiveToken) {
-    return <Navigate to="/admin/login" state={{ from: location }} replace />
+  if (!token) {
+    return <Navigate to="/funcionarios/login" state={{ from: location }} replace />
   }
 
   const handleLogout = () => {
@@ -29,7 +25,7 @@ export default function CozinhaLayout() {
       return
     }
     logout()
-    navigate('/admin/login')
+    navigate('/funcionarios/login')
   }
 
   return (
@@ -43,7 +39,7 @@ export default function CozinhaLayout() {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <p className="text-xs text-son-silver-dim hidden sm:block">Olá, {effectiveName}</p>
+          <p className="text-xs text-son-silver-dim hidden sm:block">Olá, {name}</p>
           <button onClick={handleLogout} className="flex items-center gap-1.5 text-son-silver-dim hover:text-son-pink text-sm">
             <LogOut className="w-4 h-4" />
             Sair

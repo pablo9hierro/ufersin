@@ -7,6 +7,7 @@ import {
   BadgesSettingsSchema,
   BgSettingsSchema,
   CategorySchema,
+  CozinhaUserSchema,
   CouponGrantSchema,
   CouponSchema,
   CrmCampanhaCouponSchema,
@@ -119,6 +120,14 @@ export const adminEndpoint = {
     ) => validate(VendedorSchema, await api.admin.vendedores.update(id, payload), 'admin.vendedores.update'),
     delete: async (id: string) => api.admin.vendedores.delete(id),
     getPassword: async (id: string) => api.admin.vendedores.getPassword(id),
+  },
+  cozinhaUsers: {
+    list: async () => validateList(CozinhaUserSchema, await api.admin.cozinhaUsers.list(), 'admin.cozinhaUsers.list'),
+    create: async (payload: { name: string; email: string; password: string }) =>
+      validate(CozinhaUserSchema, await api.admin.cozinhaUsers.create(payload), 'admin.cozinhaUsers.create'),
+    update: async (id: string, payload: { name: string; email: string; active: boolean; password?: string }) =>
+      validate(CozinhaUserSchema, await api.admin.cozinhaUsers.update(id, payload), 'admin.cozinhaUsers.update'),
+    delete: async (id: string) => api.admin.cozinhaUsers.delete(id),
   },
   coupons: {
     list: async () => validateList(CouponSchema, await api.admin.coupons.list(), 'admin.coupons.list'),

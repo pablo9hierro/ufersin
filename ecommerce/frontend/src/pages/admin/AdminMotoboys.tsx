@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Eye, Loader2, Pencil, Plus, Store, Trash2, Truck, Wallet, X } from 'lucide-react'
+import { ChefHat, Eye, Loader2, Pencil, Plus, Store, Trash2, Truck, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import FreteSettingsCard from '../../components/admin/FreteSettingsCard'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
-import type { Motoboy, PaymentMethod, Vendedor } from '../../types'
+import type { CozinhaUser, Motoboy, PaymentMethod, Vendedor } from '../../types'
 
 const EMPTY_MOTOBOY_FORM = { name: '', phone: '', email: '', password: '', whatsapp: '' }
 const EMPTY_VENDEDOR_FORM = { name: '', email: '', password: '', commission_active: false, commission_percent: '' }
+const EMPTY_COZINHA_FORM = { name: '', email: '', password: '' }
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -16,7 +17,7 @@ function currency(v: number) {
 
 export default function AdminMotoboys() {
   const { askConfirm, confirmDialogElement } = useConfirmDialog()
-  const [tab, setTab] = useState<'motoboys' | 'vendedores'>('motoboys')
+  const [tab, setTab] = useState<'motoboys' | 'vendedores' | 'cozinha'>('motoboys')
 
   const [motoboys, setMotoboys] = useState<Motoboy[]>([])
   const [loading, setLoading] = useState(true)
@@ -40,6 +41,13 @@ export default function AdminMotoboys() {
     }
   }
 
+  const [cozinhaUsers, setCozinhaUsers] = useState<CozinhaUser[]>([])
+  const [cozinhaLoading, setCozinhaLoading] = useState(true)
+  const [showCozinhaForm, setShowCozinhaForm] = useState(false)
+  const [cozinhaForm, setCozinhaForm] = useState(EMPTY_COZINHA_FORM)
+  const [editingCozinha, setEditingCozinha] = useState<CozinhaUser | null>(null)
+  const [savingCozinha, setSavingCozinha] = useState(false)
+
   const [payingMotoboy, setPayingMotoboy] = useState<Motoboy | null>(null)
   const [pendingAmount, setPendingAmount] = useState<number | null>(null)
   const [pendingLoading, setPendingLoading] = useState(false)
@@ -62,9 +70,14 @@ export default function AdminMotoboys() {
     setVendedoresLoading(true)
     adminService.vendedores.list().then(setVendedores).finally(() => setVendedoresLoading(false))
   }
+  const loadCozinhaUsers = () => {
+    setCozinhaLoading(true)
+    adminService.cozinhaUsers.list().then(setCozinhaUsers).finally(() => setCozinhaLoading(false))
+  }
   useEffect(() => {
     load()
     loadVendedores()
+    loadCozinhaUsers()
   }, [])
 
   const openNewMotoboy = () => {
@@ -197,15 +210,61 @@ export default function AdminMotoboys() {
     loadVendedores()
   }
 
+  const openNewCozinha = () => {
+    setEditingCozinha(null)
+    setCozinhaForm(EMPTY_COZINHA_FORM)
+    setShowCozinhaForm(true)
+  }
+  const openEditCozinha = (c: CozinhaUser) => {
+    setEditingCozinha(c)
+    setCozinhaForm({ name: c.name, email: c.email, password: '' })
+    setShowCozinhaForm(true)
+  }
+
+  const saveCozinha = async () => {
+    setSavingCozinha(true)
+    try {
+      if (editingCozinha) {
+        await adminService.cozinhaUsers.update(editingCozinha.id, {
+          name: cozinhaForm.name,
+          email: cozinhaForm.email,
+          active: editingCozinha.active,
+          password: cozinhaForm.password || undefined,
+        })
+      } else {
+        await adminService.cozinhaUsers.create(cozinhaForm)
+      }
+      setShowCozinhaForm(false)
+      setEditingCozinha(null)
+      setCozinhaForm(EMPTY_COZINHA_FORM)
+      loadCozinhaUsers()
+    } finally {
+      setSavingCozinha(false)
+    }
+  }
+
+  const removeCozinha = (id: string) =>
+    askConfirm('Remover este usuário de cozinha?', async () => {
+      await adminService.cozinhaUsers.delete(id)
+      loadCozinhaUsers()
+    })
+
+  const toggleCozinhaActive = async (c: CozinhaUser) => {
+    await adminService.cozinhaUsers.update(c.id, { name: c.name, email: c.email, active: !c.active })
+    loadCozinhaUsers()
+  }
+
+  const NEW_LABEL = { motoboys: 'Novo motoboy', vendedores: 'Novo vendedor', cozinha: 'Novo usuário de cozinha' } as const
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-black">Cadastrar funcionários</h1>
         <button
-          onClick={() => (tab === 'motoboys' ? openNewMotoboy() : openNewVendedor())}
+          onClick={() => (tab === 'motoboys' ? openNewMotoboy() : tab === 'vendedores' ? openNewVendedor() : openNewCozinha())}
           className="btn-primary text-sm py-2 px-4"
         >
-          <Plus className="w-4 h-4" /> {tab === 'motoboys' ? 'Novo motoboy' : 'Novo vendedor'}
+          <Plus className="w-4 h-4" /> {NEW_LABEL[tab]}
         </button>
       </div>
 
@@ -227,6 +286,14 @@ export default function AdminMotoboys() {
           }`}
         >
           <Store className="w-3.5 h-3.5" /> Vendedores
+        </button>
+        <button
+          onClick={() => setTab('cozinha')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+            tab === 'cozinha' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
+          }`}
+        >
+          <ChefHat className="w-3.5 h-3.5" /> Cozinha
         </button>
       </div>
 
@@ -337,6 +404,50 @@ export default function AdminMotoboys() {
                     {v.active ? 'Ativo' : 'Inativo'}
                   </button>
                   <button onClick={() => removeVendedor(v.id)} className="text-son-silver-dim hover:text-son-pink">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        ))}
+
+      {tab === 'cozinha' &&
+        (cozinhaLoading ? (
+          <div className="flex justify-center py-16">
+            <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
+          </div>
+        ) : cozinhaUsers.length === 0 ? (
+          <div className="text-center py-16 text-son-silver-dim">
+            <ChefHat className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p>Nenhum usuário de cozinha cadastrado.</p>
+            <p className="text-xs mt-1">Cozinha acessa só a tela de Pedidos/Cozinha, com login próprio.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {cozinhaUsers.map((c) => (
+              <Card key={c.id} className="p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-white truncate">{c.name}</p>
+                  <p className="text-xs text-son-silver-dim truncate">{c.email}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => openEditCozinha(c)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-son-silver-dim hover:text-white transition-colors"
+                    aria-label={`Editar ${c.name}`}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => toggleCozinhaActive(c)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                      c.active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-white/10 text-son-silver-dim'
+                    }`}
+                  >
+                    {c.active ? 'Ativo' : 'Inativo'}
+                  </button>
+                  <button onClick={() => removeCozinha(c.id)} className="text-son-silver-dim hover:text-son-pink">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -458,6 +569,57 @@ export default function AdminMotoboys() {
               </p>
               <button onClick={saveVendedor} disabled={savingVendedor} className="btn-primary w-full mt-2">
                 {savingVendedor ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCozinhaForm && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowCozinhaForm(false)}
+        >
+          <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-white">{editingCozinha ? 'Editar usuário de cozinha' : 'Novo usuário de cozinha'}</h3>
+              <button onClick={() => setShowCozinhaForm(false)} className="text-son-silver-dim hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="label">Nome</label>
+                <input
+                  className="input-field"
+                  value={cozinhaForm.name}
+                  onChange={(e) => setCozinhaForm({ ...cozinhaForm, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">E-mail</label>
+                <input
+                  className="input-field"
+                  type="email"
+                  value={cozinhaForm.email}
+                  onChange={(e) => setCozinhaForm({ ...cozinhaForm, email: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Senha{editingCozinha && ' (deixe em branco pra manter a atual)'}</label>
+                <input
+                  className="input-field"
+                  type="password"
+                  value={cozinhaForm.password}
+                  onChange={(e) => setCozinhaForm({ ...cozinhaForm, password: e.target.value })}
+                />
+              </div>
+              <p className="text-xs text-son-silver-dim">
+                Loga em /funcionarios/login (login próprio, separado do admin) e cai direto na tela de Cozinha.
+              </p>
+              <button onClick={saveCozinha} disabled={savingCozinha} className="btn-primary w-full mt-2">
+                {savingCozinha ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Salvar
               </button>
             </div>

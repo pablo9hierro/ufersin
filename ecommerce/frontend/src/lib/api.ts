@@ -1,6 +1,7 @@
 import { useAdminAuth } from '../store/adminAuth'
 import { useVendedorAuth } from '../store/vendedorAuth'
 import { useMotoboyAuth } from '../store/motoboyAuth'
+import { useCozinhaAuth } from '../store/cozinhaAuth'
 import { ApiError } from './apiError'
 import { isDemoModeActive } from './demoMode'
 import { localApi } from './localApi'
@@ -14,6 +15,7 @@ import type {
   CampanhaOrientation,
   CarouselStyle,
   Category,
+  CozinhaUser,
   Coupon,
   CouponGrant,
   CrmCampanhaCoupon,
@@ -229,7 +231,12 @@ async function callRailwayPixApi(
 // (PDV, financeiro) aceitam qualquer um dos dois tokens; a própria RPC
 // no banco valida o papel de verdade (sunset._require_admin_or_vendedor).
 function adminToken() {
-  return useAdminAuth.getState().token ?? useVendedorAuth.getState().token ?? undefined
+  return (
+    useAdminAuth.getState().token ??
+    useVendedorAuth.getState().token ??
+    useCozinhaAuth.getState().token ??
+    undefined
+  )
 }
 
 /** JWT do motor (login multi-tenant via Railway). Sessão opaca do Supabase
@@ -362,6 +369,11 @@ const remoteApi = {
       }),
     vendedorLogin: async (email: string, password: string) =>
       request<{ token: string; name: string }>('/api/auth/vendedor/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, tenant_slug: resolveTenantSlug() }),
+      }),
+    cozinhaLogin: async (email: string, password: string) =>
+      request<{ token: string; name: string }>('/api/auth/cozinha/login', {
         method: 'POST',
         body: JSON.stringify({ email, password, tenant_slug: resolveTenantSlug() }),
       }),
@@ -727,6 +739,25 @@ const remoteApi = {
           ? railwayAdmin<void>(`/api/admin/vendedores/${id}`, { method: 'DELETE' })
           : rpc<void>('admin_delete_vendedor', { p_token: adminToken(), p_id: id }),
       getPassword: (id: string) => rpc<string | null>('admin_get_vendedor_password', { p_token: adminToken(), p_id: id }),
+    },
+    cozinhaUsers: {
+      list: () => railwayAdmin<CozinhaUser[]>('/api/admin/cozinha-users'),
+      create: (payload: { name: string; email: string; password: string }) =>
+        railwayAdmin<CozinhaUser>('/api/admin/cozinha-users', {
+          method: 'POST',
+          body: JSON.stringify({ name: payload.name, email: payload.email, password: payload.password, active: true }),
+        }),
+      update: (id: string, payload: { name: string; email: string; active: boolean; password?: string }) =>
+        railwayAdmin<CozinhaUser>(`/api/admin/cozinha-users/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name: payload.name,
+            email: payload.email,
+            password: payload.password || null,
+            active: payload.active,
+          }),
+        }),
+      delete: (id: string) => railwayAdmin<void>(`/api/admin/cozinha-users/${id}`, { method: 'DELETE' }),
     },
     coupons: {
       list: () => rpc<Coupon[]>('admin_list_coupons', { p_token: adminToken() }),

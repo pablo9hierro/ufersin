@@ -18,6 +18,7 @@ export const authService = {
     adminLogin: authEndpoint.adminLogin,
     motoboyLogin: authEndpoint.motoboyLogin,
     vendedorLogin: authEndpoint.vendedorLogin,
+    cozinhaLogin: authEndpoint.cozinhaLogin,
     setAdminPassword: authEndpoint.setAdminPassword,
   },
 }
