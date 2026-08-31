@@ -56,6 +56,9 @@ pub struct OnboardingInput {
     /// Motor genérico (opcional): lojista oferece serviços além de produtos.
     #[serde(default)]
     pub oferece_servicos: bool,
+    /// Pedidos avançam pela tela de cozinha em vez de /admin/pedidos.
+    #[serde(default)]
+    pub precisa_tela_cozinha: bool,
 
     // WhatsApp: só a flag aqui; QR connect fica na etapa 2 do painel da loja.
     #[serde(default = "default_true")]
@@ -259,7 +262,8 @@ pub async fn onboarding(
          layout_style = $18, instagram = $19, endereco_numero = $20, vende_mais_18 = $21, \
          facebook = $22, apenas_retirada = $23, pagamento_na_retirada = $24, \
          entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, \
-         coleta_gratis = $28, entrega_reparado_gratis = $29, oferece_servicos = $30, updated_at = now() \
+         coleta_gratis = $28, entrega_reparado_gratis = $29, oferece_servicos = $30, \
+         precisa_tela_cozinha = $31, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -296,6 +300,7 @@ pub async fn onboarding(
     .bind(!body.apenas_retirada && body.coleta_gratis)
     .bind(!body.apenas_retirada && body.entrega_reparado_gratis)
     .bind(body.oferece_servicos)
+    .bind(body.precisa_tela_cozinha)
     .execute(&state.pool)
     .await?;
 
@@ -470,6 +475,8 @@ pub struct EditOnboardingInput {
     #[serde(default)]
     pub oferece_servicos: Option<bool>,
     #[serde(default)]
+    pub precisa_tela_cozinha: Option<bool>,
+    #[serde(default)]
     pub landing_hero_image_url: Option<String>,
     #[serde(default)]
     pub cart_fab_style: Option<String>,
@@ -606,6 +613,7 @@ pub async fn editar_onboarding(
          landing_highlights = COALESCE($32, landing_highlights), \
          landing_texts = COALESCE($33, landing_texts), \
          oferece_servicos = COALESCE($34, oferece_servicos), \
+         precisa_tela_cozinha = COALESCE($35, precisa_tela_cozinha), \
          onboarding_status = CASE \
            WHEN onboarding_status = 'aguardando_onboarding' THEN 'provisionado' \
            ELSE onboarding_status END, \
@@ -655,6 +663,7 @@ pub async fn editar_onboarding(
     .bind(&body.landing_highlights)
     .bind(&body.landing_texts)
     .bind(body.oferece_servicos)
+    .bind(body.precisa_tela_cozinha)
     .execute(&state.pool)
     .await?;
 
@@ -983,6 +992,7 @@ pub struct TenantConfigResponse {
     pub landing_highlights: Option<serde_json::Value>,
     pub landing_texts: Option<serde_json::Value>,
     pub oferece_servicos: bool,
+    pub precisa_tela_cozinha: bool,
     pub landing_hero_image_url: Option<String>,
     pub cart_fab_style: String,
     pub cart_fab_animate: bool,
@@ -1019,6 +1029,7 @@ struct TenantConfigRow {
     landing_highlights: Option<serde_json::Value>,
     landing_texts: Option<serde_json::Value>,
     oferece_servicos: bool,
+    precisa_tela_cozinha: bool,
     landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
@@ -1048,7 +1059,8 @@ pub async fn tenant_config(
          COALESCE(pagamento_manual, false) as pagamento_manual, \
          endereco, endereco_numero, instagram, facebook, logo_url, \
          landing_headline, landing_sub, landing_badge, landing_highlights, landing_texts, \
-         COALESCE(oferece_servicos, false) as oferece_servicos, landing_hero_image_url, \
+         COALESCE(oferece_servicos, false) as oferece_servicos, \
+         COALESCE(precisa_tela_cozinha, false) as precisa_tela_cozinha, landing_hero_image_url, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
          COALESCE(cart_fab_animate, false) as cart_fab_animate \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
@@ -1097,6 +1109,7 @@ pub async fn tenant_config(
         landing_highlights: row.landing_highlights,
         landing_texts: row.landing_texts,
         oferece_servicos: row.oferece_servicos,
+        precisa_tela_cozinha: row.precisa_tela_cozinha,
         landing_hero_image_url: row.landing_hero_image_url,
         cart_fab_style: match row.cart_fab_style.as_str() {
             "cart_icon" => "cart_icon".to_string(),

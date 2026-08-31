@@ -254,6 +254,8 @@ export interface MeResponse {
   landing_texts: Record<string, string> | null
   /** Generic motor only: subscriber offers services besides products. */
   oferece_servicos: boolean
+  /** Orders route to a dedicated kitchen screen instead of /admin/pedidos. */
+  precisa_tela_cozinha: boolean
   /** Essential: rectangular hero image on landing (Management+ uses promo banners). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -309,6 +311,7 @@ export interface OnboardingInput {
   entrega_somente_pix?: boolean
   pagamento_manual?: boolean
   oferece_servicos?: boolean
+  precisa_tela_cozinha?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -353,6 +356,7 @@ export interface EditOnboardingInput {
   landing_highlights?: { title: string; desc: string }[]
   landing_texts?: Record<string, string>
   oferece_servicos?: boolean
+  precisa_tela_cozinha?: boolean
   landing_hero_image_url?: string
   cart_fab_style?: 'sacola' | 'cart_icon'
   cart_fab_animate?: boolean

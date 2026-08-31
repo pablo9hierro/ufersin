@@ -59,6 +59,7 @@ struct SubscriberRow {
     landing_highlights: Option<serde_json::Value>,
     landing_texts: Option<serde_json::Value>,
     oferece_servicos: bool,
+    precisa_tela_cozinha: bool,
     landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
@@ -131,6 +132,8 @@ pub struct MeResponse {
     /// liga "Ver serviços" na vitrine e a aba de cadastro no admin. Eletrônica
     /// não usa este campo (sempre implícito true, sem opção de desligar).
     pub oferece_servicos: bool,
+    /// Pedidos avançam pela tela de cozinha em vez de /admin/pedidos.
+    pub precisa_tela_cozinha: bool,
     /// Essential: imagem retangular do hero (Management/Premium usam promo banners).
     pub landing_hero_image_url: Option<String>,
     pub cart_fab_style: String,
@@ -163,7 +166,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 COALESCE(entrega_somente_pix, false) as entrega_somente_pix,
                 COALESCE(pagamento_manual, false) as pagamento_manual, coupon_code,
                 landing_headline, landing_sub, landing_badge, landing_highlights, landing_texts, \
-                COALESCE(oferece_servicos, false) as oferece_servicos, landing_hero_image_url,
+                COALESCE(oferece_servicos, false) as oferece_servicos, \
+                COALESCE(precisa_tela_cozinha, false) as precisa_tela_cozinha, landing_hero_image_url,
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
                 COALESCE(cart_fab_animate, false) as cart_fab_animate,
                 COALESCE(vertical, 'ecommerce') as vertical
@@ -250,6 +254,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         landing_highlights: row.landing_highlights,
         landing_texts: row.landing_texts,
         oferece_servicos: row.oferece_servicos,
+        precisa_tela_cozinha: row.precisa_tela_cozinha,
         landing_hero_image_url: row.landing_hero_image_url,
         cart_fab_style: row.cart_fab_style,
         cart_fab_animate: row.cart_fab_animate,

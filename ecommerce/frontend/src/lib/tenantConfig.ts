@@ -60,6 +60,8 @@ export interface TenantConfig {
    * liga "Ver serviços" na vitrine. Eletrônica não usa isso (sempre true lá,
    * sem checkbox -- ver `vertical`). */
   oferece_servicos: boolean
+  /** Pedidos avançam pela tela de cozinha em vez de /admin/pedidos. */
+  precisa_tela_cozinha: boolean
   /** Essential landing hero image (Management/Premium use promo banners instead). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -144,6 +146,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   landing_highlights: null,
   landing_texts: {},
   oferece_servicos: false,
+  precisa_tela_cozinha: false,
   landing_hero_image_url: null,
   cart_fab_style: 'sacola',
   cart_fab_animate: false,
@@ -373,6 +376,7 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
         ? Object.fromEntries(Object.entries(data.landing_texts as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')]))
         : {},
     oferece_servicos: Boolean(data.oferece_servicos),
+    precisa_tela_cozinha: Boolean(data.precisa_tela_cozinha),
     landing_hero_image_url: data.landing_hero_image_url ? String(data.landing_hero_image_url) : null,
     cart_fab_style: fab,
     cart_fab_animate: Boolean(data.cart_fab_animate),

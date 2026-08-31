@@ -146,6 +146,7 @@ export default function MeuPlano() {
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
   const [ofereceServicos, setOfereceServicos] = useState(false)
+  const [precisaTelaCozinha, setPrecisaTelaCozinha] = useState(false)
   const [coletaGratis, setColetaGratis] = useState(false)
   const [entregaReparadoGratis, setEntregaReparadoGratis] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
@@ -225,6 +226,7 @@ export default function MeuPlano() {
         setVendeMais18(!!m.vende_mais_18)
         setApenasRetirada(!!m.apenas_retirada)
         setOfereceServicos(!!m.oferece_servicos)
+        setPrecisaTelaCozinha(!!m.precisa_tela_cozinha)
         setColetaGratis(!!m.coleta_gratis)
         setEntregaReparadoGratis(!!m.entrega_reparado_gratis)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
@@ -748,6 +750,8 @@ export default function MeuPlano() {
       apenas_retirada: apenasRetirada,
       // Eletrônica sempre oferece serviço (sem checkbox, não pode ser diferente).
       oferece_servicos: me.vertical === 'eletronicos' ? true : ofereceServicos,
+      // Eletrônica não tem conceito de cozinha (não é F&B).
+      precisa_tela_cozinha: me.vertical === 'eletronicos' ? false : precisaTelaCozinha,
       pagamento_na_retirada: pagamentoNaRetirada,
       entrega_somente_pix: entregaSomentePix,
       pagamento_manual: pagamentoManual,
@@ -931,6 +935,7 @@ export default function MeuPlano() {
                   <p className="text-xs text-uf-silver-dim">
                     Defina se a loja vende pro público externo, se exige verificação 18+ no checkout e se aceita só retirada.
                   </p>
+                  <h3 className="text-[11px] font-bold text-uf-silver-dim/70 uppercase tracking-wider pt-1">Vitrine</h3>
                   {/* Ramo eletrônica: vender pro público externo é obrigatório (vrtech
                       É a vitrine, não tem modo "só painel interno") e não vende produto
                       +18 -- os dois checkboxes não fazem sentido nessa categoria. */}
@@ -975,6 +980,7 @@ export default function MeuPlano() {
                     </span>
                   </label>
                   )}
+                  <h3 className="text-[11px] font-bold text-uf-silver-dim/70 uppercase tracking-wider pt-2">Serviço e entrega</h3>
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1046,6 +1052,24 @@ export default function MeuPlano() {
                     </>
                   )}
                   </>
+                  )}
+                  {me.vertical !== 'eletronicos' && (
+                    <>
+                      <h3 className="text-[11px] font-bold text-uf-silver-dim/70 uppercase tracking-wider pt-2">Cozinha</h3>
+                      <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={precisaTelaCozinha}
+                          onChange={(e) => setPrecisaTelaCozinha(e.target.checked)}
+                          className="w-4 h-4 mt-0.5"
+                          data-testid="pref-precisa-tela-cozinha"
+                        />
+                        <span className="text-xs text-uf-silver-dim">
+                          <span className="block text-uf-silver font-semibold mb-0.5">Vou precisar de uma tela para cozinha</span>
+                          Pedidos deixam de cair em Pedidos e passam direto pra tela de Cozinha, onde a equipe avança o status.
+                        </span>
+                      </label>
+                    </>
                   )}
                   <button type="submit" disabled={saving} className="btn-primary w-full py-3" data-testid="salvar-preferencias">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
