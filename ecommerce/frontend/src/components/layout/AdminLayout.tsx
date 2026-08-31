@@ -88,8 +88,6 @@ const NAV_GROUPS: Record<string, { id: string; label: string }> = {
   '/admin/template': { id: 'cadastros', label: 'Cadastros' },
   '/admin/motoboys': { id: 'cadastros', label: 'Cadastros' },
 }
-const NAV_GROUP_ORDER = ['solicitacoes', 'cadastros']
-
 /** Avoid re-running the full WA gate after every tenantConfig object refresh. */
 const GATE_SESSION_TTL_MS = 60_000
 type GateSession = { slug: string; locked: boolean; hoursDone: boolean; at: number }
@@ -515,7 +513,6 @@ export default function AdminLayout() {
 
   const lojaLabel = tenantConfig?.loja_nome?.trim() || tenantConfig?.slug || null
 
-  const ungroupedItems = visibleItems.filter((i) => !NAV_GROUPS[i.href])
   const groupActiveIds = new Set(
     visibleItems.filter((i) => i.href === activeHref && NAV_GROUPS[i.href]).map((i) => NAV_GROUPS[i.href].id)
   )
