@@ -98,7 +98,7 @@ export default function DemoEntrar() {
   if (role === 'vitrine' && plano) return <Navigate to="/" replace />
   if (role === 'admin') return <Navigate to="/admin/pedidos" replace />
   if (role === 'motoboy') return <Navigate to="/funcionarios/motoboy" replace />
-  if (role === 'vendedor') return <Navigate to="/funcionarios/vendedor/pedidos" replace />
+  if (role === 'vendedor') return <Navigate to="/funcionarios/vendedor/pdv" replace />
 
   return (
     <main className="min-h-screen bg-son-black flex items-center justify-center">

@@ -1156,6 +1156,147 @@ pub async fn delete_motoboy(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ---------- Vendedores ----------
+// BUG-020: tabela `vendedores` nunca existiu em produção -- cadastro de
+// vendedor só existia como RPC do Supabase (ver ecommerce/frontend/src/lib/
+// api.ts) apontando pra uma tabela inexistente. Mesmo padrão de motoboys.
+
+pub async fn list_vendedores(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<crate::models::VendedorDto>>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Funcionarios).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<crate::models::VendedorRow> = sqlx::query_as("SELECT * FROM vendedores WHERE tenant_id = $1 ORDER BY name")
+        .bind(&claims.tenant_id)
+        .fetch_all(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(Json(rows.into_iter().map(crate::models::VendedorDto::from).collect()))
+}
+
+pub async fn create_vendedor(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(input): Json<crate::models::VendedorInput>,
+) -> Result<Json<crate::models::VendedorDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Funcionarios).await?;
+    let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) else {
+        return Err(AppError::BadRequest("password is required to create a vendedor".to_string()));
+    };
+    let hash = hash_password(password)?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    let active = input.active.unwrap_or(true);
+    let commission_active = input.commission_active.unwrap_or(false);
+
+    sqlx::query(
+        "INSERT INTO vendedores (id, tenant_id, name, email, password_hash, active, commission_active, commission_percent) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(&input.name)
+    .bind(&input.email)
+    .bind(&hash)
+    .bind(active as i64)
+    .bind(commission_active as i64)
+    .bind(input.commission_percent)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db) if db.is_unique_violation() => {
+            AppError::BadRequest("email already in use".to_string())
+        }
+        other => other.into(),
+    })?;
+
+    let row: crate::models::VendedorRow = sqlx::query_as("SELECT * FROM vendedores WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(Json(row.into()))
+}
+
+pub async fn update_vendedor(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(input): Json<crate::models::VendedorInput>,
+) -> Result<Json<crate::models::VendedorDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Funcionarios).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let active = input.active.unwrap_or(true);
+    let commission_active = input.commission_active.unwrap_or(false);
+
+    if let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) {
+        let hash = hash_password(password)?;
+        let result = sqlx::query(
+            "UPDATE vendedores SET name = $1, email = $2, password_hash = $3, active = $4, \
+             commission_active = $5, commission_percent = $6 WHERE tenant_id = $7 AND id = $8",
+        )
+        .bind(&input.name)
+        .bind(&input.email)
+        .bind(&hash)
+        .bind(active as i64)
+        .bind(commission_active as i64)
+        .bind(input.commission_percent)
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("vendedor not found".to_string()));
+        }
+    } else {
+        let result = sqlx::query(
+            "UPDATE vendedores SET name = $1, email = $2, active = $3, commission_active = $4, \
+             commission_percent = $5 WHERE tenant_id = $6 AND id = $7",
+        )
+        .bind(&input.name)
+        .bind(&input.email)
+        .bind(active as i64)
+        .bind(commission_active as i64)
+        .bind(input.commission_percent)
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(AppError::NotFound("vendedor not found".to_string()));
+        }
+    }
+
+    let row: crate::models::VendedorRow = sqlx::query_as("SELECT * FROM vendedores WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(Json(row.into()))
+}
+
+pub async fn delete_vendedor(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Funcionarios).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let result = sqlx::query("DELETE FROM vendedores WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("vendedor not found".to_string()));
+    }
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ---------- Orders ----------
 
 #[derive(Debug, Deserialize)]

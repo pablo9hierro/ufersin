@@ -153,3 +153,39 @@ pub async fn motoboy_login(
         tenant_slug: slug,
     }))
 }
+
+/// BUG-020: o frontend chamava a RPC legada `resolutoo.vendedor_login`
+/// (schema antigo, single-tenant, tabela `resolutoo.vendedores` -- nada a
+/// ver com a `vendedores` tenant-scoped de verdade) -- login de vendedor
+/// nunca bateu com o cadastro real. Mesmo padrão de motoboy_login acima.
+pub async fn vendedor_login(
+    State(state): State<AppState>,
+    Json(input): Json<LoginInput>,
+) -> Result<Json<LoginResponse>, AppError> {
+    let slug = normalize_slug(input.tenant_slug.as_deref()).ok_or_else(|| {
+        AppError::Unauthorized("invalid credentials".to_string())
+    })?;
+    let tenant_id = resolve_tenant_id(&state, &slug).await?;
+
+    let row: Option<(String, String, String, i64)> = sqlx::query_as(
+        "SELECT id, password_hash, name, active FROM vendedores WHERE tenant_id = $1 AND email = $2",
+    )
+    .bind(&tenant_id)
+    .bind(&input.email)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let Some((id, hash, name, active)) = row else {
+        return Err(AppError::Unauthorized("invalid credentials".to_string()));
+    };
+    if active == 0 || !verify_password(&input.password, &hash) {
+        return Err(AppError::Unauthorized("invalid credentials".to_string()));
+    }
+
+    let token = make_token(&state.jwt_secret, &id, &tenant_id, "vendedor", &name);
+    Ok(Json(LoginResponse {
+        token,
+        name,
+        tenant_slug: slug,
+    }))
+}

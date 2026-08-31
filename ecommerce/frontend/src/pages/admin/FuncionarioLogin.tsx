@@ -31,7 +31,7 @@ export default function FuncionarioLogin() {
   if (isDemoModeActive()) {
     const staff = getDemoStaffSession()
     if (staff?.role === 'motoboy') return <Navigate to="/funcionarios/motoboy" replace />
-    if (staff?.role === 'vendedor') return <Navigate to="/funcionarios/vendedor/pedidos" replace />
+    if (staff?.role === 'vendedor') return <Navigate to="/funcionarios/vendedor/pdv" replace />
     return <Navigate to="/" replace />
   }
   if (motoboyToken) return <Navigate to="/funcionarios/motoboy" replace />

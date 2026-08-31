@@ -3089,6 +3089,9 @@ export const localApi = {
           concluido: forMotoboy('concluido'),
         }
       },
+      createPix: async () => {
+        throw new ApiError(400, 'Pix na entrega não está disponível no modo demo.')
+      },
     },
     runs: {
       active: motoboyActiveRun,

@@ -306,6 +306,58 @@ pub struct MotoboyInput {
     pub active: Option<bool>,
 }
 
+// ---------- Vendedores ----------
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct VendedorRow {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    #[allow(dead_code)]
+    pub password_hash: String,
+    pub active: i64,
+    pub commission_active: i64,
+    pub commission_percent: Option<f64>,
+    #[allow(dead_code)]
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VendedorDto {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub active: bool,
+    pub commission_active: bool,
+    pub commission_percent: Option<f64>,
+}
+
+impl From<VendedorRow> for VendedorDto {
+    fn from(r: VendedorRow) -> Self {
+        VendedorDto {
+            id: r.id,
+            name: r.name,
+            email: r.email,
+            active: r.active != 0,
+            commission_active: r.commission_active != 0,
+            commission_percent: r.commission_percent,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VendedorInput {
+    pub name: String,
+    pub email: String,
+    pub password: Option<String>,
+    #[serde(default)]
+    pub active: Option<bool>,
+    #[serde(default)]
+    pub commission_active: Option<bool>,
+    #[serde(default)]
+    pub commission_percent: Option<f64>,
+}
+
 // ---------- Orders ----------
 
 #[derive(Debug, sqlx::FromRow, Clone)]

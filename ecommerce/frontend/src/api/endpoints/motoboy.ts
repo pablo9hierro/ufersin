@@ -11,6 +11,7 @@ export const motoboyEndpoint = {
   orders: {
     list: async (status: string) => validateList(OrderSchema, await api.motoboy.orders.list(status), 'motoboy.orders.list'),
     counts: async () => validate(OrderCountsSchema, await api.motoboy.orders.counts(), 'motoboy.orders.counts'),
+    createPix: async (orderId: string) => api.motoboy.orders.createPix(orderId),
   },
   runs: {
     active: async () => {

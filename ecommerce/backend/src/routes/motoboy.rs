@@ -442,3 +442,54 @@ pub async fn notify_en_route(
     whatsapp::notify(&state, &instance, &digits, &msg);
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[derive(Debug, serde::Serialize)]
+pub struct MotoboyPixDto {
+    pub payment_id: String,
+    pub qr_code: String,
+    pub qr_code_base64: String,
+}
+
+/// POST /api/motoboy/orders/{id}/pix — gera cobrança Pix pra cobrar o
+/// cliente na entrega (pagamento na hora), usando a MESMA credencial
+/// Mercado Pago da loja dona da corrida (nunca uma credencial do
+/// motoboy/plataforma) -- mesma chamada que o PDV do admin já usa
+/// (create_pdv_pix, admin.rs), só que o valor/nome vêm do pedido real que
+/// o motoboy está entregando, não digitados à mão.
+pub async fn create_motoboy_pix(
+    State(state): State<AppState>,
+    MotoboyUser(claims): MotoboyUser,
+    Path(id): Path<String>,
+) -> Result<Json<MotoboyPixDto>, AppError> {
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let Some(order) = fetch_order_row(&mut *tx, &claims.tenant_id, &id).await? else {
+        return Err(AppError::NotFound("order not found".to_string()));
+    };
+    tx.commit().await?;
+
+    if order.motoboy_id.as_deref() != Some(claims.sub.as_str()) {
+        return Err(AppError::Forbidden("order is not assigned to you".to_string()));
+    }
+
+    let tenant_row = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
+    let payment_cfg = tenant::load_tenant_payment(&state.pool, &claims.tenant_id).await?;
+    let token = payment_cfg.mp_access_token().ok_or_else(|| {
+        AppError::BadRequest("Esta loja não tem Mercado Pago conectado -- não é possível cobrar Pix na entrega.".to_string())
+    })?;
+    let payer_email = tenant::organization_email_for_tenant(&state.pool, &claims.tenant_id).await?;
+    let pix = crate::mercadopago::create_pix_charge(
+        &state,
+        token,
+        &tenant_row.name,
+        order.total,
+        &order.customer_name,
+        payer_email.as_deref(),
+        &order.id,
+    )
+    .await?;
+    Ok(Json(MotoboyPixDto {
+        payment_id: pix.payment_id,
+        qr_code: pix.qr_code,
+        qr_code_base64: pix.qr_code_base64,
+    }))
+}

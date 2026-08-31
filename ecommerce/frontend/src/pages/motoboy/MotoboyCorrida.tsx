@@ -73,6 +73,9 @@ export default function MotoboyCorrida() {
   const [route, setRoute] = useState<Rota | null>(null)
   const [confirmingPayment, setConfirmingPayment] = useState(false)
   const [cashCents, setCashCents] = useState(0)
+  const [pix, setPix] = useState<{ qr_code: string; qr_code_base64: string } | null>(null)
+  const [pixLoading, setPixLoading] = useState(false)
+  const [pixError, setPixError] = useState<string | null>(null)
   const [completing, setCompleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -317,10 +320,26 @@ export default function MotoboyCorrida() {
   const handleSwipe = () => {
     if (needsPaymentConfirm) {
       setCashCents(0)
+      setPix(null)
+      setPixError(null)
       setConfirmingPayment(true)
       return
     }
     finishCurrent()
+  }
+
+  const gerarPix = async () => {
+    if (!current) return
+    setPixLoading(true)
+    setPixError(null)
+    try {
+      const result = await motoboyService.orders.createPix(current.id)
+      setPix(result)
+    } catch (e) {
+      setPixError(e instanceof ApiError ? e.message : 'Não foi possível gerar o Pix agora.')
+    } finally {
+      setPixLoading(false)
+    }
   }
 
   const copyAddress = () => {
@@ -449,6 +468,26 @@ export default function MotoboyCorrida() {
                 valueCents={cashCents}
                 onChange={setCashCents}
               />
+            )}
+            {current.payment_method !== 'pix' && (
+              <div className="mb-4">
+                {pix ? (
+                  <div className="text-center">
+                    <img
+                      src={`data:image/png;base64,${pix.qr_code_base64}`}
+                      alt="QR Code Pix"
+                      className="w-40 h-40 mx-auto rounded-lg mb-2"
+                    />
+                    <p className="text-xs text-son-silver-dim break-all">{pix.qr_code}</p>
+                  </div>
+                ) : (
+                  <button type="button" onClick={gerarPix} disabled={pixLoading} className="btn-secondary w-full">
+                    {pixLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Cliente quer pagar Pix — gerar QR code
+                  </button>
+                )}
+                {pixError && <p className="error-msg mt-2">{pixError}</p>}
+              </div>
             )}
             {error && <p className="error-msg mb-3">{error}</p>}
             <div className="flex gap-2">

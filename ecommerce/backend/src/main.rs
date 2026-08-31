@@ -245,6 +245,7 @@ async fn main() -> anyhow::Result<()> {
         // auth
         .route("/api/auth/admin/login", post(routes::auth::admin_login))
         .route("/api/auth/motoboy/login", post(routes::auth::motoboy_login))
+        .route("/api/auth/vendedor/login", post(routes::auth::vendedor_login))
         // Demo pública da plataforma Rodoletas (/demo lá) — só enxerga o
         // tenant fixo "loja-demo" seedado por seed::seed_demo_tenant,
         // nunca uma loja real. Ver routes/demo.rs.
@@ -583,6 +584,14 @@ async fn main() -> anyhow::Result<()> {
                 .put(routes::admin::update_motoboy)
                 .delete(routes::admin::delete_motoboy),
         )
+        .route(
+            "/api/admin/vendedores",
+            get(routes::admin::list_vendedores).post(routes::admin::create_vendedor),
+        )
+        .route(
+            "/api/admin/vendedores/{id}",
+            put(routes::admin::update_vendedor).delete(routes::admin::delete_vendedor),
+        )
         .route("/api/admin/orders", get(routes::admin::list_orders))
         .route(
             "/api/admin/orders/{id}/status",
@@ -793,6 +802,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/motoboy/orders/{id}/status",
             patch(routes::motoboy::update_order_status),
+        )
+        .route(
+            "/api/motoboy/orders/{id}/pix",
+            post(routes::motoboy::create_motoboy_pix),
         )
         .route("/api/motoboy/whatsapp/status", get(routes::motoboy::whatsapp_status))
         .route("/api/motoboy/whatsapp/connect", get(routes::motoboy::whatsapp_connect))

@@ -355,16 +355,16 @@ const remoteApi = {
         body: JSON.stringify(body),
       })
     },
-    motoboyLogin: async (email: string, password: string) => {
-      const { data, error } = await supabase.rpc('motoboy_login', { p_email: email, p_password: password })
-      if (error) throw new ApiError(401, 'Credenciais inválidas.')
-      return data as { token: string; name: string }
-    },
-    vendedorLogin: async (email: string, password: string) => {
-      const { data, error } = await supabase.rpc('vendedor_login', { p_email: email, p_password: password })
-      if (error) throw new ApiError(401, 'Credenciais inválidas.')
-      return data as { token: string; name: string }
-    },
+    motoboyLogin: async (email: string, password: string) =>
+      request<{ token: string; name: string }>('/api/auth/motoboy/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, tenant_slug: resolveTenantSlug() }),
+      }),
+    vendedorLogin: async (email: string, password: string) =>
+      request<{ token: string; name: string }>('/api/auth/vendedor/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, tenant_slug: resolveTenantSlug() }),
+      }),
     setAdminPassword: async (newPassword: string) => {
       const { error } = await supabase.rpc('admin_set_password', {
         p_token: adminToken(),
@@ -658,7 +658,10 @@ const remoteApi = {
         }),
     },
     vendedores: {
-      list: () => rpc<Vendedor[]>('admin_list_vendedores', { p_token: adminToken() }),
+      list: () =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<Vendedor[]>('/api/admin/vendedores')
+          : rpc<Vendedor[]>('admin_list_vendedores', { p_token: adminToken() }),
       create: (payload: {
         name: string
         email: string
@@ -666,14 +669,26 @@ const remoteApi = {
         commission_active?: boolean
         commission_percent?: number
       }) =>
-        rpc<Vendedor>('admin_create_vendedor', {
-          p_token: adminToken(),
-          p_name: payload.name,
-          p_email: payload.email,
-          p_password: payload.password,
-          p_commission_active: payload.commission_active ?? false,
-          p_commission_percent: payload.commission_percent ?? null,
-        }),
+        isRailwayAdminJwt()
+          ? railwayAdmin<Vendedor>('/api/admin/vendedores', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: payload.name,
+                email: payload.email,
+                password: payload.password,
+                active: true,
+                commission_active: payload.commission_active ?? false,
+                commission_percent: payload.commission_percent ?? null,
+              }),
+            })
+          : rpc<Vendedor>('admin_create_vendedor', {
+              p_token: adminToken(),
+              p_name: payload.name,
+              p_email: payload.email,
+              p_password: payload.password,
+              p_commission_active: payload.commission_active ?? false,
+              p_commission_percent: payload.commission_percent ?? null,
+            }),
       update: (
         id: string,
         payload: {
@@ -685,17 +700,32 @@ const remoteApi = {
           commission_percent?: number
         }
       ) =>
-        rpc<Vendedor>('admin_update_vendedor', {
-          p_token: adminToken(),
-          p_id: id,
-          p_name: payload.name,
-          p_email: payload.email,
-          p_active: payload.active,
-          p_password: payload.password || null,
-          p_commission_active: payload.commission_active ?? false,
-          p_commission_percent: payload.commission_percent ?? null,
-        }),
-      delete: (id: string) => rpc<void>('admin_delete_vendedor', { p_token: adminToken(), p_id: id }),
+        isRailwayAdminJwt()
+          ? railwayAdmin<Vendedor>(`/api/admin/vendedores/${id}`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                name: payload.name,
+                email: payload.email,
+                password: payload.password || null,
+                active: payload.active,
+                commission_active: payload.commission_active ?? false,
+                commission_percent: payload.commission_percent ?? null,
+              }),
+            })
+          : rpc<Vendedor>('admin_update_vendedor', {
+              p_token: adminToken(),
+              p_id: id,
+              p_name: payload.name,
+              p_email: payload.email,
+              p_active: payload.active,
+              p_password: payload.password || null,
+              p_commission_active: payload.commission_active ?? false,
+              p_commission_percent: payload.commission_percent ?? null,
+            }),
+      delete: (id: string) =>
+        isRailwayAdminJwt()
+          ? railwayAdmin<void>(`/api/admin/vendedores/${id}`, { method: 'DELETE' })
+          : rpc<void>('admin_delete_vendedor', { p_token: adminToken(), p_id: id }),
       getPassword: (id: string) => rpc<string | null>('admin_get_vendedor_password', { p_token: adminToken(), p_id: id }),
     },
     coupons: {
@@ -1479,6 +1509,13 @@ const remoteApi = {
     orders: {
       list: (status: string) => rpc<Order[]>('motoboy_list_orders', { p_token: motoboyToken(), p_status: status }),
       counts: () => rpc<Record<string, number>>('motoboy_order_counts', { p_token: motoboyToken() }),
+      // Cobrar Pix na entrega -- usa o Mercado Pago da própria loja da
+      // corrida (nunca credencial do motoboy/plataforma). Ver motoboy.rs.
+      createPix: (orderId: string) =>
+        request<{ payment_id: string; qr_code: string; qr_code_base64: string }>(`/api/motoboy/orders/${orderId}/pix`, {
+          method: 'POST',
+          token: motoboyToken(),
+        }),
     },
     // Corrida ativa: sobrevive a troca de página/reload porque o estado
     // mora no banco (sunset.motoboy_runs), não no componente React — ver

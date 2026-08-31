@@ -373,6 +373,58 @@
   regression_test_id: "BUG-013"
   manual_verification: null
 
+- id: BUG-020
+  title: "Vendedor/motoboy: login e cadastro de vendedor nunca funcionavam de verdade (tabela/rotas erradas), motoboy sem cobrança Pix na entrega"
+  area: [backend, frontend, database]
+  service: ecommerce-api / ecommerce/frontend
+  severity: critical
+  status: fixed
+  reported_at: "2026-08-31"
+  fixed_at: "2026-08-31"
+  symptom: >
+    Pedido de auditoria completa do fluxo de funcionário (vendedor/motoboy).
+    Achados: (1) tabela `vendedores` não existia em produção -- cadastro de
+    vendedor sempre falhava. (2) login de motoboy E vendedor chamava RPCs
+    Supabase legadas (`resolutoo.motoboy_login`/`vendedor_login`) que
+    consultam tabelas `resolutoo.motoboys`/`resolutoo.vendedores` --
+    schema antigo, single-tenant, SEM NENHUMA relação com as tabelas reais
+    (`motoboys`/`vendedores` no schema `loja`, tenant-scoped) que o
+    cadastro admin escreve -- login de funcionário estava quebrado mesmo
+    quando o cadastro funcionava (caso do motoboy). (3) link "Pedidos" no
+    menu do vendedor apontava pra rota inexistente. (4) motoboy não tinha
+    como cobrar Pix na entrega usando o Mercado Pago da própria loja.
+  root_cause: >
+    O sistema de vendedor/motoboy foi migrado pro backend Rust
+    multi-tenant (schema `loja`) em CRUD (cadastro do admin), mas o LOGIN
+    do funcionário nunca foi migrado junto -- continuou chamando as RPCs
+    Supabase antigas de uma época pré-multi-tenant, que vivem noutro
+    schema (`resolutoo`) inteiramente desconectado. `vendedores` (schema
+    `loja`) nunca foi criada porque o cadastro de vendedor nunca tinha
+    rota Rust própria (só a RPC legada, também quebrada pelo mesmo
+    motivo) -- confirmado via leitura direta do banco (information_schema
+    + pg_proc) antes de qualquer código ser escrito.
+  fix_commit: "ufersin:PENDING"
+  fix_files:
+    - "ecommerce/backend/migrations/0040_vendedores.sql"
+    - "ecommerce/backend/src/models.rs"
+    - "ecommerce/backend/src/routes/admin.rs"
+    - "ecommerce/backend/src/routes/auth.rs"
+    - "ecommerce/backend/src/routes/motoboy.rs"
+    - "ecommerce/backend/src/main.rs"
+    - "ecommerce/backend/src/openapi.rs"
+    - "ecommerce/frontend/src/lib/api.ts"
+    - "ecommerce/frontend/src/components/layout/VendedorLayout.tsx"
+    - "ecommerce/frontend/src/pages/motoboy/MotoboyCorrida.tsx"
+  regression_test_id: null
+  manual_verification: >
+    Admin cadastra um vendedor em /admin/motoboys (aba vendedores) com
+    senha -- deve criar sem erro. Fazer login em /funcionarios/login com
+    essas credenciais (papel vendedor) -- deve entrar e ver PDV +
+    Financeiro (só as vendas dele). Repetir pra motoboy. No fluxo de
+    entrega: motoboy reivindica pedido pronto pra entrega, ao concluir com
+    pagamento pendente (não-pix) deve aparecer botão "gerar QR Pix",
+    gerando cobrança real via Mercado Pago da loja.
+
 - id: BUG-019
   title: "Assistente IA mandava markdown de link/imagem cru no WhatsApp e disparava/reabria atendimento sem palavra-chave real"
   area: [ai-pipeline, backend]
