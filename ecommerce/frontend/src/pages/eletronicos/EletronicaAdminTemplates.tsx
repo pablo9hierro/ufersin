@@ -15,6 +15,7 @@ const TEXTAREA =
 
 const PREVIEW_VARS: Record<string, string> = {
   nome: 'João',
+  loja: 'Sua Loja',
   telefone: '(83) 98888-7777',
   aparelho: 'iPhone 13',
   problema: 'Tela trincada',
