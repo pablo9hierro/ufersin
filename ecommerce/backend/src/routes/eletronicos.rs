@@ -3274,7 +3274,15 @@ const TEMPLATE_COLUMNS: &str = "id::text, template_key, section, label, descript
 /// que só existe nessa vertical) e outras seções (entrega e coleta, PDV,
 /// solicitação de serviço) que também são conceitos exclusivos daquele
 /// fluxo. Ecommerce genérico só tem agendamento de serviço na vitrine.
-const ECOMMERCE_TEMPLATE_KEYS: [&str; 2] = ["appointment_cancelled", "appointment_rescheduled"];
+const ECOMMERCE_TEMPLATE_KEYS: [&str; 7] = [
+    "appointment_cancelled",
+    "appointment_rescheduled",
+    "order_confirmed",
+    "order_payment_confirmed",
+    "order_ready_pickup",
+    "order_shipped",
+    "order_cancelled",
+];
 
 pub async fn list_whatsapp_templates(
     State(state): State<AppState>,
@@ -3343,7 +3351,27 @@ pub async fn list_whatsapp_templates(
              (gen_random_uuid(), $1, 'appointment_rescheduled', 'agendamento', 'Agendamento remarcado', \
               'Enviado ao cliente quando um agendamento é remarcado pelo lojista.', \
               'Olá /nome, seu agendamento na /loja foi remarcado de /horario_anterior para /data_hora. Motivo: /motivo', \
-              ARRAY['nome','data_hora','horario_anterior','motivo','loja'], ARRAY['nome','data_hora','horario_anterior','motivo','loja','endereco'], true, true, 2) \
+              ARRAY['nome','data_hora','horario_anterior','motivo','loja'], ARRAY['nome','data_hora','horario_anterior','motivo','loja','endereco'], true, true, 2), \
+             (gen_random_uuid(), $1, 'order_confirmed', 'pedidos', 'Pedido recebido', \
+              'Enviado ao cliente assim que o pedido é feito.', \
+              'Olá /nome! Recebemos seu pedido na /loja e já estamos preparando. Assim que ficar pronto, avisamos por aqui! 😋', \
+              ARRAY['nome','loja'], ARRAY['nome','loja'], true, true, 10), \
+             (gen_random_uuid(), $1, 'order_payment_confirmed', 'pedidos', 'Pagamento confirmado', \
+              'Enviado ao cliente quando o pagamento do pedido é confirmado.', \
+              'Recebemos seu pagamento! Seu pedido na /loja já está sendo preparado. 🌇', \
+              ARRAY['nome','loja'], ARRAY['nome','loja'], true, true, 11), \
+             (gen_random_uuid(), $1, 'order_ready_pickup', 'pedidos', 'Pedido pronto (retirada)', \
+              'Enviado ao cliente quando o pedido fica pronto pra retirar na loja.', \
+              'Seu pedido na /loja está pronto! Pode vir buscar 😊 Local de retirada: /endereco', \
+              ARRAY['nome','loja','endereco'], ARRAY['nome','loja','endereco'], true, true, 12), \
+             (gen_random_uuid(), $1, 'order_shipped', 'pedidos', 'Pedido saiu para entrega', \
+              'Enviado ao cliente quando o pedido sai para entrega.', \
+              'Seu pedido na /loja saiu para entrega! Em breve você recebe. Qualquer dúvida, fale com a gente pelo WhatsApp.', \
+              ARRAY['nome','loja'], ARRAY['nome','loja'], true, true, 13), \
+             (gen_random_uuid(), $1, 'order_cancelled', 'pedidos', 'Pedido cancelado', \
+              'Enviado ao cliente quando o pedido é cancelado pelo lojista.', \
+              'Seu pedido na /loja foi cancelado. Se pagou via Pix online, o estorno é automático quando a loja usa Mercado Pago; caso contrário a loja acerta a devolução manualmente.', \
+              ARRAY['nome','loja'], ARRAY['nome','loja'], true, true, 14) \
              ON CONFLICT (tenant_id, template_key) DO NOTHING",
         )
         .await?;

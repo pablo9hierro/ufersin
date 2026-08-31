@@ -360,10 +360,23 @@ async fn handle_mercadopago(
                 tenant_row.name
             )
         } else {
-            format!(
-                "Recebemos seu pagamento! Seu pedido #{} já está sendo preparado. 🌇",
-                orders_common::short_id(&order.id)
-            )
+            let mut vtx = tenant::tenant_tx(&state.pool, &tenant_id)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+            let mut vars = std::collections::HashMap::new();
+            vars.insert("nome".to_string(), order.customer_name.clone());
+            vars.insert("loja".to_string(), tenant_row.name.clone());
+            let templated =
+                crate::routes::eletronicos::render_whatsapp_template(&mut vtx, &tenant_id, "order_payment_confirmed", &vars)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+            vtx.commit().await.map_err(|e| anyhow::anyhow!("{e:?}"))?;
+            templated.unwrap_or_else(|| {
+                format!(
+                    "Recebemos seu pagamento! Seu pedido #{} já está sendo preparado. 🌇",
+                    orders_common::short_id(&order.id)
+                )
+            })
         };
         whatsapp::notify(state, &tenant_row.whatsapp_instance, &digits, &msg);
     }

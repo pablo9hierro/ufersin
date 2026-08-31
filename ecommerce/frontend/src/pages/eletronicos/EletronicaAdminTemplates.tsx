@@ -3,6 +3,7 @@ import { AlertCircle, Check, Loader2, Lock, MessageSquare, Smartphone, ToggleLef
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { EletronicaTemplate as Template } from '../../lib/eletronicosAdminApi'
 import EletronicaAccordionSection from './EletronicaAccordionSection'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 // Port 1:1 de src/app/dashboard/template-zap/TemplateZapClient.tsx do
 // vrtech -- accordion por seção (com contagem), preview em bolha de
@@ -216,6 +217,12 @@ function ProtectedTemplateCard({ tpl, onToggled }: { tpl: Template; onToggled: (
 export default function EletronicaAdminTemplates() {
   const [templates, setTemplates] = useState<Template[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const tenantConfig = useTenantConfig()
+  // Loja do ramo genérico que não marcou "Ofereço serviços" não tem
+  // agendamento nenhum -- esconde a seção pra não mostrar template de
+  // disparo que nunca vai disparar. Eletrônica sempre oferece serviço
+  // (sem checkbox), nunca esconde.
+  const ofereceServicos = tenantConfig?.vertical === 'eletronicos' || !!tenantConfig?.oferece_servicos
 
   useEffect(() => {
     eletronicosAdmin.templates
@@ -227,11 +234,12 @@ export default function EletronicaAdminTemplates() {
   const bySection = useMemo(() => {
     const map = new Map<string, Template[]>()
     for (const t of templates ?? []) {
+      if (t.section === 'agendamento' && !ofereceServicos) continue
       if (!map.has(t.section)) map.set(t.section, [])
       map.get(t.section)!.push(t)
     }
     return map
-  }, [templates])
+  }, [templates, ofereceServicos])
 
   const updateOne = (updated: Template) => {
     setTemplates((prev) => prev?.map((t) => (t.id === updated.id ? updated : t)) ?? prev)

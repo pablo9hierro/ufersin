@@ -665,12 +665,18 @@ pub async fn notify_order_created(
     let Some(order) = fetch_order_row(&mut *tx, &store.id, &input.order_id).await? else {
         return Err(AppError::NotFound("order not found".to_string()));
     };
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("nome".to_string(), order.customer_name.clone());
+    vars.insert("loja".to_string(), store.name.clone());
+    let templated = crate::routes::eletronicos::render_whatsapp_template(&mut tx, &store.id, "order_confirmed", &vars).await?;
     tx.commit().await?;
     let digits = whatsapp::digits_only(&order.customer_whatsapp);
-    let msg = format!(
-        "Olá, {}! Recebemos seu pedido e já estamos preparando 😋 Assim que ficar pronto, avisamos por aqui!",
-        order.customer_name
-    );
+    let msg = templated.unwrap_or_else(|| {
+        format!(
+            "Olá, {}! Recebemos seu pedido e já estamos preparando 😋 Assim que ficar pronto, avisamos por aqui!",
+            order.customer_name
+        )
+    });
     whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1409,13 +1415,20 @@ pub async fn notify_payment_received(
     let Some(order) = fetch_order_row(&mut *tx, &store.id, &id).await? else {
         return Err(AppError::NotFound("order not found".to_string()));
     };
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("nome".to_string(), order.customer_name.clone());
+    vars.insert("loja".to_string(), store.name.clone());
+    let templated =
+        crate::routes::eletronicos::render_whatsapp_template(&mut tx, &store.id, "order_payment_confirmed", &vars).await?;
     tx.commit().await?;
 
     let digits = whatsapp::digits_only(&order.customer_whatsapp);
-    let msg = format!(
-        "Recebemos seu pagamento! Seu pedido #{} já está sendo preparado. 🌇",
-        short_id(&order.id)
-    );
+    let msg = templated.unwrap_or_else(|| {
+        format!(
+            "Recebemos seu pagamento! Seu pedido #{} já está sendo preparado. 🌇",
+            short_id(&order.id)
+        )
+    });
     whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
     Ok(StatusCode::NO_CONTENT)
 }

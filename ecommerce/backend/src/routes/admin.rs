@@ -1317,19 +1317,34 @@ pub async fn update_order_status(
     if input.status == "retiradas" {
         let store = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
         let digits = whatsapp::digits_only(&customer_whatsapp);
-        let msg = format!(
-            "Seu pedido está pronto! Pode vir buscar 😊 Local de retirada: {}",
-            store.pickup_address
-        );
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("nome".to_string(), customer_name.to_string());
+        vars.insert("loja".to_string(), store.name.clone());
+        vars.insert("endereco".to_string(), store.pickup_address.clone());
+        let templated =
+            crate::routes::eletronicos::render_whatsapp_template(&mut tx, &claims.tenant_id, "order_ready_pickup", &vars)
+                .await?;
+        let msg = templated.unwrap_or_else(|| {
+            format!(
+                "Seu pedido está pronto! Pode vir buscar 😊 Local de retirada: {}",
+                store.pickup_address
+            )
+        });
         whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
     }
 
     if input.status == "entregas" {
         let store = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
         let digits = whatsapp::digits_only(&customer_whatsapp);
-        let msg =
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("nome".to_string(), customer_name.to_string());
+        vars.insert("loja".to_string(), store.name.clone());
+        let templated =
+            crate::routes::eletronicos::render_whatsapp_template(&mut tx, &claims.tenant_id, "order_shipped", &vars).await?;
+        let msg = templated.unwrap_or_else(|| {
             "Seu pedido saiu para entrega! Em breve você recebe. Qualquer dúvida, fale com a loja pelo WhatsApp."
-                .to_string();
+                .to_string()
+        });
         whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
     }
 
@@ -1395,7 +1410,14 @@ pub async fn cancel_order(
     // Notify customer (best-effort).
     let store = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
     let digits = whatsapp::digits_only(&order.customer_whatsapp);
-    let msg = "Seu pedido foi cancelado pela loja. Se pagou via Pix online, o estorno é automático quando a loja usa Mercado Pago; caso contrário a loja acerta a devolução manualmente.".to_string();
+    let mut vtx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("nome".to_string(), order.customer_name.clone());
+    vars.insert("loja".to_string(), store.name.clone());
+    let templated =
+        crate::routes::eletronicos::render_whatsapp_template(&mut vtx, &claims.tenant_id, "order_cancelled", &vars).await?;
+    vtx.commit().await?;
+    let msg = templated.unwrap_or_else(|| "Seu pedido foi cancelado pela loja. Se pagou via Pix online, o estorno é automático quando a loja usa Mercado Pago; caso contrário a loja acerta a devolução manualmente.".to_string());
     whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
 
     Ok(Json(dto))
