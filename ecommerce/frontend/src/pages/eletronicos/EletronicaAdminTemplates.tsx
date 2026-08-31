@@ -34,9 +34,9 @@ const PREVIEW_VARS: Record<string, string> = {
   link_pagamento: '00020126580014BR.GOV.BCB.PIX0136f4e2...5204000053039865802BR',
 }
 
-function localPreview(content: string): string {
+function localPreview(content: string, overrides?: Record<string, string>): string {
   return content
-    .replace(/\/([a-z_][a-z0-9_]*)/gi, (m, name: string) => PREVIEW_VARS[name.toLowerCase()] ?? m)
+    .replace(/\/([a-z_][a-z0-9_]*)/gi, (m, name: string) => overrides?.[name.toLowerCase()] ?? PREVIEW_VARS[name.toLowerCase()] ?? m)
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
@@ -111,7 +111,7 @@ function EnabledToggle({ tpl, onToggled }: { tpl: Template; onToggled: (t: Templ
   )
 }
 
-function EditableTemplateCard({ tpl, onSaved }: { tpl: Template; onSaved: (t: Template) => void }) {
+function EditableTemplateCard({ tpl, onSaved, previewOverrides }: { tpl: Template; onSaved: (t: Template) => void; previewOverrides?: Record<string, string> }) {
   const [content, setContent] = useState(tpl.content)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -119,7 +119,7 @@ function EditableTemplateCard({ tpl, onSaved }: { tpl: Template; onSaved: (t: Te
   const dirty = content !== tpl.content
 
   const missing = useMemo(() => missingVars(content, tpl.required_variables), [content, tpl.required_variables])
-  const preview = useMemo(() => localPreview(content), [content])
+  const preview = useMemo(() => localPreview(content, previewOverrides), [content, previewOverrides])
 
   const save = async () => {
     setSaving(true)
@@ -186,8 +186,8 @@ function EditableTemplateCard({ tpl, onSaved }: { tpl: Template; onSaved: (t: Te
   )
 }
 
-function ProtectedTemplateCard({ tpl, onToggled }: { tpl: Template; onToggled: (t: Template) => void }) {
-  const preview = useMemo(() => localPreview(tpl.content), [tpl.content])
+function ProtectedTemplateCard({ tpl, onToggled, previewOverrides }: { tpl: Template; onToggled: (t: Template) => void; previewOverrides?: Record<string, string> }) {
+  const preview = useMemo(() => localPreview(tpl.content, previewOverrides), [tpl.content, previewOverrides])
   return (
     <div className="bg-[#0a0a0b]/40 border border-yellow-500/20 rounded-xl p-3.5 space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -224,6 +224,12 @@ export default function EletronicaAdminTemplates() {
   // disparo que nunca vai disparar. Eletrônica sempre oferece serviço
   // (sem checkbox), nunca esconde.
   const ofereceServicos = tenantConfig?.vertical === 'eletronicos' || !!tenantConfig?.oferece_servicos
+  // Preview precisa mostrar o nome REAL da loja logada, não um placeholder
+  // genérico -- lojista reclamou explicitamente disso.
+  const previewOverrides = useMemo(() => {
+    const loja = tenantConfig?.loja_nome?.trim()
+    return loja ? { loja } : undefined
+  }, [tenantConfig?.loja_nome])
 
   useEffect(() => {
     eletronicosAdmin.templates
@@ -274,7 +280,11 @@ export default function EletronicaAdminTemplates() {
         [...bySection.entries()].map(([section, items]) => (
           <EletronicaAccordionSection key={section} title={section} subtitle={`${items.length} mensage${items.length === 1 ? 'm' : 'ns'}`}>
             {items.map((tpl) =>
-              tpl.editable ? <EditableTemplateCard key={tpl.id} tpl={tpl} onSaved={updateOne} /> : <ProtectedTemplateCard key={tpl.id} tpl={tpl} onToggled={updateOne} />,
+              tpl.editable ? (
+                <EditableTemplateCard key={tpl.id} tpl={tpl} onSaved={updateOne} previewOverrides={previewOverrides} />
+              ) : (
+                <ProtectedTemplateCard key={tpl.id} tpl={tpl} onToggled={updateOne} previewOverrides={previewOverrides} />
+              ),
             )}
           </EletronicaAccordionSection>
         ))
