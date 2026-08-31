@@ -4,6 +4,7 @@ import {
   Boxes,
   Calendar,
   ChefHat,
+  ChevronDown,
   ClipboardList,
   Loader2,
   LogOut,
@@ -74,6 +75,20 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/relatorios', label: 'Relatórios', icon: Wallet, requiredPlan: 'essential' },
   { href: '/admin/conta', label: 'Configurações', icon: Settings, requiredPlan: 'essential' },
 ]
+
+/** Agrupa alguns itens do menu em dropdowns nativos (<details>) pra encurtar
+ * a sidebar — os demais itens ficam soltos no menu normal. */
+const NAV_GROUPS: Record<string, { id: string; label: string }> = {
+  '/admin/pedidos': { id: 'solicitacoes', label: 'Solicitações' },
+  '/admin/cozinha': { id: 'solicitacoes', label: 'Solicitações' },
+  '/admin/produtos': { id: 'cadastros', label: 'Cadastros' },
+  '/admin/produtos/servicos': { id: 'cadastros', label: 'Cadastros' },
+  '/admin/estoque': { id: 'cadastros', label: 'Cadastros' },
+  '/admin/frete': { id: 'cadastros', label: 'Cadastros' },
+  '/admin/template': { id: 'cadastros', label: 'Cadastros' },
+  '/admin/motoboys': { id: 'cadastros', label: 'Cadastros' },
+}
+const NAV_GROUP_ORDER = ['solicitacoes', 'cadastros']
 
 /** Avoid re-running the full WA gate after every tenantConfig object refresh. */
 const GATE_SESSION_TTL_MS = 60_000
@@ -500,6 +515,11 @@ export default function AdminLayout() {
 
   const lojaLabel = tenantConfig?.loja_nome?.trim() || tenantConfig?.slug || null
 
+  const ungroupedItems = visibleItems.filter((i) => !NAV_GROUPS[i.href])
+  const groupActiveIds = new Set(
+    visibleItems.filter((i) => i.href === activeHref && NAV_GROUPS[i.href]).map((i) => NAV_GROUPS[i.href].id)
+  )
+
   return (
     <div className="min-h-screen bg-son-black text-white flex">
       <aside className="hidden md:flex md:flex-col w-56 shrink-0 bg-son-surface border-r border-white/5 min-h-screen sticky top-0">
@@ -509,21 +529,56 @@ export default function AdminLayout() {
           <p className="text-xs text-son-silver-dim mt-1">Olá, {effectiveName}</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {visibleItems.map(({ href, label, icon: Icon }) => {
-            const active = href === activeHref
-            return (
-              <Link
-                key={href}
-                to={href}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                  active ? 'sunset-bg text-white' : 'text-son-silver-dim hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {label}
-              </Link>
-            )
-          })}
+          {(() => {
+            const renderedGroups = new Set<string>()
+            return visibleItems.map((item) => {
+              const group = NAV_GROUPS[item.href]
+              if (group) {
+                if (renderedGroups.has(group.id)) return null
+                renderedGroups.add(group.id)
+                const groupItems = visibleItems.filter((i) => NAV_GROUPS[i.href]?.id === group.id)
+                return (
+                  <details key={group.id} open={groupActiveIds.has(group.id)} className="group">
+                    <summary className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-son-silver-dim hover:bg-white/5 hover:text-white cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                      <ChevronDown className="w-4 h-4 shrink-0 transition-transform group-open:rotate-180" />
+                      {group.label}
+                    </summary>
+                    <div className="ml-2 pl-4 border-l border-white/10 space-y-1 mt-1">
+                      {groupItems.map(({ href, label, icon: Icon }) => {
+                        const active = href === activeHref
+                        return (
+                          <Link
+                            key={href}
+                            to={href}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                              active ? 'sunset-bg text-white' : 'text-son-silver-dim hover:bg-white/5 hover:text-white'
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                            {label}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </details>
+                )
+              }
+              const { href, label, icon: Icon } = item
+              const active = href === activeHref
+              return (
+                <Link
+                  key={href}
+                  to={href}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    active ? 'sunset-bg text-white' : 'text-son-silver-dim hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </Link>
+              )
+            })
+          })()}
         </nav>
         <div className="px-3 py-4 border-t border-white/5">
           <button
