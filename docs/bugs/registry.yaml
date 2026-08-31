@@ -403,7 +403,7 @@
     rota Rust própria (só a RPC legada, também quebrada pelo mesmo
     motivo) -- confirmado via leitura direta do banco (information_schema
     + pg_proc) antes de qualquer código ser escrito.
-  fix_commit: "ufersin:PENDING"
+  fix_commit: "ufersin:d179f4d"
   fix_files:
     - "ecommerce/backend/migrations/0040_vendedores.sql"
     - "ecommerce/backend/src/models.rs"
