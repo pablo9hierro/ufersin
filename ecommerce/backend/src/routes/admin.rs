@@ -1165,7 +1165,7 @@ pub async fn list_vendedores(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
 ) -> Result<Json<Vec<crate::models::VendedorDto>>, AppError> {
-    features::require_feature(&state.pool, &claims.tenant_id, Feature::Funcionarios).await?;
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<crate::models::VendedorRow> = sqlx::query_as("SELECT * FROM vendedores WHERE tenant_id = $1 ORDER BY name")
         .bind(&claims.tenant_id)
@@ -1180,7 +1180,7 @@ pub async fn create_vendedor(
     AdminUser(claims): AdminUser,
     Json(input): Json<crate::models::VendedorInput>,
 ) -> Result<Json<crate::models::VendedorDto>, AppError> {
-    features::require_feature(&state.pool, &claims.tenant_id, Feature::Funcionarios).await?;
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await?;
     let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) else {
         return Err(AppError::BadRequest("password is required to create a vendedor".to_string()));
     };
@@ -1226,7 +1226,7 @@ pub async fn update_vendedor(
     Path(id): Path<String>,
     Json(input): Json<crate::models::VendedorInput>,
 ) -> Result<Json<crate::models::VendedorDto>, AppError> {
-    features::require_feature(&state.pool, &claims.tenant_id, Feature::Funcionarios).await?;
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let active = input.active.unwrap_or(true);
     let commission_active = input.commission_active.unwrap_or(false);
@@ -1283,7 +1283,7 @@ pub async fn delete_vendedor(
     AdminUser(claims): AdminUser,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    features::require_feature(&state.pool, &claims.tenant_id, Feature::Funcionarios).await?;
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let result = sqlx::query("DELETE FROM vendedores WHERE tenant_id = $1 AND id = $2")
         .bind(&claims.tenant_id)
