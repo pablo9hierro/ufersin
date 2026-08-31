@@ -373,6 +373,48 @@
   regression_test_id: "BUG-013"
   manual_verification: null
 
+- id: BUG-019
+  title: "Assistente IA mandava markdown de link/imagem cru no WhatsApp e disparava/reabria atendimento sem palavra-chave real"
+  area: [ai-pipeline, backend]
+  service: "assistant-ia (a-vrtek-gente)"
+  severity: critical
+  status: fixed
+  reported_at: "2026-08-31"
+  fixed_at: "2026-08-31"
+  symptom: >
+    (1) IA mandava `[Comprar](url)` e `![nome](url-da-foto)` literais pro
+    cliente no WhatsApp -- que não renderiza markdown, aparecia
+    colchetes/parênteses/exclamação quebrados em vez de link clicável.
+    (2) Atendimento iniciava sozinho mesmo sem o cliente ter mandado
+    nenhuma das palavras-chave de início configuradas em
+    /assistente-ia. (3) Depois de "encerrar" fechar o atendimento, ele
+    reabria sozinho sem o cliente ter mandado a palavra-chave de início.
+  root_cause: >
+    (1) Nenhuma regra no prompt proibia markdown de link/imagem -- a
+    ferramenta buscar_produtos retorna um campo `foto=<url>` como
+    referência interna, e a IA, sem instrução contrária, colava isso e o
+    link formatado em markdown de site/chat na resposta final. (2) e (3)
+    start_keywords/end_keywords eram comparados com `.includes()`
+    (substring cru): uma keyword curta como "oi" batia dentro de
+    QUALQUER palavra que contivesse essa sequência de letras, mesmo sem
+    ser a palavra inteira -- "depois", "noite", "apoio" todas contêm
+    "oi". Uma mensagem comum contendo qualquer uma dessas palavras
+    disparava o início (ou reabria depois do encerramento) mesmo sem
+    nenhuma saudação/gatilho real ter sido dita.
+  fix_commit: "a-vrtek-gente:d5f805e"
+  fix_files: ["a-vrtek-gente/backend/src/agents/pipeline.ts", "a-vrtek-gente/backend/src/routes/webhook.ts"]
+  regression_test_id: null
+  manual_verification: >
+    (1) Pedir "o que vocês vendem" pra Assistente IA de uma loja com
+    produtos com foto cadastrada -- resposta não deve conter `[texto](url)`
+    nem `![alt](url)`, só texto + URL pura. (2) Mandar uma mensagem comum
+    contendo uma palavra que INCLUI (mas não É) uma keyword de início
+    curta (ex: se "oi" é keyword, mandar "vou pensar melhor depois") sem
+    nenhum atendimento em curso -- não deve iniciar atendimento. (3)
+    Encerrar um atendimento com a keyword de fim, depois mandar uma
+    mensagem comum que contenha substring de uma keyword de início sem
+    ser a palavra inteira -- não deve reabrir.
+
 - id: BUG-018
   title: "Assistente IA nunca via serviços da loja -- oferece_servicos sempre resolvia false por bater na URL errada"
   area: [ai-pipeline, backend]
