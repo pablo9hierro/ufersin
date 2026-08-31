@@ -367,6 +367,7 @@ export default function App() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="/admin/pedidos" replace />} />
             <Route path="pedidos" element={<AdminPedidos />} />
+            <Route path="cozinha" element={<AdminPedidos />} />
             <Route path="pdv" element={<AdminPdv />} />
             <Route path="produtos" element={<AdminProdutos />} />
             <Route path="produtos/xml" element={<AdminProdutosXml />} />

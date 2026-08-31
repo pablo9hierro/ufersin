@@ -3,6 +3,7 @@ import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-d
 import {
   Boxes,
   Calendar,
+  ChefHat,
   ClipboardList,
   Loader2,
   LogOut,
@@ -478,7 +479,12 @@ export default function AdminLayout() {
     )
       return false
     return true
-  })
+  }).map((i) =>
+    // Loja com tela de cozinha: pedidos avançam por lá, não pelo painel de Pedidos.
+    i.href === '/admin/pedidos' && tenantConfig?.precisa_tela_cozinha
+      ? { ...i, href: '/admin/cozinha', label: 'Cozinha', icon: ChefHat }
+      : i
+  )
 
   // Item ativo do menu: precisa ser o match MAIS ESPECÍFICO (maior href que
   // bate), não "qualquer item cujo href seja prefixo do path atual" -- senão

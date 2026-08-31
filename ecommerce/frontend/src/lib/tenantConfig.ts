@@ -62,6 +62,8 @@ export interface TenantConfig {
   oferece_servicos: boolean
   /** Pedidos avançam pela tela de cozinha em vez de /admin/pedidos. */
   precisa_tela_cozinha: boolean
+  /** Entrega feita por motoboy próprio (fila do motoboy) em vez de terceiro/99pop. */
+  tem_motoboy_proprio: boolean
   /** Essential landing hero image (Management/Premium use promo banners instead). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -147,6 +149,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   landing_texts: {},
   oferece_servicos: false,
   precisa_tela_cozinha: false,
+  tem_motoboy_proprio: false,
   landing_hero_image_url: null,
   cart_fab_style: 'sacola',
   cart_fab_animate: false,
@@ -377,6 +380,7 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
         : {},
     oferece_servicos: Boolean(data.oferece_servicos),
     precisa_tela_cozinha: Boolean(data.precisa_tela_cozinha),
+    tem_motoboy_proprio: Boolean(data.tem_motoboy_proprio),
     landing_hero_image_url: data.landing_hero_image_url ? String(data.landing_hero_image_url) : null,
     cart_fab_style: fab,
     cart_fab_animate: Boolean(data.cart_fab_animate),

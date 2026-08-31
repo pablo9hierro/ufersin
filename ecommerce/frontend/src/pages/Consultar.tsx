@@ -9,6 +9,7 @@ import OrderCancelButton from '../components/OrderCancelButton'
 import { orderService } from '../services/orderService'
 import type { Order } from '../types'
 import { useCustomer } from '../store/customer'
+import { useTenantConfig } from '../hooks/useTenantConfig'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -34,6 +35,7 @@ function formatPhone(value: string) {
 
 export default function Consultar() {
   const customer = useCustomer()
+  const tenantConfig = useTenantConfig()
   const [searchParams] = useSearchParams()
   const [phone, setPhone] = useState(customer.whatsapp)
   const [orders, setOrders] = useState<Order[] | null>(null)
@@ -133,7 +135,7 @@ export default function Consultar() {
                         Falar com motoboy
                       </a>
                     )}
-                    <DeliveryTrackingMap order={order} />
+                    <DeliveryTrackingMap order={order} live={!!tenantConfig?.tem_motoboy_proprio} />
                   </>
                 )}
               </li>

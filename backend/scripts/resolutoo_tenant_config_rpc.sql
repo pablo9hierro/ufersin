@@ -22,6 +22,7 @@ ALTER TABLE IF EXISTS resolutoo.subscribers
   ADD COLUMN IF NOT EXISTS landing_texts jsonb,
   ADD COLUMN IF NOT EXISTS oferece_servicos boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS precisa_tela_cozinha boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS tem_motoboy_proprio boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS cart_fab_style text NOT NULL DEFAULT 'sacola',
   ADD COLUMN IF NOT EXISTS cart_fab_animate boolean NOT NULL DEFAULT false;
 
@@ -68,6 +69,7 @@ AS $$
     'landing_texts', coalesce(landing_texts, '{}'::jsonb),
     'oferece_servicos', coalesce(oferece_servicos, false),
     'precisa_tela_cozinha', coalesce(precisa_tela_cozinha, false),
+    'tem_motoboy_proprio', coalesce(tem_motoboy_proprio, false),
     'cart_fab_style', coalesce(nullif(cart_fab_style, ''), 'sacola'),
     'cart_fab_animate', coalesce(cart_fab_animate, false)
   )

@@ -478,7 +478,19 @@ export default function MotoboyCorrida() {
                       alt="QR Code Pix"
                       className="w-40 h-40 mx-auto rounded-lg mb-2"
                     />
-                    <p className="text-xs text-son-silver-dim break-all">{pix.qr_code}</p>
+                    <p className="text-xs text-son-silver-dim break-all mb-2">{pix.qr_code}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPix(null)
+                        gerarPix()
+                      }}
+                      disabled={pixLoading}
+                      className="btn-secondary w-full"
+                    >
+                      {pixLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      Gerar novo QR code
+                    </button>
                   </div>
                 ) : (
                   <button type="button" onClick={gerarPix} disabled={pixLoading} className="btn-secondary w-full">

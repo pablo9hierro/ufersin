@@ -5,6 +5,7 @@ import { orderService } from '../../services/orderService'
 import type { Order } from '../../types'
 import { STATUS_LABELS } from '../../types'
 import { useCustomer } from '../../store/customer'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 import Shell from '../components/Shell'
 import { currency } from '../components/ProductCard'
 import EmptyState from '../components/EmptyState'
@@ -26,6 +27,7 @@ function whatsappComPais(raw: string): string {
 
 export default function Uiux3Consultar() {
   const customer = useCustomer()
+  const tenantConfig = useTenantConfig()
   const [searchParams] = useSearchParams()
   const [phone, setPhone] = useState(customer.whatsapp)
   const [orders, setOrders] = useState<Order[] | null>(null)
@@ -109,7 +111,7 @@ export default function Uiux3Consultar() {
                         Falar com motoboy
                       </a>
                     )}
-                    <DeliveryTrackingMap order={order} />
+                    <DeliveryTrackingMap order={order} live={!!tenantConfig?.tem_motoboy_proprio} />
                   </>
                 )}
               </li>

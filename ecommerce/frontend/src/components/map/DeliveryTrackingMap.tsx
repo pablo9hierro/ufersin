@@ -24,7 +24,7 @@ const ROUTE_REFRESH_MS = 25000
 // de assinar Realtime. Se o motoboy saiu com um LOTE de entregas, a
 // posição dele só é revelada aqui quando a SUA entrega é a parada atual
 // (is_next_stop) -- mesma lógica do Uber/99.
-export default function DeliveryTrackingMap({ order }: { order: Order }) {
+export default function DeliveryTrackingMap({ order, live = true }: { order: Order; live?: boolean }) {
   const [position, setPosition] = useState<DeliveryPosition | null>(null)
   const [route, setRoute] = useState<Rota | null>(null)
   const [mapRotation, setMapRotation] = useState(0)
@@ -50,6 +50,7 @@ export default function DeliveryTrackingMap({ order }: { order: Order }) {
     const pararMonitor = monitorarTiles(tileLayer, setTilesFailing)
     if (order.customer_lat != null && order.customer_lng != null) {
       destMarkerRef.current = L.marker([order.customer_lat, order.customer_lng], { icon: destDivIcon(26) }).addTo(map)
+      if (!live) map.setView([order.customer_lat, order.customer_lng], 15)
     }
     map.dragging.disable()
     map.touchZoom.disable()
@@ -76,6 +77,9 @@ export default function DeliveryTrackingMap({ order }: { order: Order }) {
   }, [])
 
   useEffect(() => {
+    // Entrega por motoboy/99pop terceiro: cliente vê o destino no mapa, mas
+    // nunca a posição em tempo real (loja não controla o GPS do terceiro).
+    if (!live) return
     let cancelled = false
     const poll = () => {
       orderService
@@ -166,8 +170,9 @@ export default function DeliveryTrackingMap({ order }: { order: Order }) {
 
   return (
     <div className="mt-3">
-      {!position && <p className="text-xs opacity-60 mb-2">Aguardando início da corrida…</p>}
-      {position && position.is_next_stop === false && (
+      {!live && <p className="text-xs opacity-60 mb-2">Pedido saiu para entrega — acompanhe pelo motoboy combinado.</p>}
+      {live && !position && <p className="text-xs opacity-60 mb-2">Aguardando início da corrida…</p>}
+      {live && position && position.is_next_stop === false && (
         <p className="text-xs opacity-60 mb-2">
           O motoboy está terminando outra entrega antes da sua — assim que ele sair pra você, o mapa aparece aqui.
         </p>

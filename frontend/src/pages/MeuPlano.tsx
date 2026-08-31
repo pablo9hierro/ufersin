@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import {
   AlertTriangle,
   AtSign,
+  ChefHat,
   CheckCircle2,
   CreditCard,
   ExternalLink,
@@ -150,9 +151,8 @@ export default function MeuPlano() {
   const [coletaGratis, setColetaGratis] = useState(false)
   const [entregaReparadoGratis, setEntregaReparadoGratis] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
-  // Regra fixa do plano essential — entrega só sai com pagamento prévio
-  // (Pix/cartão), dinheiro só na retirada/PDV. Sem toggle: sempre true.
-  const entregaSomentePix = true
+  const [entregaSomentePix, setEntregaSomentePix] = useState(true)
+  const [temMotoboyProprio, setTemMotoboyProprio] = useState(false)
   const [pagamentoManual, setPagamentoManual] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [hasCredenciais, setHasCredenciais] = useState(false)
@@ -227,9 +227,11 @@ export default function MeuPlano() {
         setApenasRetirada(!!m.apenas_retirada)
         setOfereceServicos(!!m.oferece_servicos)
         setPrecisaTelaCozinha(!!m.precisa_tela_cozinha)
+        setTemMotoboyProprio(!!m.tem_motoboy_proprio)
         setColetaGratis(!!m.coleta_gratis)
         setEntregaReparadoGratis(!!m.entrega_reparado_gratis)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
+        setEntregaSomentePix(m.entrega_somente_pix !== false)
         setPagamentoManual(!!m.pagamento_manual)
         setVenderExternamente(m.vender_externamente !== false)
         // Prefer explicit flag; fall back to forma_pagamento until API redeploy ships the field.
@@ -752,6 +754,7 @@ export default function MeuPlano() {
       oferece_servicos: me.vertical === 'eletronicos' ? true : ofereceServicos,
       // Eletrônica não tem conceito de cozinha (não é F&B).
       precisa_tela_cozinha: me.vertical === 'eletronicos' ? false : precisaTelaCozinha,
+      tem_motoboy_proprio: !apenasRetirada && temMotoboyProprio,
       pagamento_na_retirada: pagamentoNaRetirada,
       entrega_somente_pix: entregaSomentePix,
       pagamento_manual: pagamentoManual,
@@ -823,6 +826,19 @@ export default function MeuPlano() {
                 >
                   <LayoutDashboard className="w-4 h-4" />
                   Painel da loja
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
+              {panelUrl && precisaTelaCozinha && (
+                <a
+                  href={panelUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-secondary text-sm px-4 py-3 inline-flex items-center justify-center gap-2"
+                  data-testid="abrir-tela-cozinha"
+                >
+                  <ChefHat className="w-4 h-4" />
+                  Tela cozinha
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
@@ -1015,6 +1031,47 @@ export default function MeuPlano() {
                       </span>
                     </label>
                   )}
+                  {!apenasRetirada && (
+                    <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={temMotoboyProprio}
+                        onChange={(e) => setTemMotoboyProprio(e.target.checked)}
+                        className="w-4 h-4 mt-0.5"
+                        data-testid="pref-tem-motoboy-proprio"
+                      />
+                      <span className="text-xs text-uf-silver-dim">
+                        <span className="block text-uf-silver font-semibold mb-0.5">Tenho motoboy próprio para entrega</span>
+                        Pedidos prontos caem na fila do motoboy. Se desmarcado, você chama um motoboy/99pop terceiro e o card do pedido mostra a localização do cliente.
+                      </span>
+                    </label>
+                  )}
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={pagamentoNaRetirada}
+                      onChange={(e) => setPagamentoNaRetirada(e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                      data-testid="pref-pagamento-na-retirada"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">Aceito pagamento na retirada/entrega</span>
+                      Cliente pode pagar na hora (maquininha de cartão é por sua conta). Se desmarcado, o pagamento é sempre antecipado.
+                    </span>
+                  </label>
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={entregaSomentePix}
+                      onChange={(e) => setEntregaSomentePix(e.target.checked)}
+                      className="w-4 h-4 mt-0.5"
+                      data-testid="pref-entrega-somente-pix"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">Só aceito pedidos pagos via Pix</span>
+                      Se desmarcado, você pode combinar outras formas de pagamento com o cliente (ex: cartão na maquininha).
+                    </span>
+                  </label>
                   {/* Cortesia de deslocamento só existe pra quem FAZ deslocamento —
                       marcar "apenas retirada" esconde (e o backend zera as duas). */}
                   {me.vertical === 'eletronicos' && !apenasRetirada && (

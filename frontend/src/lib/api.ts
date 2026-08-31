@@ -256,6 +256,8 @@ export interface MeResponse {
   oferece_servicos: boolean
   /** Orders route to a dedicated kitchen screen instead of /admin/pedidos. */
   precisa_tela_cozinha: boolean
+  /** Delivery done by the store's own motoboy queue instead of 3rd-party/99pop. */
+  tem_motoboy_proprio: boolean
   /** Essential: rectangular hero image on landing (Management+ uses promo banners). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -312,6 +314,7 @@ export interface OnboardingInput {
   pagamento_manual?: boolean
   oferece_servicos?: boolean
   precisa_tela_cozinha?: boolean
+  tem_motoboy_proprio?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -357,6 +360,7 @@ export interface EditOnboardingInput {
   landing_texts?: Record<string, string>
   oferece_servicos?: boolean
   precisa_tela_cozinha?: boolean
+  tem_motoboy_proprio?: boolean
   landing_hero_image_url?: string
   cart_fab_style?: 'sacola' | 'cart_icon'
   cart_fab_animate?: boolean

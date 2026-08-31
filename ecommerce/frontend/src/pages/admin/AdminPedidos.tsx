@@ -210,7 +210,11 @@ export default function AdminPedidos() {
   const manualPaymentMode = tenantUsesManualPayment(tenantConfig)
   const onlinePix = tenantHasOnlinePix(tenantConfig)
   const payAtPickupMode = !!tenantConfig?.pagamento_na_retirada
-  const adminDelivery = !planoAtLeast(tenantConfig?.plano ?? 'essential', 'management')
+  // Só cai na fila do motoboy se a loja TEM motoboy próprio (checkbox) e o
+  // plano libera a tela de motoboy — senão o lojista mesmo avança a entrega
+  // (chama motoboy/99pop terceiro usando a geolocalização mostrada no card).
+  const adminDelivery =
+    !tenantConfig?.tem_motoboy_proprio || !planoAtLeast(tenantConfig?.plano ?? 'essential', 'management')
   const filters = useMemo(
     () =>
       adminDelivery
