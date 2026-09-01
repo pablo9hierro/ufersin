@@ -5,7 +5,7 @@ import { PaymentFrequencySchema } from './motoboy'
 export const VendedorSchema = z.object({
   id: z.string(),
   name: z.string(),
-  email: z.string(),
+  phone: z.string().nullable().optional(),
   active: z.boolean(),
   commission_active: z.boolean(),
   commission_percent: z.number().nullable(),
@@ -17,7 +17,7 @@ export type Vendedor = z.infer<typeof VendedorSchema>
 export const CozinhaUserSchema = z.object({
   id: z.string(),
   name: z.string(),
-  email: z.string(),
+  phone: z.string().nullable().optional(),
   active: z.boolean(),
 })
 export type CozinhaUser = z.infer<typeof CozinhaUserSchema>

@@ -616,9 +616,9 @@ async function adminLogin(
   throw new ApiError(401, 'invalid credentials')
 }
 
-async function motoboyLogin(email: string, password: string): Promise<{ token: string; name: string }> {
+async function motoboyLogin(phone: string, password: string): Promise<{ token: string; name: string }> {
   const db = loadDb()
-  const m = db.motoboys.find((x) => x.email === email)
+  const m = db.motoboys.find((x) => x.phone === phone)
   if (!m || !m.active || m.password !== password) throw new ApiError(401, 'invalid credentials')
   return { token: `local-motoboy:${m.id}`, name: m.name }
 }
@@ -1049,22 +1049,18 @@ async function adminListMotoboys(): Promise<Motoboy[]> {
 async function createMotoboy(payload: {
   name: string
   phone: string
-  email: string
   password: string
-  whatsapp?: string
 }): Promise<Motoboy> {
   if (!payload.password) throw new ApiError(400, 'password is required to create a motoboy')
   const db = loadDb()
-  if (db.motoboys.some((m) => m.email === payload.email)) {
-    throw new ApiError(400, 'email already in use')
+  if (db.motoboys.some((m) => m.phone === payload.phone)) {
+    throw new ApiError(400, 'phone already in use')
   }
   const motoboy: LocalMotoboy = {
     id: uid(),
     name: payload.name,
     phone: payload.phone,
-    email: payload.email,
     password: payload.password,
-    whatsapp: payload.whatsapp ?? null,
     active: true,
   }
   db.motoboys.push(motoboy)
@@ -1081,9 +1077,7 @@ async function updateMotoboy(
   if (!motoboy) throw new ApiError(404, 'motoboy not found')
   if (payload.name !== undefined) motoboy.name = payload.name
   if (payload.phone !== undefined) motoboy.phone = payload.phone
-  if (payload.email !== undefined) motoboy.email = payload.email
   if (payload.active !== undefined) motoboy.active = payload.active
-  if (payload.whatsapp !== undefined) motoboy.whatsapp = payload.whatsapp
   if (payload.password) motoboy.password = payload.password
   saveDb(db)
   return stripPassword(motoboy)
@@ -1155,14 +1149,14 @@ function stripVendedorPassword(v: LocalVendedor): Vendedor {
   return rest
 }
 
-async function vendedorLogin(email: string, password: string): Promise<{ token: string; name: string }> {
+async function vendedorLogin(phone: string, password: string): Promise<{ token: string; name: string }> {
   const db = loadDb()
-  const v = (db.vendedores ?? []).find((x) => x.email === email)
+  const v = (db.vendedores ?? []).find((x) => x.phone === phone)
   if (!v || !v.active || v.password !== password) throw new ApiError(401, 'invalid credentials')
   return { token: `local-vendedor:${v.id}`, name: v.name }
 }
 
-async function cozinhaLogin(_email: string, _password: string): Promise<{ token: string; name: string }> {
+async function cozinhaLogin(_phone: string, _password: string): Promise<{ token: string; name: string }> {
   throw new ApiError(400, 'Cozinha não está disponível no modo demo.')
 }
 
@@ -1173,7 +1167,7 @@ async function adminListVendedores(): Promise<Vendedor[]> {
 
 async function createVendedor(payload: {
   name: string
-  email: string
+  phone: string
   password: string
   commission_active?: boolean
   commission_percent?: number
@@ -1181,11 +1175,11 @@ async function createVendedor(payload: {
   if (!payload.password) throw new ApiError(400, 'password is required to create a vendedor')
   const db = loadDb()
   db.vendedores = db.vendedores ?? []
-  if (db.vendedores.some((v) => v.email === payload.email)) throw new ApiError(400, 'email already in use')
+  if (db.vendedores.some((v) => v.phone === payload.phone)) throw new ApiError(400, 'phone already in use')
   const vendedor: LocalVendedor = {
     id: uid(),
     name: payload.name,
-    email: payload.email,
+    phone: payload.phone,
     password: payload.password,
     active: true,
     commission_active: payload.commission_active ?? false,
@@ -1200,7 +1194,7 @@ async function updateVendedor(
   id: string,
   payload: {
     name: string
-    email: string
+    phone: string
     active: boolean
     password?: string
     commission_active?: boolean
@@ -1211,7 +1205,7 @@ async function updateVendedor(
   const vendedor = (db.vendedores ?? []).find((v) => v.id === id)
   if (!vendedor) throw new ApiError(404, 'vendedor not found')
   vendedor.name = payload.name
-  vendedor.email = payload.email
+  vendedor.phone = payload.phone
   vendedor.active = payload.active
   vendedor.commission_active = payload.commission_active ?? false
   vendedor.commission_percent = payload.commission_active ? payload.commission_percent ?? null : null

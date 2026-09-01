@@ -107,9 +107,7 @@ export const adminEndpoint = {
     create: async (payload: {
       name: string
       phone: string
-      email: string
       password: string
-      whatsapp?: string
       payment_frequency?: PaymentFrequency | null
       payment_fixed_value?: number | null
     }) => validate(MotoboySchema, await api.admin.motoboys.create(payload), 'admin.motoboys.create'),
@@ -124,7 +122,7 @@ export const adminEndpoint = {
     list: async () => validateList(VendedorSchema, await api.admin.vendedores.list(), 'admin.vendedores.list'),
     create: async (payload: {
       name: string
-      email: string
+      phone: string
       password: string
       commission_active?: boolean
       commission_percent?: number
@@ -135,7 +133,7 @@ export const adminEndpoint = {
       id: string,
       payload: {
         name: string
-        email: string
+        phone: string
         active: boolean
         password?: string
         commission_active?: boolean
@@ -149,9 +147,9 @@ export const adminEndpoint = {
   },
   cozinhaUsers: {
     list: async () => validateList(CozinhaUserSchema, await api.admin.cozinhaUsers.list(), 'admin.cozinhaUsers.list'),
-    create: async (payload: { name: string; email: string; password: string }) =>
+    create: async (payload: { name: string; phone: string; password: string }) =>
       validate(CozinhaUserSchema, await api.admin.cozinhaUsers.create(payload), 'admin.cozinhaUsers.create'),
-    update: async (id: string, payload: { name: string; email: string; active: boolean; password?: string }) =>
+    update: async (id: string, payload: { name: string; phone: string; active: boolean; password?: string }) =>
       validate(CozinhaUserSchema, await api.admin.cozinhaUsers.update(id, payload), 'admin.cozinhaUsers.update'),
     delete: async (id: string) => api.admin.cozinhaUsers.delete(id),
   },
@@ -299,7 +297,7 @@ type ProductSchema0 = {
   cost_price: number | null
   low_stock_threshold: number | null
 }
-type MotoboySchema0 = { name: string; phone: string; email: string; active: boolean; whatsapp: string | null }
+type MotoboySchema0 = { name: string; phone: string; active: boolean }
 export interface CreateCouponPayload {
   code: string
   discount_type?: DiscountType

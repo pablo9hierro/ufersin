@@ -9,16 +9,24 @@ import { useVendedorAuth } from '../../store/vendedorAuth'
 import { useMotoboyAuth } from '../../store/motoboyAuth'
 import { useCozinhaAuth } from '../../store/cozinhaAuth'
 
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, '')
+  if (digits.length <= 2) return `(${digits}`
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+  if (digits.length <= 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
+}
+
 // Login único de funcionário — o site identifica sozinho qual papel bate
-// com o e-mail/senha (motoboy, vendedor ou cozinha), tentando cada login em
-// sequência com a MESMA credencial, e manda pra tela certa. Sem seletor de
-// papel: cada funcionário tem só uma conta, então só um dos três bate.
+// com o WhatsApp/senha (motoboy, vendedor ou cozinha), tentando cada login
+// em sequência com a MESMA credencial, e manda pra tela certa. Sem seletor
+// de papel: cada funcionário tem só uma conta, então só um dos três bate.
 export default function FuncionarioLogin() {
   const { token: vendedorToken, login: vendedorLogin } = useVendedorAuth()
   const { token: motoboyToken, login: motoboyLogin } = useMotoboyAuth()
   const { token: cozinhaToken, login: cozinhaLogin } = useCozinhaAuth()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,10 +45,15 @@ export default function FuncionarioLogin() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    const digits = phone.replace(/\D/g, '')
+    if (digits.length < 10) {
+      setError('Informe um WhatsApp válido.')
+      return
+    }
     setLoading(true)
     try {
       try {
-        const res = await authService.staff.motoboyLogin(email, password)
+        const res = await authService.staff.motoboyLogin(digits, password)
         motoboyLogin(res.token, res.name)
         navigate('/funcionarios/motoboy')
         return
@@ -48,18 +61,18 @@ export default function FuncionarioLogin() {
         /* não é motoboy, tenta o próximo papel */
       }
       try {
-        const res = await authService.staff.vendedorLogin(email, password)
+        const res = await authService.staff.vendedorLogin(digits, password)
         vendedorLogin(res.token, res.name)
         navigate('/funcionarios/vendedor')
         return
       } catch {
         /* não é vendedor, tenta o próximo papel */
       }
-      const res = await authService.staff.cozinhaLogin(email, password)
+      const res = await authService.staff.cozinhaLogin(digits, password)
       cozinhaLogin(res.token, res.name)
       navigate('/cozinha')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'E-mail ou senha incorretos.')
+      setError(err instanceof ApiError ? err.message : 'WhatsApp ou senha incorretos.')
     } finally {
       setLoading(false)
     }
@@ -76,8 +89,17 @@ export default function FuncionarioLogin() {
 
         <div className="space-y-4">
           <div>
-            <label className="label">E-mail</label>
-            <input className="input-field" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+            <label className="label">WhatsApp</label>
+            <input
+              className="input-field"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="(83) 99999-9999"
+              value={phone}
+              onChange={(e) => setPhone(formatPhone(e.target.value))}
+              required
+              autoFocus
+            />
           </div>
           <div>
             <label className="label">Senha</label>
@@ -104,7 +126,7 @@ export default function FuncionarioLogin() {
             <div>
               <p className="error-msg">{error}</p>
               <p className="text-xs text-son-silver-dim mt-1">
-                Confira o e-mail/senha — são os mesmos cadastrados pelo admin em Funcionários.
+                Confira o WhatsApp/senha — são os mesmos cadastrados pelo admin em Funcionários.
               </p>
             </div>
           )}

@@ -65,8 +65,8 @@ export default function CustomerAuthModal({
 
   const confirmCode = async () => {
     setError(null)
-    if (!/^\d{6}$/.test(code)) {
-      setError('Informe o código de 6 dígitos.')
+    if (!/^\d{4}$/.test(code)) {
+      setError('Informe o código de 4 dígitos.')
       return
     }
     setLoading(true)
@@ -123,17 +123,17 @@ export default function CustomerAuthModal({
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-son-silver-dim text-center">
-              Mandamos um código de 6 dígitos pro WhatsApp {whatsapp}. Vale por 10 minutos.
+              Mandamos um código de 4 dígitos pro WhatsApp {whatsapp}. Vale por 10 minutos.
             </p>
             <div>
               <label className="label">Código</label>
               <input
                 className="input-field text-center tracking-[0.4em] text-lg"
                 inputMode="numeric"
-                maxLength={6}
-                placeholder="000000"
+                maxLength={4}
+                placeholder="0000"
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 autoFocus
               />
             </div>

@@ -3,7 +3,7 @@ use axum::Json;
 
 use crate::auth::{make_token, verify_password};
 use crate::error::AppError;
-use crate::models::{LoginInput, LoginResponse};
+use crate::models::{LoginInput, LoginResponse, PhoneLoginInput};
 use crate::state::AppState;
 use crate::tenant::LOJA_OFFLINE_MSG;
 
@@ -156,20 +156,37 @@ pub async fn admin_login(
     }
 }
 
+fn digits_only(raw: &str) -> String {
+    raw.chars().filter(|c| c.is_ascii_digit()).collect()
+}
+
+/// Nunca deixa telefone vazio/curto casar com uma conta cujo `phone` esteja
+/// NULL/vazio no banco (`regexp_replace('', ...)` também vira "") -- login
+/// de funcionário exige um número de verdade.
+fn require_valid_phone(digits: &str) -> Result<(), AppError> {
+    if digits.len() < 8 {
+        return Err(AppError::Unauthorized("invalid credentials".to_string()));
+    }
+    Ok(())
+}
+
 pub async fn motoboy_login(
     State(state): State<AppState>,
-    Json(input): Json<LoginInput>,
+    Json(input): Json<PhoneLoginInput>,
 ) -> Result<Json<LoginResponse>, AppError> {
     let slug = normalize_slug(input.tenant_slug.as_deref()).ok_or_else(|| {
         AppError::Unauthorized("invalid credentials".to_string())
     })?;
     let tenant_id = resolve_tenant_id(&state, &slug).await?;
+    let phone = digits_only(&input.phone);
+    require_valid_phone(&phone)?;
 
     let row: Option<(String, String, String, i64)> = sqlx::query_as(
-        "SELECT id, password_hash, name, active FROM motoboys WHERE tenant_id = $1 AND email = $2",
+        "SELECT id, password_hash, name, active FROM motoboys \
+         WHERE tenant_id = $1 AND regexp_replace(phone, '\\D', '', 'g') = $2",
     )
     .bind(&tenant_id)
-    .bind(&input.email)
+    .bind(&phone)
     .fetch_optional(&state.pool)
     .await?;
 
@@ -195,18 +212,21 @@ pub async fn motoboy_login(
 /// nunca bateu com o cadastro real. Mesmo padrão de motoboy_login acima.
 pub async fn vendedor_login(
     State(state): State<AppState>,
-    Json(input): Json<LoginInput>,
+    Json(input): Json<PhoneLoginInput>,
 ) -> Result<Json<LoginResponse>, AppError> {
     let slug = normalize_slug(input.tenant_slug.as_deref()).ok_or_else(|| {
         AppError::Unauthorized("invalid credentials".to_string())
     })?;
     let tenant_id = resolve_tenant_id(&state, &slug).await?;
+    let phone = digits_only(&input.phone);
+    require_valid_phone(&phone)?;
 
     let row: Option<(String, String, String, i64)> = sqlx::query_as(
-        "SELECT id, password_hash, name, active FROM vendedores WHERE tenant_id = $1 AND email = $2",
+        "SELECT id, password_hash, name, active FROM vendedores \
+         WHERE tenant_id = $1 AND regexp_replace(coalesce(phone, ''), '\\D', '', 'g') = $2",
     )
     .bind(&tenant_id)
-    .bind(&input.email)
+    .bind(&phone)
     .fetch_optional(&state.pool)
     .await?;
 
@@ -232,18 +252,21 @@ pub async fn vendedor_login(
 /// sozinho qual bateu. Mesmo padrão de motoboy_login/vendedor_login acima.
 pub async fn cozinha_login(
     State(state): State<AppState>,
-    Json(input): Json<LoginInput>,
+    Json(input): Json<PhoneLoginInput>,
 ) -> Result<Json<LoginResponse>, AppError> {
     let slug = normalize_slug(input.tenant_slug.as_deref()).ok_or_else(|| {
         AppError::Unauthorized("invalid credentials".to_string())
     })?;
     let tenant_id = resolve_tenant_id(&state, &slug).await?;
+    let phone = digits_only(&input.phone);
+    require_valid_phone(&phone)?;
 
     let row: Option<(String, String, String, i64)> = sqlx::query_as(
-        "SELECT id, password_hash, name, active FROM cozinha_users WHERE tenant_id = $1 AND email = $2",
+        "SELECT id, password_hash, name, active FROM cozinha_users \
+         WHERE tenant_id = $1 AND regexp_replace(coalesce(phone, ''), '\\D', '', 'g') = $2",
     )
     .bind(&tenant_id)
-    .bind(&input.email)
+    .bind(&phone)
     .fetch_optional(&state.pool)
     .await?;
 

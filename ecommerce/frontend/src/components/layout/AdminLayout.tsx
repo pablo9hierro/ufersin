@@ -510,9 +510,11 @@ export default function AdminLayout() {
       return false
     return true
   }).map((i) =>
-    // Loja com tela de cozinha: pedidos avançam por lá, não pelo painel de Pedidos.
+    // Loja com tela de cozinha: pedidos avançam por lá, não pelo painel de
+    // Pedidos -- só a URL muda, o rótulo continua "Pedidos" (é a mesma
+    // ideia pro lojista, só que atendida na tela de cozinha).
     i.href === '/admin/pedidos' && tenantConfig?.precisa_tela_cozinha
-      ? { ...i, href: '/admin/cozinha', label: 'Cozinha', icon: ChefHat }
+      ? { ...i, href: '/admin/cozinha', icon: ChefHat }
       : i
   )
 

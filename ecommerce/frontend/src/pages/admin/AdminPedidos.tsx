@@ -21,6 +21,13 @@ function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
 }
 
+function paymentMethodLabel(method: string) {
+  if (method === 'cartao') return 'cartão'
+  if (method === 'dinheiro') return 'dinheiro'
+  if (method === 'pix') return 'Pix'
+  return method
+}
+
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
   if (digits.length <= 2) return `(${digits}`
@@ -143,8 +150,17 @@ function OrderCard({
         </ul>
         <div className="flex items-center justify-between text-sm mb-1">
           <span className="text-son-silver-dim">
-            {order.delivery_type === 'retirada' ? 'Retirada' : `Entrega · ${order.neighborhood}`} · {order.payment_method}
-            {order.payment_status !== 'pago' ? ' · pendente' : ''}
+            {order.delivery_type === 'retirada'
+              ? 'Retirada na loja'
+              : order.neighborhood
+                ? `Entrega · ${order.neighborhood}`
+                : 'Entrega'}
+            {' · '}
+            {paymentMethodLabel(order.payment_method)}
+            {' · '}
+            <span className={order.payment_status === 'pago' ? 'text-emerald-400' : 'text-amber-400'}>
+              {order.payment_status === 'pago' ? 'pago' : 'pagamento pendente'}
+            </span>
           </span>
           <span className="sunset-text font-bold">{currency(order.total)}</span>
         </div>

@@ -373,20 +373,20 @@ const remoteApi = {
         body: JSON.stringify(body),
       })
     },
-    motoboyLogin: async (email: string, password: string) =>
+    motoboyLogin: async (phone: string, password: string) =>
       request<{ token: string; name: string }>('/api/auth/motoboy/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password, tenant_slug: resolveTenantSlug() }),
+        body: JSON.stringify({ phone, password, tenant_slug: resolveTenantSlug() }),
       }),
-    vendedorLogin: async (email: string, password: string) =>
+    vendedorLogin: async (phone: string, password: string) =>
       request<{ token: string; name: string }>('/api/auth/vendedor/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password, tenant_slug: resolveTenantSlug() }),
+        body: JSON.stringify({ phone, password, tenant_slug: resolveTenantSlug() }),
       }),
-    cozinhaLogin: async (email: string, password: string) =>
+    cozinhaLogin: async (phone: string, password: string) =>
       request<{ token: string; name: string }>('/api/auth/cozinha/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password, tenant_slug: resolveTenantSlug() }),
+        body: JSON.stringify({ phone, password, tenant_slug: resolveTenantSlug() }),
       }),
     setAdminPassword: async (newPassword: string) => {
       const { error } = await supabase.rpc('admin_set_password', {
@@ -631,9 +631,7 @@ const remoteApi = {
       create: (payload: {
         name: string
         phone: string
-        email: string
         password: string
-        whatsapp?: string
         payment_frequency?: PaymentFrequency | null
         payment_fixed_value?: number | null
       }) =>
@@ -643,7 +641,6 @@ const remoteApi = {
               body: JSON.stringify({
                 name: payload.name,
                 phone: payload.phone,
-                email: payload.email,
                 password: payload.password,
                 active: true,
                 payment_frequency: payload.payment_frequency ?? null,
@@ -654,9 +651,7 @@ const remoteApi = {
               p_token: adminToken(),
               p_name: payload.name,
               p_phone: payload.phone,
-              p_email: payload.email,
               p_password: payload.password,
-              p_whatsapp: payload.whatsapp || null,
             }),
       update: (id: string, payload: Partial<Motoboy> & { password?: string }) =>
         isRailwayAdminJwt()
@@ -665,7 +660,6 @@ const remoteApi = {
               body: JSON.stringify({
                 name: payload.name,
                 phone: payload.phone,
-                email: payload.email,
                 password: payload.password,
                 active: payload.active ?? true,
                 payment_frequency: payload.payment_frequency ?? null,
@@ -677,10 +671,8 @@ const remoteApi = {
               p_id: id,
               p_name: payload.name,
               p_phone: payload.phone,
-              p_email: payload.email,
               p_password: payload.password || null,
               p_active: payload.active ?? true,
-              p_whatsapp: payload.whatsapp ?? null,
             }),
       delete: (id: string) =>
         isRailwayAdminJwt()
@@ -705,7 +697,7 @@ const remoteApi = {
           : rpc<Vendedor[]>('admin_list_vendedores', { p_token: adminToken() }),
       create: (payload: {
         name: string
-        email: string
+        phone: string
         password: string
         commission_active?: boolean
         commission_percent?: number
@@ -717,7 +709,7 @@ const remoteApi = {
               method: 'POST',
               body: JSON.stringify({
                 name: payload.name,
-                email: payload.email,
+                phone: payload.phone,
                 password: payload.password,
                 active: true,
                 commission_active: payload.commission_active ?? false,
@@ -729,7 +721,6 @@ const remoteApi = {
           : rpc<Vendedor>('admin_create_vendedor', {
               p_token: adminToken(),
               p_name: payload.name,
-              p_email: payload.email,
               p_password: payload.password,
               p_commission_active: payload.commission_active ?? false,
               p_commission_percent: payload.commission_percent ?? null,
@@ -738,7 +729,7 @@ const remoteApi = {
         id: string,
         payload: {
           name: string
-          email: string
+          phone: string
           active: boolean
           password?: string
           commission_active?: boolean
@@ -752,7 +743,7 @@ const remoteApi = {
               method: 'PUT',
               body: JSON.stringify({
                 name: payload.name,
-                email: payload.email,
+                phone: payload.phone,
                 password: payload.password || null,
                 active: payload.active,
                 commission_active: payload.commission_active ?? false,
@@ -765,7 +756,6 @@ const remoteApi = {
               p_token: adminToken(),
               p_id: id,
               p_name: payload.name,
-              p_email: payload.email,
               p_active: payload.active,
               p_password: payload.password || null,
               p_commission_active: payload.commission_active ?? false,
@@ -779,17 +769,17 @@ const remoteApi = {
     },
     cozinhaUsers: {
       list: () => railwayAdmin<CozinhaUser[]>('/api/admin/cozinha-users'),
-      create: (payload: { name: string; email: string; password: string }) =>
+      create: (payload: { name: string; phone: string; password: string }) =>
         railwayAdmin<CozinhaUser>('/api/admin/cozinha-users', {
           method: 'POST',
-          body: JSON.stringify({ name: payload.name, email: payload.email, password: payload.password, active: true }),
+          body: JSON.stringify({ name: payload.name, phone: payload.phone, password: payload.password, active: true }),
         }),
-      update: (id: string, payload: { name: string; email: string; active: boolean; password?: string }) =>
+      update: (id: string, payload: { name: string; phone: string; active: boolean; password?: string }) =>
         railwayAdmin<CozinhaUser>(`/api/admin/cozinha-users/${id}`, {
           method: 'PUT',
           body: JSON.stringify({
             name: payload.name,
-            email: payload.email,
+            phone: payload.phone,
             password: payload.password || null,
             active: payload.active,
           }),

@@ -9,8 +9,6 @@ export const MotoboySchema = z.object({
   id: z.string(),
   name: z.string(),
   phone: z.string(),
-  email: z.string(),
-  whatsapp: z.string().nullable().optional(),
   active: z.boolean(),
   payment_frequency: PaymentFrequencySchema.nullable().optional(),
   payment_fixed_value: z.number().nullable().optional(),

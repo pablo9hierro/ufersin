@@ -1055,14 +1055,13 @@ pub async fn create_motoboy(
     let active = input.active.unwrap_or(true);
 
     sqlx::query(
-        "INSERT INTO motoboys (id, tenant_id, name, phone, email, password_hash, active, payment_frequency, payment_fixed_value) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        "INSERT INTO motoboys (id, tenant_id, name, phone, password_hash, active, payment_frequency, payment_fixed_value) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
     .bind(&input.name)
     .bind(&input.phone)
-    .bind(&input.email)
     .bind(&hash)
     .bind(active as i64)
     .bind(&input.payment_frequency)
@@ -1071,7 +1070,7 @@ pub async fn create_motoboy(
     .await
     .map_err(|e| match e {
         sqlx::Error::Database(db) if db.is_unique_violation() => {
-            AppError::BadRequest("email already in use".to_string())
+            AppError::BadRequest("phone already in use".to_string())
         }
         other => other.into(),
     })?;
@@ -1098,13 +1097,12 @@ pub async fn update_motoboy(
     if let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) {
         let hash = hash_password(password)?;
         let result = sqlx::query(
-            "UPDATE motoboys SET name = $1, phone = $2, email = $3, password_hash = $4, active = $5, \
-             payment_frequency = $6, payment_fixed_value = $7 \
-             WHERE tenant_id = $8 AND id = $9",
+            "UPDATE motoboys SET name = $1, phone = $2, password_hash = $3, active = $4, \
+             payment_frequency = $5, payment_fixed_value = $6 \
+             WHERE tenant_id = $7 AND id = $8",
         )
         .bind(&input.name)
         .bind(&input.phone)
-        .bind(&input.email)
         .bind(&hash)
         .bind(active as i64)
         .bind(&input.payment_frequency)
@@ -1118,12 +1116,11 @@ pub async fn update_motoboy(
         }
     } else {
         let result = sqlx::query(
-            "UPDATE motoboys SET name = $1, phone = $2, email = $3, active = $4, \
-             payment_frequency = $5, payment_fixed_value = $6 WHERE tenant_id = $7 AND id = $8",
+            "UPDATE motoboys SET name = $1, phone = $2, active = $3, \
+             payment_frequency = $4, payment_fixed_value = $5 WHERE tenant_id = $6 AND id = $7",
         )
         .bind(&input.name)
         .bind(&input.phone)
-        .bind(&input.email)
         .bind(active as i64)
         .bind(&input.payment_frequency)
         .bind(input.payment_fixed_value)
@@ -1204,13 +1201,13 @@ pub async fn create_vendedor(
     let active = input.active.unwrap_or(true);
 
     sqlx::query(
-        "INSERT INTO vendedores (id, tenant_id, name, email, password_hash, active, commission_active, commission_percent, payment_frequency, payment_fixed_value) \
+        "INSERT INTO vendedores (id, tenant_id, name, phone, password_hash, active, commission_active, commission_percent, payment_frequency, payment_fixed_value) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
     .bind(&input.name)
-    .bind(&input.email)
+    .bind(&input.phone)
     .bind(&hash)
     .bind(active as i64)
     .bind(true as i64)
@@ -1221,7 +1218,7 @@ pub async fn create_vendedor(
     .await
     .map_err(|e| match e {
         sqlx::Error::Database(db) if db.is_unique_violation() => {
-            AppError::BadRequest("email already in use".to_string())
+            AppError::BadRequest("phone already in use".to_string())
         }
         other => other.into(),
     })?;
@@ -1252,12 +1249,12 @@ pub async fn update_vendedor(
     if let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) {
         let hash = hash_password(password)?;
         let result = sqlx::query(
-            "UPDATE vendedores SET name = $1, email = $2, password_hash = $3, active = $4, \
+            "UPDATE vendedores SET name = $1, phone = $2, password_hash = $3, active = $4, \
              commission_active = $5, commission_percent = $6, payment_frequency = $7, payment_fixed_value = $8 \
              WHERE tenant_id = $9 AND id = $10",
         )
         .bind(&input.name)
-        .bind(&input.email)
+        .bind(&input.phone)
         .bind(&hash)
         .bind(active as i64)
         .bind(true as i64)
@@ -1273,11 +1270,11 @@ pub async fn update_vendedor(
         }
     } else {
         let result = sqlx::query(
-            "UPDATE vendedores SET name = $1, email = $2, active = $3, commission_active = $4, \
+            "UPDATE vendedores SET name = $1, phone = $2, active = $3, commission_active = $4, \
              commission_percent = $5, payment_frequency = $6, payment_fixed_value = $7 WHERE tenant_id = $8 AND id = $9",
         )
         .bind(&input.name)
-        .bind(&input.email)
+        .bind(&input.phone)
         .bind(active as i64)
         .bind(true as i64)
         .bind(commission_percent)
@@ -1352,20 +1349,20 @@ pub async fn create_cozinha_user(
     let active = input.active.unwrap_or(true);
 
     sqlx::query(
-        "INSERT INTO cozinha_users (id, tenant_id, name, email, password_hash, active) \
+        "INSERT INTO cozinha_users (id, tenant_id, name, phone, password_hash, active) \
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
     .bind(&input.name)
-    .bind(&input.email)
+    .bind(&input.phone)
     .bind(&hash)
     .bind(active as i64)
     .execute(&mut *tx)
     .await
     .map_err(|e| match e {
         sqlx::Error::Database(db) if db.is_unique_violation() => {
-            AppError::BadRequest("email already in use".to_string())
+            AppError::BadRequest("phone already in use".to_string())
         }
         other => other.into(),
     })?;
@@ -1393,11 +1390,11 @@ pub async fn update_cozinha_user(
     if let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) {
         let hash = hash_password(password)?;
         let result = sqlx::query(
-            "UPDATE cozinha_users SET name = $1, email = $2, password_hash = $3, active = $4 \
+            "UPDATE cozinha_users SET name = $1, phone = $2, password_hash = $3, active = $4 \
              WHERE tenant_id = $5 AND id = $6",
         )
         .bind(&input.name)
-        .bind(&input.email)
+        .bind(&input.phone)
         .bind(&hash)
         .bind(active as i64)
         .bind(&claims.tenant_id)
@@ -1409,10 +1406,10 @@ pub async fn update_cozinha_user(
         }
     } else {
         let result = sqlx::query(
-            "UPDATE cozinha_users SET name = $1, email = $2, active = $3 WHERE tenant_id = $4 AND id = $5",
+            "UPDATE cozinha_users SET name = $1, phone = $2, active = $3 WHERE tenant_id = $4 AND id = $5",
         )
         .bind(&input.name)
-        .bind(&input.email)
+        .bind(&input.phone)
         .bind(active as i64)
         .bind(&claims.tenant_id)
         .bind(&id)

@@ -18,20 +18,27 @@ const PAYMENT_FREQUENCIES: { value: PaymentFrequency; label: string }[] = [
 const EMPTY_MOTOBOY_FORM = {
   name: '',
   phone: '',
-  email: '',
   password: '',
   payment_frequency: '' as PaymentFrequency | '',
   payment_fixed_value: '',
 }
 const EMPTY_VENDEDOR_FORM = {
   name: '',
-  email: '',
+  phone: '',
   password: '',
   commission_percent: '',
   payment_frequency: '' as PaymentFrequency | '',
   payment_fixed_value: '',
 }
-const EMPTY_COZINHA_FORM = { name: '', email: '', password: '' }
+const EMPTY_COZINHA_FORM = { name: '', phone: '', password: '' }
+
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, '')
+  if (digits.length <= 2) return `(${digits}`
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+  if (digits.length <= 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
+}
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -134,7 +141,6 @@ export default function AdminMotoboys() {
     setForm({
       name: m.name,
       phone: m.phone,
-      email: m.email,
       password: '',
       payment_frequency: m.payment_frequency ?? '',
       payment_fixed_value: m.payment_fixed_value != null ? String(m.payment_fixed_value) : '',
@@ -148,7 +154,6 @@ export default function AdminMotoboys() {
       const payload = {
         name: form.name,
         phone: form.phone,
-        email: form.email,
         password: form.password,
         payment_frequency: form.payment_frequency || null,
         payment_fixed_value: form.payment_frequency && form.payment_fixed_value ? Number(form.payment_fixed_value) : null,
@@ -217,7 +222,7 @@ export default function AdminMotoboys() {
     setEditingVendedor(v)
     setVendedorForm({
       name: v.name,
-      email: v.email,
+      phone: v.phone ?? '',
       password: '',
       commission_percent: v.commission_percent != null ? String(v.commission_percent) : '',
       payment_frequency: v.payment_frequency ?? '',
@@ -231,7 +236,7 @@ export default function AdminMotoboys() {
     try {
       const payload = {
         name: vendedorForm.name,
-        email: vendedorForm.email,
+        phone: vendedorForm.phone,
         commission_active: true,
         commission_percent: Number(vendedorForm.commission_percent),
         payment_frequency: vendedorForm.payment_frequency || null,
@@ -265,7 +270,7 @@ export default function AdminMotoboys() {
   const toggleVendedorActive = async (v: Vendedor) => {
     await adminService.vendedores.update(v.id, {
       name: v.name,
-      email: v.email,
+      phone: v.phone ?? '',
       active: !v.active,
       commission_active: v.commission_active,
       commission_percent: v.commission_percent ?? undefined,
@@ -282,7 +287,7 @@ export default function AdminMotoboys() {
   }
   const openEditCozinha = (c: CozinhaUser) => {
     setEditingCozinha(c)
-    setCozinhaForm({ name: c.name, email: c.email, password: '' })
+    setCozinhaForm({ name: c.name, phone: c.phone ?? '', password: '' })
     setShowCozinhaForm(true)
   }
 
@@ -292,7 +297,7 @@ export default function AdminMotoboys() {
       if (editingCozinha) {
         await adminService.cozinhaUsers.update(editingCozinha.id, {
           name: cozinhaForm.name,
-          email: cozinhaForm.email,
+          phone: cozinhaForm.phone,
           active: editingCozinha.active,
           password: cozinhaForm.password || undefined,
         })
@@ -315,7 +320,7 @@ export default function AdminMotoboys() {
     })
 
   const toggleCozinhaActive = async (c: CozinhaUser) => {
-    await adminService.cozinhaUsers.update(c.id, { name: c.name, email: c.email, active: !c.active })
+    await adminService.cozinhaUsers.update(c.id, { name: c.name, phone: c.phone ?? '', active: !c.active })
     loadCozinhaUsers()
   }
 
@@ -392,8 +397,7 @@ export default function AdminMotoboys() {
               <Card key={m.id} className="p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-white truncate">{m.name}</p>
-                  <p className="text-xs text-son-silver-dim truncate">{m.email}</p>
-                  <p className="text-xs text-son-silver-dim">{m.phone}</p>
+                  <p className="text-xs text-son-silver-dim truncate">{m.phone}</p>
                   {m.payment_frequency && (
                     <p className="text-xs text-son-silver-dim">
                       {PAYMENT_FREQUENCIES.find((f) => f.value === m.payment_frequency)?.label}: {currency(m.payment_fixed_value ?? 0)}
@@ -465,7 +469,7 @@ export default function AdminMotoboys() {
               <Card key={v.id} className="p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-white truncate">{v.name}</p>
-                  <p className="text-xs text-son-silver-dim truncate">{v.email}</p>
+                  <p className="text-xs text-son-silver-dim truncate">{v.phone}</p>
                   {v.commission_active && (
                     <p className="text-xs text-son-gold">Comissão: {v.commission_percent}%</p>
                   )}
@@ -533,7 +537,7 @@ export default function AdminMotoboys() {
               <Card key={c.id} className="p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-white truncate">{c.name}</p>
-                  <p className="text-xs text-son-silver-dim truncate">{c.email}</p>
+                  <p className="text-xs text-son-silver-dim truncate">{c.phone}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
@@ -575,12 +579,14 @@ export default function AdminMotoboys() {
                 <input className="input-field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </div>
               <div>
-                <label className="label">Telefone</label>
-                <input className="input-field" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">E-mail</label>
-                <input className="input-field" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                <label className="label">WhatsApp (login do motoboy)</label>
+                <input
+                  className="input-field"
+                  inputMode="numeric"
+                  placeholder="(83) 99999-9999"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })}
+                />
               </div>
               <div>
                 <label className="label">Senha{editingMotoboy && ' (deixe em branco pra manter a atual)'}</label>
@@ -658,9 +664,9 @@ export default function AdminMotoboys() {
                 <label className="label">E-mail</label>
                 <input
                   className="input-field"
-                  type="email"
-                  value={vendedorForm.email}
-                  onChange={(e) => setVendedorForm({ ...vendedorForm, email: e.target.value })}
+                  inputMode="numeric"
+                  value={vendedorForm.phone}
+                  onChange={(e) => setVendedorForm({ ...vendedorForm, phone: e.target.value })}
                 />
               </div>
               <div>
@@ -758,9 +764,9 @@ export default function AdminMotoboys() {
                 <label className="label">E-mail</label>
                 <input
                   className="input-field"
-                  type="email"
-                  value={cozinhaForm.email}
-                  onChange={(e) => setCozinhaForm({ ...cozinhaForm, email: e.target.value })}
+                  inputMode="numeric"
+                  value={cozinhaForm.phone}
+                  onChange={(e) => setCozinhaForm({ ...cozinhaForm, phone: e.target.value })}
                 />
               </div>
               <div>

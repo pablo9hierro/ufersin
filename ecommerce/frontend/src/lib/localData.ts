@@ -229,9 +229,7 @@ function seedDb(): LocalDb {
       id: FAKE_MOTOBOY_ID,
       name: 'Motoboy Teste',
       phone: '83999990000',
-      email: 'motoboy@resolutoo-demo.com',
       password: 'motoboy123',
-      whatsapp: '83999990000',
       active: true,
     },
   ]

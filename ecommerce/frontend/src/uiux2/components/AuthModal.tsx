@@ -59,7 +59,7 @@ export default function AuthModal({
 
   const confirmCode = async () => {
     setError(null)
-    if (!/^\d{6}$/.test(code)) return setError('Informe o código de 6 dígitos.')
+    if (!/^\d{4}$/.test(code)) return setError('Informe o código de 4 dígitos.')
     setLoading(true)
     try {
       const result = await authService.customer.verifyLoginCode(`55${digits}`, code)
@@ -97,16 +97,16 @@ export default function AuthModal({
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs u2-dim text-center">Mandamos um código de 6 dígitos pro WhatsApp {whatsapp}. Vale por 10 minutos.</p>
+            <p className="text-xs u2-dim text-center">Mandamos um código de 4 dígitos pro WhatsApp {whatsapp}. Vale por 10 minutos.</p>
             <div>
               <label className="text-xs font-semibold u2-dim">Código</label>
               <input
                 className={`${inputClass} text-center tracking-[0.4em] text-lg`}
                 inputMode="numeric"
-                maxLength={6}
-                placeholder="000000"
+                maxLength={4}
+                placeholder="0000"
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 autoFocus
               />
             </div>

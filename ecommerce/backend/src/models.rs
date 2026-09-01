@@ -267,7 +267,8 @@ pub struct MotoboyRow {
     pub id: String,
     pub name: String,
     pub phone: String,
-    pub email: String,
+    #[allow(dead_code)]
+    pub email: Option<String>,
     #[allow(dead_code)]
     pub password_hash: String,
     pub active: i64,
@@ -282,7 +283,6 @@ pub struct MotoboyDto {
     pub id: String,
     pub name: String,
     pub phone: String,
-    pub email: String,
     pub active: bool,
     pub payment_frequency: Option<String>,
     pub payment_fixed_value: Option<f64>,
@@ -294,7 +294,6 @@ impl From<MotoboyRow> for MotoboyDto {
             id: r.id,
             name: r.name,
             phone: r.phone,
-            email: r.email,
             active: r.active != 0,
             payment_frequency: r.payment_frequency,
             payment_fixed_value: r.payment_fixed_value,
@@ -306,7 +305,6 @@ impl From<MotoboyRow> for MotoboyDto {
 pub struct MotoboyInput {
     pub name: String,
     pub phone: String,
-    pub email: String,
     pub password: Option<String>,
     #[serde(default)]
     pub active: Option<bool>,
@@ -322,7 +320,9 @@ pub struct MotoboyInput {
 pub struct VendedorRow {
     pub id: String,
     pub name: String,
-    pub email: String,
+    #[allow(dead_code)]
+    pub email: Option<String>,
+    pub phone: Option<String>,
     #[allow(dead_code)]
     pub password_hash: String,
     pub active: i64,
@@ -338,7 +338,7 @@ pub struct VendedorRow {
 pub struct VendedorDto {
     pub id: String,
     pub name: String,
-    pub email: String,
+    pub phone: Option<String>,
     pub active: bool,
     pub commission_active: bool,
     pub commission_percent: Option<f64>,
@@ -351,7 +351,7 @@ impl From<VendedorRow> for VendedorDto {
         VendedorDto {
             id: r.id,
             name: r.name,
-            email: r.email,
+            phone: r.phone,
             active: r.active != 0,
             commission_active: r.commission_active != 0,
             commission_percent: r.commission_percent,
@@ -364,7 +364,7 @@ impl From<VendedorRow> for VendedorDto {
 #[derive(Debug, Deserialize)]
 pub struct VendedorInput {
     pub name: String,
-    pub email: String,
+    pub phone: String,
     pub password: Option<String>,
     #[serde(default)]
     pub active: Option<bool>,
@@ -384,7 +384,9 @@ pub struct VendedorInput {
 pub struct CozinhaUserRow {
     pub id: String,
     pub name: String,
-    pub email: String,
+    #[allow(dead_code)]
+    pub email: Option<String>,
+    pub phone: Option<String>,
     #[allow(dead_code)]
     pub password_hash: String,
     pub active: i64,
@@ -396,7 +398,7 @@ pub struct CozinhaUserRow {
 pub struct CozinhaUserDto {
     pub id: String,
     pub name: String,
-    pub email: String,
+    pub phone: Option<String>,
     pub active: bool,
 }
 
@@ -405,7 +407,7 @@ impl From<CozinhaUserRow> for CozinhaUserDto {
         CozinhaUserDto {
             id: r.id,
             name: r.name,
-            email: r.email,
+            phone: r.phone,
             active: r.active != 0,
         }
     }
@@ -414,7 +416,7 @@ impl From<CozinhaUserRow> for CozinhaUserDto {
 #[derive(Debug, Deserialize)]
 pub struct CozinhaUserInput {
     pub name: String,
-    pub email: String,
+    pub phone: String,
     pub password: Option<String>,
     #[serde(default)]
     pub active: Option<bool>,
@@ -734,6 +736,15 @@ pub struct LoginInput {
     #[serde(default)]
     pub tenant_slug: Option<String>,
     pub email: String,
+    pub password: String,
+}
+
+/// Login de funcionário (motoboy/vendedor/cozinha) — sempre WhatsApp+senha,
+/// nunca e-mail.
+#[derive(Debug, Deserialize)]
+pub struct PhoneLoginInput {
+    pub tenant_slug: Option<String>,
+    pub phone: String,
     pub password: String,
 }
 
