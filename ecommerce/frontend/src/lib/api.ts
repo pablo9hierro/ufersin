@@ -77,9 +77,9 @@ const REQUEST_TIMEOUT_MS = 15_000
 
 async function request<T>(
   path: string,
-  options: RequestInit & { token?: string } = {}
+  options: RequestInit & { token?: string; timeoutMs?: number } = {}
 ): Promise<T> {
-  const { token, headers, ...rest } = options
+  const { token, headers, timeoutMs, ...rest } = options
   let res: Response
   try {
     res = await fetchWithTimeout(
@@ -92,7 +92,7 @@ async function request<T>(
           ...headers,
         },
       },
-      REQUEST_TIMEOUT_MS,
+      timeoutMs ?? REQUEST_TIMEOUT_MS,
     )
   } catch (err) {
     // fetch() falhou antes de chegar a ter uma resposta HTTP (servidor
@@ -253,7 +253,7 @@ function isRailwayAdminJwt(token: string | null | undefined = adminToken()): boo
 
 async function railwayAdmin<T>(
   path: string,
-  options: RequestInit & { token?: string } = {}
+  options: RequestInit & { token?: string; timeoutMs?: number } = {}
 ): Promise<T> {
   return request<T>(path, { ...options, token: options.token ?? adminToken() })
 }
@@ -1126,9 +1126,14 @@ const remoteApi = {
       cancel: (id: string) => railwayAdmin<void>(`/api/admin/appointments/${id}/cancel`, { method: 'POST' }),
     },
     financeiro: {
+      // Payload pesado (recent_orders/top_products/motoboys agregados) —
+      // timeout maior que o padrão pra não abortar sozinho em loja com
+      // muito histórico ou cold start do Railway (relatório sempre falhava
+      // com "servidor demorou" mesmo quando a API respondia certo, só mais
+      // devagar que os 15s do resto do app).
       get: () =>
         isRailwayAdminJwt()
-          ? railwayAdmin<FinanceiroSummary>('/api/admin/financeiro')
+          ? railwayAdmin<FinanceiroSummary>('/api/admin/financeiro', { timeoutMs: 40_000 })
           : rpc<FinanceiroSummary>('admin_financeiro', { p_token: adminToken() }),
       timeseries: (days?: number) =>
         rpc<FinanceiroTimeseriesPoint[]>('admin_financeiro_timeseries', { p_token: adminToken(), p_days: days ?? 30 }),
