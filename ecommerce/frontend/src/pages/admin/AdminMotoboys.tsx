@@ -5,6 +5,7 @@ import FreteSettingsCard from '../../components/admin/FreteSettingsCard'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
+import { useTenantConfig } from '../../hooks/useTenantConfig'
 import type { CozinhaUser, Motoboy, PaymentMethod, Vendedor } from '../../types'
 
 const EMPTY_MOTOBOY_FORM = { name: '', phone: '', email: '', password: '', whatsapp: '' }
@@ -17,7 +18,19 @@ function currency(v: number) {
 
 export default function AdminMotoboys() {
   const { askConfirm, confirmDialogElement } = useConfirmDialog()
+  const tenantConfig = useTenantConfig()
+  // Só mostra a aba de cadastro de cada papel se a loja marcou precisar dele
+  // em /meu-plano (tem_motoboy_proprio / precisa_vendedor / precisa_tela_cozinha)
+  // — cadastrar um funcionário que a loja não pediu só confunde.
+  const showMotoboys = !!tenantConfig?.tem_motoboy_proprio
+  const showVendedores = !!tenantConfig?.precisa_vendedor
+  const showCozinha = !!tenantConfig?.precisa_tela_cozinha
   const [tab, setTab] = useState<'motoboys' | 'vendedores' | 'cozinha'>('motoboys')
+  useEffect(() => {
+    if (tab === 'motoboys' && !showMotoboys) setTab(showVendedores ? 'vendedores' : 'cozinha')
+    else if (tab === 'vendedores' && !showVendedores) setTab(showMotoboys ? 'motoboys' : 'cozinha')
+    else if (tab === 'cozinha' && !showCozinha) setTab(showMotoboys ? 'motoboys' : 'vendedores')
+  }, [tab, showMotoboys, showVendedores, showCozinha])
 
   const [motoboys, setMotoboys] = useState<Motoboy[]>([])
   const [loading, setLoading] = useState(true)
@@ -260,44 +273,58 @@ export default function AdminMotoboys() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-black">Cadastrar funcionários</h1>
-        <button
-          onClick={() => (tab === 'motoboys' ? openNewMotoboy() : tab === 'vendedores' ? openNewVendedor() : openNewCozinha())}
-          className="btn-primary text-sm py-2 px-4"
-        >
-          <Plus className="w-4 h-4" /> {NEW_LABEL[tab]}
-        </button>
+        {(showMotoboys || showVendedores || showCozinha) && (
+          <button
+            onClick={() => (tab === 'motoboys' ? openNewMotoboy() : tab === 'vendedores' ? openNewVendedor() : openNewCozinha())}
+            className="btn-primary text-sm py-2 px-4"
+          >
+            <Plus className="w-4 h-4" /> {NEW_LABEL[tab]}
+          </button>
+        )}
       </div>
 
       <FreteSettingsCard />
 
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setTab('motoboys')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-            tab === 'motoboys' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
-          }`}
-        >
-          <Truck className="w-3.5 h-3.5" /> Motoboys
-        </button>
-        <button
-          onClick={() => setTab('vendedores')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-            tab === 'vendedores' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
-          }`}
-        >
-          <Store className="w-3.5 h-3.5" /> Vendedores
-        </button>
-        <button
-          onClick={() => setTab('cozinha')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-            tab === 'cozinha' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
-          }`}
-        >
-          <ChefHat className="w-3.5 h-3.5" /> Cozinha
-        </button>
-      </div>
+      {(showMotoboys || showVendedores || showCozinha) ? (
+        <div className="flex gap-2 mb-6">
+          {showMotoboys && (
+            <button
+              onClick={() => setTab('motoboys')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                tab === 'motoboys' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
+              }`}
+            >
+              <Truck className="w-3.5 h-3.5" /> Motoboys
+            </button>
+          )}
+          {showVendedores && (
+            <button
+              onClick={() => setTab('vendedores')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                tab === 'vendedores' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
+              }`}
+            >
+              <Store className="w-3.5 h-3.5" /> Vendedores
+            </button>
+          )}
+          {showCozinha && (
+            <button
+              onClick={() => setTab('cozinha')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                tab === 'cozinha' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
+              }`}
+            >
+              <ChefHat className="w-3.5 h-3.5" /> Cozinha
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-son-silver-dim mb-6">
+          Marque em Meu Plano se precisa de motoboy próprio, vendedor ou tela de cozinha pra liberar o cadastro aqui.
+        </p>
+      )}
 
-      {tab === 'motoboys' &&
+      {tab === 'motoboys' && showMotoboys &&
         (loading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
@@ -357,7 +384,7 @@ export default function AdminMotoboys() {
           </div>
         ))}
 
-      {tab === 'vendedores' &&
+      {tab === 'vendedores' && showVendedores &&
         (vendedoresLoading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
@@ -412,7 +439,7 @@ export default function AdminMotoboys() {
           </div>
         ))}
 
-      {tab === 'cozinha' &&
+      {tab === 'cozinha' && showCozinha &&
         (cozinhaLoading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="w-6 h-6 animate-spin text-son-pink" />

@@ -1,5 +1,6 @@
 import { tenantHasOnlinePix, tenantUsesManualPayment } from '../../lib/tenantConfig'
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Reorder, useDragControls } from 'framer-motion'
 import { Copy, GripVertical, Loader2, MapPin, Package, QrCode, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -207,6 +208,11 @@ function OrderCard({
 
 export default function AdminPedidos() {
   const tenantConfig = useTenantConfig()
+  // Reaproveitado em /cozinha e /admin/cozinha (tela de cozinha, layout ou
+  // nav próprios) -- deriva do path em vez de prop pra manter o componente
+  // com assinatura zero-props (lazy-loaded, ver lazyWithReload).
+  const location = useLocation()
+  const viewerRole: 'admin' | 'cozinha' = location.pathname.endsWith('/cozinha') ? 'cozinha' : 'admin'
   const manualPaymentMode = tenantUsesManualPayment(tenantConfig)
   const onlinePix = tenantHasOnlinePix(tenantConfig)
   const payAtPickupMode = !!tenantConfig?.pagamento_na_retirada
@@ -215,12 +221,15 @@ export default function AdminPedidos() {
   // (chama motoboy/99pop terceiro usando a geolocalização mostrada no card).
   const adminDelivery =
     !tenantConfig?.tem_motoboy_proprio || !planoAtLeast(tenantConfig?.plano ?? 'essential', 'management')
+  // Cozinha cuida só até "pronto" (retirada continua com ela depois disso,
+  // entrega vira responsabilidade do motoboy/admin) -- nunca vê a aba
+  // Entregas, mesmo quando o admin normalmente veria.
   const filters = useMemo(
     () =>
-      adminDelivery
+      adminDelivery && viewerRole !== 'cozinha'
         ? [...BASE_FILTERS, ENTREGAS_FILTER, CONCLUIDO_FILTER, CANCELADO_FILTER]
         : [...BASE_FILTERS, CONCLUIDO_FILTER, CANCELADO_FILTER],
-    [adminDelivery]
+    [adminDelivery, viewerRole]
   )
 
   const [orders, setOrders] = useState<Order[]>([])
@@ -254,12 +263,20 @@ export default function AdminPedidos() {
   useEffect(load, [])
 
   useEffect(() => {
-    if (!adminDelivery && filter === 'entregas') setFilter('pendente')
-  }, [adminDelivery, filter])
+    if ((!adminDelivery || viewerRole === 'cozinha') && filter === 'entregas') setFilter('pendente')
+  }, [adminDelivery, viewerRole, filter])
 
   useEffect(() => {
-    setVisible(orders.filter((o) => o.status === filter))
-  }, [orders, filter])
+    setVisible(
+      orders.filter(
+        (o) =>
+          o.status === filter &&
+          // Pronto + entrega passa a ser tarefa do motoboy/admin -- cozinha só
+          // continua acompanhando retirada depois desse ponto.
+          !(viewerRole === 'cozinha' && filter === 'pedido_pronto' && o.delivery_type === 'entrega')
+      )
+    )
+  }, [orders, filter, viewerRole])
 
   useEffect(() => {
     if (!pixOrder || pixOrder.payment_status === 'pago') return
