@@ -298,7 +298,16 @@ export default function AdminPedidos() {
     return () => clearInterval(interval)
   }, [pixOrder])
 
-  const counts = Object.fromEntries(filters.map((f) => [f.value, orders.filter((o) => o.status === f.value).length]))
+  const counts = Object.fromEntries(
+    filters.map((f) => [
+      f.value,
+      orders.filter(
+        (o) =>
+          o.status === f.value &&
+          !(viewerRole === 'cozinha' && f.value === 'pedido_pronto' && o.delivery_type === 'entrega'),
+      ).length,
+    ]),
+  )
 
   const openSettlement = (order: Order) => {
     setSettlingOrder(order)

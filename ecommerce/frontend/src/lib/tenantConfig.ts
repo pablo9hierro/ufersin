@@ -11,6 +11,7 @@
 // Sem slug, ou se a busca falhar, cai em essential restritivo (não
 // premium liberado) pra não mostrar CRM/Promoções pra loja real.
 import { fetchWithTimeout } from './fetchTimeout'
+import type { PaymentMethod } from '../types/shared'
 
 export interface TenantConfig {
   slug: string
@@ -85,6 +86,17 @@ export function tenantHasOnlinePix(config: TenantConfig | null | undefined): boo
   return config?.forma_pagamento === 'plataforma' && !config?.pagamento_manual
 }
 
+/** Formas de pagamento aceitas pra pedido de ENTREGA (retirada nunca passa
+ * por aqui). Sem motoboy próprio, o terceiro/99pop não carrega maquininha
+ * nem troco da loja — só Pix (pago antes) é aceito, senão o pedido só pode
+ * ser retirada. Com motoboy próprio, vale o checkbox entrega_somente_pix
+ * (dinheiro fora, cartão continua valendo — o motoboy carrega maquininha). */
+export function allowedDeliveryPaymentMethods(config: TenantConfig | null | undefined): PaymentMethod[] {
+  if (!config?.tem_motoboy_proprio) return ['pix']
+  if (config?.entrega_somente_pix) return ['pix', 'cartao']
+  return ['pix', 'cartao', 'dinheiro']
+}
+
 /** True when PDV/checkout/pedidos must use payment-confirmation toggles (no QR). */
 export function tenantUsesManualPayment(config: TenantConfig | null | undefined): boolean {
   return !!config?.pagamento_manual || config?.forma_pagamento === 'manual'
@@ -102,13 +114,27 @@ export function tenantPaysAtPickup(
  * (Pix or cartão), under `entrega_somente_pix`. O nome do campo ficou de
  * quando só existia Pix online — hoje a mesma conta Mercado Pago processa
  * cartão também, então "entrega só com pagamento já feito" aceita os dois,
- * nunca só Pix. */
+ * nunca só Pix.
+ *
+ * Sem motoboy próprio a regra é mais estrita ainda: o terceiro/99pop não
+ * carrega maquininha da loja nem troco -- só Pix (pago antes) é aceito pra
+ * entrega, cartão incluso. Ver `allowedDeliveryPaymentMethods`. */
 export function deliveryPixOnlyError(
   config: TenantConfig | null | undefined,
   isPickup: boolean,
   paymentMethod: string,
 ): string | null {
-  if (!config?.entrega_somente_pix || isPickup) return null
+  if (isPickup) return null
+  if (!config?.tem_motoboy_proprio) {
+    if (!tenantHasOnlinePix(config)) {
+      return 'Esta loja não tem entrega própria e ainda não configurou pagamento online. Escolha retirada na loja.'
+    }
+    if (paymentMethod !== 'pix') {
+      return 'Esta loja não tem motoboy próprio — entrega só é aceita com Pix pago no checkout. Outras formas de pagamento são só para retirada na loja.'
+    }
+    return null
+  }
+  if (!config?.entrega_somente_pix) return null
   if (!tenantHasOnlinePix(config)) {
     return 'Esta loja só aceita entrega com pagamento já feito no checkout. Escolha retirada na loja ou pague online (loja precisa ter pagamento de plataforma configurado).'
   }

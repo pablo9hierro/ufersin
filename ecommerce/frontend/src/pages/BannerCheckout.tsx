@@ -16,7 +16,7 @@ import { useBannerCart } from '../store/bannerCart'
 import { useCustomer } from '../store/customer'
 import { useTenantConfig } from '../hooks/useTenantConfig'
 import { storefrontAllowsCoupons } from '../lib/demoMode'
-import { deliveryPixOnlyError, tenantHasOnlinePix} from '../lib/tenantConfig'
+import { allowedDeliveryPaymentMethods, deliveryPixOnlyError, tenantHasOnlinePix} from '../lib/tenantConfig'
 import CashAmountInput from '../components/CashAmountInput'
 import { cashCoversTotal } from '../lib/cashMask'
 
@@ -46,7 +46,6 @@ export default function BannerCheckout() {
 
   const [pickupAtStore, setPickupAtStore] = useState(false)
   const apenasRetirada = !!tenantConfig?.apenas_retirada
-  const entregaSomentePix = !!tenantConfig?.entrega_somente_pix
   const pickup = apenasRetirada || pickupAtStore
   const payAtPickup = !!tenantConfig?.pagamento_na_retirada && pickup
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix')
@@ -66,8 +65,8 @@ export default function BannerCheckout() {
   }, [apenasRetirada])
 
   useEffect(() => {
-    if (entregaSomentePix && !pickup && paymentMethod === 'dinheiro') setPaymentMethod('pix')
-  }, [entregaSomentePix, pickup, paymentMethod])
+    if (!pickup && !allowedDeliveryPaymentMethods(tenantConfig).includes(paymentMethod)) setPaymentMethod('pix')
+  }, [tenantConfig, pickup, paymentMethod])
 
   useEffect(() => {
     if (!bannerCart.promotionId || bannerCart.items.length === 0) {
@@ -350,7 +349,17 @@ export default function BannerCheckout() {
 
           <div>
             <label className="label">Forma de pagamento *</label>
-            <div className={`grid gap-2 ${entregaSomentePix && !pickup ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            <div
+              className={`grid gap-2 ${
+                pickup
+                  ? 'grid-cols-3'
+                  : allowedDeliveryPaymentMethods(tenantConfig).length === 1
+                    ? 'grid-cols-1'
+                    : allowedDeliveryPaymentMethods(tenantConfig).length === 2
+                      ? 'grid-cols-2'
+                      : 'grid-cols-3'
+              }`}
+            >
               {(
                 [
                   { value: 'pix', label: 'Pix', icon: QrCode },
@@ -358,7 +367,7 @@ export default function BannerCheckout() {
                   { value: 'dinheiro', label: 'Dinheiro', icon: Wallet },
                 ] as const
               )
-                .filter((o) => o.value !== 'dinheiro' || pickup)
+                .filter((o) => pickup || allowedDeliveryPaymentMethods(tenantConfig).includes(o.value))
                 .map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}

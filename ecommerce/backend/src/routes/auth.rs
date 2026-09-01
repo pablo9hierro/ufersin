@@ -12,6 +12,38 @@ fn normalize_slug(raw: Option<&str>) -> Option<String> {
     Some(s)
 }
 
+/// Espelha o JWT recém-emitido numa linha de `sessions` (schema sunset) --
+/// ponte pras RPCs Postgres antigas (sunset._require_admin/_require_vendedor/
+/// _require_motoboy, motoboy_start_run/active_run/financeiro/counts etc.)
+/// que ainda validam por sessão opaca nessa tabela, nunca decodificando JWT.
+/// Sem isso, todo esse fluxo (corrida do motoboy, financeiro) quebra pra
+/// qualquer login feito depois da migração de auth pra JWT -- o login em si
+/// funciona (extractors JWT-based leem o token direto), mas essas RPCs
+/// específicas nunca encontram a sessão e sempre voltam vazio/erro.
+/// `token` (o próprio JWT) vira a PK -- único e imprevisível o bastante pra
+/// servir de session token também, `expires_at` já casa com os 7 dias do JWT.
+async fn mirror_legacy_session(
+    pool: &sqlx::PgPool,
+    token: &str,
+    tenant_id: &str,
+    role: &str,
+    subject_id: &str,
+) {
+    if let Err(e) = sqlx::query(
+        "INSERT INTO sessions (token, tenant_id, role, subject_id) VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (token) DO NOTHING",
+    )
+    .bind(token)
+    .bind(tenant_id)
+    .bind(role)
+    .bind(subject_id)
+    .execute(pool)
+    .await
+    {
+        tracing::warn!("mirror_legacy_session failed (role={role}): {e:?}");
+    }
+}
+
 async fn resolve_tenant_id(state: &AppState, slug: &str) -> Result<String, AppError> {
     let row: Option<(String, String)> =
         sqlx::query_as("SELECT id, status FROM tenants WHERE slug = $1")
@@ -68,6 +100,7 @@ pub async fn admin_login(
         state.login_limiter.reset(&limiter_key);
 
         let token = make_token(&state.jwt_secret, &id, &tenant_id, "admin", &name);
+        mirror_legacy_session(&state.pool, &token, &tenant_id, "admin", &id).await;
         return Ok(Json(LoginResponse {
             token,
             name,
@@ -110,6 +143,7 @@ pub async fn admin_login(
             state.login_limiter.reset(&limiter_key);
             let (id, name, tenant_id, slug) = matches.remove(0);
             let token = make_token(&state.jwt_secret, &id, &tenant_id, "admin", &name);
+            mirror_legacy_session(&state.pool, &token, &tenant_id, "admin", &id).await;
             Ok(Json(LoginResponse {
                 token,
                 name,
@@ -147,6 +181,7 @@ pub async fn motoboy_login(
     }
 
     let token = make_token(&state.jwt_secret, &id, &tenant_id, "motoboy", &name);
+    mirror_legacy_session(&state.pool, &token, &tenant_id, "motoboy", &id).await;
     Ok(Json(LoginResponse {
         token,
         name,
@@ -183,6 +218,7 @@ pub async fn vendedor_login(
     }
 
     let token = make_token(&state.jwt_secret, &id, &tenant_id, "vendedor", &name);
+    mirror_legacy_session(&state.pool, &token, &tenant_id, "vendedor", &id).await;
     Ok(Json(LoginResponse {
         token,
         name,

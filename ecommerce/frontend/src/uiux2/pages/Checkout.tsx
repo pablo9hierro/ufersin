@@ -20,7 +20,7 @@ import AuthModal from '../components/AuthModal'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { useStoreStatus } from '../../hooks/useStoreStatus'
 import { storefrontAllowsCoupons } from '../../lib/demoMode'
-import { deliveryPixOnlyError, resolveTenantSlug, tenantHasOnlinePix } from '../../lib/tenantConfig'
+import { allowedDeliveryPaymentMethods, deliveryPixOnlyError, resolveTenantSlug, tenantHasOnlinePix } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal } from '../../lib/cashMask'
@@ -122,8 +122,8 @@ export default function Uiux2Checkout() {
   // só dinheiro fica de fora (não dá pra confirmar entrega sem receber
   // antes). Pickup sempre libera as 3 formas normalmente.
   useEffect(() => {
-    if (entregaSomentePix && !pickup && paymentMethod === 'dinheiro') setPaymentMethod('pix')
-  }, [entregaSomentePix, pickup, paymentMethod])
+    if (!pickup && !allowedDeliveryPaymentMethods(tenantConfig).includes(paymentMethod)) setPaymentMethod('pix')
+  }, [tenantConfig, pickup, paymentMethod])
 
   // Se o cliente já tinha escolhido um endereço numa visita anterior,
   // revalida o frete (o preço por km pode ter mudado desde então).
@@ -477,12 +477,27 @@ export default function Uiux2Checkout() {
                 O pagamento será processado no ato da retirada na loja — sem cobrança Pix agora.
               </p>
             )}
-            {entregaSomentePix && !pickup && (
+            {!pickup && !tenantConfig?.tem_motoboy_proprio && (
+              <p className="text-xs u2-dim mt-1 mb-2">
+                Esta loja não tem motoboy próprio — entrega só é aceita com Pix pago antes. Outras formas de pagamento são só para retirada.
+              </p>
+            )}
+            {!pickup && !!tenantConfig?.tem_motoboy_proprio && entregaSomentePix && (
               <p className="text-xs u2-dim mt-1 mb-2">
                 Entrega só com pagamento feito antes (Pix ou cartão) — dinheiro fica só pra retirada na loja.
               </p>
             )}
-            <div className={`grid gap-2 mt-1 ${entregaSomentePix && !pickup ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            <div
+              className={`grid gap-2 mt-1 ${
+                pickup
+                  ? 'grid-cols-3'
+                  : allowedDeliveryPaymentMethods(tenantConfig).length === 1
+                    ? 'grid-cols-1'
+                    : allowedDeliveryPaymentMethods(tenantConfig).length === 2
+                      ? 'grid-cols-2'
+                      : 'grid-cols-3'
+              }`}
+            >
               {(
                 [
                   { value: 'pix', label: 'Pix', icon: QrCode },
@@ -490,7 +505,7 @@ export default function Uiux2Checkout() {
                   { value: 'dinheiro', label: 'Dinheiro', icon: Wallet },
                 ] as const
               )
-                .filter((o) => o.value !== 'dinheiro' || pickup)
+                .filter((o) => pickup || allowedDeliveryPaymentMethods(tenantConfig).includes(o.value))
                 .map(({ value, label, icon: Icon }) => (
                   <button
                     key={value}

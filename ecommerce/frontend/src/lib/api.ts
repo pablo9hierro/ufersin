@@ -1538,8 +1538,25 @@ const remoteApi = {
   },
   motoboy: {
     orders: {
-      list: (status: string) => rpc<Order[]>('motoboy_list_orders', { p_token: motoboyToken(), p_status: status }),
-      counts: () => rpc<Record<string, number>>('motoboy_order_counts', { p_token: motoboyToken() }),
+      // BUG: motoboy_login virou JWT real (Rust) faz um tempo, mas essas duas
+      // chamadas continuaram numa RPC Supabase legada que só entende sessão
+      // opaca -- fila de pedidos prontos ficava sempre vazia pra qualquer
+      // motoboy autenticado de verdade. list_orders/counts já existem em
+      // Rust (motoboy.rs), só faltava apontar pra lá.
+      list: (status: string) =>
+        isRailwayAdminJwt(motoboyToken())
+          ? request<Order[]>(`/api/motoboy/orders?status=${encodeURIComponent(status)}`, { token: motoboyToken() })
+          : rpc<Order[]>('motoboy_list_orders', { p_token: motoboyToken(), p_status: status }),
+      counts: () =>
+        isRailwayAdminJwt(motoboyToken())
+          ? Promise.all(
+              (['pedido_pronto', 'em_rota_de_entrega', 'concluido'] as const).map((status) =>
+                request<Order[]>(`/api/motoboy/orders?status=${status}`, { token: motoboyToken() }).then(
+                  (rows) => [status, rows.length] as const,
+                ),
+              ),
+            ).then((pairs) => Object.fromEntries(pairs))
+          : rpc<Record<string, number>>('motoboy_order_counts', { p_token: motoboyToken() }),
       // Cobrar Pix na entrega -- usa o Mercado Pago da própria loja da
       // corrida (nunca credencial do motoboy/plataforma). Ver motoboy.rs.
       createPix: (orderId: string) =>
