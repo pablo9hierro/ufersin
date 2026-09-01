@@ -155,6 +155,12 @@ export default function MeuPlano() {
   const [entregaSomentePix, setEntregaSomentePix] = useState(true)
   const [temMotoboyProprio, setTemMotoboyProprio] = useState(false)
   const [precisaVendedor, setPrecisaVendedor] = useState(false)
+  /** Estado próprio (não derivado) pra dar play/pause real ao "não tenho
+   * funcionários": marcar trava e zera os três abaixo; desmarcar só destrava
+   * — sem isso o checkbox nunca "descheca" (a condição derivada continua
+   * batendo assim que os três ficam false, então o clique de desmarcar não
+   * tinha efeito visual nenhum). */
+  const [nenhumFuncionario, setNenhumFuncionario] = useState(false)
   const [pagamentoManual, setPagamentoManual] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [hasCredenciais, setHasCredenciais] = useState(false)
@@ -232,6 +238,7 @@ export default function MeuPlano() {
         setAtendeDomicilio(!!m.atende_domicilio)
         setTemMotoboyProprio(!!m.tem_motoboy_proprio)
         setPrecisaVendedor(!!m.precisa_vendedor)
+        setNenhumFuncionario(!m.tem_motoboy_proprio && !m.precisa_vendedor && !m.precisa_tela_cozinha)
         setColetaGratis(!!m.coleta_gratis)
         setEntregaReparadoGratis(!!m.entrega_reparado_gratis)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
@@ -1165,12 +1172,15 @@ export default function MeuPlano() {
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={!temMotoboyProprio && !precisaVendedor && !precisaTelaCozinha}
+                      checked={nenhumFuncionario}
                       onChange={(e) => {
-                        if (!e.target.checked) return
-                        setTemMotoboyProprio(false)
-                        setPrecisaVendedor(false)
-                        setPrecisaTelaCozinha(false)
+                        const checked = e.target.checked
+                        setNenhumFuncionario(checked)
+                        if (checked) {
+                          setTemMotoboyProprio(false)
+                          setPrecisaVendedor(false)
+                          setPrecisaTelaCozinha(false)
+                        }
                       }}
                       className="w-4 h-4 mt-0.5"
                       data-testid="pref-nenhum-funcionario"
@@ -1181,7 +1191,7 @@ export default function MeuPlano() {
                     </span>
                   </label>
                   {(() => {
-                    const nenhum = !temMotoboyProprio && !precisaVendedor && !precisaTelaCozinha
+                    const nenhum = nenhumFuncionario
                     const tooltip = nenhum ? 'Desmarque "Não tenho funcionários" pra liberar esta opção.' : undefined
                     return (
                       <>
