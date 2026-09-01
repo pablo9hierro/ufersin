@@ -4,6 +4,7 @@ pub mod demo;
 pub mod eletronicos;
 pub mod internal;
 pub mod motoboy;
+pub mod payroll;
 pub mod pdv;
 pub mod public;
 pub mod webhooks;

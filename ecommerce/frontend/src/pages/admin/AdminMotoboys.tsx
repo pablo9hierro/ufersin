@@ -6,7 +6,7 @@ import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import type { CozinhaUser, Motoboy, PaymentFrequency, PaymentMethod, Vendedor } from '../../types'
+import type { CozinhaUser, Motoboy, PaymentFrequency, PaymentMethod, PayrollPayment, Vendedor } from '../../types'
 
 const PAYMENT_FREQUENCIES: { value: PaymentFrequency; label: string }[] = [
   { value: 'diaria', label: 'Diária' },
@@ -65,6 +65,16 @@ export default function AdminMotoboys() {
   // reseta/mostra a senha de um motoboy ou vendedor é exclusivamente o
   // admin, aqui.
   const [passwordPopup, setPasswordPopup] = useState<{ name: string; password: string | null; loading: boolean } | null>(null)
+  const [historyPopup, setHistoryPopup] = useState<{ name: string; entries: PayrollPayment[]; loading: boolean } | null>(null)
+  const viewHistory = async (role: 'motoboy' | 'vendedor', id: string, name: string) => {
+    setHistoryPopup({ name, entries: [], loading: true })
+    try {
+      const entries = await adminService.payroll.history(role, id)
+      setHistoryPopup({ name, entries, loading: false })
+    } catch {
+      setHistoryPopup({ name, entries: [], loading: false })
+    }
+  }
   const viewPassword = async (kind: 'motoboy' | 'vendedor', id: string, name: string) => {
     setPasswordPopup({ name, password: null, loading: true })
     try {
@@ -400,6 +410,14 @@ export default function AdminMotoboys() {
                     <Eye className="w-4 h-4" />
                   </button>
                   <button
+                    onClick={() => viewHistory('motoboy', m.id, m.name)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-son-silver-dim hover:text-white transition-colors"
+                    aria-label={`Histórico de pagamentos de ${m.name}`}
+                    title="Histórico de pagamentos"
+                  >
+                    <Wallet className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={() => openEditMotoboy(m)}
                     className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-son-silver-dim hover:text-white transition-colors"
                     aria-label={`Editar ${m.name}`}
@@ -465,6 +483,14 @@ export default function AdminMotoboys() {
                     title="Ver senha atual"
                   >
                     <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => viewHistory('vendedor', v.id, v.name)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-son-silver-dim hover:text-white transition-colors"
+                    aria-label={`Histórico de pagamentos de ${v.name}`}
+                    title="Histórico de pagamentos"
+                  >
+                    <Wallet className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => openEditVendedor(v)}
@@ -840,6 +866,48 @@ export default function AdminMotoboys() {
               <p className="text-sm text-son-silver-dim text-center">
                 Nenhuma senha salva pra visualizar ainda — edite e defina uma senha nova pra poder vê-la depois.
               </p>
+            )}
+          </div>
+        </div>
+      )}
+      {historyPopup && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setHistoryPopup(null)}
+        >
+          <div className="glass rounded-2xl p-6 max-w-sm w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-white">Histórico de {historyPopup.name}</h3>
+              <button onClick={() => setHistoryPopup(null)} className="text-son-silver-dim hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {historyPopup.loading ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="w-5 h-5 animate-spin text-son-pink" />
+              </div>
+            ) : historyPopup.entries.length === 0 ? (
+              <p className="text-sm text-son-silver-dim text-center">Nenhum pagamento fixo registrado ainda.</p>
+            ) : (
+              <div className="space-y-2">
+                {historyPopup.entries.map((e) => (
+                  <div key={e.id} className="bg-son-surface-light rounded-xl p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-son-gold font-semibold text-sm">{currency(e.amount)}</span>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full ${
+                          e.confirmed_by_employee ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'
+                        }`}
+                      >
+                        {e.confirmed_by_employee ? 'Confirmado' : 'Aguardando confirmação'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-son-silver-dim mt-1">
+                      {new Date(e.created_at).toLocaleString('pt-BR')} · {e.payment_method}
+                    </p>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>

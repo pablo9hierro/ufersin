@@ -39,6 +39,8 @@ import type {
   MotoboyPending,
   MotoboyRun,
   MotoboySettlement,
+  PayrollAlert,
+  PayrollPayment,
   PaymentFrequency,
   Order,
   PageDecoration,
@@ -260,6 +262,13 @@ async function railwayAdmin<T>(
 // abas/dispositivos diferentes.
 function motoboyToken() {
   return useMotoboyAuth.getState().token ?? undefined
+}
+
+// Payroll self-service (my-pending/confirm) é usado tanto por motoboy quanto
+// por vendedor -- cada sessão tem sua própria chave, nunca as duas ao mesmo
+// tempo numa mesma aba/dispositivo.
+function staffToken() {
+  return useMotoboyAuth.getState().token ?? useVendedorAuth.getState().token ?? undefined
 }
 
 async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
@@ -779,6 +788,20 @@ const remoteApi = {
           }),
         }),
       delete: (id: string) => railwayAdmin<void>(`/api/admin/cozinha-users/${id}`, { method: 'DELETE' }),
+    },
+    payroll: {
+      alerts: () => railwayAdmin<PayrollAlert[]>('/api/admin/payroll/alerts'),
+      reportPayment: (employeeRole: 'motoboy' | 'vendedor', employeeId: string, paymentMethod: string) =>
+        railwayAdmin<PayrollPayment>('/api/admin/payroll/payments', {
+          method: 'POST',
+          body: JSON.stringify({ employee_role: employeeRole, employee_id: employeeId, payment_method: paymentMethod }),
+        }),
+      history: (employeeRole?: string, employeeId?: string) =>
+        railwayAdmin<PayrollPayment[]>(
+          employeeRole && employeeId
+            ? `/api/admin/payroll/history?employee_role=${employeeRole}&employee_id=${employeeId}`
+            : '/api/admin/payroll/history',
+        ),
     },
     coupons: {
       list: () => rpc<Coupon[]>('admin_list_coupons', { p_token: adminToken() }),
@@ -1556,6 +1579,12 @@ const remoteApi = {
       isRailwayAdminJwt()
         ? railwayAdmin<VendedorRelatorio>('/api/pdv/relatorio')
         : rpc<VendedorRelatorio>('vendedor_relatorio', { p_token: adminToken() }),
+  },
+  // Autoatendimento de pagamento fixo (motoboy ou vendedor logado).
+  payroll: {
+    myPending: () => request<PayrollPayment[]>('/api/payroll/my-pending', { token: staffToken() }),
+    confirm: (id: string) =>
+      request<void>(`/api/payroll/payments/${id}/confirm`, { method: 'POST', token: staffToken() }),
   },
   motoboy: {
     orders: {

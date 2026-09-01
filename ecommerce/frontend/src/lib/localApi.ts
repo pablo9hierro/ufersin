@@ -3003,6 +3003,11 @@ export const localApi = {
       update: async () => { throw new ApiError(400, 'Cozinha não está disponível no modo demo.') },
       delete: async () => {},
     },
+    payroll: {
+      alerts: async () => [],
+      reportPayment: async () => { throw new ApiError(400, 'Pagamento de funcionário não está disponível no modo demo.') },
+      history: async () => [],
+    },
     coupons: {
       list: adminListCoupons,
       create: createCoupon,
@@ -3080,6 +3085,10 @@ export const localApi = {
     onboardingGate: {
       get: async () => ({ onboarding_hours_done: true }),
     },
+  },
+  payroll: {
+    myPending: async () => [],
+    confirm: async () => {},
   },
   motoboy: {
     orders: {

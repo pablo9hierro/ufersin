@@ -21,6 +21,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import Logo from '../ui/Logo'
+import PayrollBell from './PayrollBell'
 import OnboardingGate from '../admin/OnboardingGate'
 import { useAdminAuth, detectAdminTenantMismatch } from '../../store/adminAuth'
 import {
@@ -537,7 +538,10 @@ export default function AdminLayout() {
     <div className="min-h-screen bg-son-black text-white flex">
       <aside className="hidden md:flex md:flex-col w-56 shrink-0 bg-son-surface border-r border-white/5 min-h-screen sticky top-0">
         <div className="px-5 py-5 border-b border-white/5">
-          <Logo size="sm" />
+          <div className="flex items-center justify-between">
+            <Logo size="sm" />
+            {!demo && <PayrollBell mode="admin" />}
+          </div>
           {lojaLabel ? <p className="text-xs font-semibold text-white mt-2 truncate">{lojaLabel}</p> : null}
           <p className="text-xs text-son-silver-dim mt-1">Olá, {effectiveName}</p>
         </div>
@@ -607,10 +611,13 @@ export default function AdminLayout() {
       <div className="flex-1 min-w-0">
         <header className="md:hidden bg-son-surface border-b border-white/5 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
           <Logo size="sm" />
-          <button onClick={handleLogout} className="flex items-center gap-1.5 text-son-silver-dim hover:text-son-pink text-sm">
-            <LogOut className="w-4 h-4" />
-            Sair
-          </button>
+          <div className="flex items-center gap-2">
+            {!demo && <PayrollBell mode="admin" />}
+            <button onClick={handleLogout} className="flex items-center gap-1.5 text-son-silver-dim hover:text-son-pink text-sm">
+              <LogOut className="w-4 h-4" />
+              Sair
+            </button>
+          </div>
         </header>
         <nav className="md:hidden flex gap-2 overflow-x-auto px-4 py-3 bg-son-black border-b border-white/5 scrollbar-hide sticky top-[65px] z-10">
           {visibleItems.map(({ href, label, icon: Icon }) => {

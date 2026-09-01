@@ -23,6 +23,8 @@ import {
   MotoboySettlementSchema,
   OrderSchema,
   PageDecorationSchema,
+  PayrollAlertSchema,
+  PayrollPaymentSchema,
   ProductSchema,
   PromotionSchema,
   ShippingSettingsSchema,
@@ -152,6 +154,13 @@ export const adminEndpoint = {
     update: async (id: string, payload: { name: string; email: string; active: boolean; password?: string }) =>
       validate(CozinhaUserSchema, await api.admin.cozinhaUsers.update(id, payload), 'admin.cozinhaUsers.update'),
     delete: async (id: string) => api.admin.cozinhaUsers.delete(id),
+  },
+  payroll: {
+    alerts: async () => validateList(PayrollAlertSchema, await api.admin.payroll.alerts(), 'admin.payroll.alerts'),
+    reportPayment: async (employeeRole: 'motoboy' | 'vendedor', employeeId: string, paymentMethod: string) =>
+      validate(PayrollPaymentSchema, await api.admin.payroll.reportPayment(employeeRole, employeeId, paymentMethod), 'admin.payroll.reportPayment'),
+    history: async (employeeRole?: string, employeeId?: string) =>
+      validateList(PayrollPaymentSchema, await api.admin.payroll.history(employeeRole, employeeId), 'admin.payroll.history'),
   },
   coupons: {
     list: async () => validateList(CouponSchema, await api.admin.coupons.list(), 'admin.coupons.list'),

@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Loader2, LogOut, MessageCircle, Moon, Navigation, Sun, Truck, Wallet } from 'lucide-react'
 import Logo from '../ui/Logo'
+import PayrollBell from './PayrollBell'
 import { motoboyService } from '../../services/motoboyService'
 import {
   clearDemoStaffSession,
@@ -70,6 +71,7 @@ export default function MotoboyLayout() {
           <p className="text-xs text-son-silver-dim mt-0.5">Olá, {effectiveName}</p>
         </div>
         <div className="flex items-center gap-3">
+          {!demo && <PayrollBell mode="staff" />}
           <button
             onClick={toggleTheme}
             className="w-8 h-8 flex items-center justify-center rounded-full bg-son-surface-light text-son-silver-dim hover:text-son-pink"

@@ -278,6 +278,27 @@ impl FromRequestParts<AppState> for PdvUser {
     }
 }
 
+/// Extractor: JWT with role motoboy **or** vendedor -- pra rotas de
+/// autoatendimento (payroll) compartilhadas entre os dois papéis, cada um só
+/// vendo/confirmando o próprio pagamento (claims.sub).
+pub struct StaffUser(pub Claims);
+
+impl FromRequestParts<AppState> for StaffUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let AuthUser(claims) = AuthUser::from_request_parts(parts, state).await?;
+        if claims.role != "motoboy" && claims.role != "vendedor" {
+            return Err(AppError::Forbidden("motoboy or vendedor role required".to_string()));
+        }
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
+        Ok(StaffUser(claims))
+    }
+}
+
 /// Extractor: requires a valid JWT with role == motoboy.
 pub struct MotoboyUser(pub Claims);
 

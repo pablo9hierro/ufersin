@@ -13,6 +13,7 @@ export * from './motoboy'
 export * from './vendedor'
 export * from './settings'
 export * from './financeiro'
+export * from './payroll'
 
 import type { OrderStatus } from './shared'
 

@@ -597,6 +597,14 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/cozinha-users",
             get(routes::admin::list_cozinha_users).post(routes::admin::create_cozinha_user),
         )
+        .route("/api/admin/payroll/alerts", get(routes::payroll::admin_alerts))
+        .route("/api/admin/payroll/payments", post(routes::payroll::report_payment))
+        .route("/api/admin/payroll/history", get(routes::payroll::admin_history))
+        .route("/api/payroll/my-pending", get(routes::payroll::my_pending))
+        .route(
+            "/api/payroll/payments/{id}/confirm",
+            post(routes::payroll::confirm_payment),
+        )
         .route(
             "/api/admin/cozinha-users/{id}",
             put(routes::admin::update_cozinha_user).delete(routes::admin::delete_cozinha_user),
