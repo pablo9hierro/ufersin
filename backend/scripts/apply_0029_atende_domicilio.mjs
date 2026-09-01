@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const sqlPath = path.join(__dirname, '../migrations/0027_atende_domicilio.sql')
+const sqlPath = path.join(__dirname, '../migrations/0029_atende_domicilio.sql')
 const rpcPath = path.join(__dirname, 'resolutoo_tenant_config_rpc.sql')
 
 const url = process.env.DATABASE_URL
