@@ -13,6 +13,8 @@ export const authService = {
     requestPasswordReset: customerAuthEndpoint.requestPasswordReset,
     verifyResetCode: customerAuthEndpoint.verifyResetCode,
     resetPassword: customerAuthEndpoint.resetPassword,
+    requestLoginCode: customerAuthEndpoint.requestLoginCode,
+    verifyLoginCode: customerAuthEndpoint.verifyLoginCode,
   },
   staff: {
     adminLogin: authEndpoint.adminLogin,

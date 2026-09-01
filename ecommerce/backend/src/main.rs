@@ -518,6 +518,12 @@ async fn main() -> anyhow::Result<()> {
             "/api/customer/request-password-reset",
             post(routes::public::request_customer_password_reset),
         )
+        // Login único do cliente (nome+whatsapp+OTP) — mesmo motivo do
+        // reset acima, só o backend Rust alcança a Evolution API.
+        .route(
+            "/api/customer/request-login-code",
+            post(routes::public::request_customer_login_code),
+        )
         // Rota real entre dois pontos (Google Routes com fallback OSRM) —
         // usado tanto pela navegação do motoboy quanto pelo acompanhamento
         // do cliente em /consultar, pra nenhum dos dois expor chave nenhuma

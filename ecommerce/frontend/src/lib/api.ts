@@ -410,6 +410,12 @@ const remoteApi = {
         method: 'POST',
         body: JSON.stringify({ whatsapp, tenant: resolveTenantSlug() }),
       }),
+    verifyLoginCode: supabasePublicApi.customerAuth.verifyLoginCode,
+    requestLoginCode: (whatsapp: string, name: string) =>
+      request<void>('/api/customer/request-login-code', {
+        method: 'POST',
+        body: JSON.stringify({ whatsapp, name, tenant: resolveTenantSlug() }),
+      }),
     toggleFavorite: supabasePublicApi.customerAuth.toggleFavorite,
     listFavorites: supabasePublicApi.customerAuth.listFavorites,
     listCoupons: supabasePublicApi.customerAuth.listCoupons,

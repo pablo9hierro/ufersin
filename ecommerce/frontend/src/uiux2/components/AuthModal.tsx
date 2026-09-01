@@ -1,12 +1,9 @@
 import { useState } from 'react'
-import { useNavigate } from '../../lib/tenantRouter'
 import { Loader2, X } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { authService } from '../../services/authService'
-import { useCustomerAuth } from '../../store/customerAuth'
+import { useCustomerAuth, isCustomerSessionFresh } from '../../store/customerAuth'
 import { useCustomer } from '../../store/customer'
-import BirthdateInput from '../../components/checkout/BirthdateInput'
-import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -16,73 +13,64 @@ function formatPhone(value: string) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
 }
 
+// Login único (cadastro e login viram o mesmo formulário): nome + whatsapp +
+// código enviado por WhatsApp. Sessão verificada há menos de 1h pula direto
+// (isCustomerSessionFresh).
 export default function AuthModal({
   onClose,
   onSuccess,
-  initialMode = 'login',
 }: {
   onClose: () => void
   onSuccess: () => void
+  /** @deprecated login único não distingue mais login/cadastro. */
   initialMode?: 'login' | 'register'
 }) {
-  const navigate = useNavigate()
   const auth = useCustomerAuth()
   const customerDraft = useCustomer()
-  const tenantConfig = useTenantConfig()
-  const requiresBirthdate = !!tenantConfig?.vende_mais_18
-  const [mode, setMode] = useState<'login' | 'register'>(initialMode)
+  const [step, setStep] = useState<'form' | 'code'>('form')
+  const [name, setName] = useState(customerDraft.name)
+  const [whatsapp, setWhatsapp] = useState(customerDraft.whatsapp)
+  const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [loginWhatsapp, setLoginWhatsapp] = useState('')
-  const [loginPassword, setLoginPassword] = useState('')
-  // Pré-preenchido com o rascunho de checkout, se já existir -- poupa
-  // redigitar o que já foi escrito ali (e-mail nunca vem de lá, checkout
-  // não pede e-mail).
-  const [regName, setRegName] = useState(customerDraft.name)
-  const [regWhatsapp, setRegWhatsapp] = useState(customerDraft.whatsapp)
-  const [regEmail, setRegEmail] = useState('')
-  const [regBirthdate, setRegBirthdate] = useState(customerDraft.birthdate)
-  const [regPassword, setRegPassword] = useState('')
-
-  const handleLogin = async () => {
-    setError(null)
-    const digits = loginWhatsapp.replace(/\D/g, '')
-    if (digits.length < 10) return setError('Informe um WhatsApp válido.')
-    if (!/^\d{6}$/.test(loginPassword)) return setError('A senha tem 6 dígitos.')
-    setLoading(true)
-    try {
-      const result = await authService.customer.login(`55${digits}`, loginPassword)
-      auth.login(result.token, result.customer)
-      onSuccess()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Não foi possível entrar.')
-    } finally {
-      setLoading(false)
-    }
+  if (isCustomerSessionFresh()) {
+    onSuccess()
+    return null
   }
 
-  const handleRegister = async () => {
-    setError(null)
-    if (!regName.trim()) return setError('Informe seu nome.')
-    const digits = regWhatsapp.replace(/\D/g, '')
-    if (digits.length < 10) return setError('Informe um WhatsApp válido.')
-    if (!regEmail.trim() || !regEmail.includes('@')) return setError('Informe um e-mail válido.')
-    if (requiresBirthdate && !regBirthdate) return setError('Informe sua data de nascimento.')
-    if (!/^\d{6}$/.test(regPassword)) return setError('A senha tem 6 dígitos.')
-    setLoading(true)
-    try {
-      const result = await authService.customer.register({ whatsapp: `55${digits}`, password: regPassword, name: regName, email: regEmail, birthdate: regBirthdate })
-      auth.login(result.token, result.customer)
-      onSuccess()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Não foi possível criar sua conta.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  const digits = whatsapp.replace(/\D/g, '')
   const inputClass = 'u2-surface w-full px-3.5 py-2.5 text-sm outline-none'
+
+  const requestCode = async () => {
+    setError(null)
+    if (!name.trim()) return setError('Informe seu nome.')
+    if (digits.length < 10) return setError('Informe um WhatsApp válido.')
+    setLoading(true)
+    try {
+      await authService.customer.requestLoginCode(`55${digits}`, name.trim())
+      setStep('code')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível enviar o código.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const confirmCode = async () => {
+    setError(null)
+    if (!/^\d{6}$/.test(code)) return setError('Informe o código de 6 dígitos.')
+    setLoading(true)
+    try {
+      const result = await authService.customer.verifyLoginCode(`55${digits}`, code)
+      auth.login(result.token, result.customer)
+      onSuccess()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Código inválido.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
@@ -90,69 +78,44 @@ export default function AuthModal({
         <button type="button" onClick={onClose} className="absolute top-4 right-4 u2-dim" aria-label="Fechar">
           <X className="w-4 h-4" />
         </button>
-        <p className="font-black text-lg mb-5">{mode === 'login' ? 'Entrar' : 'Criar conta'}</p>
+        <p className="font-black text-lg mb-5">{step === 'form' ? 'Entrar' : 'Digite o código'}</p>
 
-        <div className="grid grid-cols-2 gap-2 mb-5">
-          <button type="button" onClick={() => setMode('login')} className={mode === 'login' ? 'u2-btn-primary py-2 text-sm' : 'u2-btn-secondary py-2 text-sm'}>
-            Entrar
-          </button>
-          <button type="button" onClick={() => setMode('register')} className={mode === 'register' ? 'u2-btn-primary py-2 text-sm' : 'u2-btn-secondary py-2 text-sm'}>
-            Criar conta
-          </button>
-        </div>
-
-        {mode === 'login' ? (
+        {step === 'form' ? (
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-semibold u2-dim">WhatsApp</label>
-              <input className={inputClass} inputMode="numeric" autoComplete="off" placeholder="(83) 99999-9999" value={loginWhatsapp} onChange={(e) => setLoginWhatsapp(formatPhone(e.target.value))} />
+              <label className="text-xs font-semibold u2-dim">Nome</label>
+              <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div>
-              <label className="text-xs font-semibold u2-dim">Senha (6 dígitos)</label>
-              <input className={inputClass} type="password" inputMode="numeric" maxLength={6} placeholder="••••••" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+              <label className="text-xs font-semibold u2-dim">WhatsApp</label>
+              <input className={inputClass} inputMode="numeric" autoComplete="off" placeholder="(83) 99999-9999" value={whatsapp} onChange={(e) => setWhatsapp(formatPhone(e.target.value))} />
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                onClose()
-                navigate('/recuperar-senha')
-              }}
-              className="text-xs u2-dim"
-            >
-              Esqueci minha senha
-            </button>
             {error && <p className="text-xs text-red-500">{error}</p>}
-            <button type="button" onClick={handleLogin} disabled={loading} className="u2-btn-primary w-full py-2.5 flex items-center justify-center gap-2 mt-1">
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />} Entrar
+            <button type="button" onClick={requestCode} disabled={loading} className="u2-btn-primary w-full py-2.5 flex items-center justify-center gap-2 mt-1">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />} Receber código no WhatsApp
             </button>
           </div>
         ) : (
           <div className="space-y-3">
+            <p className="text-xs u2-dim text-center">Mandamos um código de 6 dígitos pro WhatsApp {whatsapp}. Vale por 10 minutos.</p>
             <div>
-              <label className="text-xs font-semibold u2-dim">Nome</label>
-              <input className={inputClass} value={regName} onChange={(e) => setRegName(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold u2-dim">WhatsApp</label>
-              <input className={inputClass} inputMode="numeric" autoComplete="off" placeholder="(83) 99999-9999" value={regWhatsapp} onChange={(e) => setRegWhatsapp(formatPhone(e.target.value))} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold u2-dim">E-mail</label>
-              <input className={inputClass} type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} />
-            </div>
-            {requiresBirthdate && (
-              <div>
-                <label className="text-xs font-semibold u2-dim">Data de nascimento</label>
-                <BirthdateInput value={regBirthdate} onChange={setRegBirthdate} />
-              </div>
-            )}
-            <div>
-              <label className="text-xs font-semibold u2-dim">Senha (6 dígitos)</label>
-              <input className={inputClass} type="password" inputMode="numeric" maxLength={6} placeholder="••••••" value={regPassword} onChange={(e) => setRegPassword(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+              <label className="text-xs font-semibold u2-dim">Código</label>
+              <input
+                className={`${inputClass} text-center tracking-[0.4em] text-lg`}
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="000000"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                autoFocus
+              />
             </div>
             {error && <p className="text-xs text-red-500">{error}</p>}
-            <button type="button" onClick={handleRegister} disabled={loading} className="u2-btn-primary w-full py-2.5 flex items-center justify-center gap-2 mt-1">
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />} Criar conta
+            <button type="button" onClick={confirmCode} disabled={loading} className="u2-btn-primary w-full py-2.5 flex items-center justify-center gap-2 mt-1">
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />} Confirmar e entrar
+            </button>
+            <button type="button" onClick={() => setStep('form')} className="text-xs u2-dim w-full text-center">
+              Errei o WhatsApp, voltar
             </button>
           </div>
         )}

@@ -275,6 +275,15 @@ export const supabasePublicApi = {
       })
       if (error) throw new ApiError(400, error.message)
     },
+    verifyLoginCode: async (whatsapp: string, code: string) => {
+      const { data, error } = await supabase.rpc('customer_verify_login_code', {
+        p_whatsapp: whatsapp,
+        p_code: code,
+        p_tenant_slug: resolveTenantSlug(),
+      })
+      if (error) throw new ApiError(400, error.message)
+      return data as CustomerAuthResult
+    },
     // /cliente/favoritos, /cliente/cupons, /cliente/historico.
     toggleFavorite: async (token: string, productId: string) => {
       const { data, error } = await supabase.rpc('customer_toggle_favorite', { p_token: token, p_product_id: productId })

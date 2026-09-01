@@ -84,6 +84,7 @@ pub fn build() -> OpenApi {
         ("/api/auth/vendedor/login", Post, "Login do vendedor", "Auth", false, true),
         ("/api/auth/cozinha/login", Post, "Login da tela de cozinha", "Auth", false, true),
         ("/api/customer/request-password-reset", Post, "Solicitar redefinicao de senha do cliente", "Auth", false, true),
+        ("/api/customer/request-login-code", Post, "Solicitar codigo OTP de login do cliente (nome+whatsapp)", "Auth", false, true),
         ("/api/public/catalog/{slug}/products", Get, "Produtos ativos da vitrine", "Publico", false, false),
         ("/api/public/catalog/{slug}/products/{id}", Get, "Detalhe de um produto", "Publico", false, false),
         ("/api/public/catalog/{slug}/categories", Get, "Categorias da vitrine", "Publico", false, false),

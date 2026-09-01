@@ -734,6 +734,40 @@ async function customerResetPassword(whatsapp: string, code: string, newPassword
   saveDb(db)
 }
 
+// Login único (cadastro+login viram a mesma coisa): nome+whatsapp+OTP —
+// mesmo padrão de código do reset acima, reaproveitando customerPasswordResets.
+async function customerRequestLoginCode(whatsapp: string, name: string): Promise<void> {
+  const db = loadDb()
+  db.customers = db.customers ?? []
+  let c = db.customers.find((x) => x.whatsapp === whatsapp)
+  if (!c) {
+    c = { id: uid(), whatsapp, name: name.trim(), password: '', email: '', birthdate: '', createdAt: new Date().toISOString() }
+    db.customers.push(c)
+  }
+  const customerId = c.id
+  db.customerPasswordResets = db.customerPasswordResets ?? []
+  const code = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
+  db.customerPasswordResets.push({
+    id: uid(),
+    customerId,
+    code,
+    expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    used: false,
+  })
+  saveDb(db)
+  console.info(`[demo] WhatsApp para ${whatsapp}: seu código de acesso é ${code}`)
+}
+
+async function customerVerifyLoginCode(whatsapp: string, code: string): Promise<CustomerAuthResult> {
+  const db = loadDb()
+  const c = (db.customers ?? []).find((x) => x.whatsapp === whatsapp)
+  const reset = c && findValidResetCode(db, c.id, code)
+  if (!c || !reset) throw new ApiError(400, 'invalid code')
+  reset.used = true
+  saveDb(db)
+  return { token: `local-customer:${c.id}`, customer: toCustomer(c) }
+}
+
 // /cliente/favoritos, /cliente/cupons, /cliente/historico.
 
 async function customerToggleFavorite(token: string, productId: string): Promise<boolean> {
@@ -2917,6 +2951,8 @@ export const localApi = {
     verifyResetCode: customerVerifyResetCode,
     resetPassword: customerResetPassword,
     requestPasswordReset: customerRequestPasswordReset,
+    requestLoginCode: customerRequestLoginCode,
+    verifyLoginCode: customerVerifyLoginCode,
     toggleFavorite: customerToggleFavorite,
     listFavorites: customerListFavorites,
     listCoupons: customerListCoupons,

@@ -1713,6 +1713,84 @@ async fn create_customer_reset_code(state: &AppState, whatsapp_raw: &str, tenant
     Some((name.unwrap(), code.unwrap()))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RequestLoginCodeInput {
+    pub whatsapp: String,
+    pub name: String,
+    pub tenant: String,
+}
+
+/// Login único do cliente (mesmo formulário serve cadastro e login): nome +
+/// whatsapp + código OTP mandado pelo WhatsApp da loja. Espelha
+/// `request_customer_password_reset` — RPC `resolutoo._create_customer_login_code`
+/// (SECURITY DEFINER, só service_role) cria o cliente se não existir e gera
+/// o código de 6 dígitos; aqui é o único lugar que alcança a Evolution API
+/// pra mandar de verdade. Sempre 204 (mesmo se a loja não tiver WhatsApp
+/// configurado) -- nunca revela detalhe de erro pro cliente.
+pub async fn request_customer_login_code(
+    State(state): State<AppState>,
+    Json(input): Json<RequestLoginCodeInput>,
+) -> Result<StatusCode, AppError> {
+    let Ok(store) = tenant::tenant_for_slug(&state.pool, &input.tenant).await else {
+        return Ok(StatusCode::NO_CONTENT);
+    };
+    if let Some((name, code)) = create_customer_login_code(&state, &input.whatsapp, &input.name, &store.id).await {
+        let digits = whatsapp::digits_only(&input.whatsapp);
+        let msg = format!("Olá, {name}! Seu código de acesso é: {code}\n\nVale por 10 minutos.");
+        whatsapp::notify(&state, &store.whatsapp_instance, &digits, &msg);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn create_customer_login_code(state: &AppState, whatsapp_raw: &str, name: &str, tenant_id: &str) -> Option<(String, String)> {
+    if state.supabase_url.is_empty() || state.supabase_service_key.is_empty() {
+        tracing::warn!("customer login code: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not configured");
+        return None;
+    }
+    let base = state.supabase_url.trim_end_matches('/');
+    let url = format!("{base}/rest/v1/rpc/_create_customer_login_code");
+    let resp = match state
+        .http
+        .post(&url)
+        .header("apikey", state.supabase_service_key.as_str())
+        .header("Authorization", format!("Bearer {}", state.supabase_service_key))
+        .header("Content-Profile", "resolutoo")
+        .json(&serde_json::json!({ "p_whatsapp": whatsapp_raw, "p_name": name, "p_tenant_id": tenant_id }))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("customer login code: supabase request failed: {e}");
+            return None;
+        }
+    };
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        tracing::warn!("customer login code: supabase rpc returned {status}: {body}");
+        return None;
+    }
+    let rows: Vec<serde_json::Value> = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("customer login code: supabase response parse error: {e}");
+            return None;
+        }
+    };
+    let Some(row) = rows.first() else {
+        tracing::warn!("customer login code: supabase rpc returned an empty row set");
+        return None;
+    };
+    let name = row.get("customer_name").and_then(|v| v.as_str()).map(str::to_string);
+    let code = row.get("code").and_then(|v| v.as_str()).map(str::to_string);
+    if name.is_none() || code.is_none() {
+        tracing::warn!("customer login code: supabase rpc row missing customer_name/code: {row}");
+        return None;
+    }
+    Some((name.unwrap(), code.unwrap()))
+}
+
 // rebuild-marker PDV Pix force 2026-08-01T17:20:00.6543400-03:00
 
 #[derive(Debug, serde::Serialize)]

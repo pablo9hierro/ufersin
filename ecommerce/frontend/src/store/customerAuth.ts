@@ -10,9 +10,16 @@ const LEGACY_CUSTOMER_AUTH_KEY = 'sonset_customer_auth'
 
 migrateLocalStorageKey(LEGACY_CUSTOMER_AUTH_KEY, LOJA_CUSTOMER_AUTH_KEY)
 
+/** Sessão de login por OTP fica "fresca" por 1h -- passado isso, o
+ * formulário único (nome+whatsapp+otp) pede um código novo mesmo com token
+ * ainda válido no servidor (30 dias). Ver `isSessionFresh`. */
+const OTP_SESSION_FRESH_MS = 60 * 60 * 1000
+
 interface CustomerAuthState {
   token: string | null
   customer: Customer | null
+  /** Timestamp (ms) da última verificação de OTP bem-sucedida. */
+  verifiedAt: number | null
   /** Loja dona da sessão atual — sessão é global no localStorage
    * (`resolutoo_loja_customer_auth`), mas cada loja tem seus próprios
    * clientes. Sem isso, logar como cliente da loja A e depois visitar a
@@ -31,8 +38,9 @@ export const useCustomerAuth = create<CustomerAuthState>()(
     (set, get) => ({
       token: null,
       customer: null,
+      verifiedAt: null,
       tenantSlug: null,
-      login: (token, customer) => set({ token, customer, tenantSlug: get().tenantSlug }),
+      login: (token, customer) => set({ token, customer, verifiedAt: Date.now(), tenantSlug: get().tenantSlug }),
       logout: () => {
         set({ token: null, customer: null })
         try {
@@ -51,3 +59,11 @@ export const useCustomerAuth = create<CustomerAuthState>()(
     { name: LOJA_CUSTOMER_AUTH_KEY }
   )
 )
+
+/** True quando o cliente tem token E verificou OTP há menos de 1h — só
+ * nesse caso o formulário único pode pular direto pro checkout sem pedir
+ * um código novo. */
+export function isCustomerSessionFresh(): boolean {
+  const { token, verifiedAt } = useCustomerAuth.getState()
+  return !!token && !!verifiedAt && Date.now() - verifiedAt < OTP_SESSION_FRESH_MS
+}

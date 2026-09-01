@@ -19,4 +19,7 @@ export const customerAuthEndpoint = {
   requestPasswordReset: async (whatsapp: string) => api.customerAuth.requestPasswordReset(whatsapp),
   verifyResetCode: async (whatsapp: string, code: string) => api.customerAuth.verifyResetCode(whatsapp, code),
   resetPassword: async (whatsapp: string, code: string, newPassword: string) => api.customerAuth.resetPassword(whatsapp, code, newPassword),
+  requestLoginCode: async (whatsapp: string, name: string) => api.customerAuth.requestLoginCode(whatsapp, name),
+  verifyLoginCode: async (whatsapp: string, code: string) =>
+    validate(CustomerAuthResultSchema, await api.customerAuth.verifyLoginCode(whatsapp, code), 'customerAuth.verifyLoginCode'),
 }
