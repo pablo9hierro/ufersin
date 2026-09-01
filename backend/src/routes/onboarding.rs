@@ -65,6 +65,9 @@ pub struct OnboardingInput {
     /// Loja vai precisar de conta de usuário vendedor (PDV).
     #[serde(default)]
     pub precisa_vendedor: bool,
+    /// Quando oferece serviço, também atende a domicílio (além de presencial).
+    #[serde(default)]
+    pub atende_domicilio: bool,
 
     // WhatsApp: só a flag aqui; QR connect fica na etapa 2 do painel da loja.
     #[serde(default = "default_true")]
@@ -269,7 +272,8 @@ pub async fn onboarding(
          facebook = $22, apenas_retirada = $23, pagamento_na_retirada = $24, \
          entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, \
          coleta_gratis = $28, entrega_reparado_gratis = $29, oferece_servicos = $30, \
-         precisa_tela_cozinha = $31, tem_motoboy_proprio = $32, precisa_vendedor = $33, updated_at = now() \
+         precisa_tela_cozinha = $31, tem_motoboy_proprio = $32, precisa_vendedor = $33, \
+         atende_domicilio = $34, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -309,6 +313,7 @@ pub async fn onboarding(
     .bind(body.precisa_tela_cozinha)
     .bind(body.tem_motoboy_proprio)
     .bind(body.precisa_vendedor)
+    .bind(body.oferece_servicos && body.atende_domicilio)
     .execute(&state.pool)
     .await?;
 
@@ -507,6 +512,8 @@ pub struct EditOnboardingInput {
     pub cart_fab_style: Option<String>,
     #[serde(default)]
     pub cart_fab_animate: Option<bool>,
+    #[serde(default)]
+    pub atende_domicilio: Option<bool>,
 }
 
 /// Edição pós-onboarding (/meu-plano) — atualiza os mesmos campos, mas
@@ -641,6 +648,9 @@ pub async fn editar_onboarding(
          precisa_tela_cozinha = COALESCE($35, precisa_tela_cozinha), \
          tem_motoboy_proprio = COALESCE($36, tem_motoboy_proprio), \
          precisa_vendedor = COALESCE($37, precisa_vendedor), \
+         atende_domicilio = CASE \
+           WHEN COALESCE($34, oferece_servicos) = false THEN false \
+           ELSE COALESCE($38, atende_domicilio) END, \
          onboarding_status = CASE \
            WHEN onboarding_status = 'aguardando_onboarding' THEN 'provisionado' \
            ELSE onboarding_status END, \
@@ -693,6 +703,7 @@ pub async fn editar_onboarding(
     .bind(body.precisa_tela_cozinha)
     .bind(body.tem_motoboy_proprio)
     .bind(body.precisa_vendedor)
+    .bind(body.atende_domicilio)
     .execute(&state.pool)
     .await?;
 
@@ -1087,6 +1098,7 @@ pub struct TenantConfigResponse {
     pub landing_hero_image_url: Option<String>,
     pub cart_fab_style: String,
     pub cart_fab_animate: bool,
+    pub atende_domicilio: bool,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -1126,6 +1138,7 @@ struct TenantConfigRow {
     landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
+    atende_domicilio: bool,
 }
 
 /// Endpoint PÚBLICO (sem auth) que o motor de e-commerce (ecommerce/
@@ -1157,7 +1170,8 @@ pub async fn tenant_config(
          COALESCE(tem_motoboy_proprio, false) as tem_motoboy_proprio, \
          COALESCE(precisa_vendedor, false) as precisa_vendedor, landing_hero_image_url, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
-         COALESCE(cart_fab_animate, false) as cart_fab_animate \
+         COALESCE(cart_fab_animate, false) as cart_fab_animate, \
+         COALESCE(atende_domicilio, false) as atende_domicilio \
          FROM subscribers WHERE slug = $1 AND status = 'ativo'",
     )
     .bind(&slug)
@@ -1213,5 +1227,6 @@ pub async fn tenant_config(
             _ => "sacola".to_string(),
         },
         cart_fab_animate: row.cart_fab_animate,
+        atende_domicilio: row.oferece_servicos && row.atende_domicilio,
     }))
 }

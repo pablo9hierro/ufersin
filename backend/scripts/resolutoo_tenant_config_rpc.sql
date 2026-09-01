@@ -25,7 +25,8 @@ ALTER TABLE IF EXISTS resolutoo.subscribers
   ADD COLUMN IF NOT EXISTS tem_motoboy_proprio boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS precisa_vendedor boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS cart_fab_style text NOT NULL DEFAULT 'sacola',
-  ADD COLUMN IF NOT EXISTS cart_fab_animate boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS cart_fab_animate boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS atende_domicilio boolean NOT NULL DEFAULT false;
 
 CREATE OR REPLACE FUNCTION resolutoo.get_public_tenant_config(p_slug text)
 RETURNS json
@@ -73,7 +74,9 @@ AS $$
     'tem_motoboy_proprio', coalesce(tem_motoboy_proprio, false),
     'precisa_vendedor', coalesce(precisa_vendedor, false),
     'cart_fab_style', coalesce(nullif(cart_fab_style, ''), 'sacola'),
-    'cart_fab_animate', coalesce(cart_fab_animate, false)
+    'cart_fab_animate', coalesce(cart_fab_animate, false),
+    -- Só faz sentido atender a domicílio pra quem oferece serviço.
+    'atende_domicilio', coalesce(oferece_servicos, false) AND coalesce(atende_domicilio, false)
   )
   FROM resolutoo.subscribers
   WHERE lower(slug) = lower(p_slug)
@@ -116,7 +119,8 @@ CREATE OR REPLACE FUNCTION resolutoo.set_my_sale_prefs(
   p_entrega_somente_pix boolean DEFAULT NULL,
   p_pagamento_manual boolean DEFAULT NULL,
   p_coleta_gratis boolean DEFAULT NULL,
-  p_entrega_reparado_gratis boolean DEFAULT NULL
+  p_entrega_reparado_gratis boolean DEFAULT NULL,
+  p_atende_domicilio boolean DEFAULT NULL
 )
 RETURNS json
 LANGUAGE plpgsql
@@ -133,6 +137,7 @@ DECLARE
   v_pag_man boolean;
   v_coleta_gratis boolean;
   v_entrega_gratis boolean;
+  v_domicilio boolean;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'não autenticado';
@@ -151,12 +156,13 @@ BEGIN
       THEN false ELSE COALESCE(p_coleta_gratis, coleta_gratis) END,
     entrega_reparado_gratis = CASE WHEN COALESCE(p_apenas_retirada, apenas_retirada)
       THEN false ELSE COALESCE(p_entrega_reparado_gratis, entrega_reparado_gratis) END,
+    atende_domicilio = COALESCE(p_atende_domicilio, atende_domicilio),
     updated_at = now()
   WHERE id = auth.uid()::text
   RETURNING slug, apenas_retirada, vende_mais_18, vender_externamente, pagamento_na_retirada,
-            entrega_somente_pix, pagamento_manual, coleta_gratis, entrega_reparado_gratis
+            entrega_somente_pix, pagamento_manual, coleta_gratis, entrega_reparado_gratis, atende_domicilio
     INTO v_slug, v_apenas, v_mais18, v_ext, v_pag_ret, v_ent_pix, v_pag_man,
-         v_coleta_gratis, v_entrega_gratis;
+         v_coleta_gratis, v_entrega_gratis, v_domicilio;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'assinante não encontrado';
   END IF;
@@ -171,6 +177,7 @@ BEGIN
     'pagamento_manual', v_pag_man,
     'coleta_gratis', v_coleta_gratis,
     'entrega_reparado_gratis', v_entrega_gratis,
+    'atende_domicilio', v_domicilio,
     'updated', true
   );
 END;
@@ -185,4 +192,5 @@ DROP FUNCTION IF EXISTS resolutoo.set_my_sale_prefs(boolean, boolean, boolean, b
 DROP FUNCTION IF EXISTS resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean, boolean);
 DROP FUNCTION IF EXISTS resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean, boolean, boolean);
 DROP FUNCTION IF EXISTS resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean, boolean, boolean, boolean);
-GRANT EXECUTE ON FUNCTION resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean) TO authenticated, service_role;
+DROP FUNCTION IF EXISTS resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean);
+GRANT EXECUTE ON FUNCTION resolutoo.set_my_sale_prefs(boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean) TO authenticated, service_role;

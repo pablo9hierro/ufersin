@@ -268,6 +268,8 @@ export interface MeResponse {
   refund_eligible_on_cancel: boolean
   /** "ecommerce" (padrão) | "eletronicos" — decide onboarding e site. */
   vertical: 'ecommerce' | 'eletronicos'
+  /** Quando oferece_servicos, também atende a domicílio (além de presencial). */
+  atende_domicilio: boolean
 }
 
 export type ContractKind = 'platform_subscription' | 'checkout_compra_normal' | 'checkout_mais18'
@@ -318,6 +320,7 @@ export interface OnboardingInput {
   precisa_tela_cozinha?: boolean
   tem_motoboy_proprio?: boolean
   precisa_vendedor?: boolean
+  atende_domicilio?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento?: FormaPagamento
   plataforma_pagamento?: PlataformaPagamento
@@ -365,6 +368,7 @@ export interface EditOnboardingInput {
   precisa_tela_cozinha?: boolean
   tem_motoboy_proprio?: boolean
   precisa_vendedor?: boolean
+  atende_domicilio?: boolean
   landing_hero_image_url?: string
   cart_fab_style?: 'sacola' | 'cart_icon'
   cart_fab_animate?: boolean

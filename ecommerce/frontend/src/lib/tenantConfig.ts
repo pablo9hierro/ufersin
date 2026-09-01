@@ -67,6 +67,9 @@ export interface TenantConfig {
   tem_motoboy_proprio: boolean
   /** Loja vai precisar de conta de usuário vendedor (PDV). */
   precisa_vendedor: boolean
+  /** Quando `oferece_servicos`, também atende a domicílio (além de presencial
+   * na loja) — libera geolocalização no checkout de serviço (vitrine + Assistente IA). */
+  atende_domicilio: boolean
   /** Essential landing hero image (Management/Premium use promo banners instead). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -179,6 +182,7 @@ const DEFAULT_CONFIG: TenantConfig = {
   precisa_tela_cozinha: false,
   tem_motoboy_proprio: false,
   precisa_vendedor: false,
+  atende_domicilio: false,
   landing_hero_image_url: null,
   cart_fab_style: 'sacola',
   cart_fab_animate: false,
@@ -411,6 +415,7 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     precisa_tela_cozinha: Boolean(data.precisa_tela_cozinha),
     tem_motoboy_proprio: Boolean(data.tem_motoboy_proprio),
     precisa_vendedor: Boolean(data.precisa_vendedor),
+    atende_domicilio: Boolean(data.oferece_servicos) && Boolean(data.atende_domicilio),
     landing_hero_image_url: data.landing_hero_image_url ? String(data.landing_hero_image_url) : null,
     cart_fab_style: fab,
     cart_fab_animate: Boolean(data.cart_fab_animate),

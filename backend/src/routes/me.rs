@@ -66,6 +66,7 @@ struct SubscriberRow {
     cart_fab_style: String,
     cart_fab_animate: bool,
     vertical: String,
+    atende_domicilio: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -149,6 +150,9 @@ pub struct MeResponse {
     /// "ecommerce" | "eletronicos" — decide se "Ver minha loja" no painel
     /// aponta pro motor genérico ou pro módulo vrtech.
     pub vertical: String,
+    /// Quando `oferece_servicos`, lojista também atende a domicílio (além
+    /// de presencial na loja) — libera geolocalização no checkout de serviço.
+    pub atende_domicilio: bool,
 }
 
 pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<MeResponse>, AppError> {
@@ -178,7 +182,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 COALESCE(precisa_vendedor, false) as precisa_vendedor, landing_hero_image_url,
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
                 COALESCE(cart_fab_animate, false) as cart_fab_animate,
-                COALESCE(vertical, 'ecommerce') as vertical
+                COALESCE(vertical, 'ecommerce') as vertical,
+                COALESCE(atende_domicilio, false) as atende_domicilio
          FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
@@ -270,6 +275,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         cart_fab_animate: row.cart_fab_animate,
         refund_eligible_on_cancel,
         vertical: row.vertical,
+        atende_domicilio: row.oferece_servicos && row.atende_domicilio,
     }))
 }
 

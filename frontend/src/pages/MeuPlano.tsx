@@ -148,6 +148,7 @@ export default function MeuPlano() {
   const [apenasRetirada, setApenasRetirada] = useState(false)
   const [ofereceServicos, setOfereceServicos] = useState(false)
   const [precisaTelaCozinha, setPrecisaTelaCozinha] = useState(false)
+  const [atendeDomicilio, setAtendeDomicilio] = useState(false)
   const [coletaGratis, setColetaGratis] = useState(false)
   const [entregaReparadoGratis, setEntregaReparadoGratis] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
@@ -228,6 +229,7 @@ export default function MeuPlano() {
         setApenasRetirada(!!m.apenas_retirada)
         setOfereceServicos(!!m.oferece_servicos)
         setPrecisaTelaCozinha(!!m.precisa_tela_cozinha)
+        setAtendeDomicilio(!!m.atende_domicilio)
         setTemMotoboyProprio(!!m.tem_motoboy_proprio)
         setPrecisaVendedor(!!m.precisa_vendedor)
         setColetaGratis(!!m.coleta_gratis)
@@ -260,6 +262,7 @@ export default function MeuPlano() {
                 pagamento_manual?: boolean
                 vende_mais_18?: boolean
                 vender_externamente?: boolean
+                atende_domicilio?: boolean
               }
               if (typeof row.apenas_retirada === 'boolean') setApenasRetirada(row.apenas_retirada)
               if (typeof row.coleta_gratis === 'boolean') setColetaGratis(row.coleta_gratis)
@@ -268,6 +271,7 @@ export default function MeuPlano() {
               if (typeof row.pagamento_manual === 'boolean') setPagamentoManual(row.pagamento_manual)
               if (typeof row.vende_mais_18 === 'boolean') setVendeMais18(row.vende_mais_18)
               if (typeof row.vender_externamente === 'boolean') setVenderExternamente(row.vender_externamente)
+              if (typeof row.atende_domicilio === 'boolean') setAtendeDomicilio(row.atende_domicilio)
             }
           } catch {
             /* ignore — keep /api/me values */
@@ -548,7 +552,8 @@ export default function MeuPlano() {
         fields.vende_mais_18 != null ||
         fields.vender_externamente != null ||
         fields.coleta_gratis != null ||
-        fields.entrega_reparado_gratis != null
+        fields.entrega_reparado_gratis != null ||
+        fields.atende_domicilio != null
       ) {
         const { error: prefsErr } = await supabase.schema('resolutoo').rpc('set_my_sale_prefs', {
           p_apenas_retirada: fields.apenas_retirada ?? null,
@@ -559,6 +564,7 @@ export default function MeuPlano() {
           p_pagamento_manual: fields.pagamento_manual ?? null,
           p_coleta_gratis: fields.coleta_gratis ?? null,
           p_entrega_reparado_gratis: fields.entrega_reparado_gratis ?? null,
+          p_atende_domicilio: fields.atende_domicilio ?? null,
         })
         if (prefsErr) console.warn('set_my_sale_prefs:', prefsErr.message)
       }
@@ -755,11 +761,17 @@ export default function MeuPlano() {
       apenas_retirada: apenasRetirada,
       // Eletrônica sempre oferece serviço (sem checkbox, não pode ser diferente).
       oferece_servicos: me.vertical === 'eletronicos' ? true : ofereceServicos,
+      // Só faz sentido atender a domicílio pra quem oferece serviço.
+      atende_domicilio: (me.vertical === 'eletronicos' ? true : ofereceServicos) && atendeDomicilio,
       // Eletrônica não tem conceito de cozinha (não é F&B).
       precisa_tela_cozinha: me.vertical === 'eletronicos' ? false : precisaTelaCozinha,
       tem_motoboy_proprio: !apenasRetirada && temMotoboyProprio,
       precisa_vendedor: precisaVendedor,
-      pagamento_na_retirada: pagamentoNaRetirada,
+      // Pagar na retirada não depende de motoboy (é o cliente vindo na loja);
+      // pagar na entrega só é seguro com motoboy próprio (terceiro/99pop não
+      // carrega maquininha/troco da loja) — loja com entrega e sem motoboy
+      // próprio nunca pode marcar isso.
+      pagamento_na_retirada: apenasRetirada || temMotoboyProprio ? pagamentoNaRetirada : false,
       entrega_somente_pix: entregaSomentePix,
       pagamento_manual: pagamentoManual,
       // Loja sem deslocamento não tem cortesia de deslocamento (o backend
@@ -1000,7 +1012,42 @@ export default function MeuPlano() {
                     </span>
                   </label>
                   )}
-                  <h3 className="text-[11px] font-bold text-uf-silver-dim/70 uppercase tracking-wider pt-2">Serviço e entrega</h3>
+                  {me.vertical !== 'eletronicos' && (
+                    <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={ofereceServicos}
+                        onChange={(e) => {
+                          const checked = e.target.checked
+                          setOfereceServicos(checked)
+                          if (!checked) setAtendeDomicilio(false)
+                        }}
+                        className="w-4 h-4 mt-0.5"
+                        data-testid="pref-oferece-servicos"
+                      />
+                      <span className="text-xs text-uf-silver-dim">
+                        <span className="block text-uf-silver font-semibold mb-0.5">Ofereço serviços</span>
+                        Além de produtos, sua vitrine ganha um botão "Ver serviços" e o painel ganha a aba de cadastro de serviços.
+                      </span>
+                    </label>
+                  )}
+                  {me.vertical !== 'eletronicos' && ofereceServicos && (
+                    <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer ml-4">
+                      <input
+                        type="checkbox"
+                        checked={atendeDomicilio}
+                        onChange={(e) => setAtendeDomicilio(e.target.checked)}
+                        className="w-4 h-4 mt-0.5"
+                        data-testid="pref-atende-domicilio"
+                      />
+                      <span className="text-xs text-uf-silver-dim">
+                        <span className="block text-uf-silver font-semibold mb-0.5">Também atendo a domicílio</span>
+                        O checkout de serviço (vitrine e Assistente IA) passa a oferecer "ir até o cliente" com
+                        geolocalização, além do atendimento presencial na loja. Desmarcado, o serviço é só presencial.
+                      </span>
+                    </label>
+                  )}
+                  <h3 className="text-[11px] font-bold text-uf-silver-dim/70 uppercase tracking-wider pt-2">Pagamentos e entregas</h3>
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1013,7 +1060,7 @@ export default function MeuPlano() {
                       <span className="block text-uf-silver font-semibold mb-0.5">
                         {me.vertical === 'eletronicos'
                           ? 'Apenas retirada/local — não ofereço serviço de deslocamento'
-                          : 'Não ofereço serviço de entrega — retirada obrigatória na loja'}
+                          : 'Só retirada — não faço entrega'}
                       </span>
                       {me.vertical === 'eletronicos'
                         ? 'Sem coleta de aparelho, sem entrega de produto e sem entrega de aparelho reparado. O cliente leva e retira na loja.'
@@ -1024,49 +1071,33 @@ export default function MeuPlano() {
                     <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={ofereceServicos}
-                        onChange={(e) => setOfereceServicos(e.target.checked)}
+                        checked={!apenasRetirada}
+                        onChange={(e) => setApenasRetirada(!e.target.checked)}
                         className="w-4 h-4 mt-0.5"
-                        data-testid="pref-oferece-servicos"
+                        data-testid="pref-faco-entrega"
                       />
                       <span className="text-xs text-uf-silver-dim">
-                        <span className="block text-uf-silver font-semibold mb-0.5">Ofereço serviços</span>
-                        Além de produtos, sua vitrine ganha um botão "Ver serviços" e o painel ganha a aba de cadastro de serviços.
+                        <span className="block text-uf-silver font-semibold mb-0.5">
+                          Faço entrega (própria ou terceirizada)
+                        </span>
+                        Marcar aqui desmarca "Só retirada" automaticamente, e vice-versa — são opostos.
                       </span>
                     </label>
                   )}
-                  {!apenasRetirada && (
-                    <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={temMotoboyProprio}
-                        onChange={(e) => setTemMotoboyProprio(e.target.checked)}
-                        className="w-4 h-4 mt-0.5"
-                        data-testid="pref-tem-motoboy-proprio"
-                      />
-                      <span className="text-xs text-uf-silver-dim">
-                        <span className="block text-uf-silver font-semibold mb-0.5">Tenho motoboy próprio para entrega</span>
-                        Pedidos prontos caem na fila do motoboy. Se desmarcado, você chama um motoboy/99pop terceiro e o card do pedido mostra a localização do cliente.
-                      </span>
-                    </label>
-                  )}
-                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={precisaVendedor}
-                      onChange={(e) => setPrecisaVendedor(e.target.checked)}
-                      className="w-4 h-4 mt-0.5"
-                      data-testid="pref-precisa-vendedor"
-                    />
-                    <span className="text-xs text-uf-silver-dim">
-                      <span className="block text-uf-silver font-semibold mb-0.5">Vou precisar de usuário vendedor (PDV)</span>
-                      Libera a tela de cadastro de funcionário e o login separado de vendedor pra bater venda no PDV.
-                    </span>
-                  </label>
-                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                  <label
+                    className={`uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 ${
+                      apenasRetirada || temMotoboyProprio ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+                    }`}
+                    title={
+                      !apenasRetirada && !temMotoboyProprio
+                        ? 'Só disponível se você tem motoboy próprio (aba Funcionários) — sem alguém da sua loja pra fazer a cobrança, não dá pra receber pagamento na entrega.'
+                        : undefined
+                    }
+                  >
                     <input
                       type="checkbox"
                       checked={pagamentoNaRetirada}
+                      disabled={!apenasRetirada && !temMotoboyProprio}
                       onChange={(e) => setPagamentoNaRetirada(e.target.checked)}
                       className="w-4 h-4 mt-0.5"
                       data-testid="pref-pagamento-na-retirada"
@@ -1074,6 +1105,11 @@ export default function MeuPlano() {
                     <span className="text-xs text-uf-silver-dim">
                       <span className="block text-uf-silver font-semibold mb-0.5">Aceito pagamento na retirada/entrega</span>
                       Cliente pode pagar na hora (maquininha de cartão é por sua conta). Se desmarcado, o pagamento é sempre antecipado.
+                      {!apenasRetirada && !temMotoboyProprio && (
+                        <span className="block text-amber-400/80 mt-1">
+                          Precisa de motoboy próprio pra cobrar na entrega — marque em Funcionários.
+                        </span>
+                      )}
                     </span>
                   </label>
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
@@ -1125,25 +1161,89 @@ export default function MeuPlano() {
                       </label>
                     </>
                   )}
+                  <h3 className="text-[11px] font-bold text-uf-silver-dim/70 uppercase tracking-wider pt-2">Funcionários</h3>
+                  <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!temMotoboyProprio && !precisaVendedor && !precisaTelaCozinha}
+                      onChange={(e) => {
+                        if (!e.target.checked) return
+                        setTemMotoboyProprio(false)
+                        setPrecisaVendedor(false)
+                        setPrecisaTelaCozinha(false)
+                      }}
+                      className="w-4 h-4 mt-0.5"
+                      data-testid="pref-nenhum-funcionario"
+                    />
+                    <span className="text-xs text-uf-silver-dim">
+                      <span className="block text-uf-silver font-semibold mb-0.5">Não tenho funcionários</span>
+                      Tudo será administrado no painel da loja. Marcar aqui desmarca e trava os checkboxes abaixo.
+                    </span>
+                  </label>
+                  {(() => {
+                    const nenhum = !temMotoboyProprio && !precisaVendedor && !precisaTelaCozinha
+                    const tooltip = nenhum ? 'Desmarque "Não tenho funcionários" pra liberar esta opção.' : undefined
+                    return (
+                      <>
+                        <label
+                          className={`uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 ${nenhum ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                          title={tooltip}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={precisaVendedor}
+                            disabled={nenhum}
+                            onChange={(e) => setPrecisaVendedor(e.target.checked)}
+                            className="w-4 h-4 mt-0.5"
+                            data-testid="pref-precisa-vendedor"
+                          />
+                          <span className="text-xs text-uf-silver-dim">
+                            <span className="block text-uf-silver font-semibold mb-0.5">Tenho vendedor/garçom (PDV)</span>
+                            Libera a tela de cadastro de funcionário e o login separado de vendedor pra bater venda no PDV.
+                          </span>
+                        </label>
+                        {me.vertical !== 'eletronicos' && (
+                          <label
+                            className={`uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 ${nenhum ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                            title={tooltip}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={precisaTelaCozinha}
+                              disabled={nenhum}
+                              onChange={(e) => setPrecisaTelaCozinha(e.target.checked)}
+                              className="w-4 h-4 mt-0.5"
+                              data-testid="pref-precisa-tela-cozinha"
+                            />
+                            <span className="text-xs text-uf-silver-dim">
+                              <span className="block text-uf-silver font-semibold mb-0.5">Tenho usuário de cozinha</span>
+                              Pedidos deixam de cair em Pedidos e passam direto pra tela de Cozinha, onde a equipe avança o status.
+                            </span>
+                          </label>
+                        )}
+                        {!apenasRetirada && (
+                          <label
+                            className={`uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 ${nenhum ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                            title={tooltip}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={temMotoboyProprio}
+                              disabled={nenhum}
+                              onChange={(e) => setTemMotoboyProprio(e.target.checked)}
+                              className="w-4 h-4 mt-0.5"
+                              data-testid="pref-tem-motoboy-proprio"
+                            />
+                            <span className="text-xs text-uf-silver-dim">
+                              <span className="block text-uf-silver font-semibold mb-0.5">Tenho motoboy próprio para entrega</span>
+                              Pedidos prontos caem na fila do motoboy. Se desmarcado, você chama um motoboy/99pop terceiro e o card do pedido mostra a localização do cliente.
+                            </span>
+                          </label>
+                        )}
+                      </>
+                    )
+                  })()}
                   </>
-                  )}
-                  {me.vertical !== 'eletronicos' && (
-                    <>
-                      <h3 className="text-[11px] font-bold text-uf-silver-dim/70 uppercase tracking-wider pt-2">Cozinha</h3>
-                      <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={precisaTelaCozinha}
-                          onChange={(e) => setPrecisaTelaCozinha(e.target.checked)}
-                          className="w-4 h-4 mt-0.5"
-                          data-testid="pref-precisa-tela-cozinha"
-                        />
-                        <span className="text-xs text-uf-silver-dim">
-                          <span className="block text-uf-silver font-semibold mb-0.5">Vou precisar de uma tela para cozinha</span>
-                          Pedidos deixam de cair em Pedidos e passam direto pra tela de Cozinha, onde a equipe avança o status.
-                        </span>
-                      </label>
-                    </>
                   )}
                   <button type="submit" disabled={saving} className="btn-primary w-full py-3" data-testid="salvar-preferencias">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -1605,5 +1705,10 @@ function mapFieldsToMe(prev: MeResponse, fields: Parameters<typeof api.editarOnb
   if (fields.pagamento_na_retirada != null) patch.pagamento_na_retirada = fields.pagamento_na_retirada
   if (fields.entrega_somente_pix != null) patch.entrega_somente_pix = fields.entrega_somente_pix
   if (fields.pagamento_manual != null) patch.pagamento_manual = fields.pagamento_manual
+  if (fields.oferece_servicos != null) patch.oferece_servicos = fields.oferece_servicos
+  if (fields.precisa_tela_cozinha != null) patch.precisa_tela_cozinha = fields.precisa_tela_cozinha
+  if (fields.tem_motoboy_proprio != null) patch.tem_motoboy_proprio = fields.tem_motoboy_proprio
+  if (fields.precisa_vendedor != null) patch.precisa_vendedor = fields.precisa_vendedor
+  if (fields.atende_domicilio != null) patch.atende_domicilio = fields.atende_domicilio
   return { ...prev, ...patch }
 }
