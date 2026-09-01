@@ -15,6 +15,7 @@ import type {
   CampanhaOrientation,
   CarouselStyle,
   Category,
+  Comanda,
   CozinhaUser,
   Coupon,
   CouponGrant,
@@ -1585,6 +1586,23 @@ const remoteApi = {
       isRailwayAdminJwt()
         ? railwayAdmin<VendedorRelatorio>('/api/pdv/relatorio')
         : rpc<VendedorRelatorio>('vendedor_relatorio', { p_token: adminToken() }),
+    comandas: {
+      list: () => railwayAdmin<Comanda[]>('/api/pdv/comandas'),
+      create: (label: string) =>
+        railwayAdmin<Comanda>('/api/pdv/comandas', { method: 'POST', body: JSON.stringify({ label }) }),
+      get: (id: string) => railwayAdmin<Comanda>(`/api/pdv/comandas/${id}`),
+      addItem: (id: string, productId: string, quantity: number) =>
+        railwayAdmin<Comanda>(`/api/pdv/comandas/${id}/items`, {
+          method: 'POST',
+          body: JSON.stringify({ product_id: productId, quantity }),
+        }),
+      removeItem: (id: string, itemId: string) =>
+        railwayAdmin<Comanda>(`/api/pdv/comandas/${id}/items/${itemId}`, { method: 'DELETE' }),
+      pay: (
+        id: string,
+        payload: { payment_method: PaymentMethod; card_payment_mode?: 'nfc' | 'link' | 'transparente'; card_type?: string; card_installments?: number },
+      ) => railwayAdmin<Order>(`/api/pdv/comandas/${id}/pay`, { method: 'POST', body: JSON.stringify(payload) }),
+    },
   },
   // Autoatendimento de pagamento fixo (motoboy ou vendedor logado).
   payroll: {

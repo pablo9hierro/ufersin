@@ -2969,6 +2969,14 @@ export const localApi = {
     notifyPixCharge: async () => {},
     notifyCardCharge: async () => {},
     relatorio: vendedorRelatorio,
+    comandas: {
+      list: async () => [],
+      create: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+      get: async () => { throw new ApiError(404, 'not found') },
+      addItem: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+      removeItem: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+      pay: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+    },
   },
   admin: {
     categories: { list: adminListCategories, create: createCategory, update: updateCategory, delete: deleteCategory },

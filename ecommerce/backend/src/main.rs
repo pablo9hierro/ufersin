@@ -512,6 +512,17 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/pdv/services", get(routes::pdv::list_services))
         .route("/api/pdv/sales", post(routes::pdv::create_sale))
         .route("/api/pdv/relatorio", get(routes::pdv::relatorio))
+        .route(
+            "/api/pdv/comandas",
+            get(routes::pdv::list_comandas).post(routes::pdv::create_comanda),
+        )
+        .route("/api/pdv/comandas/{id}", get(routes::pdv::get_comanda))
+        .route("/api/pdv/comandas/{id}/items", post(routes::pdv::add_comanda_item))
+        .route(
+            "/api/pdv/comandas/{id}/items/{item_id}",
+            axum::routing::delete(routes::pdv::remove_comanda_item),
+        )
+        .route("/api/pdv/comandas/{id}/pay", post(routes::pdv::pay_comanda))
         // Cliente deslogado que esqueceu a senha — dispara o código de 3
         // dígitos por WhatsApp (Evolution API só é alcançável daqui).
         .route(

@@ -14,6 +14,7 @@ export * from './vendedor'
 export * from './settings'
 export * from './financeiro'
 export * from './payroll'
+export * from './comanda'
 
 import type { OrderStatus } from './shared'
 

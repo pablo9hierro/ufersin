@@ -632,6 +632,66 @@ pub struct PdvSaleItemInput {
     pub quantity: i64,
 }
 
+// ---------- Comandas ----------
+
+#[derive(Debug, sqlx::FromRow, Serialize)]
+pub struct ComandaRow {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    #[serde(skip)]
+    pub opened_by_role: String,
+    #[serde(skip)]
+    pub opened_by_id: String,
+    #[serde(skip)]
+    pub order_id: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(skip)]
+    pub closed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, sqlx::FromRow, Serialize)]
+pub struct ComandaItemRow {
+    pub id: String,
+    pub comanda_id: String,
+    pub product_id: String,
+    pub product_name: String,
+    pub unit_price: f64,
+    pub quantity: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ComandaDto {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub created_at: String,
+    pub items: Vec<ComandaItemRow>,
+    pub total: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateComandaInput {
+    pub label: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddComandaItemInput {
+    pub product_id: String,
+    pub quantity: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PayComandaInput {
+    pub payment_method: String,
+    #[serde(default)]
+    pub card_payment_mode: Option<String>,
+    #[serde(default)]
+    pub card_type: Option<String>,
+    #[serde(default)]
+    pub card_installments: Option<i64>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UpdateStatusInput {
     pub status: String,

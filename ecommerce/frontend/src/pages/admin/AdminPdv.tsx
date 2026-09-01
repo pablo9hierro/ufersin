@@ -29,6 +29,7 @@ import { Wrench } from 'lucide-react'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal, formatCashMask, formatTrocoLabel, computeTroco } from '../../lib/cashMask'
 import { PRODUCTION_CHECKOUT_ORIGIN } from '../../components/checkout/CardPaymentDialog'
+import ComandasSection from '../../components/pdv/ComandasSection'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -1157,6 +1158,8 @@ export default function AdminPdv() {
           </div>
         </div>
       )}
+
+      <ComandasSection products={products} />
     </div>
   )
 }

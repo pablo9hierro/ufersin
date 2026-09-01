@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::Json;
 use serde::Serialize;
 use uuid::Uuid;
@@ -6,7 +6,10 @@ use uuid::Uuid;
 use crate::auth::PdvUser;
 use crate::error::AppError;
 use crate::features::{self, Feature};
-use crate::models::{OrderDto, OrderRow, PdvSaleInput, ProductDto, ProductRow};
+use crate::models::{
+    AddComandaItemInput, ComandaDto, ComandaItemRow, ComandaRow, CreateComandaInput, OrderDto,
+    OrderRow, PayComandaInput, PdvSaleInput, PdvSaleItemInput, ProductDto, ProductRow,
+};
 use crate::orders_common;
 use crate::orders_common::fetch_order_dto;
 use crate::routes::public::{load_public_service_availability, PublicServiceDto};
@@ -64,6 +67,19 @@ pub async fn create_sale(
     PdvUser(claims): PdvUser,
     Json(input): Json<PdvSaleInput>,
 ) -> Result<Json<OrderDto>, AppError> {
+    let dto = create_sale_core(&state, &claims, input).await?;
+    Ok(Json(dto))
+}
+
+/// Núcleo de `create_sale` extraído pra ser reaproveitado por
+/// `pay_comanda` (fecha uma comanda virando exatamente essa mesma venda de
+/// balcão) — mesma validação de estoque/preço, mesmo Pix, mesma baixa de
+/// estoque, zero duplicação.
+pub(crate) async fn create_sale_core(
+    state: &AppState,
+    claims: &crate::auth::Claims,
+    input: PdvSaleInput,
+) -> Result<OrderDto, AppError> {
     features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
 
     if input.items.is_empty() {
@@ -294,7 +310,7 @@ pub async fn create_sale(
         .await?
         .ok_or_else(|| AppError::Internal("pdv sale vanished after insert".to_string()))?;
     tx.commit().await?;
-    Ok(Json(dto))
+    Ok(dto)
 }
 
 #[derive(Debug, Serialize)]
@@ -423,4 +439,253 @@ pub async fn relatorio(
         total_count,
         sales,
     }))
+}
+
+// ---------- Comandas ----------
+// Cliente consumindo no local, paga o total no final. "Pagar conta" fecha a
+// comanda virando exatamente uma venda de balcão normal (via
+// create_sale_core) -- mesmo estoque/Pix/relatório de sempre, sem duplicar
+// nada.
+
+async fn load_comanda_dto(
+    tx: &mut sqlx::PgTransaction<'_>,
+    tenant_id: &str,
+    comanda_id: &str,
+) -> Result<Option<ComandaDto>, AppError> {
+    let Some(comanda): Option<ComandaRow> = sqlx::query_as(
+        "SELECT * FROM comandas WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(comanda_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    else {
+        return Ok(None);
+    };
+    let items: Vec<ComandaItemRow> = sqlx::query_as(
+        "SELECT * FROM comanda_items WHERE tenant_id = $1 AND comanda_id = $2 ORDER BY created_at",
+    )
+    .bind(tenant_id)
+    .bind(comanda_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    let total = items.iter().map(|i| i.unit_price * i.quantity as f64).sum();
+    Ok(Some(ComandaDto {
+        id: comanda.id,
+        label: comanda.label,
+        status: comanda.status,
+        created_at: comanda.created_at.to_rfc3339(),
+        items,
+        total,
+    }))
+}
+
+pub async fn list_comandas(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+) -> Result<Json<Vec<ComandaDto>>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ComandaRow> = sqlx::query_as(
+        "SELECT * FROM comandas WHERE tenant_id = $1 AND status = 'aberta' ORDER BY created_at",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut result = Vec::with_capacity(rows.len());
+    for row in rows {
+        if let Some(dto) = load_comanda_dto(&mut tx, &claims.tenant_id, &row.id).await? {
+            result.push(dto);
+        }
+    }
+    tx.commit().await?;
+    Ok(Json(result))
+}
+
+pub async fn create_comanda(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+    Json(input): Json<CreateComandaInput>,
+) -> Result<Json<ComandaDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let label = input.label.trim().to_string();
+    if label.is_empty() {
+        return Err(AppError::BadRequest("label is required".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO comandas (id, tenant_id, label, opened_by_role, opened_by_id) VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(&label)
+    .bind(&claims.role)
+    .bind(&claims.sub)
+    .execute(&mut *tx)
+    .await?;
+    let dto = load_comanda_dto(&mut tx, &claims.tenant_id, &id)
+        .await?
+        .ok_or_else(|| AppError::Internal("comanda vanished after insert".to_string()))?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+pub async fn get_comanda(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+    Path(id): Path<String>,
+) -> Result<Json<ComandaDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let dto = load_comanda_dto(&mut tx, &claims.tenant_id, &id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("comanda not found".to_string()))?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+pub async fn add_comanda_item(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+    Path(id): Path<String>,
+    Json(input): Json<AddComandaItemInput>,
+) -> Result<Json<ComandaDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    if input.quantity <= 0 {
+        return Err(AppError::BadRequest("quantity must be positive".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let comanda: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM comandas WHERE tenant_id = $1 AND id = $2 AND status = 'aberta'",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if comanda.is_none() {
+        return Err(AppError::NotFound("comanda not found or already closed".to_string()));
+    }
+    let product: Option<(String, String, f64, i64)> = sqlx::query_as(
+        "SELECT id, name, price, active FROM products WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&input.product_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((product_id, product_name, price, active)) = product else {
+        return Err(AppError::BadRequest("product not found".to_string()));
+    };
+    if active == 0 {
+        return Err(AppError::BadRequest(format!("product {product_name} is not available")));
+    }
+    let item_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO comanda_items (id, tenant_id, comanda_id, product_id, product_name, unit_price, quantity) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(&item_id)
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(&product_id)
+    .bind(&product_name)
+    .bind(price)
+    .bind(input.quantity)
+    .execute(&mut *tx)
+    .await?;
+    let dto = load_comanda_dto(&mut tx, &claims.tenant_id, &id)
+        .await?
+        .ok_or_else(|| AppError::Internal("comanda vanished after item insert".to_string()))?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+pub async fn remove_comanda_item(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+    Path((id, item_id)): Path<(String, String)>,
+) -> Result<Json<ComandaDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    sqlx::query("DELETE FROM comanda_items WHERE tenant_id = $1 AND comanda_id = $2 AND id = $3")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .bind(&item_id)
+        .execute(&mut *tx)
+        .await?;
+    let dto = load_comanda_dto(&mut tx, &claims.tenant_id, &id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("comanda not found".to_string()))?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+/// Fecha a comanda: vira uma venda de balcão de verdade (create_sale_core —
+/// mesmo estoque/Pix/relatório da venda avulsa), depois marca a comanda como
+/// fechada e some da lista de comandas abertas. Múltiplos pagamentos por
+/// comanda (dividir a conta em Pix + cartão, por ex.) fica de fora por ora —
+/// um método só por fechamento, igual ao PDV avulso hoje.
+pub async fn pay_comanda(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+    Path(id): Path<String>,
+    Json(input): Json<PayComandaInput>,
+) -> Result<Json<OrderDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    if !matches!(input.payment_method.as_str(), "pix" | "cartao" | "dinheiro") {
+        return Err(AppError::BadRequest("invalid payment_method".to_string()));
+    }
+
+    let (label, items): (String, Vec<ComandaItemRow>) = {
+        let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+        let comanda: Option<(String,)> = sqlx::query_as(
+            "SELECT label FROM comandas WHERE tenant_id = $1 AND id = $2 AND status = 'aberta'",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((label,)) = comanda else {
+            return Err(AppError::NotFound("comanda not found or already closed".to_string()));
+        };
+        let items: Vec<ComandaItemRow> = sqlx::query_as(
+            "SELECT * FROM comanda_items WHERE tenant_id = $1 AND comanda_id = $2",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        (label, items)
+    };
+    if items.is_empty() {
+        return Err(AppError::BadRequest("comanda has no items".to_string()));
+    }
+
+    let sale_input = PdvSaleInput {
+        items: items
+            .iter()
+            .map(|i| PdvSaleItemInput { product_id: Some(i.product_id.clone()), service_id: None, quantity: i.quantity })
+            .collect(),
+        payment_method: input.payment_method,
+        customer_name: Some(label),
+        customer_whatsapp: None,
+        discount_type: None,
+        discount_value: None,
+        card_payment_mode: input.card_payment_mode,
+        card_type: input.card_type,
+        card_installments: input.card_installments,
+    };
+    let dto = create_sale_core(&state, &claims, sale_input).await?;
+
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    sqlx::query("UPDATE comandas SET status = 'fechada', order_id = $1, closed_at = now() WHERE tenant_id = $2 AND id = $3")
+        .bind(&dto.id)
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    Ok(Json(dto))
 }
