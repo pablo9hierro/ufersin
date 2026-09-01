@@ -36,6 +36,7 @@ import {
   type DiscountType,
   type PageDecorationElement,
   type PageKey,
+  type PaymentFrequency,
   type PaymentMethod,
   type ProductDiscount,
   type PromotionType,
@@ -101,8 +102,15 @@ export const adminEndpoint = {
   },
   motoboys: {
     list: async () => validateList(MotoboySchema, await api.admin.motoboys.list(), 'admin.motoboys.list'),
-    create: async (payload: { name: string; phone: string; email: string; password: string; whatsapp?: string }) =>
-      validate(MotoboySchema, await api.admin.motoboys.create(payload), 'admin.motoboys.create'),
+    create: async (payload: {
+      name: string
+      phone: string
+      email: string
+      password: string
+      whatsapp?: string
+      payment_frequency?: PaymentFrequency | null
+      payment_fixed_value?: number | null
+    }) => validate(MotoboySchema, await api.admin.motoboys.create(payload), 'admin.motoboys.create'),
     update: async (id: string, payload: Partial<MotoboySchema0> & { password?: string }) =>
       validate(MotoboySchema, await api.admin.motoboys.update(id, payload), 'admin.motoboys.update'),
     delete: async (id: string) => api.admin.motoboys.delete(id),
@@ -112,11 +120,27 @@ export const adminEndpoint = {
   },
   vendedores: {
     list: async () => validateList(VendedorSchema, await api.admin.vendedores.list(), 'admin.vendedores.list'),
-    create: async (payload: { name: string; email: string; password: string; commission_active?: boolean; commission_percent?: number }) =>
-      validate(VendedorSchema, await api.admin.vendedores.create(payload), 'admin.vendedores.create'),
+    create: async (payload: {
+      name: string
+      email: string
+      password: string
+      commission_active?: boolean
+      commission_percent?: number
+      payment_frequency?: PaymentFrequency | null
+      payment_fixed_value?: number | null
+    }) => validate(VendedorSchema, await api.admin.vendedores.create(payload), 'admin.vendedores.create'),
     update: async (
       id: string,
-      payload: { name: string; email: string; active: boolean; password?: string; commission_active?: boolean; commission_percent?: number }
+      payload: {
+        name: string
+        email: string
+        active: boolean
+        password?: string
+        commission_active?: boolean
+        commission_percent?: number
+        payment_frequency?: PaymentFrequency | null
+        payment_fixed_value?: number | null
+      }
     ) => validate(VendedorSchema, await api.admin.vendedores.update(id, payload), 'admin.vendedores.update'),
     delete: async (id: string) => api.admin.vendedores.delete(id),
     getPassword: async (id: string) => api.admin.vendedores.getPassword(id),

@@ -273,6 +273,8 @@ pub struct MotoboyRow {
     pub active: i64,
     #[allow(dead_code)]
     pub created_at: String,
+    pub payment_frequency: Option<String>,
+    pub payment_fixed_value: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -282,6 +284,8 @@ pub struct MotoboyDto {
     pub phone: String,
     pub email: String,
     pub active: bool,
+    pub payment_frequency: Option<String>,
+    pub payment_fixed_value: Option<f64>,
 }
 
 impl From<MotoboyRow> for MotoboyDto {
@@ -292,6 +296,8 @@ impl From<MotoboyRow> for MotoboyDto {
             phone: r.phone,
             email: r.email,
             active: r.active != 0,
+            payment_frequency: r.payment_frequency,
+            payment_fixed_value: r.payment_fixed_value,
         }
     }
 }
@@ -304,6 +310,10 @@ pub struct MotoboyInput {
     pub password: Option<String>,
     #[serde(default)]
     pub active: Option<bool>,
+    #[serde(default)]
+    pub payment_frequency: Option<String>,
+    #[serde(default)]
+    pub payment_fixed_value: Option<f64>,
 }
 
 // ---------- Vendedores ----------
@@ -320,6 +330,8 @@ pub struct VendedorRow {
     pub commission_percent: Option<f64>,
     #[allow(dead_code)]
     pub created_at: String,
+    pub payment_frequency: Option<String>,
+    pub payment_fixed_value: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -330,6 +342,8 @@ pub struct VendedorDto {
     pub active: bool,
     pub commission_active: bool,
     pub commission_percent: Option<f64>,
+    pub payment_frequency: Option<String>,
+    pub payment_fixed_value: Option<f64>,
 }
 
 impl From<VendedorRow> for VendedorDto {
@@ -341,6 +355,8 @@ impl From<VendedorRow> for VendedorDto {
             active: r.active != 0,
             commission_active: r.commission_active != 0,
             commission_percent: r.commission_percent,
+            payment_frequency: r.payment_frequency,
+            payment_fixed_value: r.payment_fixed_value,
         }
     }
 }
@@ -356,6 +372,10 @@ pub struct VendedorInput {
     pub commission_active: Option<bool>,
     #[serde(default)]
     pub commission_percent: Option<f64>,
+    #[serde(default)]
+    pub payment_frequency: Option<String>,
+    #[serde(default)]
+    pub payment_fixed_value: Option<f64>,
 }
 
 // ---------- Cozinha users ----------

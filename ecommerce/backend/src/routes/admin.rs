@@ -1055,8 +1055,8 @@ pub async fn create_motoboy(
     let active = input.active.unwrap_or(true);
 
     sqlx::query(
-        "INSERT INTO motoboys (id, tenant_id, name, phone, email, password_hash, active) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO motoboys (id, tenant_id, name, phone, email, password_hash, active, payment_frequency, payment_fixed_value) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -1065,6 +1065,8 @@ pub async fn create_motoboy(
     .bind(&input.email)
     .bind(&hash)
     .bind(active as i64)
+    .bind(&input.payment_frequency)
+    .bind(input.payment_fixed_value)
     .execute(&mut *tx)
     .await
     .map_err(|e| match e {
@@ -1096,14 +1098,17 @@ pub async fn update_motoboy(
     if let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) {
         let hash = hash_password(password)?;
         let result = sqlx::query(
-            "UPDATE motoboys SET name = $1, phone = $2, email = $3, password_hash = $4, active = $5 \
-             WHERE tenant_id = $6 AND id = $7",
+            "UPDATE motoboys SET name = $1, phone = $2, email = $3, password_hash = $4, active = $5, \
+             payment_frequency = $6, payment_fixed_value = $7 \
+             WHERE tenant_id = $8 AND id = $9",
         )
         .bind(&input.name)
         .bind(&input.phone)
         .bind(&input.email)
         .bind(&hash)
         .bind(active as i64)
+        .bind(&input.payment_frequency)
+        .bind(input.payment_fixed_value)
         .bind(&claims.tenant_id)
         .bind(&id)
         .execute(&mut *tx)
@@ -1113,12 +1118,15 @@ pub async fn update_motoboy(
         }
     } else {
         let result = sqlx::query(
-            "UPDATE motoboys SET name = $1, phone = $2, email = $3, active = $4 WHERE tenant_id = $5 AND id = $6",
+            "UPDATE motoboys SET name = $1, phone = $2, email = $3, active = $4, \
+             payment_frequency = $5, payment_fixed_value = $6 WHERE tenant_id = $7 AND id = $8",
         )
         .bind(&input.name)
         .bind(&input.phone)
         .bind(&input.email)
         .bind(active as i64)
+        .bind(&input.payment_frequency)
+        .bind(input.payment_fixed_value)
         .bind(&claims.tenant_id)
         .bind(&id)
         .execute(&mut *tx)
@@ -1184,15 +1192,20 @@ pub async fn create_vendedor(
     let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) else {
         return Err(AppError::BadRequest("password is required to create a vendedor".to_string()));
     };
+    // Comissão de vendedor é sempre obrigatória, mínimo 1% -- nunca opcional
+    // como era antes (commission_active passa a ser sempre true na prática).
+    let commission_percent = input.commission_percent.unwrap_or(0.0);
+    if commission_percent < 1.0 {
+        return Err(AppError::BadRequest("commission_percent must be at least 1".to_string()));
+    }
     let hash = hash_password(password)?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let id = Uuid::new_v4().to_string();
     let active = input.active.unwrap_or(true);
-    let commission_active = input.commission_active.unwrap_or(false);
 
     sqlx::query(
-        "INSERT INTO vendedores (id, tenant_id, name, email, password_hash, active, commission_active, commission_percent) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "INSERT INTO vendedores (id, tenant_id, name, email, password_hash, active, commission_active, commission_percent, payment_frequency, payment_fixed_value) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -1200,8 +1213,10 @@ pub async fn create_vendedor(
     .bind(&input.email)
     .bind(&hash)
     .bind(active as i64)
-    .bind(commission_active as i64)
-    .bind(input.commission_percent)
+    .bind(true as i64)
+    .bind(commission_percent)
+    .bind(&input.payment_frequency)
+    .bind(input.payment_fixed_value)
     .execute(&mut *tx)
     .await
     .map_err(|e| match e {
@@ -1227,22 +1242,28 @@ pub async fn update_vendedor(
     Json(input): Json<crate::models::VendedorInput>,
 ) -> Result<Json<crate::models::VendedorDto>, AppError> {
     features::require_feature(&state.pool, &claims.tenant_id, Feature::Motoboy).await?;
+    let commission_percent = input.commission_percent.unwrap_or(0.0);
+    if commission_percent < 1.0 {
+        return Err(AppError::BadRequest("commission_percent must be at least 1".to_string()));
+    }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let active = input.active.unwrap_or(true);
-    let commission_active = input.commission_active.unwrap_or(false);
 
     if let Some(password) = input.password.as_deref().filter(|p| !p.is_empty()) {
         let hash = hash_password(password)?;
         let result = sqlx::query(
             "UPDATE vendedores SET name = $1, email = $2, password_hash = $3, active = $4, \
-             commission_active = $5, commission_percent = $6 WHERE tenant_id = $7 AND id = $8",
+             commission_active = $5, commission_percent = $6, payment_frequency = $7, payment_fixed_value = $8 \
+             WHERE tenant_id = $9 AND id = $10",
         )
         .bind(&input.name)
         .bind(&input.email)
         .bind(&hash)
         .bind(active as i64)
-        .bind(commission_active as i64)
-        .bind(input.commission_percent)
+        .bind(true as i64)
+        .bind(commission_percent)
+        .bind(&input.payment_frequency)
+        .bind(input.payment_fixed_value)
         .bind(&claims.tenant_id)
         .bind(&id)
         .execute(&mut *tx)
@@ -1253,13 +1274,15 @@ pub async fn update_vendedor(
     } else {
         let result = sqlx::query(
             "UPDATE vendedores SET name = $1, email = $2, active = $3, commission_active = $4, \
-             commission_percent = $5 WHERE tenant_id = $6 AND id = $7",
+             commission_percent = $5, payment_frequency = $6, payment_fixed_value = $7 WHERE tenant_id = $8 AND id = $9",
         )
         .bind(&input.name)
         .bind(&input.email)
         .bind(active as i64)
-        .bind(commission_active as i64)
-        .bind(input.commission_percent)
+        .bind(true as i64)
+        .bind(commission_percent)
+        .bind(&input.payment_frequency)
+        .bind(input.payment_fixed_value)
         .bind(&claims.tenant_id)
         .bind(&id)
         .execute(&mut *tx)

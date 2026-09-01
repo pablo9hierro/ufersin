@@ -6,10 +6,31 @@ import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import type { CozinhaUser, Motoboy, PaymentMethod, Vendedor } from '../../types'
+import type { CozinhaUser, Motoboy, PaymentFrequency, PaymentMethod, Vendedor } from '../../types'
 
-const EMPTY_MOTOBOY_FORM = { name: '', phone: '', email: '', password: '', whatsapp: '' }
-const EMPTY_VENDEDOR_FORM = { name: '', email: '', password: '', commission_active: false, commission_percent: '' }
+const PAYMENT_FREQUENCIES: { value: PaymentFrequency; label: string }[] = [
+  { value: 'diaria', label: 'Diária' },
+  { value: 'semanal', label: 'Semanal' },
+  { value: 'quinzenal', label: 'Quinzenal' },
+  { value: 'mensal', label: 'Mensal' },
+]
+
+const EMPTY_MOTOBOY_FORM = {
+  name: '',
+  phone: '',
+  email: '',
+  password: '',
+  payment_frequency: '' as PaymentFrequency | '',
+  payment_fixed_value: '',
+}
+const EMPTY_VENDEDOR_FORM = {
+  name: '',
+  email: '',
+  password: '',
+  commission_percent: '',
+  payment_frequency: '' as PaymentFrequency | '',
+  payment_fixed_value: '',
+}
 const EMPTY_COZINHA_FORM = { name: '', email: '', password: '' }
 
 function currency(v: number) {
@@ -100,17 +121,32 @@ export default function AdminMotoboys() {
   }
   const openEditMotoboy = (m: Motoboy) => {
     setEditingMotoboy(m)
-    setForm({ name: m.name, phone: m.phone, email: m.email, password: '', whatsapp: m.whatsapp ?? '' })
+    setForm({
+      name: m.name,
+      phone: m.phone,
+      email: m.email,
+      password: '',
+      payment_frequency: m.payment_frequency ?? '',
+      payment_fixed_value: m.payment_fixed_value != null ? String(m.payment_fixed_value) : '',
+    })
     setShowForm(true)
   }
 
   const save = async () => {
     setSaving(true)
     try {
+      const payload = {
+        name: form.name,
+        phone: form.phone,
+        email: form.email,
+        password: form.password,
+        payment_frequency: form.payment_frequency || null,
+        payment_fixed_value: form.payment_frequency && form.payment_fixed_value ? Number(form.payment_fixed_value) : null,
+      }
       if (editingMotoboy) {
-        await adminService.motoboys.update(editingMotoboy.id, { ...form, active: editingMotoboy.active })
+        await adminService.motoboys.update(editingMotoboy.id, { ...payload, active: editingMotoboy.active })
       } else {
-        await adminService.motoboys.create(form)
+        await adminService.motoboys.create(payload)
       }
       setShowForm(false)
       setEditingMotoboy(null)
@@ -173,8 +209,9 @@ export default function AdminMotoboys() {
       name: v.name,
       email: v.email,
       password: '',
-      commission_active: v.commission_active,
       commission_percent: v.commission_percent != null ? String(v.commission_percent) : '',
+      payment_frequency: v.payment_frequency ?? '',
+      payment_fixed_value: v.payment_fixed_value != null ? String(v.payment_fixed_value) : '',
     })
     setShowVendedorForm(true)
   }
@@ -185,8 +222,11 @@ export default function AdminMotoboys() {
       const payload = {
         name: vendedorForm.name,
         email: vendedorForm.email,
-        commission_active: vendedorForm.commission_active,
-        commission_percent: vendedorForm.commission_active ? Number(vendedorForm.commission_percent) : undefined,
+        commission_active: true,
+        commission_percent: Number(vendedorForm.commission_percent),
+        payment_frequency: vendedorForm.payment_frequency || null,
+        payment_fixed_value:
+          vendedorForm.payment_frequency && vendedorForm.payment_fixed_value ? Number(vendedorForm.payment_fixed_value) : null,
       }
       if (editingVendedor) {
         await adminService.vendedores.update(editingVendedor.id, {
@@ -219,6 +259,8 @@ export default function AdminMotoboys() {
       active: !v.active,
       commission_active: v.commission_active,
       commission_percent: v.commission_percent ?? undefined,
+      payment_frequency: v.payment_frequency,
+      payment_fixed_value: v.payment_fixed_value,
     })
     loadVendedores()
   }
@@ -342,7 +384,11 @@ export default function AdminMotoboys() {
                   <p className="font-semibold text-white truncate">{m.name}</p>
                   <p className="text-xs text-son-silver-dim truncate">{m.email}</p>
                   <p className="text-xs text-son-silver-dim">{m.phone}</p>
-                  {m.whatsapp && <p className="text-xs text-son-silver-dim">WhatsApp: {m.whatsapp}</p>}
+                  {m.payment_frequency && (
+                    <p className="text-xs text-son-silver-dim">
+                      {PAYMENT_FREQUENCIES.find((f) => f.value === m.payment_frequency)?.label}: {currency(m.payment_fixed_value ?? 0)}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
@@ -404,6 +450,11 @@ export default function AdminMotoboys() {
                   <p className="text-xs text-son-silver-dim truncate">{v.email}</p>
                   {v.commission_active && (
                     <p className="text-xs text-son-gold">Comissão: {v.commission_percent}%</p>
+                  )}
+                  {v.payment_frequency && (
+                    <p className="text-xs text-son-silver-dim">
+                      {PAYMENT_FREQUENCIES.find((f) => f.value === v.payment_frequency)?.label}: {currency(v.payment_fixed_value ?? 0)}
+                    </p>
                   )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -506,10 +557,6 @@ export default function AdminMotoboys() {
                 <input className="input-field" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </div>
               <div>
-                <label className="label">WhatsApp (pra conectar a instância dele)</label>
-                <input className="input-field" value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
-              </div>
-              <div>
                 <label className="label">Senha{editingMotoboy && ' (deixe em branco pra manter a atual)'}</label>
                 <input
                   className="input-field"
@@ -518,6 +565,39 @@ export default function AdminMotoboys() {
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
               </div>
+              <div>
+                <label className="label">Recebe diária/semanal/quinzenal/mensal?</label>
+                <select
+                  className="input-field"
+                  value={form.payment_frequency}
+                  onChange={(e) => setForm({ ...form, payment_frequency: e.target.value as PaymentFrequency | '' })}
+                >
+                  <option value="">Não recebe valor fixo (só a taxa de entrega)</option>
+                  {PAYMENT_FREQUENCIES.map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {form.payment_frequency && (
+                <div>
+                  <label className="label">
+                    Valor fixo por {PAYMENT_FREQUENCIES.find((f) => f.value === form.payment_frequency)?.label.toLowerCase()} (R$)
+                  </label>
+                  <input
+                    className="input-field"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.payment_fixed_value}
+                    onChange={(e) => setForm({ ...form, payment_fixed_value: e.target.value })}
+                  />
+                  <p className="text-xs text-son-silver-dim mt-1">
+                    Além disso, 100% da taxa de entrega de cada corrida é sempre dele — some no financeiro dele junto com o fixo.
+                  </p>
+                </div>
+              )}
               <button onClick={save} disabled={saving} className="btn-primary w-full mt-2">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Salvar
@@ -566,35 +646,59 @@ export default function AdminMotoboys() {
                   onChange={(e) => setVendedorForm({ ...vendedorForm, password: e.target.value })}
                 />
               </div>
-              <label className="flex items-center gap-2 text-sm text-son-silver">
+              <div>
+                <label className="label">Comissão por venda (%) — obrigatório, mínimo 1%</label>
                 <input
-                  type="checkbox"
-                  className="w-4 h-4 accent-son-pink"
-                  checked={vendedorForm.commission_active}
-                  onChange={(e) => setVendedorForm({ ...vendedorForm, commission_active: e.target.checked })}
+                  className="input-field"
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="0.1"
+                  value={vendedorForm.commission_percent}
+                  onChange={(e) => setVendedorForm({ ...vendedorForm, commission_percent: e.target.value })}
                 />
-                Comissão sobre as vendas
-              </label>
-              {vendedorForm.commission_active && (
+                <p className="text-xs text-son-silver-dim mt-1">Aplicado sobre o valor de cada venda feita por ele no PDV.</p>
+              </div>
+              <div>
+                <label className="label">Recebe diária/semanal/quinzenal/mensal?</label>
+                <select
+                  className="input-field"
+                  value={vendedorForm.payment_frequency}
+                  onChange={(e) => setVendedorForm({ ...vendedorForm, payment_frequency: e.target.value as PaymentFrequency | '' })}
+                >
+                  <option value="">Não recebe valor fixo (só a comissão)</option>
+                  {PAYMENT_FREQUENCIES.map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {vendedorForm.payment_frequency && (
                 <div>
-                  <label className="label">Percentual de comissão (%)</label>
+                  <label className="label">
+                    Valor fixo por {PAYMENT_FREQUENCIES.find((f) => f.value === vendedorForm.payment_frequency)?.label.toLowerCase()} (R$)
+                  </label>
                   <input
                     className="input-field"
                     type="number"
                     min="0"
-                    max="100"
-                    step="0.1"
-                    value={vendedorForm.commission_percent}
-                    onChange={(e) => setVendedorForm({ ...vendedorForm, commission_percent: e.target.value })}
+                    step="0.01"
+                    value={vendedorForm.payment_fixed_value}
+                    onChange={(e) => setVendedorForm({ ...vendedorForm, payment_fixed_value: e.target.value })}
                   />
-                  <p className="text-xs text-son-silver-dim mt-1">Aplicado sobre o valor de cada venda feita por ele no PDV.</p>
+                  <p className="text-xs text-son-silver-dim mt-1">Além disso, a comissão de cada venda some no financeiro dele junto com o fixo.</p>
                 </div>
               )}
               <p className="text-xs text-son-silver-dim">
                 O vendedor loga em /funcionarios/login (login próprio, separado do admin) e cai no próprio painel em
                 /funcionarios/vendedor, com Pedidos, PDV e Financeiro (suas vendas).
               </p>
-              <button onClick={saveVendedor} disabled={savingVendedor} className="btn-primary w-full mt-2">
+              <button
+                onClick={saveVendedor}
+                disabled={savingVendedor || !vendedorForm.commission_percent || Number(vendedorForm.commission_percent) < 1}
+                className="btn-primary w-full mt-2"
+              >
                 {savingVendedor ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Salvar
               </button>

@@ -39,6 +39,7 @@ import type {
   MotoboyPending,
   MotoboyRun,
   MotoboySettlement,
+  PaymentFrequency,
   Order,
   PageDecoration,
   PageDecorationElement,
@@ -611,7 +612,15 @@ const remoteApi = {
         isRailwayAdminJwt()
           ? railwayAdmin<Motoboy[]>('/api/admin/motoboys')
           : rpc<Motoboy[]>('admin_list_motoboys', { p_token: adminToken() }),
-      create: (payload: { name: string; phone: string; email: string; password: string; whatsapp?: string }) =>
+      create: (payload: {
+        name: string
+        phone: string
+        email: string
+        password: string
+        whatsapp?: string
+        payment_frequency?: PaymentFrequency | null
+        payment_fixed_value?: number | null
+      }) =>
         isRailwayAdminJwt()
           ? railwayAdmin<Motoboy>('/api/admin/motoboys', {
               method: 'POST',
@@ -621,6 +630,8 @@ const remoteApi = {
                 email: payload.email,
                 password: payload.password,
                 active: true,
+                payment_frequency: payload.payment_frequency ?? null,
+                payment_fixed_value: payload.payment_fixed_value ?? null,
               }),
             })
           : rpc<Motoboy>('admin_create_motoboy', {
@@ -641,6 +652,8 @@ const remoteApi = {
                 email: payload.email,
                 password: payload.password,
                 active: payload.active ?? true,
+                payment_frequency: payload.payment_frequency ?? null,
+                payment_fixed_value: payload.payment_fixed_value ?? null,
               }),
             })
           : rpc<Motoboy>('admin_update_motoboy', {
@@ -680,6 +693,8 @@ const remoteApi = {
         password: string
         commission_active?: boolean
         commission_percent?: number
+        payment_frequency?: PaymentFrequency | null
+        payment_fixed_value?: number | null
       }) =>
         isRailwayAdminJwt()
           ? railwayAdmin<Vendedor>('/api/admin/vendedores', {
@@ -691,6 +706,8 @@ const remoteApi = {
                 active: true,
                 commission_active: payload.commission_active ?? false,
                 commission_percent: payload.commission_percent ?? null,
+                payment_frequency: payload.payment_frequency ?? null,
+                payment_fixed_value: payload.payment_fixed_value ?? null,
               }),
             })
           : rpc<Vendedor>('admin_create_vendedor', {
@@ -710,6 +727,8 @@ const remoteApi = {
           password?: string
           commission_active?: boolean
           commission_percent?: number
+          payment_frequency?: PaymentFrequency | null
+          payment_fixed_value?: number | null
         }
       ) =>
         isRailwayAdminJwt()
@@ -722,6 +741,8 @@ const remoteApi = {
                 active: payload.active,
                 commission_active: payload.commission_active ?? false,
                 commission_percent: payload.commission_percent ?? null,
+                payment_frequency: payload.payment_frequency ?? null,
+                payment_fixed_value: payload.payment_fixed_value ?? null,
               }),
             })
           : rpc<Vendedor>('admin_update_vendedor', {

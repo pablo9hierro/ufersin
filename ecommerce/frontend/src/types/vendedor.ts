@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { PaymentMethodSchema } from './shared'
+import { PaymentFrequencySchema } from './motoboy'
 
 export const VendedorSchema = z.object({
   id: z.string(),
@@ -8,6 +9,8 @@ export const VendedorSchema = z.object({
   active: z.boolean(),
   commission_active: z.boolean(),
   commission_percent: z.number().nullable(),
+  payment_frequency: PaymentFrequencySchema.nullable().optional(),
+  payment_fixed_value: z.number().nullable().optional(),
 })
 export type Vendedor = z.infer<typeof VendedorSchema>
 
