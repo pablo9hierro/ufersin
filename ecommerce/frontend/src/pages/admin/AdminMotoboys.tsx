@@ -661,12 +661,13 @@ export default function AdminMotoboys() {
                 />
               </div>
               <div>
-                <label className="label">E-mail</label>
+                <label className="label">WhatsApp (login do vendedor)</label>
                 <input
                   className="input-field"
                   inputMode="numeric"
+                  placeholder="(83) 99999-9999"
                   value={vendedorForm.phone}
-                  onChange={(e) => setVendedorForm({ ...vendedorForm, phone: e.target.value })}
+                  onChange={(e) => setVendedorForm({ ...vendedorForm, phone: formatPhone(e.target.value) })}
                 />
               </div>
               <div>
@@ -761,12 +762,13 @@ export default function AdminMotoboys() {
                 />
               </div>
               <div>
-                <label className="label">E-mail</label>
+                <label className="label">WhatsApp (login da cozinha)</label>
                 <input
                   className="input-field"
                   inputMode="numeric"
+                  placeholder="(83) 99999-9999"
                   value={cozinhaForm.phone}
-                  onChange={(e) => setCozinhaForm({ ...cozinhaForm, phone: e.target.value })}
+                  onChange={(e) => setCozinhaForm({ ...cozinhaForm, phone: formatPhone(e.target.value) })}
                 />
               </div>
               <div>
