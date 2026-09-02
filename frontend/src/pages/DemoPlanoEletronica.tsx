@@ -52,12 +52,19 @@ export default function DemoPlanoEletronica() {
   const handleClick = async (area: AreaDef) => {
     if (area.key === 'admin') {
       // Abre a aba já (gesto síncrono do clique) pra não cair no bloqueio
-      // de pop-up do navegador enquanto o token é buscado.
-      const tab = window.open('', '_blank', 'noopener,noreferrer')
+      // de pop-up do navegador enquanto o token é buscado. 'noopener' aqui
+      // faz window.open SEMPRE devolver null (é a definição da flag) --
+      // sem a referência, o fallback abaixo tentava abrir de novo depois do
+      // await, fora do gesto síncrono, e o navegador bloqueava em silêncio
+      // (aba em branco morta, sem erro nenhum). Guardamos a referência sem
+      // 'noopener' e cortamos o `opener` manualmente, que dá o mesmo
+      // isolamento sem perder o handle.
+      const tab = window.open('', '_blank')
+      if (tab) tab.opener = null
       try {
         const url = await fetchDemoAdminAutoLoginUrl('eletronica')
         if (tab) tab.location.href = url
-        else window.open(url, '_blank', 'noopener,noreferrer')
+        else window.alert('Seu navegador bloqueou a nova aba — habilite pop-ups pra este site e tente de novo.')
       } catch {
         tab?.close()
         window.alert('Não foi possível abrir o painel da demo agora. Tente de novo em instantes.')
