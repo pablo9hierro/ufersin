@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Clock, Loader2, MessageCircle } from 'lucide-react'
+import { ChevronDown, Clock, Loader2, MessageCircle, Sparkles } from 'lucide-react'
 import WhatsAppConnection from '../ui/WhatsAppConnection'
 import StoreHoursCard from './StoreHoursCard'
 import { adminService } from '../../services/adminService'
 import { classifyWaStatusPayload, WA_GATE_CONFIRM_STREAK, WaGateDebouncer } from '../../lib/whatsappGate'
+import { platformOrigin } from '../../lib/platformUrl'
 
 function Accordion({
   title,
@@ -61,6 +62,7 @@ export default function OnboardingGate({
   const [bootstrapping, setBootstrapping] = useState(whatsappRequired)
   const [openWa, setOpenWa] = useState(true)
   const [openHours, setOpenHours] = useState(true)
+  const [openIa, setOpenIa] = useState(false)
   const unlockDebounce = useRef(new WaGateDebouncer(WA_GATE_CONFIRM_STREAK))
   const hoursDoneRef = useRef(hoursDone)
   hoursDoneRef.current = hoursDone
@@ -228,7 +230,31 @@ export default function OnboardingGate({
           )}
 
           {!showWa && !showHours && (
-            <p className="text-son-silver-dim text-sm text-center py-8">Tudo pronto — liberando o painel…</p>
+            <>
+              <Accordion
+                title="Configure o Assistente IA (opcional)"
+                open={openIa}
+                onToggle={() => setOpenIa((v) => !v)}
+                centered
+              >
+                <div className="space-y-3 flex flex-col items-center text-center">
+                  <p className="text-son-silver-dim text-xs flex items-start gap-2 text-left max-w-sm">
+                    <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    O Assistente IA já está incluso no seu plano — vem desligado por padrão. Configure o
+                    prompt e ative quando quiser em Meu Plano.
+                  </p>
+                  <a
+                    href={`${platformOrigin()}/meu-plano/assistente-ia`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-semibold text-son-pink hover:underline"
+                  >
+                    Abrir configuração do Assistente IA →
+                  </a>
+                </div>
+              </Accordion>
+              <p className="text-son-silver-dim text-sm text-center py-4">Tudo pronto — liberando o painel…</p>
+            </>
           )}
         </div>
       </main>

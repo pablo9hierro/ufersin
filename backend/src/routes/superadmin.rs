@@ -279,7 +279,7 @@ pub async fn update_plan(
     .await?;
 
     let row = sqlx::query_as::<_, plans::PlanRow>(
-        "SELECT code, name, price_monthly, tagline, features, highlight, active, sort_order \
+        "SELECT code, name, price_monthly, tagline, features, highlight, active, sort_order, vertical \
          FROM platform_plans WHERE code = $1",
     )
     .bind(&code)

@@ -1,19 +1,14 @@
 /**
- * Ramo eletrônica: assistente IA vem nativo no plano, sem toggle de
- * assinatura — todo tenant vê a aba. Ramo ecommerce: só é acessório pago,
- * ainda não cobrado de verdade — allowlist abaixo é o stand-in até existir
- * cobrança (espelha `ECOMMERCE_ADDON_TENANTS` em
- * a-vrtek-gente/backend/src/services/access.ts, atualizar os dois juntos).
+ * Assistente IA sai do beta: vem junto com o plano (ecommerce e eletrônica),
+ * o lojista liga/desliga pelo próprio toggle em /assistente-ia
+ * (assistant_config.enabled). Sem allowlist — mantém a função só pra não
+ * mexer nos call sites (MeuPlano etc.).
  */
-const ECOMMERCE_ADDON_TENANT_SLUGS = new Set(['resusu'])
-
 export function isAssistantIaBetaTenant(
   slug: string | null | undefined,
-  vertical?: string | null,
+  _vertical?: string | null,
 ): boolean {
-  if (!slug) return false
-  if (vertical === 'eletronicos') return true
-  return ECOMMERCE_ADDON_TENANT_SLUGS.has(slug)
+  return !!slug
 }
 
 export const ASSISTANT_IA_API_URL = 'https://assistant-ia-production.up.railway.app'
