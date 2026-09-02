@@ -3673,7 +3673,7 @@ pub async fn consultar_otp_check(
     let code = format!("{:03}", rand::random::<u16>() % 1000);
     sqlx::query(
         "INSERT INTO eletronicos.consultation_otps (id, tenant_id, phone_digits, code, expires_at, max_attempts) \
-         VALUES ($1::uuid, $2, $3, $4, now() + interval '10 minutes', 5)",
+         VALUES ($1::uuid, $2, $3, $4, now() + interval '1 hour', 5)",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(&store.id)
@@ -3684,7 +3684,7 @@ pub async fn consultar_otp_check(
     tx.commit().await?;
 
     let tenant = tenant::load_tenant(&state.pool, &store.id).await?;
-    let text = format!("Seu código de acesso é *{code}*\n\nEle vale por 10 minutos.");
+    let text = format!("Seu código de acesso é *{code}*\n\nEle vale por 1 hora.");
     crate::whatsapp::notify(&state, &tenant.whatsapp_instance, &digits, &text);
 
     Ok(Json(OtpCheckResponse { found: true, sent: true }))
