@@ -3342,6 +3342,90 @@ const TEMPLATE_COLUMNS: &str = "id::text, template_key, section, label, descript
 /// que só existe nessa vertical) e outras seções (entrega e coleta, PDV,
 /// solicitação de serviço) que também são conceitos exclusivos daquele
 /// fluxo. Ecommerce genérico só tem agendamento de serviço na vitrine.
+/// Templates padrão do ramo eletrônica — porta 1:1 (mesmas chaves, seções e
+/// textos) de `caralho/supabase/migrations/20260814000003_whatsapp_templates.sql`
+/// (fonte original do vrtech). `$1` = tenant_id (mesmo padrão de `seed_idempotent`).
+const ELETRONICOS_DEFAULT_TEMPLATES_SQL: &str = "INSERT INTO eletronicos.whatsapp_templates \
+    (id, tenant_id, template_key, section, label, description, content, required_variables, available_variables, editable, sort_order) \
+    VALUES \
+    (gen_random_uuid(), $1, 'request_pending', 'Solicitação de serviço', 'Solicitação recebida', \
+     'Enviada ao cliente assim que ele abre a solicitação de serviço.', \
+     'Recebemos sua solicitação de serviço da /loja! 👋\n\nEm breve te informo o orçamento inicial (pode variar pelo estado do aparelho quando analisado).', \
+     ARRAY['loja'], ARRAY['nome','telefone','aparelho','problema','loja'], true, 0), \
+    (gen_random_uuid(), $1, 'status_aguardando_diagnostico', 'Status do atendimento', 'Aguardando diagnóstico', \
+     'Aparelho recebido, avaliação ainda não concluída.', \
+     'Olá */nome*! 👋\n\nRecebemos seu aparelho para diagnóstico. Em breve finalizamos a avaliação e te enviamos um orçamento detalhado pelo WhatsApp.\n\nObrigado pela confiança! 🙏', \
+     ARRAY['nome'], ARRAY['nome','aparelho','problema'], true, 1), \
+    (gen_random_uuid(), $1, 'status_diagnostico_enviado', 'Status do atendimento', 'Diagnóstico enviado', \
+     'Orçamento detalhado enviado ao cliente.', \
+     'Olá */nome*! 👋\n\nFinalizamos o diagnóstico do seu */aparelho* e preparamos um orçamento detalhado.\n\nSegue o PDF com os serviços identificados e valores. Confirma o orçamento para darmos início ao reparo?', \
+     ARRAY['nome'], ARRAY['nome','aparelho','valor'], true, 2), \
+    (gen_random_uuid(), $1, 'status_accepted', 'Status do atendimento', 'Orçamento aceito', \
+     'Cliente aceitou o orçamento; pedimos a localização para a coleta.', \
+     'Olá */nome*! 👋\n\nSeu orçamento para o */aparelho* ficou em /valor.\n\nAgradecemos pela preferência em nosso serviço! 🙏\n\nPor favor, compartilhe a sua localização fixa através do WhatsApp (clique no clipe 📎 → Localização → Sua localização atual).\n\nEm breve recolheremos o aparelho celular para dar continuidade ao serviço.', \
+     ARRAY['nome','valor'], ARRAY['nome','aparelho','valor'], true, 3), \
+    (gen_random_uuid(), $1, 'status_rejected', 'Status do atendimento', 'Orçamento recusado', \
+     'Cliente recusou o orçamento.', \
+     'Entendemos, */nome*. 😊\n\nSe mudar de ideia ou precisar de outro serviço, pode nos chamar aqui a qualquer momento!', \
+     ARRAY['nome'], ARRAY['nome','aparelho'], true, 4), \
+    (gen_random_uuid(), $1, 'status_retirada_local', 'Entrega e coleta', 'Retirada na loja', \
+     'Cliente optou por levar/retirar o aparelho na loja.', \
+     'Deseja trazer ou retirar o aparelho em nosso endereço?\n\n📍 /endereco\n/mapa', \
+     ARRAY[]::text[], ARRAY['nome','endereco','mapa'], true, 0), \
+    (gen_random_uuid(), $1, 'status_em_busca', 'Entrega e coleta', 'Indo buscar o aparelho', \
+     'Localização recebida; a loja saiu para a coleta.', \
+     '🛵 Recebemos sua localização e estamos iniciando a busca do seu aparelho celular.', \
+     ARRAY[]::text[], ARRAY['nome','aparelho'], true, 1), \
+    (gen_random_uuid(), $1, 'status_in_progress', 'Status do atendimento', 'Em reparo', \
+     'Manutenção em andamento.', \
+     '🔧 Seu aparelho celular está sendo reparado neste momento.\n\nAcompanhe qualquer atualização do serviço em tempo real através do link:\n/link_acompanhamento', \
+     ARRAY[]::text[], ARRAY['nome','aparelho','link_acompanhamento'], true, 5), \
+    (gen_random_uuid(), $1, 'status_em_entrega', 'Entrega e coleta', 'Saiu para entrega', \
+     'Aparelho a caminho do endereço do cliente.', \
+     '📦 *Seu aparelho está a caminho!*\n\nOlá */nome*! Acabamos de sair com o */aparelho* para entrega no seu endereço.\n\nEm breve chegamos! 🛵', \
+     ARRAY['nome'], ARRAY['nome','aparelho'], true, 2), \
+    (gen_random_uuid(), $1, 'status_completed', 'Status do atendimento', 'Reparo concluído', \
+     'Serviço finalizado, com garantia e ordem de serviço.', \
+     'Seu aparelho */aparelho* foi reparado com sucesso! 🎉\nServiços realizados: /servicos\nOrçamento no valor de: /valor\nGarantia do serviço: /garantia\nOrdem de serviço: /link_os', \
+     ARRAY[]::text[], ARRAY['nome','aparelho','servicos','valor','garantia','link_os'], true, 6), \
+    (gen_random_uuid(), $1, 'status_delivered', 'Entrega e coleta', 'Aparelho entregue', \
+     'Entrega confirmada.', \
+     '📬 Aparelho entregue!\n\nAgradecemos a confiança, */nome*! Caso precise de algo, estamos à disposição.', \
+     ARRAY['nome'], ARRAY['nome','aparelho'], true, 3), \
+    (gen_random_uuid(), $1, 'status_finished', 'Status do atendimento', 'Atendimento concluído', \
+     'Encerramento do atendimento.', \
+     '✅ Atendimento concluído.\n\nAgradecemos a confiança, */nome*! Caso precise de algo, estamos à disposição.', \
+     ARRAY['nome'], ARRAY['nome','aparelho'], true, 7), \
+    (gen_random_uuid(), $1, 'status_cancelled', 'Status do atendimento', 'Atendimento cancelado', \
+     'Solicitação cancelada.', \
+     '*/nome*, sua solicitação para o */aparelho* foi cancelada.\n\nSe mudar de ideia, pode nos chamar aqui a qualquer momento! 😊', \
+     ARRAY['nome'], ARRAY['nome','aparelho'], true, 8), \
+    (gen_random_uuid(), $1, 'store_order_pending', 'Pedidos da loja', 'Pedido recebido', \
+     'Enviada ao cliente assim que ele finaliza um pedido na vitrine.', \
+     'Olá, */nome*! 👋\n\nRecebemos seu pedido na loja da /loja!\nEm breve nossa equipe continua por aqui mesmo no WhatsApp para fechar os detalhes da compra. 🙏', \
+     ARRAY['nome'], ARRAY['nome','pedido','valor','loja'], true, 0), \
+    (gen_random_uuid(), $1, 'appointment_created', 'Agendamentos', 'Atendimento agendado', \
+     'Confirmação do horário marcado.', \
+     'Olá, /nome! Seu atendimento está agendado. ✅\n\nServiço: /servico\nData e horário: /data_hora\n\nSe precisar cancelar ou remarcar, é só responder por aqui.', \
+     ARRAY['nome','data_hora'], ARRAY['nome','servico','data_hora'], true, 0), \
+    (gen_random_uuid(), $1, 'appointment_rescheduled', 'Agendamentos', 'Atendimento remarcado', \
+     'Avisa o cliente do novo horário. A justificativa do lojista entra literal.', \
+     'Olá, /nome! Precisamos alterar o horário do seu atendimento.\n\nServiço: /servico\nHorário anterior: /horario_anterior\nNovo horário: /data_hora\n\nMotivo: /motivo\n\nPedimos desculpas pelo transtorno. Se o novo horário não funcionar pra você, é só responder aqui que a gente encontra outro.', \
+     ARRAY['nome','data_hora','motivo'], ARRAY['nome','servico','data_hora','horario_anterior','motivo'], true, 1), \
+    (gen_random_uuid(), $1, 'appointment_cancelled', 'Agendamentos', 'Atendimento cancelado', \
+     'Avisa o cliente do cancelamento. A justificativa do lojista entra literal.', \
+     'Olá, /nome! Informamos que seu atendimento foi cancelado.\n\nServiço: /servico\nHorário original: /data_hora\n\nMotivo: /motivo\n\nPedimos desculpas pelo transtorno. Se quiser, respondemos aqui mesmo pra encontrar um novo horário.', \
+     ARRAY['nome','motivo'], ARRAY['nome','servico','data_hora','motivo'], true, 2), \
+    (gen_random_uuid(), $1, 'payment_intro', 'Pagamentos', 'Aviso de pagamento (mensagem 1)', \
+     'Texto que antecede a cobrança. É a parte editável do fluxo de pagamento.', \
+     'Olá, /nome! Seu pedido está pronto. 💳\n\nValor: /valor\n\nLogo abaixo mando o código para você pagar.', \
+     ARRAY['nome'], ARRAY['nome','pedido','valor'], true, 0), \
+    (gen_random_uuid(), $1, 'payment_link', 'Pagamentos', 'Cobrança (mensagem 2)', \
+     'Mensagem seguinte, com o Pix copia-e-cola ou o link de pagamento gerado pelo sistema. Enviada sozinha para o cliente conseguir copiar o código. Não editável — alterar aqui quebraria a cobrança.', \
+     '/link_pagamento', \
+     ARRAY['link_pagamento'], ARRAY['link_pagamento'], false, 1) \
+    ON CONFLICT (tenant_id, template_key) DO NOTHING";
+
 const ECOMMERCE_TEMPLATE_KEYS: [&str; 7] = [
     "appointment_cancelled",
     "appointment_rescheduled",
@@ -3441,6 +3525,24 @@ pub async fn list_whatsapp_templates(
               'Seu pedido na /loja foi cancelado. Se pagou via Pix online, o estorno é automático quando a loja usa Mercado Pago; caso contrário a loja acerta a devolução manualmente.', \
               ARRAY['nome','loja'], ARRAY['nome','loja'], true, true, 14) \
              ON CONFLICT (tenant_id, template_key) DO NOTHING",
+        )
+        .await?;
+        tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    } else {
+        // Tenant eletrônica nunca tinha nenhum default de Template Zap --
+        // nem o onboarding, nem seed_demo_eletronica inseriam nada aqui, e
+        // este handler só rodava o auto-seed pro ramo genérico (branch
+        // acima). Resultado: a tela "Template Zap" abria 100% vazia (sem
+        // spinner, sem erro, sem cards) pra QUALQUER loja eletrônica nova,
+        // não só a demo -- achado testando a demo. Porta 1:1 os 18
+        // templates de `caralho/supabase/migrations/20260814000003_
+        // whatsapp_templates.sql` (fonte original, mesmas chaves que
+        // `template_key = format!("status_{}", ...)` já espera em runtime).
+        tx.commit().await?;
+        seed_idempotent(
+            &state.pool,
+            &claims.tenant_id,
+            ELETRONICOS_DEFAULT_TEMPLATES_SQL,
         )
         .await?;
         tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;

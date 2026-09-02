@@ -32,6 +32,7 @@ VITE_BASE_PATH=/loja/ \
   VITE_SUPABASE_URL="$SB_URL" \
   VITE_SUPABASE_ANON_KEY="$SB_ANON" \
   VITE_USE_LOCAL_DB=false \
+  VITE_TENANT_SLUG= \
   npm run build
 
 echo "→ Copying dist → frontend/public/loja"

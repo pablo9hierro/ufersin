@@ -276,6 +276,8 @@ export default function EletronicaAdminTemplates() {
         <div className="flex items-center gap-2 text-[#d4d4d8]/40 text-sm py-10 justify-center">
           <Loader2 className="w-4 h-4 animate-spin" /> Carregando templates...
         </div>
+      ) : bySection.size === 0 ? (
+        <p className="text-sm text-[#d4d4d8]/40 text-center py-10">Nenhum template cadastrado ainda.</p>
       ) : (
         [...bySection.entries()].map(([section, items]) => (
           <EletronicaAccordionSection key={section} title={section} subtitle={`${items.length} mensage${items.length === 1 ? 'm' : 'ns'}`}>
