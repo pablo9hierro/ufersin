@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownCircle, ArrowUpCircle, Check, DollarSign, ImagePlus, Loader2, Package, Pencil, Plus, Search, Smartphone, Trash2, Wrench, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDownCircle, ArrowUpCircle, Check, DollarSign, ImagePlus, Loader2, Package, Pencil, Plus, Search, Smartphone, Trash2, Upload, Wrench, X } from 'lucide-react'
 import { eletronicosAdmin, unitsInSameFamily, unitFamilyOf, STOCK_UNIT_FAMILIES } from '../../lib/eletronicosAdminApi'
+import { parseNfeFiles, type NfeParsedLine } from '../../lib/nfeXml'
 import { BrandIcon } from '../../lib/deviceBrandIcons'
 import CentsInput from '../../components/eletronicos/CentsInput'
 import type { EletronicaAdminCatalogItem } from '../../lib/eletronicosAdminApi'
@@ -1502,8 +1503,103 @@ type StockMovement = { id: string; item_id: string; item_name: string | null; ty
 // Port 1:1 de EstoqueTab.tsx real -- cadastro completo (unidade/caixa
 // com unidades por caixa, custo, garantia, alerta), popup de ações
 // (registrar saída/editar/deletar), lista de últimas movimentações.
+const NFE_UNIT_TO_STOCK_UNIT: Record<string, string> = {
+  un: 'unidade',
+  unid: 'unidade',
+  pc: 'unidade',
+  cx: 'caixa',
+  kg: 'kg',
+  g: 'g',
+  l: 'l',
+  ml: 'ml',
+  m: 'm',
+  cm: 'cm',
+  par: 'par',
+  pct: 'pacote',
+  rl: 'rolo',
+}
+
+type XmlDraft = {
+  line: NfeParsedLine
+  fileName: string
+  name: string
+  quantity: string
+  price: string
+  unit: string
+  origin_type: 'manual' | 'erp_formulation'
+  selected: boolean
+  status: 'pendente' | 'salvando' | 'salvo' | 'erro'
+  error?: string
+}
+
 export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged: () => void }) {
   const [movements, setMovements] = useState<StockMovement[]>([])
+
+  // Método de entrada do item: formulário manual (um item por vez) ou
+  // importação de XML de nota fiscal de entrada (vários itens de uma vez).
+  const [inputMethod, setInputMethod] = useState<'form' | 'xml'>('form')
+  const [xmlDrafts, setXmlDrafts] = useState<XmlDraft[]>([])
+  const [xmlParsing, setXmlParsing] = useState(false)
+  const [xmlError, setXmlError] = useState<string | null>(null)
+  const xmlFileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleXmlFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setXmlParsing(true)
+    setXmlError(null)
+    try {
+      const { results, errors } = await parseNfeFiles(Array.from(files))
+      if (errors.length > 0) setXmlError(errors.map((e) => `${e.fileName}: ${e.message}`).join(' — '))
+      const newDrafts: XmlDraft[] = results.flatMap(({ fileName, parsed }) =>
+        parsed.lines.map((line) => ({
+          line,
+          fileName,
+          name: line.xProd,
+          quantity: String(line.qCom ?? 0),
+          price: String(line.vUnCom ?? 0),
+          unit: NFE_UNIT_TO_STOCK_UNIT[line.unit?.toLowerCase()] ?? 'unidade',
+          // Item importado por XML nasce normal (não formulado) por padrão --
+          // o lojista marca formulação item a item se precisar.
+          origin_type: 'manual' as const,
+          selected: true,
+          status: 'pendente' as const,
+        })),
+      )
+      setXmlDrafts((prev) => [...prev, ...newDrafts])
+    } catch (e) {
+      setXmlError(e instanceof Error ? e.message : 'Falha ao ler o XML.')
+    } finally {
+      setXmlParsing(false)
+      if (xmlFileInputRef.current) xmlFileInputRef.current.value = ''
+    }
+  }
+
+  const updateXmlDraft = (idx: number, patch: Partial<XmlDraft>) =>
+    setXmlDrafts((ds) => ds.map((d, i) => (i === idx ? { ...d, ...patch } : d)))
+
+  const importXmlSelected = async () => {
+    for (let i = 0; i < xmlDrafts.length; i++) {
+      if (!xmlDrafts[i].selected || xmlDrafts[i].status === 'salvo') continue
+      updateXmlDraft(i, { status: 'salvando' })
+      try {
+        const qty = Number(xmlDrafts[i].quantity) || 0
+        await eletronicosAdmin.stockItems.create({
+          name: xmlDrafts[i].name.trim(),
+          unit: xmlDrafts[i].unit,
+          quantity: qty,
+          price: Number(xmlDrafts[i].price) || 0,
+          low_stock_threshold: Math.round(qty * 0.35 * 100) / 100,
+          origin_type: xmlDrafts[i].origin_type,
+        })
+        updateXmlDraft(i, { status: 'salvo' })
+        onChanged()
+      } catch (e) {
+        updateXmlDraft(i, { status: 'erro', error: e instanceof Error ? e.message : 'Falha ao salvar.' })
+      }
+    }
+  }
+
+  const xmlPendingCount = xmlDrafts.filter((d) => d.selected && d.status !== 'salvo').length
 
   // Dois modos de cadastro (mesmo form, campos extras/label mudam):
   // 'manual' = preço é custo de 1 unidade, edição direta a qualquer hora.
@@ -1677,6 +1773,139 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setInputMethod('form')}
+          className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl border transition-colors ${
+            inputMethod === 'form' ? 'bg-white/10 border-white/20 text-white' : 'bg-[#0a0a0b] border-white/10 text-[#d4d4d8]/60'
+          }`}
+        >
+          <Package className="w-3.5 h-3.5" /> Cadastro manual
+        </button>
+        <button
+          type="button"
+          onClick={() => setInputMethod('xml')}
+          className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl border transition-colors ${
+            inputMethod === 'xml' ? 'bg-white/10 border-white/20 text-white' : 'bg-[#0a0a0b] border-white/10 text-[#d4d4d8]/60'
+          }`}
+        >
+          <Upload className="w-3.5 h-3.5" /> Importar XML (nota de entrada)
+        </button>
+      </div>
+
+      {inputMethod === 'xml' && (
+        <div className="bg-[#161618] rounded-2xl border border-white/5 p-4 space-y-3">
+          <p className="text-xs text-[#d4d4d8]/50">
+            Envie o XML da nota fiscal de entrada do fornecedor/distribuidor. Confira nome, unidade, quantidade e custo
+            de cada item — e marque se algum deles é formulação ERP — antes de importar.
+          </p>
+          <input
+            ref={xmlFileInputRef}
+            type="file"
+            accept=".xml,text/xml,application/xml"
+            multiple
+            className="hidden"
+            onChange={(e) => handleXmlFiles(e.target.files)}
+          />
+          <button
+            type="button"
+            onClick={() => xmlFileInputRef.current?.click()}
+            disabled={xmlParsing}
+            className="flex items-center gap-1.5 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-xs font-semibold py-2 px-4 rounded-xl transition-colors"
+          >
+            {xmlParsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+            Selecionar XML
+          </button>
+          {xmlError && <p className="text-xs text-red-400">{xmlError}</p>}
+          {xmlDrafts.length > 0 && (
+            <>
+              <div className="space-y-2">
+                {xmlDrafts.map((d, idx) => (
+                  <div key={idx} className="bg-[#0a0a0b] border border-white/5 rounded-xl p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={d.selected}
+                        disabled={d.status === 'salvo'}
+                        onChange={(e) => updateXmlDraft(idx, { selected: e.target.checked })}
+                        className="w-4 h-4 mt-2"
+                      />
+                      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <input
+                          className={`${INPUT} sm:col-span-2`}
+                          value={d.name}
+                          disabled={d.status === 'salvo'}
+                          onChange={(e) => updateXmlDraft(idx, { name: e.target.value })}
+                          placeholder="Nome do item"
+                        />
+                        <input
+                          className={INPUT}
+                          type="number"
+                          step="any"
+                          value={d.quantity}
+                          disabled={d.status === 'salvo'}
+                          onChange={(e) => updateXmlDraft(idx, { quantity: e.target.value })}
+                          placeholder="Quantidade"
+                        />
+                        <select
+                          className={INPUT}
+                          value={d.unit}
+                          disabled={d.status === 'salvo'}
+                          onChange={(e) => updateXmlDraft(idx, { unit: e.target.value })}
+                        >
+                          {STOCK_UNIT_FAMILIES.map((fam) => (
+                            <optgroup key={fam.family} label={fam.label}>
+                              {fam.units.map((u) => (
+                                <option key={u.value} value={u.value}>{u.label}</option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <input
+                          className={`${INPUT} sm:col-span-2`}
+                          type="number"
+                          step="0.01"
+                          value={d.price}
+                          disabled={d.status === 'salvo'}
+                          onChange={(e) => updateXmlDraft(idx, { price: e.target.value })}
+                          placeholder="Custo unitário"
+                        />
+                        <label className="flex items-center gap-1.5 text-[11px] text-[#d4d4d8]/60 sm:col-span-2">
+                          <input
+                            type="checkbox"
+                            checked={d.origin_type === 'erp_formulation'}
+                            disabled={d.status === 'salvo'}
+                            onChange={(e) => updateXmlDraft(idx, { origin_type: e.target.checked ? 'erp_formulation' : 'manual' })}
+                            className="w-3.5 h-3.5"
+                          />
+                          Item ERP formulação
+                        </label>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-[#d4d4d8]/40 pl-6">
+                      {d.status === 'salvo' && <span className="text-emerald-400 flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Importado</span>}
+                      {d.status === 'salvando' && <span className="flex items-center gap-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando…</span>}
+                      {d.status === 'erro' && <span className="text-red-400">{d.error}</span>}
+                      {d.status === 'pendente' && `de: ${d.fileName}`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={importXmlSelected}
+                disabled={xmlPendingCount === 0}
+                className="w-full flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+              >
+                Importar {xmlPendingCount} {xmlPendingCount === 1 ? 'item selecionado' : 'itens selecionados'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {inputMethod === 'form' && (
       <form onSubmit={handleCreate} className="bg-[#161618] rounded-2xl border border-white/5 p-4 space-y-3">
         <div className="flex gap-2">
           <button
@@ -1759,6 +1988,7 @@ export function EstoqueTab({ items, onChanged }: { items: StockItem[]; onChanged
           Cadastrar item
         </button>
       </form>
+      )}
 
       <div className="space-y-2">
         <h2 className="text-xs font-bold text-[#d4d4d8]/50 uppercase tracking-wider">Itens em estoque ({items.length})</h2>
