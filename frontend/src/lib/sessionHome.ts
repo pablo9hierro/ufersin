@@ -50,13 +50,17 @@ export async function resolveSessionHome(opts?: {
     }
   }
 
-  if (opts?.plano) {
-    const ciclo = opts.ciclo === 'semestral' ? 'semestral' : 'mensal'
-    return `/assinar?plano=${opts.plano}&ciclo=${ciclo}`
-  }
-
+  // `?plano=` só pode mandar pra /assinar DEPOIS de confirmar que a conta
+  // tem subscriber -- achado real: pular esse check deixava uma conta
+  // "fantasma" (Auth existe, subscriber não) cair em /assinar, aplicar
+  // cupom normalmente (preview não depende de subscriber) e só travar com
+  // erro genérico ao tentar assinar de verdade, sem caminho de volta.
   try {
     const me = await api.me()
+    if (opts?.plano) {
+      const ciclo = opts.ciclo === 'semestral' ? 'semestral' : 'mensal'
+      return `/assinar?plano=${opts.plano}&ciclo=${ciclo}`
+    }
     // Incomplete onboarding → /onboarding lock; provisioned → /meu-plano.
     return postPayDestination(me.onboarding_status, me)
   } catch (e) {
