@@ -66,6 +66,35 @@ export function storeAdminLoginUrl(slug: string, email: string): string {
   return `${base}/admin/login?${q.toString()}`
 }
 
+/** Base da API do motor (mesma URL que o /loja embutido usa). */
+function ecommerceApiUrl(): string {
+  const configured = (import.meta.env.VITE_ECOMMERCE_API_URL as string | undefined)?.trim()
+  if (configured) return configured.replace(/\/$/, '')
+  const host = typeof window !== 'undefined' ? window.location.hostname : ''
+  if (!host || isLocalHost(host)) return 'http://localhost:8080'
+  return window.location.origin
+}
+
+/**
+ * Busca um token de admin de UM tenant demo seedado (`demo-eletronica` ou
+ * `demo-ecommerce`, ver GET /demo/tokens no backend) e monta a URL de
+ * `/demo-entrar` que loga a sessão real do admin (useAdminAuth) sem senha.
+ * Isolado por tenant: o backend resolve o slug pelo `vertical` e o token
+ * só carrega o tenant_id daquele tenant — nunca dá acesso a outra loja.
+ */
+export async function fetchDemoAdminAutoLoginUrl(vertical: 'eletronica' | 'ecommerce'): Promise<string> {
+  const res = await fetch(`${ecommerceApiUrl()}/demo/tokens?vertical=${vertical}`)
+  if (!res.ok) throw new Error('Falha ao emitir token de acesso da demo.')
+  const data: { admin_token: string; tenant_slug: string; admin_name: string } = await res.json()
+  const q = new URLSearchParams({
+    role: 'admin',
+    token: data.admin_token,
+    tenantSlug: data.tenant_slug,
+    name: data.admin_name,
+  })
+  return `${demoLojaUrl()}/demo-entrar?${q.toString()}`
+}
+
 /** Login de vendedor/motoboy/cozinha (credencial própria, cadastrada em Funcionários — não é a do admin). */
 export function storeFuncionarioLoginUrl(slug: string): string {
   const base = ecommerceFrontendUrl()

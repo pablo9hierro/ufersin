@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, ShoppingBag, Users2 } from 'lucide-react'
 import type { PlanoCode } from '../lib/api'
 import { PLAN_NAMES } from '../lib/plans'
-import { storeAdminLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
+import { fetchDemoAdminAutoLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 
 const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium', 'eletronica']
 
@@ -15,14 +15,13 @@ const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium', 'eletroni
 // Trocado pelo tenant demo seedado de verdade (ecommerce/backend/src/
 // seed.rs::seed_demo_eletronica), isolado, sem dado real de ninguém.
 const DEMO_TENANT_SLUG = 'demo-eletronica'
-const DEMO_TENANT_EMAIL = 'admin@demo-eletronica.resolutoo.app'
 
 interface AreaDef {
   key: 'vitrine' | 'admin'
   label: string
   desc: string
   icon: typeof ShoppingBag
-  url: string
+  url?: string
 }
 
 const AREAS: AreaDef[] = [
@@ -38,7 +37,7 @@ const AREAS: AreaDef[] = [
     label: 'Área logada (admin)',
     desc: 'Solicitações, agenda, estoque, PDV, mensagens — o painel completo do lojista.',
     icon: Users2,
-    url: storeAdminLoginUrl(DEMO_TENANT_SLUG, DEMO_TENANT_EMAIL),
+    // Sem url fixa: abre já autenticado via token de /demo/tokens (ver handleClick).
   },
 ]
 
@@ -50,8 +49,22 @@ export default function DemoPlanoEletronica() {
   }
   const planoCode = plano as PlanoCode
 
-  const handleClick = (area: AreaDef) => {
-    window.open(area.url, '_blank', 'noopener,noreferrer')
+  const handleClick = async (area: AreaDef) => {
+    if (area.key === 'admin') {
+      // Abre a aba já (gesto síncrono do clique) pra não cair no bloqueio
+      // de pop-up do navegador enquanto o token é buscado.
+      const tab = window.open('', '_blank', 'noopener,noreferrer')
+      try {
+        const url = await fetchDemoAdminAutoLoginUrl('eletronica')
+        if (tab) tab.location.href = url
+        else window.open(url, '_blank', 'noopener,noreferrer')
+      } catch {
+        tab?.close()
+        window.alert('Não foi possível abrir o painel da demo agora. Tente de novo em instantes.')
+      }
+      return
+    }
+    if (area.url) window.open(area.url, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -91,8 +104,7 @@ export default function DemoPlanoEletronica() {
         </div>
 
         <p className="text-xs text-uf-silver-dim text-center mt-8">
-          Área logada (admin): e-mail <strong className="text-uf-silver">{DEMO_TENANT_EMAIL}</strong>, senha{' '}
-          <strong className="text-uf-silver">demo-nao-usar-login-por-senha</strong> — dados de demonstração, isolados de qualquer loja real.
+          Área logada (admin) abre direto autenticada, sem senha — dados de demonstração, isolados de qualquer loja real.
         </p>
       </div>
     </main>

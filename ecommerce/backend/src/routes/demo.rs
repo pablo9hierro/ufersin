@@ -22,6 +22,10 @@ pub struct DemoTokensQuery {
 pub struct DemoTokens {
     pub admin_token: String,
     pub motoboy_token: Option<String>,
+    /// Slug + nome do admin do tenant resolvido — o front usa pra logar
+    /// direto na sessão real (useAdminAuth), sem passar pelo form de senha.
+    pub tenant_slug: String,
+    pub admin_name: String,
 }
 
 pub async fn demo_tokens(
@@ -57,5 +61,7 @@ pub async fn demo_tokens(
         admin_token: make_token(&state.jwt_secret, &admin_id, &tenant_id, "admin", &admin_name),
         motoboy_token: motoboy
             .map(|(motoboy_id, motoboy_name)| make_token(&state.jwt_secret, &motoboy_id, &tenant_id, "motoboy", &motoboy_name)),
+        tenant_slug: slug.to_string(),
+        admin_name,
     }))
 }

@@ -7,6 +7,8 @@ import {
   type PlanoCode,
 } from '../lib/demoMode'
 import { ADMIN_CREDENTIALS, FAKE_MOTOBOY_ID } from '../lib/localData'
+import { useAdminAuth } from '../store/adminAuth'
+import { persistTenantSlug, resetTenantConfigCache } from '../lib/tenantConfig'
 
 const VALID_ROLES = new Set(['admin', 'motoboy', 'vitrine', 'vendedor'])
 
@@ -25,14 +27,24 @@ const VALID_ROLES = new Set(['admin', 'motoboy', 'vitrine', 'vendedor'])
  * sobrescreve useAdminAuth / localStorage, senão a iframe same-origin
  * em /demo destrói a sessão real do lojista em /loja/admin.
  *
- * `?role=admin&token=<jwt>` continua aceito por compatibilidade (era o
- * modo anterior, com um backend + tenant demo reais) mas não é mais usado
- * pelo fluxo atual do Rodoletas — e também só grava em sessionStorage.
+ * `?role=admin&token=<jwt>&tenantSlug=<slug>` é o fluxo REAL (usado pelo
+ * botão "Área logada (admin)" da demo eletrônica em frontend/, via
+ * GET /demo/tokens?vertical=eletronica): loga de verdade no useAdminAuth
+ * (mesmo store que o form de senha usa), contra o tenant demo-eletronica/
+ * demo-ecommerce seedado de verdade no Postgres — NÃO ativa o modo mock
+ * local (isDemoModeActive), senão o app inteiro passaria a ignorar a API
+ * real e mostrar dado fake do Rodoletas em vez do tenant seedado.
+ *
+ * `?role=admin&token=<jwt>` sem `tenantSlug` continua aceito por
+ * compatibilidade (era o modo mock anterior) mas não é mais usado pelo
+ * fluxo atual do Rodoletas — e só grava em sessionStorage.
  */
 export default function DemoEntrar() {
   const [searchParams] = useSearchParams()
   const role = searchParams.get('role')
   const token = searchParams.get('token')
+  const tenantSlug = searchParams.get('tenantSlug')
+  const adminName = searchParams.get('name')
   const planoParam = searchParams.get('plano') as PlanoCode | null
   const plano = planoParam === 'essential' || planoParam === 'management' || planoParam === 'premium' ? planoParam : null
   // Não navegar antes de ativar demo + staff session — senão AdminLayout
@@ -40,6 +52,16 @@ export default function DemoEntrar() {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
+    // Fluxo real: token emitido por /demo/tokens pra um tenant demo
+    // seedado de verdade. Loga na sessão real (useAdminAuth), igual o
+    // form de senha faria — nunca passa por activateDemoMode/mock.
+    if (role === 'admin' && token && tenantSlug) {
+      persistTenantSlug(tenantSlug)
+      resetTenantConfigCache()
+      useAdminAuth.getState().login(token, adminName || 'Admin (demo)', tenantSlug)
+      setReady(true)
+      return
+    }
     if (plano) {
       activateDemoMode(plano)
       if (role === 'admin') {
@@ -81,7 +103,7 @@ export default function DemoEntrar() {
     }
     setReady(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, token, plano])
+  }, [role, token, tenantSlug, adminName, plano])
 
   if ((!token && !plano) || !role || !VALID_ROLES.has(role)) {
     return <Navigate to="/" replace />
