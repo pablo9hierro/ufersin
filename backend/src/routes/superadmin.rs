@@ -570,6 +570,7 @@ pub async fn create_coupon(
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateCouponInput {
+    pub code: String,
     pub discount_type: String,
     pub discount_value: f64,
     pub duration_kind: String,
@@ -591,6 +592,10 @@ pub async fn update_coupon(
     if !matches!(body.duration_kind.as_str(), "timed" | "lifetime_current_plan") {
         return Err(AppError::BadRequest("duration_kind inválido".to_string()));
     }
+    let code = body.code.trim().to_uppercase();
+    if code.is_empty() {
+        return Err(AppError::BadRequest("código vazio".to_string()));
+    }
     let duration_days = if body.duration_kind == "lifetime_current_plan" {
         None
     } else {
@@ -601,11 +606,16 @@ pub async fn update_coupon(
     };
     let max_redemptions = body.max_redemptions.filter(|m| *m > 0);
 
+    // Renomear o código não perde nenhum resgate já feito -- assinantes que
+    // já usaram o cupom têm o valor snapshotado em `subscribers.coupon_code`
+    // (não referenciam mais o cupom original), então mudar o texto aqui não
+    // quebra o histórico deles.
     let result = sqlx::query(
-        "UPDATE platform_coupons SET discount_type = $1, discount_value = $2, duration_kind = $3, \
-         duration_days = $4, max_redemptions = $5, notes = $6, active = $7, updated_at = now() \
-         WHERE id = $8",
+        "UPDATE platform_coupons SET code = $1, discount_type = $2, discount_value = $3, duration_kind = $4, \
+         duration_days = $5, max_redemptions = $6, notes = $7, active = $8, updated_at = now() \
+         WHERE id = $9",
     )
+    .bind(&code)
     .bind(&body.discount_type)
     .bind(body.discount_value)
     .bind(&body.duration_kind)
@@ -615,7 +625,15 @@ pub async fn update_coupon(
     .bind(body.active)
     .bind(&id)
     .execute(&state.pool)
-    .await?;
+    .await
+    .map_err(|e| {
+        if let sqlx::Error::Database(db) = &e {
+            if db.is_unique_violation() {
+                return AppError::BadRequest(format!("já existe outro cupom com o código {code}"));
+            }
+        }
+        AppError::from(e)
+    })?;
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("cupom não encontrado".to_string()));
     }

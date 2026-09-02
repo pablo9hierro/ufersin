@@ -523,6 +523,7 @@ export const api = {
   superadminUpdateCoupon: (
     id: string,
     body: {
+      code: string
       discount_type: 'fixed' | 'percent'
       discount_value: number
       duration_kind: 'timed' | 'lifetime_current_plan'

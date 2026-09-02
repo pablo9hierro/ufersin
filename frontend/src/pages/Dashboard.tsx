@@ -119,6 +119,7 @@ export default function Dashboard() {
   })
   const [editingCouponId, setEditingCouponId] = useState<string | null>(null)
   const [editCouponForm, setEditCouponForm] = useState({
+    code: '',
     discount_type: 'percent' as 'fixed' | 'percent',
     discount_value: '10',
     duration_kind: 'lifetime_current_plan' as 'timed' | 'lifetime_current_plan',
@@ -586,6 +587,7 @@ export default function Dashboard() {
     setError(null)
     setEditingCouponId(c.id)
     setEditCouponForm({
+      code: c.code,
       discount_type: c.discount_type as 'fixed' | 'percent',
       discount_value: String(c.discount_value),
       duration_kind: c.duration_kind as 'timed' | 'lifetime_current_plan',
@@ -602,6 +604,11 @@ export default function Dashboard() {
 
   const handleUpdateCoupon = async (id: string) => {
     setError(null)
+    const code = editCouponForm.code.trim()
+    if (!code) {
+      setError('Informe o código do cupom.')
+      return
+    }
     const isTimed = editCouponForm.duration_kind === 'timed'
     const days = parseInt(editCouponForm.duration_days, 10)
     const maxUsesRaw = editCouponForm.max_redemptions.trim()
@@ -617,6 +624,7 @@ export default function Dashboard() {
     setBusy(true)
     try {
       await api.superadminUpdateCoupon(id, {
+        code,
         discount_type: editCouponForm.discount_type,
         discount_value: parseFloat(editCouponForm.discount_value.replace(',', '.')),
         duration_kind: editCouponForm.duration_kind,
@@ -1039,6 +1047,12 @@ export default function Dashboard() {
                     if (editingCouponId === c.id) {
                       return (
                         <li key={c.id} className="rounded-xl border border-uf-blue/40 bg-white/[0.03] p-3 space-y-2">
+                          <input
+                            className="input-field font-mono uppercase"
+                            placeholder="Código do cupom"
+                            value={editCouponForm.code}
+                            onChange={(e) => setEditCouponForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+                          />
                           <div className="grid grid-cols-2 gap-2">
                             <select
                               className="input-field"
