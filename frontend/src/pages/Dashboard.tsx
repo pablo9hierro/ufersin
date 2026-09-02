@@ -95,6 +95,7 @@ export default function Dashboard() {
   const [stores, setStores] = useState<SuperadminStore[]>([])
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
   const [storeCoupons, setStoreCoupons] = useState<Record<string, string>>({})
+  const [discountReduceBy, setDiscountReduceBy] = useState<Record<string, string>>({})
 
   const [content, setContent] = useState<PlatformContentItem[]>([])
   const [contentMap, setContentMap] = useState<Record<string, string>>({ ...CONTENT_DEFAULTS })
@@ -187,7 +188,12 @@ export default function Dashboard() {
   }, [])
 
   const loadLojas = useCallback(async () => {
-    setStores(await api.superadminStores())
+    // Cupons carregados junto -- a tela de Lojas precisa do desconto
+    // ORIGINAL de cada cupom (pra saber até quanto dá pra restaurar), e
+    // essa lista não vem em `stores`.
+    const [storesRes, couponsRes] = await Promise.all([api.superadminStores(), api.superadminCoupons()])
+    setStores(storesRes)
+    setCoupons(couponsRes)
   }, [])
 
   const loadLayout = useCallback(async () => {
@@ -387,6 +393,37 @@ export default function Dashboard() {
     } finally {
       setBusy(false)
     }
+  }
+
+  /** Cupom original (pra achar o desconto MÁXIMO que aquele código concede
+   * — a lista de cupons já carregada, sem chamada extra). */
+  const couponForCode = (code: string | null) => (code ? coupons.find((c) => c.code === code) : undefined)
+
+  const handleAdjustDiscount = async (s: SuperadminStore, newValue: number) => {
+    setError(null)
+    setBusy(true)
+    try {
+      await api.superadminAdjustStoreDiscount(s.id, newValue)
+      setDiscountReduceBy((prev) => ({ ...prev, [s.id]: '' }))
+      await loadLojas()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Erro ao ajustar desconto.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleReduceDiscount = (s: SuperadminStore) => {
+    const current = s.discount_percent ?? s.discount_amount ?? 0
+    const reduceBy = parseFloat((discountReduceBy[s.id] ?? '').replace(',', '.'))
+    if (!Number.isFinite(reduceBy) || reduceBy <= 0) return
+    handleAdjustDiscount(s, Math.max(0, current - reduceBy))
+  }
+
+  const handleRestoreDiscount = (s: SuperadminStore) => {
+    const coupon = couponForCode(s.coupon_code)
+    if (!coupon) return
+    handleAdjustDiscount(s, coupon.discount_value)
   }
 
   const saveContent = async (key: string, value: string) => {
@@ -731,9 +768,54 @@ export default function Dashboard() {
                           <span className="text-uf-silver-dim">Slug:</span> {s.slug ?? '—'} · Onboarding: {s.onboarding_status}
                         </p>
                         {s.coupon_code && (
-                          <p>
-                            <span className="text-uf-silver-dim">Cupom:</span> {s.coupon_code}
-                          </p>
+                          <>
+                            <p>
+                              <span className="text-uf-silver-dim">Cupom:</span> {s.coupon_code}
+                            </p>
+                            {(() => {
+                              const original = couponForCode(s.coupon_code)
+                              const current = s.discount_percent ?? s.discount_amount ?? 0
+                              const unit = s.discount_percent != null ? '%' : 'R$'
+                              const isReduced = original != null && current < original.discount_value
+                              return (
+                                <div className="bg-white/5 rounded-lg p-2.5 space-y-2">
+                                  <p className="text-xs text-uf-silver-dim">
+                                    Desconto atual: <span className="text-uf-silver font-semibold">{unit === '%' ? `${current}%` : `R$ ${formatBRL(current)}`}</span>
+                                    {original != null && ` (original do cupom: ${unit === '%' ? `${original.discount_value}%` : `R$ ${formatBRL(original.discount_value)}`})`}
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <input
+                                      className="input-field flex-1 text-sm"
+                                      type="number"
+                                      step="any"
+                                      min="0"
+                                      placeholder={`Reduzir em (${unit})`}
+                                      value={discountReduceBy[s.id] ?? ''}
+                                      onChange={(e) => setDiscountReduceBy((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={busy || !discountReduceBy[s.id]}
+                                      onClick={() => handleReduceDiscount(s)}
+                                      className="btn-secondary text-xs px-3 py-2 shrink-0"
+                                    >
+                                      Reduzir
+                                    </button>
+                                  </div>
+                                  {isReduced && (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => handleRestoreDiscount(s)}
+                                      className="text-xs text-uf-blue hover:underline"
+                                    >
+                                      Restaurar desconto original ({unit === '%' ? `${original!.discount_value}%` : `R$ ${formatBRL(original!.discount_value)}`})
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            })()}
+                          </>
                         )}
                         <div className="flex gap-2 pt-2">
                           <input

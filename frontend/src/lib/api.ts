@@ -151,6 +151,17 @@ export interface SuperadminStore {
   onboarding_status: string
   coupon_code: string | null
   created_at: string
+  /** Desconto CORRENTE do assinante — snapshot mutável, independente do
+   * cupom original (superadmin pode reduzir/restaurar sem afetar outros
+   * assinantes do mesmo cupom). Exatamente um dos dois vem preenchido. */
+  discount_percent: number | null
+  discount_amount: number | null
+}
+
+export interface AdjustDiscountOutput {
+  discount_value: number
+  original_discount_value: number
+  valor_mensal: number
 }
 
 export interface SuperadminCost {
@@ -468,6 +479,14 @@ export const api = {
     request<{ ok: boolean; code: string; valor_mensal: number }>(`/api/superadmin/stores/${id}/coupon`, {
       method: 'POST',
       body: JSON.stringify({ code }),
+    }),
+  /** Reduz/restaura o desconto de UM assinante (não mexe no cupom nem em
+   * outros assinantes). Reflete no Mercado Pago pro PRÓXIMO ciclo — o
+   * backend nunca cobra retroativo. */
+  superadminAdjustStoreDiscount: (id: string, discount_value: number) =>
+    request<AdjustDiscountOutput>(`/api/superadmin/stores/${id}/discount`, {
+      method: 'PUT',
+      body: JSON.stringify({ discount_value }),
     }),
   superadminPlans: async () => {
     const rows = await request<PlatformPlan[]>('/api/superadmin/plans')

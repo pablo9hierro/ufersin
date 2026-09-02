@@ -259,6 +259,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::superadmin::apply_coupon_to_store),
         )
         .route(
+            "/api/superadmin/stores/{id}/discount",
+            put(routes::superadmin::adjust_store_discount),
+        )
+        .route(
             "/api/superadmin/plans",
             get(routes::superadmin::list_plans_admin).post(routes::superadmin::create_plan),
         )

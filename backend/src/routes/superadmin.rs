@@ -98,6 +98,11 @@ pub struct StoreRow {
     pub onboarding_status: String,
     pub coupon_code: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Desconto CORRENTE do assinante (snapshot mutável, independente do
+    /// cupom original — ver `adjust_store_discount`). Exatamente um dos
+    /// dois vem preenchido, espelhando `discount_type` do cupom.
+    pub discount_percent: Option<f64>,
+    pub discount_amount: Option<f64>,
 }
 
 pub async fn list_stores(
@@ -106,12 +111,113 @@ pub async fn list_stores(
 ) -> Result<Json<Vec<StoreRow>>, AppError> {
     let rows = sqlx::query_as::<_, StoreRow>(
         "SELECT id, loja_nome, email, whatsapp, slug, plan_code, valor_mensal, status, \
-         onboarding_status, coupon_code, created_at \
+         onboarding_status, coupon_code, created_at, discount_percent, discount_amount \
          FROM subscribers ORDER BY created_at DESC LIMIT 500",
     )
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AdjustDiscountInput {
+    /// Novo valor de desconto pra este assinante (mesma unidade do cupom
+    /// original: pontos percentuais ou R$ fixo). Clampado entre 0 e o
+    /// `discount_value` do cupom original -- nunca pode superar o que o
+    /// cupom concedia, nem ficar negativo.
+    pub discount_value: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdjustDiscountOutput {
+    pub discount_value: f64,
+    pub original_discount_value: f64,
+    pub valor_mensal: f64,
+}
+
+/// Reduz ou restaura (parcial ou totalmente) o desconto que UM assinante
+/// específico recebe de um cupom já resgatado -- sem afetar o cupom em si
+/// nem outros assinantes que usaram o mesmo código (cada assinante já tinha
+/// seu próprio snapshot em `subscribers.discount_percent/discount_amount`,
+/// só faltava um endpoint pra editar isso com segurança + repassar pro
+/// Mercado Pago). `update_amount` só atualiza o VALOR FUTURO da assinatura
+/// (`auto_recurring.transaction_amount` no preapproval) -- a cobrança do
+/// ciclo já em andamento não muda, exatamente o "não imediatamente, no
+/// próximo ciclo" pedido.
+pub async fn adjust_store_discount(
+    State(state): State<AppState>,
+    AuthSuperadmin(_): AuthSuperadmin,
+    Path(id): Path<String>,
+    Json(body): Json<AdjustDiscountInput>,
+) -> Result<Json<AdjustDiscountOutput>, AppError> {
+    let row: Option<(
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT plan_code, gateway, mp_preapproval_id, COALESCE(billing_cycle, 'mensal'), coupon_code \
+         FROM subscribers WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((Some(plan_code), gateway_kind, external_id, billing_cycle, Some(coupon_code))) = row else {
+        return Err(AppError::BadRequest(
+            "loja sem plano ou sem cupom aplicado".to_string(),
+        ));
+    };
+
+    let coupon: Option<(String, f64)> =
+        sqlx::query_as("SELECT discount_type, discount_value FROM platform_coupons WHERE upper(code) = upper($1)")
+            .bind(&coupon_code)
+            .fetch_optional(&state.pool)
+            .await?;
+    let (discount_type, original_value) =
+        coupon.ok_or_else(|| AppError::NotFound("cupom original não encontrado".to_string()))?;
+
+    if !body.discount_value.is_finite() || body.discount_value < 0.0 || body.discount_value > original_value {
+        return Err(AppError::BadRequest(format!(
+            "desconto deve ficar entre 0 e {original_value} (valor original do cupom)"
+        )));
+    }
+
+    let list_monthly = plans::monthly_price(&state.pool, &plan_code).await?;
+    let new_monthly = coupons::apply_discount(list_monthly, &discount_type, body.discount_value);
+
+    if discount_type == "fixed" {
+        sqlx::query(
+            "UPDATE subscribers SET discount_amount = $1, discount_percent = NULL, valor_mensal = $2, updated_at = now() WHERE id = $3",
+        )
+        .bind(body.discount_value)
+        .bind(new_monthly)
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+    } else {
+        sqlx::query(
+            "UPDATE subscribers SET discount_percent = $1, discount_amount = NULL, valor_mensal = $2, updated_at = now() WHERE id = $3",
+        )
+        .bind(body.discount_value)
+        .bind(new_monthly)
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+    }
+
+    let billing_cycle = billing_cycle.unwrap_or_else(|| "mensal".to_string());
+    let cycle = crate::gateway::BillingCycle::parse(&billing_cycle).unwrap_or(crate::gateway::BillingCycle::Mensal);
+    let charge = crate::gateway::charge_amount(new_monthly, cycle);
+    if let (Some(gw), Some(ext)) = (gateway_kind.as_deref(), external_id.as_deref()) {
+        crate::gateway::update_amount(&state, gw, ext, charge).await?;
+    }
+
+    Ok(Json(AdjustDiscountOutput {
+        discount_value: body.discount_value,
+        original_discount_value: original_value,
+        valor_mensal: new_monthly,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
