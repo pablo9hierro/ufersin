@@ -162,6 +162,94 @@ pub async fn list_public_orders_by_phone(
 }
 
 #[derive(serde::Deserialize)]
+pub struct MigrateCustomerWhatsappInput {
+    /// Vários formatos/variantes já normalizados (com/sem 9, com/sem 55)
+    /// pelo lado que chama (Assistente IA) — a busca aceita qualquer um.
+    pub old_whatsapp_candidates: Vec<String>,
+    pub new_whatsapp: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct MigrateCustomerWhatsappResponse {
+    pub found: bool,
+}
+
+fn digits_only(s: &str) -> String {
+    s.chars().filter(char::is_ascii_digit).collect()
+}
+
+/// Usado pela Assistente IA (WhatsApp) quando o cliente diz que o
+/// atendimento/pedido dele está cadastrado em outro número: acha o
+/// registro pelo número antigo (dentro do MESMO tenant, nunca cross-tenant
+/// — tenant vem do slug) e migra o whatsapp pro número da conversa atual
+/// em toda tabela onde o whatsapp é identidade do cliente — `customers` e
+/// `orders` (ramo ecommerce), `eletronicos.service_requests` e
+/// `eletronicos.appointments` (ramo eletrônica). Decisão de produto: sem
+/// verificação extra (OTP/confirmação) — confia na palavra do cliente na
+/// conversa. `found=false` quando nenhuma das variantes bate com nada
+/// nesse tenant (nada foi alterado).
+pub async fn migrate_customer_whatsapp(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(input): Json<MigrateCustomerWhatsappInput>,
+) -> Result<Json<MigrateCustomerWhatsappResponse>, AppError> {
+    let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let candidates: Vec<String> = input
+        .old_whatsapp_candidates
+        .iter()
+        .map(|s| digits_only(s))
+        .filter(|s| s.len() >= 8)
+        .collect();
+    let new_digits = digits_only(&input.new_whatsapp);
+    if candidates.is_empty() || new_digits.len() < 8 {
+        return Err(AppError::BadRequest("telefone inválido".to_string()));
+    }
+
+    let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
+
+    let r1 = sqlx::query(
+        "UPDATE customers SET whatsapp = $3 \
+         WHERE tenant_id = $1 AND regexp_replace(whatsapp, '\\D', '', 'g') = ANY($2)",
+    )
+    .bind(&store.id)
+    .bind(&candidates)
+    .bind(&new_digits)
+    .execute(&mut *tx)
+    .await?;
+    let r2 = sqlx::query(
+        "UPDATE orders SET customer_whatsapp = $3 \
+         WHERE tenant_id = $1 AND regexp_replace(customer_whatsapp, '\\D', '', 'g') = ANY($2)",
+    )
+    .bind(&store.id)
+    .bind(&candidates)
+    .bind(&new_digits)
+    .execute(&mut *tx)
+    .await?;
+    let r3 = sqlx::query(
+        "UPDATE eletronicos.service_requests SET customer_phone = $3 \
+         WHERE tenant_id = $1 AND regexp_replace(customer_phone, '\\D', '', 'g') = ANY($2)",
+    )
+    .bind(&store.id)
+    .bind(&candidates)
+    .bind(&new_digits)
+    .execute(&mut *tx)
+    .await?;
+    let r4 = sqlx::query(
+        "UPDATE eletronicos.appointments SET customer_phone = $3 \
+         WHERE tenant_id = $1 AND regexp_replace(customer_phone, '\\D', '', 'g') = ANY($2)",
+    )
+    .bind(&store.id)
+    .bind(&candidates)
+    .bind(&new_digits)
+    .execute(&mut *tx)
+    .await?;
+
+    let found = r1.rows_affected() + r2.rows_affected() + r3.rows_affected() + r4.rows_affected() > 0;
+    tx.commit().await?;
+    Ok(Json(MigrateCustomerWhatsappResponse { found }))
+}
+
+#[derive(serde::Deserialize)]
 pub struct AssistantOrderItemInput {
     #[serde(default)]
     pub product_id: Option<String>,

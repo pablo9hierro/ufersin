@@ -109,7 +109,7 @@ export default function Uiux4Banner() {
   return (
     <Shell>
       <div className="px-4 sm:px-8 pt-5 pb-32 max-w-xl mx-auto">
-        <img src={promotion.image_url} alt={promotion.title} className="w-full aspect-[2/1] object-cover rounded-2xl mb-4" />
+        <img src={promotion.image_url} alt={promotion.title} className="w-full aspect-[2/1] object-cover rounded-2xl mb-4" loading="lazy" decoding="async" />
         <h1 className="text-xl font-black mb-1">{promotion.title}</h1>
         <p className="text-xs u4-dim mb-5">
           {promotion.promotion_type === 'kit'
@@ -126,7 +126,7 @@ export default function Uiux4Banner() {
             return (
               <div key={product.id} className="u4-panel p-3 flex items-center gap-3">
                 <button type="button" onClick={() => setInfoProduct(product)} className="w-14 h-14 rounded-xl flex items-center justify-center overflow-hidden shrink-0" style={{ background: 'var(--u4-surface-light)' }}>
-                  {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-5 h-5 u4-dim" />}
+                  {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-5 h-5 u4-dim" />}
                 </button>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold truncate">{product.name}</p>
@@ -196,7 +196,7 @@ export default function Uiux4Banner() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            {infoProduct.image_url && <img src={infoProduct.image_url} alt={infoProduct.name} className="w-full h-40 object-cover rounded-xl mb-3" />}
+            {infoProduct.image_url && <img src={infoProduct.image_url} alt={infoProduct.name} className="w-full h-40 object-cover rounded-xl mb-3" loading="lazy" decoding="async" />}
             {infoProduct.description && <p className="text-sm u4-dim mb-2">{infoProduct.description}</p>}
             <div className="flex justify-between text-sm">
               <span className="u4-dim">Preço</span>

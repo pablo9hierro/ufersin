@@ -46,7 +46,7 @@ export default function Uiux4ProdutoDetalhe() {
       <div className="max-w-2xl mx-auto pb-16">
         <div className="relative px-4 sm:px-8 pt-4">
           <div className="aspect-square flex items-center justify-center overflow-hidden rounded-2xl" style={{ background: 'var(--u4-surface)' }}>
-            {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-16 h-16 u4-dim" />}
+            {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-16 h-16 u4-dim" />}
           </div>
           <button onClick={() => navigate(-1)} className="u4-arrow-btn absolute top-8 left-8" style={{ background: 'rgba(0,0,0,0.5)' }} aria-label="Voltar">
             <ArrowLeft className="w-4 h-4" />

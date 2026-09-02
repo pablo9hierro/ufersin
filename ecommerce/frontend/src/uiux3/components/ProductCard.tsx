@@ -34,7 +34,7 @@ export default function ProductCard({
       <div className="relative">
         {outOfStock && <OutOfStockRibbon />}
         <Link to={`/produto/${product.id}`} className="u3-feature-photo flex items-center justify-center" onClick={(e) => outOfStock && e.preventDefault()}>
-          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-10 h-10 u3-dim" />}
+          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-10 h-10 u3-dim" />}
         </Link>
         {onToggleFavorite && (
           <div className="absolute top-2 right-2 z-10">

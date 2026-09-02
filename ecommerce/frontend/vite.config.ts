@@ -14,4 +14,18 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // React/react-dom/router raramente mudam entre deploys — chunk
+        // próprio pra ficar em cache do navegador entre versões do app,
+        // em vez de invalidar junto com o chunk principal a cada deploy.
+        manualChunks(id) {
+          if (id.includes('node_modules') && /[\\/](react|react-dom|react-router-dom|scheduler)[\\/]/.test(id)) {
+            return 'vendor-react'
+          }
+        },
+      },
+    },
+  },
 })

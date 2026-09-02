@@ -107,7 +107,7 @@ export default function CartDrawer() {
                     <li key={product.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
                       <div className="w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-white/5 flex items-center justify-center">
                         {product.image_url ? (
-                          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                         ) : (
                           <Package className="w-5 h-5 opacity-40" />
                         )}

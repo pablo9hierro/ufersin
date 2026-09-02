@@ -118,7 +118,7 @@ export default function Uiux3Carrinho() {
             {lines.map(({ item, product }) => (
               <li key={product.id} className="u3-panel flex items-center gap-3 p-3">
                 <Link to={`/produto/${product.id}`} className="w-14 h-14 shrink-0 rounded-lg overflow-hidden flex items-center justify-center" style={{ background: 'var(--u3-surface-light)' }}>
-                  {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-5 h-5 u3-dim" />}
+                  {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-5 h-5 u3-dim" />}
                 </Link>
                 <Link to={`/produto/${product.id}`} className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{product.name}</p>
@@ -146,7 +146,7 @@ export default function Uiux3Carrinho() {
               <div key={product.id} className="u3-panel p-3 flex flex-col gap-2">
                 <div className="relative">
                   <Link to={`/produto/${product.id}`} className="aspect-square rounded-lg overflow-hidden flex items-center justify-center" style={{ background: 'var(--u3-surface-light)' }}>
-                    {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-6 h-6 u3-dim" />}
+                    {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-6 h-6 u3-dim" />}
                   </Link>
                   <div className="absolute top-1.5 right-1.5">
                     <FavoriteButton checked={favoriteIds.has(product.id)} onClick={() => handleToggleFavorite(product)} />

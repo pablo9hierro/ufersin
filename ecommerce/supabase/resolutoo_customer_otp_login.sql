@@ -28,10 +28,15 @@ BEGIN
     RAISE EXCEPTION 'a valid whatsapp is required';
   END IF;
 
+  -- whatsapp é a chave primária de identidade do cliente dentro do tenant:
+  -- mesmo whatsapp = mesmo customer, nome pode mudar dinamicamente.
   SELECT * INTO v_c FROM resolutoo.customers WHERE whatsapp = p_whatsapp AND tenant_id = p_tenant_id;
   IF NOT FOUND THEN
     INSERT INTO resolutoo.customers (id, name, whatsapp, tenant_id, created_at)
     VALUES (gen_random_uuid()::text, trim(p_name), p_whatsapp, p_tenant_id, now()::text)
+    RETURNING * INTO v_c;
+  ELSIF trim(p_name) <> v_c.name THEN
+    UPDATE resolutoo.customers SET name = trim(p_name) WHERE id = v_c.id
     RETURNING * INTO v_c;
   END IF;
 

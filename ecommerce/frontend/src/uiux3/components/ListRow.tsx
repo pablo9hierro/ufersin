@@ -40,7 +40,7 @@ export default function ListRow({
             <OutOfStockRibbon />
           </div>
         )}
-        {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-5 h-5 u3-dim" />}
+        {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-5 h-5 u3-dim" />}
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold leading-snug line-clamp-1">{product.name}</p>

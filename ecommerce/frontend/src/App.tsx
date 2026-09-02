@@ -19,10 +19,14 @@ import DemoPaletteSwitcher from './components/theme/DemoPaletteSwitcher'
 import './uiux2/theme.css'
 import './uiux3/theme.css'
 import './uiux4/theme.css'
-import AdminLayout from './components/layout/AdminLayout'
-import VendedorLayout from './components/layout/VendedorLayout'
-import MotoboyLayout from './components/layout/MotoboyLayout'
-import CozinhaLayout from './components/layout/CozinhaLayout'
+// Layouts de staff (admin/vendedor/motoboy/cozinha) NUNCA rodam pra quem
+// visita a vitrine pública -- lazy igual as páginas abaixo, senão todo
+// cliente final baixa AdminLayout (632 linhas + adminService +
+// OnboardingGate) só pra ver o catálogo.
+const AdminLayout = lazyWithReload(() => import('./components/layout/AdminLayout'))
+const VendedorLayout = lazyWithReload(() => import('./components/layout/VendedorLayout'))
+const MotoboyLayout = lazyWithReload(() => import('./components/layout/MotoboyLayout'))
+const CozinhaLayout = lazyWithReload(() => import('./components/layout/CozinhaLayout'))
 
 // Admin + storefront pages are route-split so /admin/* does not download
 // three full CMS themes, leaflet checkout maps, or every admin screen.

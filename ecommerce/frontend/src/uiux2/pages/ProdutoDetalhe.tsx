@@ -45,7 +45,7 @@ export default function Uiux2ProdutoDetalhe() {
           <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
         <div className="u2-card aspect-square sm:aspect-video flex items-center justify-center overflow-hidden mb-5">
-          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-16 h-16 u2-dim" />}
+          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-16 h-16 u2-dim" />}
         </div>
 
         {product.category_name && <p className="text-xs font-semibold u2-oncanvas-accent uppercase tracking-wide mb-1">{product.category_name}</p>}

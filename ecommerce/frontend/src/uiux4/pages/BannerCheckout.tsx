@@ -200,7 +200,7 @@ export default function Uiux4BannerCheckout() {
         <p className="text-xs u4-dim mb-4">Este checkout é exclusivo pros itens escolhidos na promoção.</p>
 
         <div className="u4-panel p-3 mb-5 flex items-center gap-3">
-          <img src={promotion.image_url} alt={promotion.title} className="w-14 h-14 rounded-xl object-cover shrink-0" />
+          <img src={promotion.image_url} alt={promotion.title} className="w-14 h-14 rounded-xl object-cover shrink-0" loading="lazy" decoding="async" />
           <div className="min-w-0">
             <p className="font-semibold truncate">{promotion.title}</p>
             <p className="text-xs u4-accent font-medium">{promotion.promotion_type === 'kit' ? 'Pacote fechado' : 'Carrinho selfie service'}</p>

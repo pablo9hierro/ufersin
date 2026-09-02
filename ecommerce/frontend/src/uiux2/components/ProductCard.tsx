@@ -40,7 +40,7 @@ export default function ProductCard({
       )}
       <Link to={`/produto/${product.id}`} className="flex flex-col flex-1" onClick={(e) => outOfStock && e.preventDefault()}>
         <div className="aspect-square flex items-center justify-center overflow-hidden" style={{ background: 'var(--uf-surface-light)' }}>
-          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-9 h-9 u2-dim" />}
+          {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-9 h-9 u2-dim" />}
         </div>
         <div className="p-3 flex flex-col gap-1 flex-1">
           <p className="text-sm font-semibold leading-snug line-clamp-2">{product.name}</p>

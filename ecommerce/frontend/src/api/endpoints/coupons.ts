@@ -1,6 +1,7 @@
 import { api } from '../../lib/api'
 import { validate, validateList } from '../validate'
 import { ClaimedCouponSchema, CouponPreviewSchema, CustomerCouponsSchema, PromotionalProductSchema } from '../../types'
+import { cachedByTenant } from '../../lib/apiCache'
 
 // Módulo Cupons — único ponto do app autorizado a chamar `api.coupons.*` e
 // a fatia de cupom de `api.customerAuth.*`. Cobre tanto o cupom digitado
@@ -17,7 +18,9 @@ export const couponsEndpoint = {
   // Categoria "Promoção" do catálogo — desconto de produto já aplicado
   // sozinho, sem cupom digitado.
   listPromotionalProducts: async () =>
-    validateList(PromotionalProductSchema, await api.coupons.listPromotionalProducts(), 'coupons.listPromotionalProducts'),
+    cachedByTenant('coupons.listPromotionalProducts', async () =>
+      validateList(PromotionalProductSchema, await api.coupons.listPromotionalProducts(), 'coupons.listPromotionalProducts'),
+    ),
 
   // /cliente/cupons — cupons de fidelidade do cliente logado.
   listMine: async (token: string) => validate(CustomerCouponsSchema, await api.customerAuth.listCoupons(token), 'customerAuth.listCoupons'),

@@ -259,7 +259,7 @@ export default function EletronicaCatalogoServico() {
 
             {activeCategory?.image_url && (
               <div className="relative w-full h-36 rounded-2xl overflow-hidden">
-                <img src={activeCategory.image_url} alt={activeCategory.name} className="w-full h-full object-cover" />
+                <img src={activeCategory.image_url} alt={activeCategory.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                 <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0b]/80 via-[#0a0a0b]/40 to-transparent" />
                 <div className="absolute inset-0 flex items-center px-6">
                   <div>
@@ -315,7 +315,7 @@ export default function EletronicaCatalogoServico() {
                       <div className="flex items-center gap-3 mb-4">
                         {modelImage ? (
                           <div className="w-14 h-14 rounded-xl overflow-hidden border border-white/10 shrink-0 bg-[#161618]">
-                            <img src={modelImage} alt={modelName} className="w-full h-full object-cover" />
+                            <img src={modelImage} alt={modelName} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                           </div>
                         ) : (
                           <div className="w-14 h-14 rounded-xl bg-[#161618] border border-white/10 shrink-0 flex items-center justify-center">
@@ -341,6 +341,8 @@ export default function EletronicaCatalogoServico() {
                                     src={modelImage}
                                     alt={modelName}
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                    loading="lazy"
+                                    decoding="async"
                                   />
                                   <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#161618]" />
                                 </div>

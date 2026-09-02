@@ -33,7 +33,7 @@ export default function ProductCard({
     <div className={`u4-tile ${qty > 0 ? 'in-cart' : ''} ${outOfStock ? 'grayscale opacity-70' : ''}`}>
       {outOfStock && <OutOfStockRibbon />}
       <Link to={`/produto/${product.id}`} className="absolute inset-0" onClick={(e) => outOfStock && e.preventDefault()}>
-        {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Package className="w-9 h-9 u4-dim" /></div>}
+        {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <div className="w-full h-full flex items-center justify-center"><Package className="w-9 h-9 u4-dim" /></div>}
       </Link>
 
       {onToggleFavorite && (

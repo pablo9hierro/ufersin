@@ -121,7 +121,7 @@ export default function Uiux4Carrinho() {
             {lines.map(({ item, product }) => (
               <li key={product.id} className="u4-panel flex items-center gap-3 p-3">
                 <Link to={`/produto/${product.id}`} className="w-14 h-14 shrink-0 rounded-lg overflow-hidden flex items-center justify-center" style={{ background: 'var(--u4-surface-light)' }}>
-                  {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-5 h-5 u4-dim" />}
+                  {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-5 h-5 u4-dim" />}
                 </Link>
                 <Link to={`/produto/${product.id}`} className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{product.name}</p>

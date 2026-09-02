@@ -141,7 +141,7 @@ export default function EletronicaLoja() {
                   <div className="flex flex-col flex-1">
                     <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
                       {product.image_url ? (
-                        <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                        <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                       ) : (
                         <Package className="w-10 h-10 text-gray-300" />
                       )}

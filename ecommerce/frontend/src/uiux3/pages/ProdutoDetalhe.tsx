@@ -47,7 +47,7 @@ export default function Uiux3ProdutoDetalhe() {
       <div className="max-w-2xl mx-auto pb-16">
         <div className="relative">
           <div className="aspect-square sm:aspect-video flex items-center justify-center overflow-hidden rounded-b-[32px]" style={{ background: 'var(--u3-surface)' }}>
-            {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <Package className="w-16 h-16 u3-dim" />}
+            {product.image_url ? <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" loading="lazy" decoding="async" /> : <Package className="w-16 h-16 u3-dim" />}
           </div>
           <button onClick={() => navigate(-1)} className="u3-icon-btn absolute top-4 left-4" aria-label="Voltar">
             <ArrowLeft className="w-4 h-4" />
