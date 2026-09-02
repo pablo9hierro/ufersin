@@ -133,6 +133,69 @@ export function storefrontAllowsCoupons(tenantPlano?: PlanoCode | null): boolean
   return !isEssentialStorefront(tenantPlano)
 }
 
+// Demo real seedada (Postgres de verdade, ver ecommerce/backend/src/seed.rs
+// ::seed_demo_tenants) -- diferente do modo mock acima (isDemoModeActive),
+// que roda 100% em localStorage sem backend. Esses dois slugs são tenants
+// reais no banco; a única coisa que os torna "demo" é que escrita de
+// visitante NUNCA chega no Postgres (ver isSeededDemoTenant() abaixo,
+// consumido pelos pontos únicos de rede em lib/api.ts: request()/rpc()).
+const SEEDED_DEMO_SLUGS = ['demo-ecommerce', 'demo-eletronica']
+
+export function isSeededDemoTenant(): boolean {
+  return SEEDED_DEMO_SLUGS.includes(resolveTenantSlug().trim().toLowerCase())
+}
+
+/**
+ * Escrita de visitante na demo seedada nunca chega no Postgres: os pontos
+ * únicos de rede (lib/api.ts request()/rpc()) chamam isto em vez de
+ * bater no backend, e devolvem o resultado direto pra UI atualizar
+ * otimisticamente. Como o backend nunca grava nada, qualquer refetch real
+ * (trocar de tela, recarregar) volta pro dado seedado -- sem precisar de
+ * nenhuma camada extra de merge no read.
+ * ponytail: fake id/timestamps só, sem persistir em localStorage entre
+ * remounts da mesma tela -- suficiente pro requisito ("some sempre que
+ * troca de tela"); se algum fluxo precisar sobreviver a um remount na
+ * MESMA tela, adicionar um cache em sessionStorage aqui.
+ */
+export function simulateDemoWrite<T>(body?: BodyInit | null): T {
+  let parsed: Record<string, unknown> = {}
+  if (typeof body === 'string') {
+    try {
+      const j = JSON.parse(body)
+      if (j && typeof j === 'object') parsed = j as Record<string, unknown>
+    } catch {
+      /* body não é JSON (ex: upload de imagem) — devolve objeto vazio mesmo */
+    }
+  }
+  return {
+    id: parsed.id ?? `demo-${Math.random().toString(36).slice(2)}`,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...parsed,
+  } as T
+}
+
+/** RPCs de mutação do admin/cliente — bloqueadas na demo seedada (ver
+ * simulateDemoWrite). Prefixo fechado de propósito: lista/leitura (list_,
+ * get_, financeiro, timeseries...) nunca bate aqui, passa direto pro
+ * Supabase normalmente. */
+const MUTATING_RPC_PREFIXES = [
+  'admin_create_',
+  'admin_update_',
+  'admin_delete_',
+  'admin_pay_',
+  'admin_save_',
+  'admin_set_',
+  'admin_check_birthday_',
+  'customer_register',
+  'customer_claim_coupon',
+  'customer_toggle_favorite',
+]
+
+export function isMutatingDemoRpc(fn: string): boolean {
+  return MUTATING_RPC_PREFIXES.some((p) => fn.startsWith(p))
+}
+
 /**
  * Nome da marca na vitrine/admin.
  * - Demo pública → Ufersin

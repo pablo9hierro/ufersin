@@ -29,6 +29,8 @@ import {
 } from '../../lib/eletronicosApi'
 import { DeviceTypeIcon, BrandIcon } from '../../lib/deviceBrandIcons'
 import LocationPicker, { type LocationPickerResult } from '../../components/checkout/LocationPicker'
+import { useCustomerAuth } from '../../store/customerAuth'
+import CustomerAuthModal from '../../components/CustomerAuthModal'
 
 // Port 1:1 (adaptado) de src/components/ServiceRequestForm.tsx do vrtech --
 // mesmo wizard de 3 passos, mesmas cores (vr-red/vr-black/vr-graphite/
@@ -93,6 +95,9 @@ export default function EletronicaServiceRequestForm({
   const slug = resolveTenantSlug()
   const apenasRetirada = tenantConfig?.apenas_retirada ?? apenasRetiradaProp
 
+  const customerAuth = useCustomerAuth()
+  const [showAuthModal, setShowAuthModal] = useState(false)
+
   const [step, setStep] = useState(1)
   const [submitted, setSubmitted] = useState(false)
   const [submittedPhone, setSubmittedPhone] = useState('')
@@ -103,6 +108,15 @@ export default function EletronicaServiceRequestForm({
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  // Mesmo padrão do Checkout.tsx (produto): assim que loga por OTP,
+  // preenche nome/whatsapp com os dados verificados -- servem só de
+  // exibição aqui, o backend ignora esses campos e usa o customer_token.
+  useEffect(() => {
+    if (!customerAuth.customer) return
+    setCustomerName(customerAuth.customer.name)
+    setCustomerPhone(formatPhone(customerAuth.customer.whatsapp.replace(/^55/, '')))
+  }, [customerAuth.customer])
 
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -249,8 +263,20 @@ export default function EletronicaServiceRequestForm({
     if (valid) setStep((s) => s + 1)
   }
 
+  function handleFinalizeClick() {
+    if (!useCustomerAuth.getState().token) {
+      setShowAuthModal(true)
+      return
+    }
+    onSubmit()
+  }
+
   async function onSubmit() {
-    if (!slug) return
+    // getState() (não o `customerAuth` do closure) -- chamado também pelo
+    // onSuccess do CustomerAuthModal logo após o login, antes do componente
+    // re-renderizar com o token novo; via closure ainda leríamos null.
+    const token = useCustomerAuth.getState().token
+    if (!slug || !token) return
     if (!apenasRetirada && !selfPickup && !location) {
       setFieldErrors({ address_lat: 'Selecione o endereço no mapa' })
       return
@@ -264,6 +290,7 @@ export default function EletronicaServiceRequestForm({
       }
 
       const created = await createServiceRequestPublic(slug, {
+        customer_token: token,
         customer_name: customerName.trim(),
         customer_phone: customerPhone.replace(/\D/g, ''),
         customer_email: customerEmail.trim() || undefined,
@@ -335,12 +362,21 @@ export default function EletronicaServiceRequestForm({
   return (
     <>
       {showMap && <LocationPicker onClose={() => setShowMap(false)} onConfirm={handleLocationConfirm} />}
+      {showAuthModal && (
+        <CustomerAuthModal
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={() => {
+            setShowAuthModal(false)
+            onSubmit()
+          }}
+        />
+      )}
 
       <form
         onSubmit={(e) => {
           e.preventDefault()
           if (step < 3) nextStep()
-          else onSubmit()
+          else handleFinalizeClick()
         }}
         className="flex flex-col gap-6"
       >

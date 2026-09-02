@@ -64,16 +64,41 @@ pub async fn load_tenant(pool: &PgPool, tenant_id: &str) -> Result<Tenant, AppEr
 pub const LOJA_OFFLINE_MSG: &str =
     "loja offline — assine novamente no Resolutoo pra reativar o painel";
 
-pub async fn ensure_tenant_active(pool: &PgPool, tenant_id: &str) -> Result<(), AppError> {
-    let status: Option<(String,)> = sqlx::query_as("SELECT status FROM tenants WHERE id = $1")
-        .bind(tenant_id)
-        .fetch_optional(pool)
-        .await?;
-    let Some((status,)) = status else {
+/// Tenants seedados por `seed::seed_demo_tenants`, expostos sem senha em
+/// `routes::demo::demo_tokens` pra qualquer visitante ver o painel. O
+/// frontend já bloqueia escrita neles (`isSeededDemoTenant` em
+/// `frontend/src/lib/api.ts`), mas isso é só UX — uma chamada direta contra
+/// o backend (curl, devtools, bot) passava reto e gravava dado real e
+/// permanente num tenant público. `ensure_tenant_active` já é o único ponto
+/// por onde toda extração de tenant autenticado (JWT ou sessão Sunset)
+/// passa, então é aqui que a escrita é barrada -- não espalhado rota por
+/// rota.
+const DEMO_TENANT_SLUGS: [&str; 2] = ["demo-ecommerce", "demo-eletronica"];
+
+pub async fn ensure_tenant_active(
+    pool: &PgPool,
+    tenant_id: &str,
+    method: &axum::http::Method,
+) -> Result<(), AppError> {
+    let status: Option<(String, String)> =
+        sqlx::query_as("SELECT status, slug FROM tenants WHERE id = $1")
+            .bind(tenant_id)
+            .fetch_optional(pool)
+            .await?;
+    let Some((status, slug)) = status else {
         return Err(AppError::Unauthorized(LOJA_OFFLINE_MSG.to_string()));
     };
     if matches!(status.as_str(), "suspenso" | "cancelado") {
         return Err(AppError::Unauthorized(LOJA_OFFLINE_MSG.to_string()));
+    }
+    let is_mutation = !matches!(
+        *method,
+        axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
+    );
+    if is_mutation && DEMO_TENANT_SLUGS.contains(&slug.as_str()) {
+        return Err(AppError::Forbidden(
+            "demo é somente leitura".to_string(),
+        ));
     }
     Ok(())
 }

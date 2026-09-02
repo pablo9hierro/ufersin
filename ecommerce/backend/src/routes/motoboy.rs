@@ -51,7 +51,8 @@ pub async fn start_run(
         return Err(AppError::BadRequest("select at least one order to start a run".to_string()));
     }
 
-    let (_motoboy_id, tenant_id) = auth::lookup_session_token(&state.pool, token, &["motoboy"]).await?;
+    let (_motoboy_id, tenant_id) =
+        auth::lookup_session_token(&state.pool, token, &["motoboy"], &axum::http::Method::POST).await?;
     features::require_feature(&state.pool, &tenant_id, Feature::Motoboy).await?;
 
     let precomputed = if state.google_routes_key.is_some() {

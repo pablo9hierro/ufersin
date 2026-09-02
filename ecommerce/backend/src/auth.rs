@@ -98,7 +98,7 @@ impl FromRequestParts<AppState> for AdminUser {
         if claims.role != "admin" {
             return Err(AppError::Forbidden("admin role required".to_string()));
         }
-        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id, &parts.method).await?;
         Ok(AdminUser(claims))
     }
 }
@@ -121,7 +121,7 @@ impl FromRequestParts<AppState> for AdminOrCozinhaUser {
         if claims.role != "admin" && claims.role != "cozinha" {
             return Err(AppError::Forbidden("admin or cozinha role required".to_string()));
         }
-        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id, &parts.method).await?;
         Ok(AdminOrCozinhaUser(claims))
     }
 }
@@ -231,7 +231,7 @@ async fn session_lookup(
     let token = header
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized("invalid authorization header".to_string()))?;
-    lookup_session_token(&state.pool, token, roles).await
+    lookup_session_token(&state.pool, token, roles, &parts.method).await
 }
 
 /// Same lookup as the extractors above, usable when a handler already has
@@ -242,6 +242,7 @@ pub async fn lookup_session_token(
     pool: &sqlx::PgPool,
     token: &str,
     roles: &[&str],
+    method: &axum::http::Method,
 ) -> Result<(String, String), AppError> {
     let subject: Option<(String, String)> = sqlx::query_as(
         "SELECT subject_id, tenant_id FROM sessions \
@@ -255,7 +256,7 @@ pub async fn lookup_session_token(
 
     let (subject_id, tenant_id) =
         subject.ok_or_else(|| AppError::Unauthorized("invalid or expired session".to_string()))?;
-    tenant::ensure_tenant_active(pool, &tenant_id).await?;
+    tenant::ensure_tenant_active(pool, &tenant_id, method).await?;
     Ok((subject_id, tenant_id))
 }
 
@@ -273,7 +274,7 @@ impl FromRequestParts<AppState> for PdvUser {
         if claims.role != "admin" && claims.role != "vendedor" {
             return Err(AppError::Forbidden("admin or vendedor role required".to_string()));
         }
-        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id, &parts.method).await?;
         Ok(PdvUser(claims))
     }
 }
@@ -294,7 +295,7 @@ impl FromRequestParts<AppState> for StaffUser {
         if claims.role != "motoboy" && claims.role != "vendedor" {
             return Err(AppError::Forbidden("motoboy or vendedor role required".to_string()));
         }
-        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id, &parts.method).await?;
         Ok(StaffUser(claims))
     }
 }
@@ -313,7 +314,7 @@ impl FromRequestParts<AppState> for MotoboyUser {
         if claims.role != "motoboy" {
             return Err(AppError::Forbidden("motoboy role required".to_string()));
         }
-        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id).await?;
+        tenant::ensure_tenant_active(&state.pool, &claims.tenant_id, &parts.method).await?;
         Ok(MotoboyUser(claims))
     }
 }

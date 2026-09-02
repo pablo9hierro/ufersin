@@ -5,6 +5,10 @@ import { API_BASE } from './api'
 // create_service_request_public / consultar_por_telefone no backend Rust.
 
 export interface CreateServiceRequestPayload {
+  /** Token de sessão do cliente logado por OTP (CustomerAuthModal) --
+   * obrigatório, backend rejeita sem isso e resolve nome/telefone reais
+   * a partir dele, ignorando os campos abaixo. */
+  customer_token: string
   customer_name: string
   customer_phone: string
   customer_email?: string

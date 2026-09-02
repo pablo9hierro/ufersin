@@ -3,7 +3,7 @@ import { useVendedorAuth } from '../store/vendedorAuth'
 import { useMotoboyAuth } from '../store/motoboyAuth'
 import { useCozinhaAuth } from '../store/cozinhaAuth'
 import { ApiError } from './apiError'
-import { isDemoModeActive } from './demoMode'
+import { isDemoModeActive, isMutatingDemoRpc, isSeededDemoTenant, simulateDemoWrite } from './demoMode'
 import { localApi } from './localApi'
 import { supabasePublicApi } from './supabasePublicApi'
 import { supabase } from './supabaseClient'
@@ -80,6 +80,13 @@ async function request<T>(
   options: RequestInit & { token?: string; timeoutMs?: number } = {}
 ): Promise<T> {
   const { token, headers, timeoutMs, ...rest } = options
+  // Demo real seedada (demo-ecommerce/demo-eletronica): visitante nunca
+  // escreve no Postgres de verdade. Simula sucesso local — próxima leitura
+  // real (troca de tela) volta pro dado seedado. Ver lib/demoMode.ts.
+  const method = (rest.method || 'GET').toUpperCase()
+  if (isSeededDemoTenant() && method !== 'GET' && method !== 'HEAD') {
+    return simulateDemoWrite<T>(rest.body)
+  }
   let res: Response
   try {
     res = await fetchWithTimeout(
@@ -273,6 +280,11 @@ function staffToken() {
 }
 
 async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+  // Mesma regra de request(): RPC de mutação na demo seedada não bate no
+  // Supabase, simula sucesso local.
+  if (isSeededDemoTenant() && isMutatingDemoRpc(fn)) {
+    return simulateDemoWrite<T>(JSON.stringify(args))
+  }
   const { data, error } = await supabase.rpc(fn, args)
   if (error) throw new ApiError(error.message === 'unauthorized' ? 401 : 400, error.message)
   return data as T
@@ -523,7 +535,12 @@ const remoteApi = {
           ? railwayAdmin<void>(`/api/admin/products/${id}`, { method: 'DELETE' })
           : rpc<void>('admin_delete_product', { p_token: adminToken(), p_id: id }),
       // Upload: JWT → Railway; sessão Supabase → Edge Function Vercel.
+      // Bypassa request()/rpc() (fetch cru), então precisa do próprio guard
+      // de demo — visitante não deve subir arquivo de verdade pro storage.
       uploadImage: async (file: File) => {
+        if (isSeededDemoTenant()) {
+          return simulateDemoWrite<{ url: string }>(JSON.stringify({ url: URL.createObjectURL(file) }))
+        }
         if (isRailwayAdminJwt()) {
           const form = new FormData()
           form.append('file', file)

@@ -9,12 +9,13 @@ const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium', 'eletroni
 
 // Demo do ramo eletrônica roda 100% dentro do Resolutoo, nativa (mesmo
 // motor Rust + o frontend do /loja) -- nunca mais um domínio externo
-// (vrtech-jp.vercel.app foi descontinuado). Usa o tenant real "vrtech" já
-// migrado/seedado (dono: pablohierro01@gmail.com) como vitrine/dados de
-// demonstração -- é o único tenant real do ramo hoje, e é o próprio dono
-// da Resolutoo, então serve como showcase ao vivo do produto.
-const DEMO_TENANT_SLUG = 'vrtech'
-const DEMO_TENANT_EMAIL = 'pablohierro01@gmail.com'
+// (vrtech-jp.vercel.app foi descontinuado). Usava o tenant real "vrtech"
+// (dono: pablohierro01@gmail.com) como vitrine/dados de demonstração --
+// isso expunha dado de produção do dono como se fosse demo pública.
+// Trocado pelo tenant demo seedado de verdade (ecommerce/backend/src/
+// seed.rs::seed_demo_eletronica), isolado, sem dado real de ninguém.
+const DEMO_TENANT_SLUG = 'demo-eletronica'
+const DEMO_TENANT_EMAIL = 'admin@demo-eletronica.resolutoo.app'
 
 interface AreaDef {
   key: 'vitrine' | 'admin'
@@ -88,6 +89,11 @@ export default function DemoPlanoEletronica() {
             </motion.button>
           ))}
         </div>
+
+        <p className="text-xs text-uf-silver-dim text-center mt-8">
+          Área logada (admin): e-mail <strong className="text-uf-silver">{DEMO_TENANT_EMAIL}</strong>, senha{' '}
+          <strong className="text-uf-silver">demo-nao-usar-login-por-senha</strong> — dados de demonstração, isolados de qualquer loja real.
+        </p>
       </div>
     </main>
   )

@@ -28,9 +28,9 @@ const PREVIEW_VARS: Record<string, string> = {
   horario_anterior: '15/08 às 10:00',
   motivo: 'O técnico responsável ficará indisponível no horário agendado.',
   endereco: 'Rua João Suassuna, Centro, Campina Grande - PB',
-  mapa: 'https://maps.google.com/?q=VR+Tech',
-  link_os: 'https://vrtech.com.br/os/4821.pdf',
-  link_acompanhamento: 'https://vrtech.com.br/consultar?phone=83988887777',
+  mapa: 'https://maps.google.com/?q=Sua+Loja',
+  link_os: 'https://resolutoo.com/os/4821.pdf',
+  link_acompanhamento: 'https://resolutoo.com/consultar?phone=83988887777',
   link_pagamento: '00020126580014BR.GOV.BCB.PIX0136f4e2...5204000053039865802BR',
 }
 

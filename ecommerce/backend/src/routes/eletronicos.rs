@@ -97,6 +97,13 @@ pub struct CreateServiceRequestInput {
     /// vrtech (ver ensureServiceRequestForAppointment no código antigo).
     pub status: Option<String>,
     pub source: Option<String>,
+    /// Só usado (e obrigatório) pela vitrine pública -- token de login OTP
+    /// do cliente (`resolutoo.sessions`, ver CustomerAuthModal/public.rs::
+    /// request_customer_login_code). Admin (`create_service_request`) nunca
+    /// manda isso. `customer_name`/`customer_phone`/`customer_email` do
+    /// input público são ignorados e sobrescritos pelo cadastro verificado
+    /// -- não dá mais pra criar solicitação com nome/telefone soltos.
+    pub customer_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -486,17 +493,78 @@ async fn insert_service_request(
     Ok(row)
 }
 
-/// Vitrine pública -- cliente cria a solicitação sozinho (formulário de
-/// triagem em /loja/eletronica-loja), sem login. Tenant resolvido pelo slug
-/// da URL, nunca por JWT. `status`/`source` do input são ignorados aqui
-/// (cliente não decide isso) -- sempre entra como 'pending'/'site'.
+/// Cliente autenticado por OTP (mesmo login sem senha do checkout de
+/// produto, `resolutoo.sessions` com role='customer') -- ver
+/// `public.rs::request_customer_login_code` pra gerar o código e
+/// `resolutoo.customer_me` (RPC do Supabase) pra resolver o token.
+struct AuthenticatedCustomer {
+    name: String,
+    whatsapp: String,
+    email: Option<String>,
+}
+
+/// Resolve um token de sessão de cliente chamando a RPC `customer_me` do
+/// Supabase (mesma que o front chama direto pra /cliente/*, aqui via
+/// service_role porque quem está chamando é o backend, não o navegador).
+/// Único ponto que valida sessão de cliente no Rust -- reusar se mais
+/// endpoints públicos precisarem exigir login de cliente no futuro.
+async fn resolve_authenticated_customer(state: &AppState, token: &str) -> Result<AuthenticatedCustomer, AppError> {
+    if token.trim().is_empty() {
+        return Err(AppError::Unauthorized("faça login pra continuar".to_string()));
+    }
+    if state.supabase_url.is_empty() || state.supabase_service_key.is_empty() {
+        return Err(AppError::Unauthorized("login indisponível no momento".to_string()));
+    }
+    let base = state.supabase_url.trim_end_matches('/');
+    let url = format!("{base}/rest/v1/rpc/customer_me");
+    let resp = state
+        .http
+        .post(&url)
+        .header("apikey", state.supabase_service_key.as_str())
+        .header("Authorization", format!("Bearer {}", state.supabase_service_key))
+        .header("Content-Profile", "resolutoo")
+        .json(&serde_json::json!({ "p_token": token }))
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("customer_me: supabase request failed: {e}");
+            AppError::Unauthorized("faça login pra continuar".to_string())
+        })?;
+    if !resp.status().is_success() {
+        return Err(AppError::Unauthorized("sessão expirada, faça login de novo".to_string()));
+    }
+    let body: serde_json::Value = resp.json().await.map_err(|e| {
+        tracing::error!("customer_me: supabase response parse error: {e}");
+        AppError::Unauthorized("faça login pra continuar".to_string())
+    })?;
+    let name = body.get("name").and_then(|v| v.as_str()).map(str::to_string);
+    let whatsapp = body.get("whatsapp").and_then(|v| v.as_str()).map(str::to_string);
+    let (Some(name), Some(whatsapp)) = (name, whatsapp) else {
+        return Err(AppError::Unauthorized("sessão expirada, faça login de novo".to_string()));
+    };
+    let email = body.get("email").and_then(|v| v.as_str()).map(str::to_string);
+    Ok(AuthenticatedCustomer { name, whatsapp, email })
+}
+
+/// Vitrine pública -- cliente precisa estar logado por OTP (mesmo login sem
+/// senha do checkout de produto, ver CustomerAuthModal) antes de abrir uma
+/// solicitação de serviço. Tenant resolvido pelo slug da URL, cliente
+/// resolvido pelo `customer_token` (sessão global do Supabase) -- nunca por
+/// nome/telefone soltos no corpo da requisição. `status`/`source` do input
+/// são ignorados aqui (cliente não decide isso) -- sempre entra como
+/// 'pending'/'site'.
 pub async fn create_service_request_public(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Json(mut input): Json<CreateServiceRequestInput>,
 ) -> Result<Json<ServiceRequestDto>, AppError> {
     let store = tenant::tenant_for_slug(&state.pool, &slug).await?;
+    let token = input.customer_token.clone().unwrap_or_default();
+    let customer = resolve_authenticated_customer(&state, &token).await?;
     input.status = None;
+    input.customer_name = customer.name;
+    input.customer_phone = customer.whatsapp;
+    input.customer_email = customer.email.or(input.customer_email);
     let mut tx = tenant::tenant_tx(&state.pool, &store.id).await?;
     let row = insert_service_request(&mut tx, &store.id, input, "site").await?;
     tx.commit().await?;

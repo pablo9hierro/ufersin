@@ -180,7 +180,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     seed::seed_if_empty(&pool).await?;
-    seed::seed_demo_tenant(&pool).await?;
+    seed::seed_demo_tenants(&pool).await?;
 
     // Sem timeout, uma chamada travada (Mercado Pago, Evolution API, Google
     // Routes) prendia a requisição pra sempre — inclusive segurando uma
@@ -247,9 +247,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/motoboy/login", post(routes::auth::motoboy_login))
         .route("/api/auth/vendedor/login", post(routes::auth::vendedor_login))
         .route("/api/auth/cozinha/login", post(routes::auth::cozinha_login))
-        // Demo pública da plataforma Rodoletas (/demo lá) — só enxerga o
-        // tenant fixo "loja-demo" seedado por seed::seed_demo_tenant,
-        // nunca uma loja real. Ver routes/demo.rs.
+        // Demo pública Resolutoo — só enxerga os tenants fixos
+        // "demo-ecommerce"/"demo-eletronica" seedados por
+        // seed::seed_demo_tenants, nunca uma loja real. Ver routes/demo.rs.
         .route("/demo/tokens", get(routes::demo::demo_tokens))
         // public / customer-facing — catálogo multi-tenant por slug (mesma
         // tabela sunset.* do admin). Pix/WhatsApp continuam aqui (segredo).
