@@ -486,7 +486,7 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
 
     // Aparelho/marca/modelo — sem isso as abas "Aparelho"/"Marca"/"Modelo"
     // de /estoque nasciam vazias na demo (achado testando a demo ao vivo).
-    let device_types: [(&str, &str); 3] = [("Smartphone", "celular"), ("Notebook", "notebook"), ("Tablet", "tablet")];
+    let device_types: [(&str, &str); 3] = [("Smartphone", "demo-celular"), ("Notebook", "demo-notebook"), ("Tablet", "demo-tablet")];
     let mut device_type_ids = std::collections::HashMap::new();
     for (name, slug) in device_types {
         let id = Uuid::new_v4().to_string();
@@ -502,11 +502,15 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
 
     // Marcas (eletronicos.service_catalog_categories) — uma por device_type
     // predominante, pra Modelo (catalog_models) ter onde pendurar.
+    // Slugs prefixados "demo-" -- device_types.slug e
+    // service_catalog_categories.slug são únicos GLOBALMENTE (não por
+    // tenant, achado testando: colidia com o tenant single-tenant legado
+    // que já usa celular/samsung/xiaomi/etc), não só dentro do tenant.
     let brands: [(&str, &str, &str); 4] = [
-        ("Apple", "apple", "celular"),
-        ("Samsung", "samsung", "celular"),
-        ("Xiaomi", "xiaomi", "celular"),
-        ("Dell", "dell", "notebook"),
+        ("Apple", "demo-apple", "demo-celular"),
+        ("Samsung", "demo-samsung", "demo-celular"),
+        ("Xiaomi", "demo-xiaomi", "demo-celular"),
+        ("Dell", "demo-dell", "demo-notebook"),
     ];
     let mut brand_ids = Vec::new();
     for (name, slug, device_slug) in brands {
@@ -527,12 +531,12 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
     let brand_id = |slug: &str| brand_ids.iter().find(|(s, _)| *s == slug).map(|(_, id)| id.clone()).unwrap();
 
     let models: [(&str, &str); 6] = [
-        ("iPhone 13", "apple"),
-        ("iPhone 14", "apple"),
-        ("Galaxy S21", "samsung"),
-        ("Galaxy A54", "samsung"),
-        ("Redmi Note 12", "xiaomi"),
-        ("Inspiron 15", "dell"),
+        ("iPhone 13", "demo-apple"),
+        ("iPhone 14", "demo-apple"),
+        ("Galaxy S21", "demo-samsung"),
+        ("Galaxy A54", "demo-samsung"),
+        ("Redmi Note 12", "demo-xiaomi"),
+        ("Inspiron 15", "demo-dell"),
     ];
     for (name, brand_slug) in models {
         sqlx::query("INSERT INTO eletronicos.catalog_models (id, tenant_id, brand_id, name) VALUES ($1, $2, $3, $4)")
