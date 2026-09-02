@@ -484,6 +484,99 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         .await?;
     }
 
+    // Aparelho/marca/modelo — sem isso as abas "Aparelho"/"Marca"/"Modelo"
+    // de /estoque nasciam vazias na demo (achado testando a demo ao vivo).
+    let device_types: [(&str, &str); 3] = [("Smartphone", "celular"), ("Notebook", "notebook"), ("Tablet", "tablet")];
+    let mut device_type_ids = std::collections::HashMap::new();
+    for (name, slug) in device_types {
+        let id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO eletronicos.device_types (id, tenant_id, name, slug) VALUES ($1, $2, $3, $4)")
+            .bind(&id)
+            .bind(&tenant_id)
+            .bind(name)
+            .bind(slug)
+            .execute(&mut *tx)
+            .await?;
+        device_type_ids.insert(slug, id);
+    }
+
+    // Marcas (eletronicos.service_catalog_categories) — uma por device_type
+    // predominante, pra Modelo (catalog_models) ter onde pendurar.
+    let brands: [(&str, &str, &str); 4] = [
+        ("Apple", "apple", "celular"),
+        ("Samsung", "samsung", "celular"),
+        ("Xiaomi", "xiaomi", "celular"),
+        ("Dell", "dell", "notebook"),
+    ];
+    let mut brand_ids = Vec::new();
+    for (name, slug, device_slug) in brands {
+        let id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO eletronicos.service_catalog_categories (id, tenant_id, name, slug, device_type) \
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(&id)
+        .bind(&tenant_id)
+        .bind(name)
+        .bind(slug)
+        .bind(device_slug)
+        .execute(&mut *tx)
+        .await?;
+        brand_ids.push((slug, id));
+    }
+    let brand_id = |slug: &str| brand_ids.iter().find(|(s, _)| *s == slug).map(|(_, id)| id.clone()).unwrap();
+
+    let models: [(&str, &str); 6] = [
+        ("iPhone 13", "apple"),
+        ("iPhone 14", "apple"),
+        ("Galaxy S21", "samsung"),
+        ("Galaxy A54", "samsung"),
+        ("Redmi Note 12", "xiaomi"),
+        ("Inspiron 15", "dell"),
+    ];
+    for (name, brand_slug) in models {
+        sqlx::query("INSERT INTO eletronicos.catalog_models (id, tenant_id, brand_id, name) VALUES ($1, $2, $3, $4)")
+            .bind(Uuid::new_v4().to_string())
+            .bind(&tenant_id)
+            .bind(brand_id(brand_slug))
+            .bind(name)
+            .execute(&mut *tx)
+            .await?;
+    }
+    let _ = &device_type_ids; // reservado pra quando service_catalog_categories.device_type_id virar obrigatório
+
+    // Acessórios à venda — categoria de produto separada da de serviços
+    // ("Reparos"), pra vitrine/destaques não nascerem vazios.
+    let accessories_category_id = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO categories (id, tenant_id, name) VALUES ($1, $2, 'Acessórios')")
+        .bind(&accessories_category_id)
+        .bind(&tenant_id)
+        .execute(&mut *tx)
+        .await?;
+    let accessories: [(&str, &str, f64, i64); 5] = [
+        ("Capinha iPhone 13", "Silicone premium, várias cores", 39.9, 30),
+        ("Película de vidro", "Proteção 9H anti-risco", 19.9, 50),
+        ("Carregador USB-C 20W", "Carregamento rápido original", 79.9, 25),
+        ("Fone Bluetooth TWS", "Cancelamento de ruído, estojo carregador", 129.9, 15),
+        ("Cabo USB-C 1m", "Reforçado, trançado em nylon", 24.9, 40),
+    ];
+    for (name, description, price, quantity) in accessories {
+        sqlx::query(
+            "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active, cost_price) \
+             VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, 1, $8)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&tenant_id)
+        .bind(name)
+        .bind(description)
+        .bind(price)
+        .bind(quantity)
+        .bind(&accessories_category_id)
+        .bind(price * 0.5)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     // Solicitações de serviço cobrindo todo status do Kanban do painel
     let requests: [(&str, &str, &str, &str, &str, Option<f64>); 8] = [
         ("pending", "Maria Silva", "83988887777", "iPhone 12", "Tela trincada, não toca em uma parte", None),
