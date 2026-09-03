@@ -78,12 +78,22 @@ export default function PlanCardsGrid({
             <p className={`text-sm mt-1 ${plan.highlight ? 'text-white/80' : 'text-uf-silver-dim'}`}>{plan.tagline}</p>
 
             <div className="mt-6 mb-2">
+              {plan.normalPrice != null && (
+                <p className={`text-sm line-through ${plan.highlight ? 'text-white/50' : 'text-uf-silver-dim/60'}`}>
+                  de R$ {formatBRL(ciclo === 'mensal' ? plan.normalPrice : priceForCycle(plan.normalPrice, ciclo))}
+                </p>
+              )}
               {ciclo === 'mensal' ? (
                 <>
                   <span className={`text-4xl font-black ${plan.highlight ? 'text-white' : ''}`}>
                     R$ {formatBRL(plan.price)}
                   </span>
                   <span className={`text-sm ${plan.highlight ? 'text-white/70' : 'text-uf-silver-dim'}`}>/mês</span>
+                  {plan.normalPrice != null && (
+                    <span className="ml-2 text-[11px] font-bold px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-300 align-middle">
+                      INAUGURAÇÃO
+                    </span>
+                  )}
                 </>
               ) : (
                 <>

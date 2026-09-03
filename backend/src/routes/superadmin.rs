@@ -266,6 +266,8 @@ pub struct CreatePlanInput {
     pub name: String,
     pub price_monthly: f64,
     #[serde(default)]
+    pub launch_price_monthly: Option<f64>,
+    #[serde(default)]
     pub tagline: String,
     #[serde(default = "default_features")]
     pub features: serde_json::Value,
@@ -318,17 +320,26 @@ pub async fn create_plan(
     if body.name.trim().is_empty() || body.price_monthly <= 0.0 {
         return Err(AppError::BadRequest("name e price_monthly obrigatórios".to_string()));
     }
+    if let Some(launch) = body.launch_price_monthly {
+        if launch <= 0.0 || launch >= body.price_monthly {
+            return Err(AppError::BadRequest(
+                "launch_price_monthly deve ser positivo e menor que price_monthly".to_string(),
+            ));
+        }
+    }
     sqlx::query(
-        "INSERT INTO platform_plans (code, name, price_monthly, tagline, features, highlight, sort_order, vertical) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) \
+        "INSERT INTO platform_plans (code, name, price_monthly, launch_price_monthly, tagline, features, highlight, sort_order, vertical) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) \
          ON CONFLICT (code) DO UPDATE SET \
-           name = EXCLUDED.name, price_monthly = EXCLUDED.price_monthly, tagline = EXCLUDED.tagline, \
+           name = EXCLUDED.name, price_monthly = EXCLUDED.price_monthly, \
+           launch_price_monthly = EXCLUDED.launch_price_monthly, tagline = EXCLUDED.tagline, \
            features = EXCLUDED.features, highlight = EXCLUDED.highlight, sort_order = EXCLUDED.sort_order, \
            vertical = EXCLUDED.vertical, active = true, updated_at = now()",
     )
     .bind(&code)
     .bind(body.name.trim())
     .bind(body.price_monthly)
+    .bind(body.launch_price_monthly)
     .bind(&body.tagline)
     .bind(&body.features)
     .bind(body.highlight)
@@ -338,7 +349,7 @@ pub async fn create_plan(
     .await?;
 
     let row = sqlx::query_as::<_, plans::PlanRow>(
-        "SELECT code, name, price_monthly, tagline, features, highlight, active, sort_order, vertical \
+        "SELECT code, name, price_monthly, launch_price_monthly, tagline, features, highlight, active, sort_order, vertical \
          FROM platform_plans WHERE code = $1",
     )
     .bind(&code)
@@ -351,6 +362,11 @@ pub async fn create_plan(
 pub struct UpdatePlanInput {
     pub name: Option<String>,
     pub price_monthly: Option<f64>,
+    /// Sempre sobrescrito com o que vier (não usa COALESCE) -- omitir o
+    /// campo ou mandar `null` LIMPA o preço de inauguração de propósito,
+    /// é o único jeito de o front conseguir "voltar pro normal".
+    #[serde(default)]
+    pub launch_price_monthly: Option<f64>,
     pub tagline: Option<String>,
     pub features: Option<serde_json::Value>,
     pub highlight: Option<bool>,
@@ -363,19 +379,31 @@ pub async fn update_plan(
     Path(code): Path<String>,
     Json(body): Json<UpdatePlanInput>,
 ) -> Result<Json<plans::PlanRow>, AppError> {
+    let effective_normal = body.price_monthly.unwrap_or_else(|| 0.0);
+    if let Some(launch) = body.launch_price_monthly {
+        // Só valida contra o normal quando o normal também veio nesta
+        // edição -- senão o front tem que sempre mandar os dois juntos.
+        if launch <= 0.0 || (body.price_monthly.is_some() && launch >= effective_normal) {
+            return Err(AppError::BadRequest(
+                "launch_price_monthly deve ser positivo e menor que price_monthly".to_string(),
+            ));
+        }
+    }
     sqlx::query(
         "UPDATE platform_plans SET \
          name = COALESCE($1, name), \
          price_monthly = COALESCE($2, price_monthly), \
-         tagline = COALESCE($3, tagline), \
-         features = COALESCE($4, features), \
-         highlight = COALESCE($5, highlight), \
-         active = COALESCE($6, active), \
+         launch_price_monthly = $3, \
+         tagline = COALESCE($4, tagline), \
+         features = COALESCE($5, features), \
+         highlight = COALESCE($6, highlight), \
+         active = COALESCE($7, active), \
          updated_at = now() \
-         WHERE code = $7",
+         WHERE code = $8",
     )
     .bind(&body.name)
     .bind(body.price_monthly)
+    .bind(body.launch_price_monthly)
     .bind(&body.tagline)
     .bind(&body.features)
     .bind(body.highlight)
@@ -385,7 +413,7 @@ pub async fn update_plan(
     .await?;
 
     let row = sqlx::query_as::<_, plans::PlanRow>(
-        "SELECT code, name, price_monthly, tagline, features, highlight, active, sort_order, vertical \
+        "SELECT code, name, price_monthly, launch_price_monthly, tagline, features, highlight, active, sort_order, vertical \
          FROM platform_plans WHERE code = $1",
     )
     .bind(&code)

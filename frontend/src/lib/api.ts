@@ -100,6 +100,9 @@ export interface PlatformPlan {
   code: PlanoCode
   name: string
   price_monthly: number
+  /** Preço de inauguração/promocional — quando presente, é o cobrado de
+   * fato; `price_monthly` vira o "normal" mostrado riscado ao lado. */
+  launch_price_monthly: number | null
   tagline: string
   features: string[] | unknown
   highlight: boolean
@@ -496,6 +499,7 @@ export const api = {
     code: PlanoCode
     name: string
     price_monthly: number
+    launch_price_monthly?: number | null
     tagline?: string
     features?: string[]
     highlight?: boolean
@@ -503,7 +507,15 @@ export const api = {
   }) => request<PlatformPlan>('/api/superadmin/plans', { method: 'POST', body: JSON.stringify(body) }),
   superadminUpdatePlan: (
     code: string,
-    body: Partial<{ name: string; price_monthly: number; tagline: string; features: string[]; highlight: boolean; active: boolean }>,
+    body: Partial<{
+      name: string
+      price_monthly: number
+      launch_price_monthly: number | null
+      tagline: string
+      features: string[]
+      highlight: boolean
+      active: boolean
+    }>,
   ) => request<PlatformPlan>(`/api/superadmin/plans/${code}`, { method: 'PUT', body: JSON.stringify(body) }),
   superadminUpsertContent: (key: string, value: string) =>
     request<{ ok: boolean }>('/api/superadmin/content', { method: 'PUT', body: JSON.stringify({ key, value }) }),

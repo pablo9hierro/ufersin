@@ -10,6 +10,9 @@ pub struct PlanRow {
     pub code: String,
     pub name: String,
     pub price_monthly: f64,
+    /// Preço promocional/inauguração — quando presente, é o que se cobra de
+    /// fato; `price_monthly` vira o "normal" mostrado riscado ao lado.
+    pub launch_price_monthly: Option<f64>,
     pub tagline: String,
     pub features: serde_json::Value,
     pub highlight: bool,
@@ -22,7 +25,7 @@ pub struct PlanRow {
 }
 
 const PLAN_COLUMNS: &str =
-    "code, name, price_monthly, tagline, features, highlight, active, sort_order, vertical";
+    "code, name, price_monthly, launch_price_monthly, tagline, features, highlight, active, sort_order, vertical";
 
 pub async fn list_active(pool: &PgPool) -> Result<Vec<PlanRow>, AppError> {
     let rows = sqlx::query_as::<_, PlanRow>(&format!(
@@ -56,14 +59,16 @@ pub async fn vertical_for(pool: &PgPool, code: &str) -> Result<String, AppError>
         .ok_or_else(|| AppError::BadRequest("plano inválido ou inativo".to_string()))
 }
 
+/// Valor cobrado de fato: preço de inauguração quando definido, senão o
+/// normal. Fonte única de verdade pra checkout/troca de plano/cupom em cima.
 pub async fn monthly_price(pool: &PgPool, code: &str) -> Result<f64, AppError> {
-    let row: Option<(f64,)> = sqlx::query_as(
-        "SELECT price_monthly FROM platform_plans WHERE code = $1 AND active = true",
+    let row: Option<(f64, Option<f64>)> = sqlx::query_as(
+        "SELECT price_monthly, launch_price_monthly FROM platform_plans WHERE code = $1 AND active = true",
     )
     .bind(code)
     .fetch_optional(pool)
     .await?;
-    row.map(|r| r.0)
+    row.map(|(normal, launch)| launch.unwrap_or(normal))
         .ok_or_else(|| AppError::BadRequest("plano inválido ou inativo".to_string()))
 }
 

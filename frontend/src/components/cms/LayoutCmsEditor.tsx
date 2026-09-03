@@ -24,6 +24,8 @@ interface LayoutCmsEditorProps {
   plans: PlatformPlan[]
   planPrices: Record<string, string>
   onPlanPriceChange: (code: string, value: string) => void
+  planLaunchPrices: Record<string, string>
+  onPlanLaunchPriceChange: (code: string, value: string) => void
   onSavePlan: (code: string) => Promise<void>
   onToggleActive: (code: string, active: boolean) => Promise<void>
   onSavePlanName: (code: string, name: string) => Promise<void>
@@ -45,6 +47,8 @@ export default function LayoutCmsEditor({
   plans,
   planPrices,
   onPlanPriceChange,
+  planLaunchPrices,
+  onPlanLaunchPriceChange,
   onSavePlan,
   onToggleActive,
   onSavePlanName,
@@ -151,7 +155,16 @@ export default function LayoutCmsEditor({
                   inputMode="decimal"
                   aria-label={`Preço ${p.name}`}
                 />
-                <span className="text-xs text-uf-silver-dim">R$/mês</span>
+                <span className="text-xs text-uf-silver-dim">R$/mês normal</span>
+                <input
+                  className="input-field w-24 text-sm"
+                  value={planLaunchPrices[p.code] ?? ''}
+                  onChange={(e) => onPlanLaunchPriceChange(p.code, e.target.value)}
+                  placeholder="sem promo"
+                  inputMode="decimal"
+                  aria-label={`Preço de inauguração ${p.name}`}
+                />
+                <span className="text-xs text-uf-silver-dim">R$/mês inauguração</span>
                 <label
                   htmlFor={`plan-active-${p.code}`}
                   className="flex items-center gap-1.5 text-xs text-uf-silver-dim cursor-pointer"
@@ -178,7 +191,15 @@ export default function LayoutCmsEditor({
               </div>
             ))}
             <p className="text-[11px] text-uf-silver-dim pt-1">
-              Ativos públicos: {plans.filter((p) => p.active).map((p) => `${p.name} R$ ${formatBRL(p.price_monthly)}`).join(' · ') || '—'}
+              Ativos públicos:{' '}
+              {plans
+                .filter((p) => p.active)
+                .map((p) =>
+                  p.launch_price_monthly != null
+                    ? `${p.name} de R$ ${formatBRL(p.price_monthly)} por R$ ${formatBRL(p.launch_price_monthly)}`
+                    : `${p.name} R$ ${formatBRL(p.price_monthly)}`,
+                )
+                .join(' · ') || '—'}
             </p>
           </div>
         )}

@@ -101,6 +101,7 @@ export default function Dashboard() {
   const [contentMap, setContentMap] = useState<Record<string, string>>({ ...CONTENT_DEFAULTS })
   const [plans, setPlans] = useState<PlatformPlan[]>([])
   const [planPrices, setPlanPrices] = useState<Record<string, string>>({})
+  const [planLaunchPrices, setPlanLaunchPrices] = useState<Record<string, string>>({})
 
   const [aiEngines, setAiEngines] = useState<SuperadminAiEngine[]>([])
   const [newEngineLabel, setNewEngineLabel] = useState('')
@@ -203,6 +204,7 @@ export default function Dashboard() {
     setContentMap(contentMapFromItems(ct))
     setPlans(pl)
     setPlanPrices(Object.fromEntries(pl.map((p) => [p.code, String(p.price_monthly)])))
+    setPlanLaunchPrices(Object.fromEntries(pl.map((p) => [p.code, p.launch_price_monthly != null ? String(p.launch_price_monthly) : ''])))
     invalidatePlansCache()
     await fetchPlans()
   }, [])
@@ -452,9 +454,15 @@ export default function Dashboard() {
   const savePlanPrice = async (code: string) => {
     const price = parseFloat(planPrices[code]?.replace(',', '.') ?? '')
     if (Number.isNaN(price) || price <= 0) return
+    const launchRaw = planLaunchPrices[code]?.trim()
+    const launch = launchRaw ? parseFloat(launchRaw.replace(',', '.')) : null
+    if (launchRaw && (Number.isNaN(launch) || (launch ?? 0) <= 0 || (launch ?? 0) >= price)) {
+      setError('Valor de inauguração deve ser positivo e menor que o valor normal.')
+      return
+    }
     setBusy(true)
     try {
-      await api.superadminUpdatePlan(code, { price_monthly: price })
+      await api.superadminUpdatePlan(code, { price_monthly: price, launch_price_monthly: launch })
       await loadLayout()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Erro ao salvar plano.')
@@ -859,6 +867,8 @@ export default function Dashboard() {
                 plans={plans}
                 planPrices={planPrices}
                 onPlanPriceChange={(code, value) => setPlanPrices((prev) => ({ ...prev, [code]: value }))}
+                planLaunchPrices={planLaunchPrices}
+                onPlanLaunchPriceChange={(code, value) => setPlanLaunchPrices((prev) => ({ ...prev, [code]: value }))}
                 onSavePlan={savePlanPrice}
                 onToggleActive={togglePlanActive}
                 onSavePlanName={savePlanName}

@@ -4,7 +4,11 @@ import type { BillingCycle } from './api'
 export interface PlanInfo {
   code: PlanoCode
   name: string
+  /** Valor cobrado de fato (inauguração quando definida, senão o normal). */
   price: number
+  /** Presente só quando há preço de inauguração ativo -- valor "de"
+   * mostrado riscado ao lado do `price` promocional. */
+  normalPrice?: number
   tagline: string
   features: string[]
   highlight?: boolean
@@ -79,7 +83,8 @@ function rowToPlanInfo(row: PlatformPlan): PlanInfo {
   return {
     code: row.code,
     name: row.name,
-    price: row.price_monthly,
+    price: row.launch_price_monthly ?? row.price_monthly,
+    normalPrice: row.launch_price_monthly != null ? row.price_monthly : undefined,
     tagline: row.tagline,
     features,
     highlight: row.highlight,
