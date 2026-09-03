@@ -13,6 +13,7 @@ import {
   MessageSquareText,
   MessageCircle,
   Package,
+  Send,
   Settings,
   ShoppingCart,
   Truck,
@@ -66,6 +67,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/produtos/servicos', label: 'Serviços', icon: Wrench, requiredPlan: 'essential' },
   { href: '/admin/estoque', label: 'Estoque', icon: Boxes, requiredPlan: 'essential' },
   { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'essential', hideAtOrAbove: 'management' },
+  { href: '/admin/entregas-terceirizadas', label: 'Entregas terceirizadas', icon: Send, requiredPlan: 'essential' },
   { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
   { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar, requiredPlan: 'essential' },
   { href: '/admin/template', label: 'Mensagens', icon: MessageSquareText, requiredPlan: 'essential' },
@@ -90,6 +92,7 @@ const NAV_GROUPS: Record<string, { id: string; label: string }> = {
   '/admin/produtos/servicos': { id: 'cadastros', label: 'Cadastros' },
   '/admin/estoque': { id: 'cadastros', label: 'Cadastros' },
   '/admin/frete': { id: 'cadastros', label: 'Cadastros' },
+  '/admin/entregas-terceirizadas': { id: 'cadastros', label: 'Cadastros' },
   '/admin/template': { id: 'cadastros', label: 'Cadastros' },
   '/admin/motoboys': { id: 'cadastros', label: 'Cadastros' },
 }
@@ -192,6 +195,11 @@ export default function AdminLayout() {
     return null
   })
   const [hoursDone, setHoursDone] = useState(() => gateSession?.hoursDone ?? false)
+  // Entregas terceirizadas: feature ainda em beta, liberada só por
+  // feature_flags no backend — nunca por plano. Descobre se o tenant tem
+  // acesso tentando o endpoint uma vez; 403 esconde o item, sem hardcode de
+  // slug aqui.
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false)
 
   const hoursDoneRef = useRef(hoursDone)
   const gateLockedRef = useRef(gateLocked)
@@ -376,6 +384,22 @@ export default function AdminLayout() {
     }
   }, [demo, whatsappRequired, gateLocked, applyVerdict])
 
+  useEffect(() => {
+    if (demo || !effectiveToken) return
+    let cancelled = false
+    adminService.delivery
+      .getSettings()
+      .then(() => {
+        if (!cancelled) setDeliveryEnabled(true)
+      })
+      .catch(() => {
+        if (!cancelled) setDeliveryEnabled(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [demo, effectiveToken])
+
   if (!effectiveToken || tenantMismatch) return <Navigate to="/admin/login" state={{ from: location }} replace />
 
   // Wait for Resolutoo tenant-config before rendering the shell — cancelado
@@ -480,6 +504,9 @@ export default function AdminLayout() {
     if ((i.href === '/admin/pedidos' || i.href === '/admin/frete') && !pedidosLiberado) return false
     // Loja só retirada — sem entrega, não existe frete pra configurar.
     if (i.href === '/admin/frete' && tenantConfig?.apenas_retirada) return false
+    // Entregas terceirizadas: feature beta, só aparece se o backend liberou
+    // (feature_flags) — nunca por plano/slug hardcoded aqui.
+    if (i.href === '/admin/entregas-terceirizadas' && !deliveryEnabled) return false
     // Funcionários (motoboy/vendedor/cozinha): management+ sempre libera;
     // essential libera só se o lojista marcou precisar de algum desses em
     // /meu-plano (mesma necessidade que libera o backend via feature_flags).

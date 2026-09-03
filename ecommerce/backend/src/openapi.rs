@@ -109,6 +109,7 @@ pub fn build() -> OpenApi {
         ("/api/orders/{id}/card-payment", Post, "Cobrar cartao (checkout transparente)", "Pagamentos", false, true),
         ("/api/orders/{id}/simulate-pix-paid", Post, "Simular Pix pago (sandbox)", "Pagamentos", false, false),
         ("/api/orders/{id}/cancel", Post, "Cancelar pedido (cliente)", "Pedidos", false, true),
+        ("/api/orders/{id}/delivery", Get, "Status normalizado da entrega terceirizada (cliente)", "Pedidos", false, false),
         ("/api/orders/notify-created", Post, "Avisar loja de pedido criado (WhatsApp)", "Pedidos", false, true),
         ("/api/orders/{id}/notify-payment-received", Post, "Avisar pagamento recebido (WhatsApp)", "Pedidos", false, true),
         ("/api/pdv/products", Get, "Produtos disponiveis no PDV", "PDV", true, false),

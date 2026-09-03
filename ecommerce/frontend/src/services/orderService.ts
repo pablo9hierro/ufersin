@@ -17,5 +17,6 @@ export const orderService = {
   createCardPayment: ordersEndpoint.createCardPayment,
   cancel: ordersEndpoint.cancel,
   notifyCreated: ordersEndpoint.notifyCreated,
+  deliveryStatus: ordersEndpoint.deliveryStatus,
   listMine: ordersEndpoint.listMine,
 }

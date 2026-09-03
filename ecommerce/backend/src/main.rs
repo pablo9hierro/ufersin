@@ -499,6 +499,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/orders/{id}/cancel",
             post(routes::public::cancel_order),
         )
+        .route(
+            "/api/orders/{id}/delivery",
+            get(routes::public::get_public_delivery_status),
+        )
         .route("/api/orders/notify-created", post(routes::public::notify_order_created))
         .route(
             "/api/orders/{id}/notify-payment-received",

@@ -1912,3 +1912,45 @@ pub async fn get_public_tenant_vertical(
     };
     Ok(Json(TenantVerticalDto { slug, vertical }))
 }
+
+#[derive(serde::Serialize)]
+pub struct PublicDeliveryStatusDto {
+    pub status: String,
+    pub tracking_url: Option<String>,
+}
+
+/// Status normalizado da entrega terceirizada (Uber Direct) pro cliente que
+/// já tem o id do pedido em mãos (achado via /consultar por whatsapp) --
+/// mesmo nível de exposição de `refresh_payment`/`simulate_pix_paid`, sem
+/// exigir novo re-match de whatsapp porque o id do pedido já é a prova de
+/// posse. 404 quando não há entrega despachada (tenant sem o módulo
+/// habilitado ou pedido ainda não chamou entrega) -- o frontend trata isso
+/// como "sem card de rastreio", nunca como erro.
+pub async fn get_public_delivery_status(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<PublicDeliveryStatusDto>, AppError> {
+    let store = tenant::tenant_for_order(&state.pool, &id).await?;
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT status FROM deliveries WHERE tenant_id = $1 AND order_id = $2 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&store.id)
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((status,)) = row else {
+        return Err(AppError::NotFound("nenhuma entrega terceirizada pra este pedido".to_string()));
+    };
+    let tracking_url: Option<String> = sqlx::query_scalar(
+        "SELECT raw_response->>'tracking_url' FROM delivery_attempts \
+         WHERE delivery_id = (SELECT id FROM deliveries WHERE tenant_id = $1 AND order_id = $2 ORDER BY created_at DESC LIMIT 1) \
+         AND status != 'failed' ORDER BY attempt_number DESC LIMIT 1",
+    )
+    .bind(&store.id)
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten();
+    Ok(Json(PublicDeliveryStatusDto { status, tracking_url }))
+}

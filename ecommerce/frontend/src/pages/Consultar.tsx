@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from '../lib/tenantRouter'
-import { Loader2, MessageCircle, Package, Search } from 'lucide-react'
+import { Loader2, MessageCircle, Package, Search, Send } from 'lucide-react'
 import SiteHeader from '../components/layout/SiteHeader'
 import PageTransition from '../components/layout/PageTransition'
 import { StatusBadge } from '../components/ui/Badge'
@@ -10,6 +10,7 @@ import { orderService } from '../services/orderService'
 import type { Order } from '../types'
 import { useCustomer } from '../store/customer'
 import { useTenantConfig } from '../hooks/useTenantConfig'
+import { CUSTOMER_DELIVERY_STATUS_LABEL, labelDeliveryStatus } from '../lib/deliveryStatus'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -31,6 +32,41 @@ function formatPhone(value: string) {
   if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
   if (digits.length <= 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
+}
+
+/** Beta: só aparece quando o tenant despachou via módulo de entregas
+ * terceirizadas — 404 (sem entrega/feature desligada) esconde o bloco. */
+function ThirdPartyDeliveryStatus({ orderId }: { orderId: string }) {
+  const [info, setInfo] = useState<{ status: string; tracking_url: string | null } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    orderService
+      .deliveryStatus(orderId)
+      .then((s) => {
+        if (!cancelled) setInfo(s)
+      })
+      .catch(() => {
+        /* sem entrega terceirizada pra este pedido — nada a mostrar */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [orderId])
+
+  if (!info) return null
+
+  return (
+    <div className="mt-3 flex items-center gap-2 text-sm text-son-silver">
+      <Send className="w-4 h-4 text-son-pink flex-shrink-0" />
+      <span>{labelDeliveryStatus(CUSTOMER_DELIVERY_STATUS_LABEL, info.status)}</span>
+      {info.tracking_url && (
+        <a href={info.tracking_url} target="_blank" rel="noopener noreferrer" className="text-son-pink hover:underline">
+          Acompanhar
+        </a>
+      )}
+    </div>
+  )
 }
 
 export default function Consultar() {
@@ -137,6 +173,9 @@ export default function Consultar() {
                     )}
                     <DeliveryTrackingMap order={order} live={!!tenantConfig?.tem_motoboy_proprio} />
                   </>
+                )}
+                {order.delivery_type === 'entrega' && order.status === 'entregas' && (
+                  <ThirdPartyDeliveryStatus orderId={order.id} />
                 )}
               </li>
             ))}

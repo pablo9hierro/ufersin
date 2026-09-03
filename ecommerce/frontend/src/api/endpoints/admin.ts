@@ -202,6 +202,22 @@ export const adminEndpoint = {
     update: async (pricePerKm: number, maxKm: number | null) =>
       validate(ShippingSettingsSchema, await api.admin.shippingSettings.update(pricePerKm, maxKm), 'admin.shippingSettings.update'),
   },
+  delivery: {
+    getSettings: async () => api.admin.delivery.getSettings(),
+    updateSettings: async (payload: {
+      mode: 'manual' | 'automatico'
+      primary_provider: string | null
+      fallback_provider: string | null
+      max_auto_diff: number | null
+    }) => api.admin.delivery.updateSettings(payload),
+    saveCredentials: async (provider: string, credentials: Record<string, unknown>) =>
+      api.admin.delivery.saveCredentials(provider, credentials),
+    testConnection: async (provider: string) => api.admin.delivery.testConnection(provider),
+    quote: async (orderId: string) => api.admin.delivery.quote(orderId),
+    dispatch: async (orderId: string) => api.admin.delivery.dispatch(orderId),
+    get: async (orderId: string) => api.admin.delivery.get(orderId),
+    cancel: async (orderId: string) => api.admin.delivery.cancel(orderId),
+  },
   messageTemplates: {
     list: async () => validateList(MessageTemplateSchema, await api.admin.messageTemplates.list(), 'admin.messageTemplates.list'),
     save: async (key: string, payload: { body: string; enabled: boolean; trigger_delay_minutes: number }) =>

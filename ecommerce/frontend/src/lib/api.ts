@@ -61,6 +61,50 @@ import type {
   VendedorRelatorio,
 } from '../types'
 
+// Entregas terceirizadas -- modulo novo, so Rust (nunca teve equivalente
+// Supabase), por isso sem dual-mode isRailwayAdminJwt() como o resto do
+// arquivo.
+export interface DeliveryProviderStatus {
+  provider: string
+  status: string
+  connected_at: string | null
+}
+export interface DeliverySettings {
+  mode: 'manual' | 'automatico'
+  primary_provider: string | null
+  fallback_provider: string | null
+  max_auto_diff: number | null
+  providers: DeliveryProviderStatus[]
+}
+export interface DeliveryQuoteResult {
+  provider: string
+  amount?: number
+  eta_minutes?: number | null
+  error?: string
+}
+export interface DeliveryDispatchResult {
+  delivery_id: string
+  provider: string
+  attempt_number: number
+  status: string
+  tracking_url: string | null
+}
+export interface DeliveryAttempt {
+  attempt_number: number
+  provider: string
+  external_delivery_id: string | null
+  status: string
+  quote_amount: number | null
+  provider_cost: number | null
+  failure_reason: string | null
+}
+export interface DeliveryStatus {
+  delivery_id: string
+  status: string
+  provider: string | null
+  attempts: DeliveryAttempt[]
+}
+
 // Ainda usado só pro login admin/motoboy e Pix, que continuam no backend
 // Rust (Railway) até a migração de auth/Pix pra Supabase Auth/Edge Functions.
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
@@ -371,6 +415,10 @@ const remoteApi = {
         method: 'POST',
         body: JSON.stringify({ order_id: orderId }),
       }),
+    /** Beta: 404 quando o tenant não tem o módulo ligado ou não despachou
+     * entrega ainda pra este pedido — /consultar trata como "sem card". */
+    deliveryStatus: (id: string) =>
+      request<{ status: string; tracking_url: string | null }>(`/api/orders/${id}/delivery`),
   },
   // Login admin → motor Railway (Argon2 + JWT com tenant_id).
   // `tenant_slug` é opcional: o backend resolve a loja pelo e-mail+senha.
@@ -1119,6 +1167,35 @@ const remoteApi = {
               p_price_per_km: pricePerKm,
               p_max_km: maxKm,
             }),
+    },
+    delivery: {
+      getSettings: () => railwayAdmin<DeliverySettings>('/api/admin/delivery/settings'),
+      updateSettings: (payload: {
+        mode: 'manual' | 'automatico'
+        primary_provider: string | null
+        fallback_provider: string | null
+        max_auto_diff: number | null
+      }) =>
+        railwayAdmin<DeliverySettings>('/api/admin/delivery/settings', {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
+      saveCredentials: (provider: string, credentials: Record<string, unknown>) =>
+        railwayAdmin<DeliveryProviderStatus>(`/api/admin/delivery/providers/${provider}/credentials`, {
+          method: 'POST',
+          body: JSON.stringify({ credentials }),
+        }),
+      testConnection: (provider: string) =>
+        railwayAdmin<{ ok: boolean }>(`/api/admin/delivery/providers/${provider}/test-connection`, {
+          method: 'POST',
+        }),
+      quote: (orderId: string) =>
+        railwayAdmin<DeliveryQuoteResult[]>(`/api/admin/orders/${orderId}/delivery/quote`, { method: 'POST' }),
+      dispatch: (orderId: string) =>
+        railwayAdmin<DeliveryDispatchResult>(`/api/admin/orders/${orderId}/delivery/dispatch`, { method: 'POST' }),
+      get: (orderId: string) => railwayAdmin<DeliveryStatus>(`/api/admin/orders/${orderId}/delivery`),
+      cancel: (orderId: string) =>
+        railwayAdmin<{ ok: boolean }>(`/api/admin/orders/${orderId}/delivery/cancel`, { method: 'POST' }),
     },
     messageTemplates: {
       list: () => railwayAdmin<MessageTemplate[]>('/api/admin/message-templates'),

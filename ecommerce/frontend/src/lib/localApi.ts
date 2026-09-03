@@ -2936,6 +2936,11 @@ export const localApi = {
     createCardPayment,
     cancel: customerCancelOrder,
     notifyCreated: async () => {},
+    // Demo nunca tem entregas terceirizadas despachadas -- mesmo 404 que o
+    // backend real devolve quando não há entrega pro pedido.
+    deliveryStatus: async () => {
+      throw new ApiError(404, 'nenhuma entrega terceirizada pra este pedido')
+    },
   },
   auth: { adminLogin, motoboyLogin, vendedorLogin, cozinhaLogin, setAdminPassword },
   customerAuth: {
@@ -2973,6 +2978,34 @@ export const localApi = {
     },
   },
   admin: {
+    // Módulo beta, feature-flagged no backend real -- demo nunca tem a
+    // flag, então o AdminLayout já esconde o item de nav (403 esperado).
+    delivery: {
+      getSettings: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      updateSettings: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      saveCredentials: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      testConnection: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      quote: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      dispatch: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      get: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      cancel: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+    },
     categories: { list: adminListCategories, create: createCategory, update: updateCategory, delete: deleteCategory },
     products: {
       list: adminListProducts,

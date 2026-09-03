@@ -48,6 +48,7 @@ export const ordersEndpoint = {
   cancel: async (id: string, whatsapp: string) =>
     validate(OrderSchema, await api.orders.cancel(id, whatsapp), 'orders.cancel'),
   notifyCreated: async (orderId: string) => api.orders.notifyCreated(orderId),
+  deliveryStatus: async (id: string) => api.orders.deliveryStatus(id),
 
   // /cliente/historico — pedidos do cliente logado.
   listMine: async (token: string) => validateList(OrderSchema, await api.customerAuth.listOrders(token), 'customerAuth.listOrders'),
