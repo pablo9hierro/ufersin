@@ -1,11 +1,12 @@
 import { motion } from 'framer-motion'
 import { CreditCard, Rocket, Settings2, UserPlus } from 'lucide-react'
+import { CmsText } from '../../lib/cms'
 
 const STEPS = [
-  { icon: UserPlus, title: 'Assine', desc: 'Escolha seu plano e crie sua conta em menos de 2 minutos.' },
-  { icon: CreditCard, title: 'Pague', desc: 'Pix ou cartão, cobrança recorrente automática todo mês.' },
-  { icon: Settings2, title: 'Configure', desc: 'Nome da loja, categoria, cor, logo e WhatsApp — seu jeito, sua marca.' },
-  { icon: Rocket, title: 'Venda', desc: 'Sua loja já entra no ar com catálogo, checkout e Pix funcionando.' },
+  { key: 'howitworks.s1', icon: UserPlus, title: 'Assine', desc: 'Escolha seu plano e crie sua conta em menos de 2 minutos.' },
+  { key: 'howitworks.s2', icon: CreditCard, title: 'Pague', desc: 'Pix ou cartão, cobrança recorrente automática todo mês.' },
+  { key: 'howitworks.s3', icon: Settings2, title: 'Configure', desc: 'Nome da loja, categoria, cor, logo e WhatsApp — seu jeito, sua marca.' },
+  { key: 'howitworks.s4', icon: Rocket, title: 'Venda', desc: 'Sua loja já entra no ar com catálogo, checkout e Pix funcionando.' },
 ]
 
 export default function HowItWorks() {
@@ -19,9 +20,9 @@ export default function HowItWorks() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="uf-eyebrow mb-4">Como funciona</span>
+          <span className="uf-eyebrow mb-4"><CmsText contentKey="howitworks.eyebrow">Como funciona</CmsText></span>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mt-4">
-            Do zero à primeira venda <span className="uf-text">em minutos</span>
+            <CmsText contentKey="howitworks.title">Do zero à primeira venda em minutos</CmsText>
           </h2>
         </motion.div>
 
@@ -29,7 +30,7 @@ export default function HowItWorks() {
           <div className="hidden lg:block absolute top-9 left-[12.5%] right-[12.5%] h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
           {STEPS.map((s, i) => (
             <motion.div
-              key={s.title}
+              key={s.key}
               initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-60px' }}
@@ -42,8 +43,12 @@ export default function HowItWorks() {
                   {i + 1}
                 </span>
               </div>
-              <h3 className="font-bold mb-1.5">{s.title}</h3>
-              <p className="text-sm text-uf-silver-dim leading-relaxed px-2">{s.desc}</p>
+              <h3 className="font-bold mb-1.5">
+                <CmsText contentKey={`${s.key}.title`} fallback={s.title} />
+              </h3>
+              <p className="text-sm text-uf-silver-dim leading-relaxed px-2">
+                <CmsText contentKey={`${s.key}.desc`} fallback={s.desc} />
+              </p>
             </motion.div>
           ))}
         </div>

@@ -28,7 +28,7 @@ export default function Pricing() {
           transition={{ duration: 0.6 }}
           className="text-center mb-10"
         >
-          <span className="uf-eyebrow mb-4">Planos</span>
+          <span className="uf-eyebrow mb-4"><CmsText contentKey="landing.pricing.eyebrow">Planos</CmsText></span>
           <CmsText
             contentKey="landing.pricing.title"
             as="h2"
@@ -79,13 +79,19 @@ export default function Pricing() {
                   transition={{ duration: 0.6 }}
                   className="text-center mb-8"
                 >
-                  <span className="uf-eyebrow mb-4">Assistência técnica</span>
+                  <span className="uf-eyebrow mb-4">
+                    <CmsText contentKey="landing.pricing.eletronica.eyebrow">Assistência técnica</CmsText>
+                  </span>
                   <h3 className="text-2xl sm:text-3xl font-black mt-4">
-                    Tem uma loja de conserto de eletrônicos?
+                    <CmsText contentKey="landing.pricing.eletronica.title">
+                      Tem uma loja de conserto de eletrônicos?
+                    </CmsText>
                   </h3>
                   <p className="mt-3 text-uf-silver-dim max-w-xl mx-auto">
-                    Plano com ordem de serviço, diagnóstico, agenda de coleta e entrega — feito pro
-                    seu ramo, não adaptado do ecommerce.
+                    <CmsText contentKey="landing.pricing.eletronica.sub">
+                      Plano com ordem de serviço, diagnóstico, agenda de coleta e entrega — feito pro
+                      seu ramo, não adaptado do ecommerce.
+                    </CmsText>
                   </p>
                 </motion.div>
                 <PlanCardsGrid

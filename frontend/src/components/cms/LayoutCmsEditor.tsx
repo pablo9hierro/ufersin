@@ -5,6 +5,12 @@ import { FALLBACK_PLANS, formatBRL, type PlanInfo } from '../../lib/plans'
 import type { PlatformPlan } from '../../lib/api'
 import Hero from '../landing/Hero'
 import Pricing from '../landing/Pricing'
+import Features from '../landing/Features'
+import HowItWorks from '../landing/HowItWorks'
+import Demo from '../landing/Demo'
+import FAQ from '../landing/FAQ'
+import Contact from '../landing/Contact'
+import Footer from '../landing/Footer'
 import DemoPage from '../../pages/Demo'
 import AssinarPreviewShell from './AssinarPreviewShell'
 
@@ -282,7 +288,13 @@ export default function LayoutCmsEditor({
                     <span>preview · /</span>
                   </div>
                   <Hero />
+                  <Features />
                   <Pricing />
+                  <HowItWorks />
+                  <Demo />
+                  <FAQ />
+                  <Contact />
+                  <Footer />
                 </div>
               )}
               {tab === 'demo' && (

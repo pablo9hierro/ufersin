@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { MousePointerClick } from 'lucide-react'
+import { CmsText } from '../../lib/cms'
 
 export default function Demo() {
   return (
@@ -12,12 +13,14 @@ export default function Demo() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="uf-eyebrow mb-4">Demonstração</span>
+          <span className="uf-eyebrow mb-4"><CmsText contentKey="demo.eyebrow">Demonstração</CmsText></span>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mt-4">
-            Veja a <span className="uf-text">Resolutoo</span> por dentro
+            <CmsText contentKey="demo.headline">Veja a Resolutoo por dentro</CmsText>
           </h2>
           <p className="mt-4 text-uf-silver-dim max-w-xl mx-auto">
-            Quer mexer de verdade? Testa o painel mockado e vê o que cada plano libera.
+            <CmsText contentKey="demo.description">
+              Quer mexer de verdade? Testa o painel mockado e vê o que cada plano libera.
+            </CmsText>
           </p>
           <a href="/demo" className="btn-primary px-6 py-3 text-sm mt-6 inline-flex">
             <MousePointerClick className="w-4 h-4" />

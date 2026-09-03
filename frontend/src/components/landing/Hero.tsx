@@ -21,7 +21,7 @@ export default function Hero() {
       <div className="uf-container text-center">
         <motion.div variants={fadeUp} initial="hidden" animate="show" custom={0} className="uf-eyebrow mb-6">
           <Sparkles className="w-3.5 h-3.5" />
-          Sua loja online no ar em dias, não em meses
+          <CmsText contentKey="landing.hero.badge">Sua loja online no ar em dias, não em meses</CmsText>
         </motion.div>
 
         <motion.div variants={fadeUp} initial="hidden" animate="show" custom={1}>

@@ -1,5 +1,5 @@
 ﻿import { Link } from 'react-router-dom'
-import { useCms } from '../../lib/cms'
+import { CmsText, useCms } from '../../lib/cms'
 
 export default function Footer() {
   const cms = useCms()
@@ -12,7 +12,8 @@ export default function Footer() {
           Resolutoo
         </Link>
         <p className="text-xs text-uf-silver-dim text-center">
-          © {new Date().getFullYear()} Resolutoo. A plataforma que coloca sua loja online em dias.
+          © {new Date().getFullYear()} Resolutoo.{' '}
+          <CmsText contentKey="footer.tagline">A plataforma que coloca sua loja online em dias.</CmsText>
         </p>
         <div className="flex items-center gap-5 text-xs text-uf-silver-dim">
           <a href="#planos" className="hover:text-uf-silver transition-colors">

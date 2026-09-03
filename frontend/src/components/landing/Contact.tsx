@@ -1,6 +1,6 @@
 ﻿import { motion } from 'framer-motion'
 import { Mail, MessageCircle } from 'lucide-react'
-import { CONTENT_DEFAULTS, useCms } from '../../lib/cms'
+import { CONTENT_DEFAULTS, CmsText, useCms } from '../../lib/cms'
 
 export default function Contact() {
   const cms = useCms()
@@ -20,10 +20,10 @@ export default function Contact() {
           <div className="uf-mesh opacity-40" />
           <div className="relative z-10">
             <h2 className="text-2xl sm:text-3xl font-black mb-3">
-              Ficou com <span className="uf-text">alguma dúvida</span>?
+              <CmsText contentKey="contact.title">Ficou com alguma dúvida?</CmsText>
             </h2>
             <p className="text-uf-silver-dim mb-8 max-w-md mx-auto text-sm">
-              Fala com a gente — respondemos rápido pelo WhatsApp ou e-mail.
+              <CmsText contentKey="contact.sub">Fala com a gente — respondemos rápido pelo WhatsApp ou e-mail.</CmsText>
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <a

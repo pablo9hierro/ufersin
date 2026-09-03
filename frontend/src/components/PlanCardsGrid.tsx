@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { Check, Lock, MousePointerClick } from 'lucide-react'
+import { CmsText } from '../lib/cms'
 import { formatBRL, getPlans, getPlansByVertical, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
 import type { BillingCycle, PlanoCode, Vertical } from '../lib/api'
 
@@ -95,7 +96,7 @@ export default function PlanCardsGrid({
                   <span className={`text-sm ${plan.highlight ? 'text-white/70' : 'text-uf-silver-dim'}`}>/mês</span>
                   {plan.normalPrice != null && (
                     <span className="ml-2 text-[11px] font-bold px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-300 align-middle">
-                      INAUGURAÇÃO
+                      <CmsText contentKey="plans.launch_badge">INAUGURAÇÃO</CmsText>
                     </span>
                   )}
                 </>
@@ -121,7 +122,9 @@ export default function PlanCardsGrid({
                 }`}
               >
                 <Lock className="w-3 h-3 shrink-0" />
-                Assine agora e o valor fica vitalício — nunca sobe, mesmo se o preço de inauguração mudar depois.
+                <CmsText contentKey="plans.launch_lockin_note">
+                  Assine agora e o valor fica vitalício — nunca sobe, mesmo se o preço de inauguração mudar depois.
+                </CmsText>
               </p>
             )}
 
