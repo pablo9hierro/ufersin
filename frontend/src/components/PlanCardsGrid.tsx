@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { Check, MousePointerClick } from 'lucide-react'
+import { Check, Lock, MousePointerClick } from 'lucide-react'
 import { formatBRL, getPlans, getPlansByVertical, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
 import type { BillingCycle, PlanoCode, Vertical } from '../lib/api'
 
@@ -41,9 +41,13 @@ export default function PlanCardsGrid({
   const plans = vertical ? getPlansByVertical(vertical) : getPlans()
   const ctaLabel = (name: string) =>
     (cta.kind === 'link' ? cta.label?.(name) : cta.label?.(name)) ?? `Assinar ${name}`
+  // Menos planos ativos do que colunas pedidas (ex: só Essential ativo
+  // numa grade de 3) não pode ficar grudado à esquerda -- usa o layout
+  // (com mx-auto) do número real de cards, nunca mais do que foi pedido.
+  const effectiveColumns = Math.max(1, Math.min(columns, plans.length || 1)) as 1 | 2 | 3
 
   return (
-    <div className={`grid ${GRID_COLS[columns]} gap-5`} data-testid={testId}>
+    <div className={`grid ${GRID_COLS[effectiveColumns]} gap-5`} data-testid={testId}>
       {plans.map((plan, i) => {
         const charged = priceForCycle(plan.price, ciclo)
         return (
@@ -109,6 +113,17 @@ export default function PlanCardsGrid({
                 </>
               )}
             </div>
+
+            {plan.normalPrice != null && (
+              <p
+                className={`flex items-center gap-1.5 text-[11px] font-medium mb-4 ${
+                  plan.highlight ? 'text-white/80' : 'text-uf-silver-dim'
+                }`}
+              >
+                <Lock className="w-3 h-3 shrink-0" />
+                Assine agora e o valor fica vitalício — nunca sobe, mesmo se o preço de inauguração mudar depois.
+              </p>
+            )}
 
             <ul className="mt-6 space-y-3 flex-1">
               {plan.features.map((f) => (
