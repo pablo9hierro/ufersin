@@ -1608,9 +1608,15 @@ pub async fn cancel_order(
         return Err(AppError::NotFound("order not found".to_string()));
     };
 
+    // Últimos 8 dígitos, não igualdade exata -- mesmo achado do fix de
+    // rastreio por telefone (resolutoo_track_orders_fuzzy_phone.sql): o
+    // número salvo no pedido pode ter sido digitado sem o "9" do celular,
+    // e o cliente digita aqui com o "9". Comparar exato bloqueava
+    // cancelamento do dono legítimo do pedido.
     let provided = whatsapp::digits_only(&input.whatsapp);
     let on_order = whatsapp::digits_only(&order.customer_whatsapp);
-    if provided.is_empty() || provided != on_order {
+    let last8 = |s: &str| s.chars().rev().take(8).collect::<String>();
+    if provided.len() < 8 || last8(&provided) != last8(&on_order) {
         return Err(AppError::Forbidden(
             "whatsapp não confere com o pedido".to_string(),
         ));
