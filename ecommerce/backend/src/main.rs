@@ -1,6 +1,7 @@
 mod appointment_reminders;
 mod auth;
 mod cancel;
+mod delivery;
 mod error;
 mod features;
 mod formulation;
@@ -639,6 +640,34 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/orders/{id}/cancel",
             post(routes::admin::cancel_order),
         )
+        .route(
+            "/api/admin/delivery/settings",
+            get(routes::delivery::get_settings).put(routes::delivery::update_settings),
+        )
+        .route(
+            "/api/admin/delivery/providers/{provider}/credentials",
+            post(routes::delivery::save_credentials),
+        )
+        .route(
+            "/api/admin/delivery/providers/{provider}/test-connection",
+            post(routes::delivery::test_connection),
+        )
+        .route(
+            "/api/admin/orders/{id}/delivery/quote",
+            post(routes::delivery::quote_delivery),
+        )
+        .route(
+            "/api/admin/orders/{id}/delivery/dispatch",
+            post(routes::delivery::dispatch_delivery),
+        )
+        .route(
+            "/api/admin/orders/{id}/delivery",
+            get(routes::delivery::get_delivery),
+        )
+        .route(
+            "/api/admin/orders/{id}/delivery/cancel",
+            post(routes::delivery::cancel_delivery),
+        )
         .route("/api/admin/financeiro", get(routes::admin::financeiro))
         .route("/api/admin/financeiro/lucro", get(routes::admin::financeiro_lucro))
         .route("/api/admin/whatsapp/status", get(routes::admin::whatsapp_status))
@@ -860,6 +889,7 @@ async fn main() -> anyhow::Result<()> {
         // logado. Fica fora do CORS layer não importar (não é um browser).
         .route("/api/webhooks/evolution", post(routes::webhooks::evolution_webhook))
         .route("/api/webhooks/mercadopago", post(routes::webhooks::mercadopago_webhook))
+        .route("/api/webhooks/delivery/uber", post(routes::delivery_webhooks::uber_webhook))
         // Backend-a-backend só (plataforma Rodoletas -> este motor),
         // protegido por INTERNAL_API_KEY em vez de JWT de usuário — ver
         // routes/internal.rs.

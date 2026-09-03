@@ -12,6 +12,20 @@ pub enum AppError {
     Internal(String),
 }
 
+impl AppError {
+    pub fn message(&self) -> &str {
+        match self {
+            AppError::BadRequest(m)
+            | AppError::Unauthorized(m)
+            | AppError::Forbidden(m)
+            | AppError::NotFound(m)
+            | AppError::Conflict(m)
+            | AppError::TooManyRequests(m)
+            | AppError::Internal(m) => m,
+        }
+    }
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, msg) = match self {

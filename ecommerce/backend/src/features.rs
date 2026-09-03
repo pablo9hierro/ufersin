@@ -29,6 +29,7 @@ pub enum Feature {
     Cupons,
     Campanhas,
     Relatorios,
+    EntregaTerceirizada,
 }
 
 impl Feature {
@@ -49,6 +50,7 @@ impl Feature {
             Feature::Cupons => "cupons",
             Feature::Campanhas => "campanhas",
             Feature::Relatorios => "relatorios",
+            Feature::EntregaTerceirizada => "entrega_terceirizada",
         }
     }
 }

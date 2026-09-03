@@ -205,6 +205,15 @@ pub fn build() -> OpenApi {
         ("/api/webhooks/mercadopago", Get, "Webhook Mercado Pago (verificacao)", "Webhooks", false, false),
         ("/api/webhooks/mercadopago", Post, "Webhook Mercado Pago (evento)", "Webhooks", false, true),
         ("/api/webhooks/evolution", Post, "Webhook Evolution API (WhatsApp recebido)", "Webhooks", false, true),
+        ("/api/webhooks/delivery/uber", Post, "Webhook Uber Direct (evento de entrega)", "Webhooks", false, true),
+        ("/api/admin/delivery/settings", Get, "Config de entregas terceirizadas do tenant", "Delivery", true, false),
+        ("/api/admin/delivery/settings", Put, "Atualizar config de entregas terceirizadas", "Delivery", true, true),
+        ("/api/admin/delivery/providers/{provider}/credentials", Post, "Salvar credenciais de um provider de entrega", "Delivery", true, true),
+        ("/api/admin/delivery/providers/{provider}/test-connection", Post, "Testar conexao com o provider", "Delivery", true, false),
+        ("/api/admin/orders/{id}/delivery/quote", Post, "Cotar entrega terceirizada pra um pedido", "Delivery", true, false),
+        ("/api/admin/orders/{id}/delivery/dispatch", Post, "Despachar entrega terceirizada (Chamar entrega)", "Delivery", true, false),
+        ("/api/admin/orders/{id}/delivery", Get, "Status da entrega terceirizada do pedido", "Delivery", true, false),
+        ("/api/admin/orders/{id}/delivery/cancel", Post, "Cancelar entrega terceirizada em andamento", "Delivery", true, false),
         // Vertical eletronicos (assistencia tecnica) -- schema `eletronicos`
         // proprio (ver migrations/0022_eletronicos_module.sql), so serve
         // tenants com vertical='eletronicos'. Ver src/routes/eletronicos.rs.
@@ -354,6 +363,7 @@ pub fn build() -> OpenApi {
             Tag::new("Admin - Config"),
             Tag::new("WhatsApp"),
             Tag::new("Motoboy"),
+            Tag::new("Delivery"),
             Tag::new("Webhooks"),
         ]))
         .components(Some(components))
