@@ -84,6 +84,19 @@ AS $$
   LIMIT 1;
 $$;
 
+-- Espelha auth.uid() sem depender de USAGE na schema `auth` -- o dono das
+-- funções SECURITY DEFINER abaixo (resolutoo_svc) não tem esse privilégio
+-- (não é dono/superuser do projeto Supabase, GRANT USAGE ON SCHEMA auth
+-- falha "permission denied for schema auth"). auth.uid() é só isso por
+-- baixo dos panos: lê o claim "sub" do JWT decodificado pelo PostgREST.
+CREATE OR REPLACE FUNCTION resolutoo.current_uid()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT nullif(current_setting('request.jwt.claims', true)::json->>'sub', '')::uuid
+$$;
+
 CREATE OR REPLACE FUNCTION resolutoo.set_my_layout_style(p_style text)
 RETURNS json
 LANGUAGE plpgsql
@@ -94,7 +107,7 @@ DECLARE
   v_slug text;
   v_style text;
 BEGIN
-  IF auth.uid() IS NULL THEN
+  IF resolutoo.current_uid() IS NULL THEN
     RAISE EXCEPTION 'não autenticado';
   END IF;
   IF p_style IS NULL OR p_style NOT IN ('ufersin', 'burgerbite', 'burgerhouse') THEN
@@ -102,7 +115,7 @@ BEGIN
   END IF;
   UPDATE resolutoo.subscribers
   SET layout_style = p_style, updated_at = now()
-  WHERE id = auth.uid()::text
+  WHERE id = resolutoo.current_uid()::text
   RETURNING slug, layout_style INTO v_slug, v_style;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'assinante não encontrado';
@@ -139,7 +152,7 @@ DECLARE
   v_entrega_gratis boolean;
   v_domicilio boolean;
 BEGIN
-  IF auth.uid() IS NULL THEN
+  IF resolutoo.current_uid() IS NULL THEN
     RAISE EXCEPTION 'não autenticado';
   END IF;
   UPDATE resolutoo.subscribers
@@ -158,7 +171,7 @@ BEGIN
       THEN false ELSE COALESCE(p_entrega_reparado_gratis, entrega_reparado_gratis) END,
     atende_domicilio = COALESCE(p_atende_domicilio, atende_domicilio),
     updated_at = now()
-  WHERE id = auth.uid()::text
+  WHERE id = resolutoo.current_uid()::text
   RETURNING slug, apenas_retirada, vende_mais_18, vender_externamente, pagamento_na_retirada,
             entrega_somente_pix, pagamento_manual, coleta_gratis, entrega_reparado_gratis, atende_domicilio
     INTO v_slug, v_apenas, v_mais18, v_ext, v_pag_ret, v_ent_pix, v_pag_man,
@@ -184,6 +197,7 @@ END;
 $$;
 
 GRANT USAGE ON SCHEMA resolutoo TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION resolutoo.current_uid() TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION resolutoo.get_public_tenant_config(text) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION resolutoo.set_my_layout_style(text) TO authenticated, service_role;
 -- Drop prior overloads, then grant current signature.

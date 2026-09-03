@@ -545,11 +545,17 @@ export default function MeuPlano() {
     setSaving(true)
     try {
       await api.editarOnboarding(fields)
+      // Falha aqui não pode ficar muda: o /api/onboarding acima já reportou
+      // sucesso, mas é essa RPC quem sincroniza pra tabela que a VITRINE
+      // PÚBLICA lê (get_public_tenant_config) — achado real: um erro de
+      // permissão nela deixava o lojista achando que salvou, com a loja
+      // pública nunca refletindo a mudança, sem aviso nenhum na tela.
+      let syncWarning: string | null = null
       if (fields.layout_style) {
         const { error: layoutErr } = await supabase.schema('resolutoo').rpc('set_my_layout_style', {
           p_style: fields.layout_style,
         })
-        if (layoutErr) console.warn('set_my_layout_style:', layoutErr.message)
+        if (layoutErr) syncWarning = `Não foi possível sincronizar o layout com a vitrine: ${layoutErr.message}`
       }
       if (
         fields.apenas_retirada != null ||
@@ -573,9 +579,10 @@ export default function MeuPlano() {
           p_entrega_reparado_gratis: fields.entrega_reparado_gratis ?? null,
           p_atende_domicilio: fields.atende_domicilio ?? null,
         })
-        if (prefsErr) console.warn('set_my_sale_prefs:', prefsErr.message)
+        if (prefsErr) syncWarning = `Não foi possível sincronizar as preferências com a vitrine: ${prefsErr.message}`
       }
       setMe((prev) => (prev ? { ...prev, ...mapFieldsToMe(prev, fields) } : prev))
+      if (syncWarning) setError(syncWarning)
       setSaved(true)
       setPreviewReloadKey((k) => k + 1)
       if (
