@@ -73,11 +73,6 @@ function AccountMenu({ onClose }: { onClose: () => void }) {
                 <UserPlus className="w-4 h-4 u3-accent" /> Criar conta
               </button>
             </li>
-            <li>
-              <button onClick={() => go('/recuperar-senha')} className="w-full flex items-center gap-3 px-3 py-3 text-sm font-medium u3-dim">
-                Esqueci minha senha
-              </button>
-            </li>
           </ul>
         )}
       </div>
