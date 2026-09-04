@@ -209,6 +209,8 @@ export const adminEndpoint = {
       primary_provider: string | null
       fallback_provider: string | null
       max_auto_diff: number | null
+      pickup_city?: string | null
+      pickup_state?: string | null
     }) => api.admin.delivery.updateSettings(payload),
     saveCredentials: async (provider: string, credentials: Record<string, unknown>) =>
       api.admin.delivery.saveCredentials(provider, credentials),

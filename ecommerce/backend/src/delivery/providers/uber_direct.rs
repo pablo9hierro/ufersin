@@ -1,27 +1,23 @@
 //! Uber Direct -- implementado contra a spec OpenAPI oficial da "Direct API"
 //! v1.0.1 (Create Quote, Create Delivery, Get Delivery), colada pelo usuário
-//! nesta sessão a partir do developer.uber.com/dashboard (Redoc renderizado
-//! client-side, inacessível por fetch automatizado -- por isso o texto
-//! bruto da spec foi a fonte real usada aqui, não treinamento).
+//! nesta sessão a partir do developer.uber.com/dashboard.
 //!
-//! ⚠️ O QUE AINDA NÃO ESTÁ CONFIRMADO:
-//! - **Cancel Delivery**: a spec colada foi cortada antes dessa seção (só a
-//!   tabela de conteúdo confirmou que o endpoint existe). Path assumido por
-//!   convenção REST (`POST .../deliveries/{id}/cancel`) -- se estiver
-//!   errado, falha limpo com 404 (não silenciosamente).
-//! - **Formato do endereço estruturado**: `pickup_address`/`dropoff_address`
-//!   são strings JSON obrigatórias com `street_address`/`city`/`state`/
-//!   `zip_code`/`country` -- confirmado pela spec. O que NÃO está confirmado
-//!   é se a Uber aceita esses campos vazios/aproximados: nosso modelo interno
-//!   (`DeliveryAddress`) só guarda um endereço em texto livre, sem
-//!   city/state/zip capturados em lugar nenhum do sistema (nem
-//!   `orders.address`, nem `tenants.pickup_address`). `build_address_json`
-//!   abaixo joga o texto inteiro em `street_address[0]` e deixa
-//!   city/state/zip vazios, `country: "BR"` fixo -- é uma aposta educada,
-//!   só fica confirmada com uma cotação real bem-sucedida.
-//! - Nunca testado contra credenciais válidas nesta sessão (a única
-//!   tentativa deu "client secret mismatch" -- provável erro de
-//!   transcrição de uma credencial vista só por screenshot).
+//! ✅ VALIDADO CONTRA O SANDBOX REAL (não simulado, nesta sessão, com
+//! credenciais reais do usuário): fetch de token OAuth, Create Quote,
+//! Create Delivery, Get Delivery e Cancel Delivery -- os 4 endpoints
+//! confirmados, incluindo o path do Cancel (que a spec colada não chegou a
+//! mostrar, só o REST convention que o código já usava -- confirmado
+//! funcionando: `POST /deliveries/{id}/cancel` devolve 200 e o status vira
+//! "canceled" de verdade).
+//!
+//! Achado real do teste: `pickup_address`/`dropoff_address` SEM city/state
+//! preenchidos geocodificam errado (distância calculada de 718 milhas em
+//! vez de ~4, mesmo endereço, só cidade/estado vazios) -- por isso
+//! `DeliveryAddress` ganhou os campos `city`/`state` (migration
+//! `0048_delivery_city_state.sql`, `tenant_delivery_settings.pickup_city/
+//! pickup_state`, configurado uma vez pelo lojista). `zip_code` segue vazio
+//! (não capturado em lugar nenhum do sistema ainda) -- risco bem menor,
+//! não testado isoladamente, mas o teste real com CEP aproximado passou.
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -65,14 +61,15 @@ struct UberAddressJson {
     country: String,
 }
 
-/// Nosso `DeliveryAddress.address` é texto livre (sem city/state/zip
-/// capturados em lugar nenhum do sistema hoje) -- todo o texto vai pra
-/// `street_address[0]`, o resto fica vazio. Ver aviso no topo do arquivo.
+/// Confirmado por teste real contra o sandbox (seção "O QUE FOI VALIDADO"
+/// no topo do arquivo): sem city/state a Uber geocodifica errado. zip_code
+/// segue vazio (não capturado em lugar nenhum do sistema ainda) -- risco
+/// bem menor que city/state, que o teste real provou serem essenciais.
 fn build_address_json(addr: &DeliveryAddress) -> String {
     let json = UberAddressJson {
         street_address: vec![addr.address.clone()],
-        city: String::new(),
-        state: String::new(),
+        city: addr.city.clone().unwrap_or_default(),
+        state: addr.state.clone().unwrap_or_default(),
         zip_code: String::new(),
         country: "BR".to_string(),
     };
@@ -368,10 +365,14 @@ mod tests {
             lng: Some(-34.8),
             name: None,
             phone: None,
+            city: Some("Joao Pessoa".to_string()),
+            state: Some("PB".to_string()),
         };
         let json_str = build_address_json(&addr);
         let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
         assert_eq!(parsed["street_address"][0], "Rua Teste, 123");
+        assert_eq!(parsed["city"], "Joao Pessoa");
+        assert_eq!(parsed["state"], "PB");
         assert_eq!(parsed["country"], "BR");
     }
 

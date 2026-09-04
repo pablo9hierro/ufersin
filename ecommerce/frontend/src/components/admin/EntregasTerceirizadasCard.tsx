@@ -13,6 +13,8 @@ export default function EntregasTerceirizadasCard({ className = 'p-4 mb-6' }: { 
 
   const [mode, setMode] = useState<'manual' | 'automatico'>('manual')
   const [maxAutoDiff, setMaxAutoDiff] = useState('')
+  const [pickupCity, setPickupCity] = useState('')
+  const [pickupState, setPickupState] = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
   const [savedSettings, setSavedSettings] = useState(false)
 
@@ -30,6 +32,8 @@ export default function EntregasTerceirizadasCard({ className = 'p-4 mb-6' }: { 
       setSettings(s)
       setMode(s.mode)
       setMaxAutoDiff(s.max_auto_diff != null ? String(s.max_auto_diff) : '')
+      setPickupCity(s.pickup_city ?? '')
+      setPickupState(s.pickup_state ?? '')
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Não foi possível carregar as configurações de entrega.')
     } finally {
@@ -55,6 +59,8 @@ export default function EntregasTerceirizadasCard({ className = 'p-4 mb-6' }: { 
         primary_provider: uberConnected ? 'uber_direct' : null,
         fallback_provider: null,
         max_auto_diff: diff,
+        pickup_city: pickupCity.trim() || null,
+        pickup_state: pickupState.trim() || null,
       })
       setSettings(updated)
       setSavedSettings(true)
@@ -155,6 +161,23 @@ export default function EntregasTerceirizadasCard({ className = 'p-4 mb-6' }: { 
               </button>
             )}
             {testResult === 'ok' && <p className="text-xs text-emerald-400 mt-2">Conexão OK.</p>}
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-son-silver-dim mb-2">Localização da loja</p>
+            <p className="text-xs text-son-silver-dim mb-2">
+              Obrigatório pra Uber Direct calcular a rota certo — sem isso a cotação pode sair errada.
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="label">Cidade</label>
+                <input className="input-field w-40 py-2 text-sm" value={pickupCity} onChange={(e) => setPickupCity(e.target.value)} placeholder="Ex: Joao Pessoa" />
+              </div>
+              <div>
+                <label className="label">Estado (UF)</label>
+                <input className="input-field w-20 py-2 text-sm" maxLength={2} value={pickupState} onChange={(e) => setPickupState(e.target.value.toUpperCase())} placeholder="PB" />
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-end gap-3">

@@ -84,6 +84,11 @@ pub struct DeliveryAddress {
     pub lng: Option<f64>,
     pub name: Option<String>,
     pub phone: Option<String>,
+    /// Confirmado por teste real: sem isso a Uber geocodifica errado (ver
+    /// 0048_delivery_city_state.sql). `None` faz o provider mandar string
+    /// vazia -- funciona, mas arrisca geocodificação ruim.
+    pub city: Option<String>,
+    pub state: Option<String>,
 }
 
 #[derive(Debug, Clone)]

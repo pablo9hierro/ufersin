@@ -74,6 +74,9 @@ export interface DeliverySettings {
   primary_provider: string | null
   fallback_provider: string | null
   max_auto_diff: number | null
+  /** Confirmado por teste real: Uber Direct geocodifica errado sem isso. */
+  pickup_city: string | null
+  pickup_state: string | null
   providers: DeliveryProviderStatus[]
 }
 export interface DeliveryQuoteResult {
@@ -1175,6 +1178,8 @@ const remoteApi = {
         primary_provider: string | null
         fallback_provider: string | null
         max_auto_diff: number | null
+        pickup_city?: string | null
+        pickup_state?: string | null
       }) =>
         railwayAdmin<DeliverySettings>('/api/admin/delivery/settings', {
           method: 'PUT',

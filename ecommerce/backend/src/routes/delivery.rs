@@ -24,6 +24,12 @@ pub struct DeliverySettingsDto {
     pub primary_provider: Option<String>,
     pub fallback_provider: Option<String>,
     pub max_auto_diff: Option<f64>,
+    /// Confirmado por teste real contra a Uber Direct: sem isso a
+    /// geocodificação do endereço fica errada (ver
+    /// migrations/0048_delivery_city_state.sql). Loja e cliente ficam na
+    /// mesma cidade -- o próprio raio de entrega da Uber já restringe isso.
+    pub pickup_city: Option<String>,
+    pub pickup_state: Option<String>,
     pub providers: Vec<ProviderStatusDto>,
 }
 
@@ -39,15 +45,15 @@ pub async fn get_settings(
     AdminUser(claims): AdminUser,
 ) -> Result<Json<DeliverySettingsDto>, AppError> {
     require_beta(&state.pool, &claims.tenant_id).await?;
-    let settings: Option<(String, Option<String>, Option<String>, Option<f64>)> = sqlx::query_as(
-        "SELECT mode, primary_provider, fallback_provider, max_auto_diff \
+    let settings: Option<(String, Option<String>, Option<String>, Option<f64>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT mode, primary_provider, fallback_provider, max_auto_diff, pickup_city, pickup_state \
          FROM tenant_delivery_settings WHERE tenant_id = $1",
     )
     .bind(&claims.tenant_id)
     .fetch_optional(&state.pool)
     .await?;
-    let (mode, primary_provider, fallback_provider, max_auto_diff) =
-        settings.unwrap_or(("manual".to_string(), None, None, None));
+    let (mode, primary_provider, fallback_provider, max_auto_diff, pickup_city, pickup_state) =
+        settings.unwrap_or(("manual".to_string(), None, None, None, None, None));
 
     let providers: Vec<ProviderStatusDto> = sqlx::query_as::<_, (String, String, Option<String>)>(
         "SELECT provider, status, connected_at FROM delivery_provider_credentials WHERE tenant_id = $1",
@@ -59,7 +65,15 @@ pub async fn get_settings(
     .map(|(provider, status, connected_at)| ProviderStatusDto { provider, status, connected_at })
     .collect();
 
-    Ok(Json(DeliverySettingsDto { mode, primary_provider, fallback_provider, max_auto_diff, providers }))
+    Ok(Json(DeliverySettingsDto {
+        mode,
+        primary_provider,
+        fallback_provider,
+        max_auto_diff,
+        pickup_city,
+        pickup_state,
+        providers,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +82,10 @@ pub struct UpdateDeliverySettingsInput {
     pub primary_provider: Option<String>,
     pub fallback_provider: Option<String>,
     pub max_auto_diff: Option<f64>,
+    #[serde(default)]
+    pub pickup_city: Option<String>,
+    #[serde(default)]
+    pub pickup_state: Option<String>,
 }
 
 pub async fn update_settings(
@@ -89,12 +107,18 @@ pub async fn update_settings(
             return Err(AppError::BadRequest("max_auto_diff deve ser um número não-negativo".to_string()));
         }
     }
+    // pickup_city/pickup_state usam COALESCE (não sobrescrevem com NULL):
+    // o card simples de modo/provider não manda esses campos, só a futura
+    // UI de endereço da loja vai -- não pode apagar o que já foi salvo.
     sqlx::query(
-        "INSERT INTO tenant_delivery_settings (tenant_id, mode, primary_provider, fallback_provider, max_auto_diff) \
-         VALUES ($1, $2, $3, $4, $5) \
+        "INSERT INTO tenant_delivery_settings \
+           (tenant_id, mode, primary_provider, fallback_provider, max_auto_diff, pickup_city, pickup_state) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) \
          ON CONFLICT (tenant_id) DO UPDATE SET \
            mode = EXCLUDED.mode, primary_provider = EXCLUDED.primary_provider, \
            fallback_provider = EXCLUDED.fallback_provider, max_auto_diff = EXCLUDED.max_auto_diff, \
+           pickup_city = COALESCE(EXCLUDED.pickup_city, tenant_delivery_settings.pickup_city), \
+           pickup_state = COALESCE(EXCLUDED.pickup_state, tenant_delivery_settings.pickup_state), \
            updated_at = now()::text",
     )
     .bind(&claims.tenant_id)
@@ -102,6 +126,8 @@ pub async fn update_settings(
     .bind(&body.primary_provider)
     .bind(&body.fallback_provider)
     .bind(body.max_auto_diff)
+    .bind(&body.pickup_city)
+    .bind(&body.pickup_state)
     .execute(&state.pool)
     .await?;
 
@@ -157,9 +183,18 @@ pub async fn test_connection(
     let Some(code) = ProviderCode::parse(&provider) else {
         return Err(AppError::BadRequest(format!("provider inválido: {provider}")));
     };
+    let probe_addr = || DeliveryAddress {
+        address: "probe".to_string(),
+        lat: Some(0.0),
+        lng: Some(0.0),
+        name: None,
+        phone: None,
+        city: None,
+        state: None,
+    };
     let quote_probe = delivery::DeliveryQuoteRequest {
-        pickup: DeliveryAddress { address: "probe".to_string(), lat: Some(0.0), lng: Some(0.0), name: None, phone: None },
-        dropoff: DeliveryAddress { address: "probe".to_string(), lat: Some(0.0), lng: Some(0.0), name: None, phone: None },
+        pickup: probe_addr(),
+        dropoff: probe_addr(),
         order_reference: "connection-test".to_string(),
     };
     let provider_impl = orchestrator::build_provider_for_test(&state.pool, &state.http, &claims.tenant_id, code)
@@ -197,6 +232,18 @@ async fn load_addresses(
     let (tenant_name, pickup_address, org_phone) =
         tenant_row.unwrap_or(("Loja".to_string(), None, String::new()));
 
+    // Confirmado por teste real contra a Uber Direct: sem city/state a
+    // geocodificação fica errada. Loja e cliente ficam na mesma
+    // cidade/estado -- o próprio raio de entrega da Uber já restringe isso,
+    // não precisa capturar por pedido.
+    let city_state: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT pickup_city, pickup_state FROM tenant_delivery_settings WHERE tenant_id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    let (pickup_city, pickup_state) = city_state.unwrap_or((None, None));
+
     // Uber Direct exige telefone no formato "+<dígitos>" (regex
     // ^\+[0-9]+$) tanto pra pickup quanto dropoff -- normaliza os dois do
     // mesmo jeito que o resto do backend já normaliza WhatsApp
@@ -213,6 +260,8 @@ async fn load_addresses(
         lng: store_lng,
         name: Some(tenant_name),
         phone: pickup_phone,
+        city: pickup_city.clone(),
+        state: pickup_state.clone(),
     };
     let dropoff = DeliveryAddress {
         address: order.address.clone().unwrap_or_default(),
@@ -220,6 +269,8 @@ async fn load_addresses(
         lng: order.customer_lng,
         name: Some(order.customer_name.clone()),
         phone: Some(dropoff_phone),
+        city: pickup_city,
+        state: pickup_state,
     };
     Ok((pickup, dropoff))
 }
