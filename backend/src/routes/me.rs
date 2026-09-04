@@ -67,6 +67,7 @@ struct SubscriberRow {
     cart_fab_animate: bool,
     vertical: String,
     atende_domicilio: bool,
+    entrega_terceirizada_modo: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -153,6 +154,8 @@ pub struct MeResponse {
     /// Quando `oferece_servicos`, lojista também atende a domicílio (além
     /// de presencial na loja) — libera geolocalização no checkout de serviço.
     pub atende_domicilio: bool,
+    /// "manual" | "automatico" (Uber Direct) | null (ainda não decidiu, trata como manual).
+    pub entrega_terceirizada_modo: Option<String>,
 }
 
 pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubscriber) -> Result<Json<MeResponse>, AppError> {
@@ -183,7 +186,8 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
                 COALESCE(cart_fab_style, 'sacola') as cart_fab_style,
                 COALESCE(cart_fab_animate, false) as cart_fab_animate,
                 COALESCE(vertical, 'ecommerce') as vertical,
-                COALESCE(atende_domicilio, false) as atende_domicilio
+                COALESCE(atende_domicilio, false) as atende_domicilio,
+                entrega_terceirizada_modo
          FROM subscribers WHERE id = $1",
     )
     .bind(&claims.sub)
@@ -276,6 +280,7 @@ pub async fn me(State(state): State<AppState>, AuthSubscriber(claims): AuthSubsc
         refund_eligible_on_cancel,
         vertical: row.vertical,
         atende_domicilio: row.oferece_servicos && row.atende_domicilio,
+        entrega_terceirizada_modo: row.entrega_terceirizada_modo,
     }))
 }
 

@@ -312,6 +312,66 @@ pub async fn sync_feature_flags(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SyncDeliverySettingsInput {
+    pub tenant_slug: String,
+    /// "manual" | "automatico" — mesmo enum de `tenant_delivery_settings.mode`.
+    pub mode: String,
+    pub primary_provider: Option<String>,
+}
+
+/// Resolutoo (ufersin/backend) chama quando o lojista escolhe, em
+/// /meu-plano, como despacha entrega terceirizada (Uber Direct automático
+/// vs ele mesmo chamando motoboy/99pop manual). Grava
+/// `tenant_delivery_settings` e liga a feature `entrega_terceirizada` junto
+/// -- sem isso, a tela de admin da loja (`/admin/entregas-terceirizadas`)
+/// continuaria 403 mesmo depois da escolha feita em /meu-plano.
+pub async fn sync_delivery_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SyncDeliverySettingsInput>,
+) -> Result<StatusCode, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = input.tenant_slug.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest("tenant_slug obrigatório".to_string()));
+    }
+    if !matches!(input.mode.as_str(), "manual" | "automatico") {
+        return Err(AppError::BadRequest("mode deve ser 'manual' ou 'automatico'".to_string()));
+    }
+    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((tenant_id,)) = row else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    sqlx::query(
+        "INSERT INTO tenant_delivery_settings (tenant_id, mode, primary_provider) \
+         VALUES ($1, $2, $3) \
+         ON CONFLICT (tenant_id) DO UPDATE SET \
+           mode = EXCLUDED.mode, primary_provider = EXCLUDED.primary_provider, updated_at = now()::text",
+    )
+    .bind(&tenant_id)
+    .bind(&input.mode)
+    .bind(&input.primary_provider)
+    .execute(&state.pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO feature_flags (id, tenant_id, feature_code, enabled) \
+         VALUES ($1, $2, 'entrega_terceirizada', true) \
+         ON CONFLICT (tenant_id, feature_code) DO UPDATE SET enabled = true",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&tenant_id)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }

@@ -921,6 +921,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::internal::sync_feature_flags),
         )
         .route(
+            "/internal/sync-delivery-settings",
+            post(routes::internal::sync_delivery_settings),
+        )
+        .route(
             "/internal/mint-admin-token",
             post(routes::internal::mint_admin_token),
         )

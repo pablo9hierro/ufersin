@@ -284,6 +284,8 @@ export interface MeResponse {
   vertical: 'ecommerce' | 'eletronicos'
   /** Quando oferece_servicos, também atende a domicílio (além de presencial). */
   atende_domicilio: boolean
+  /** "manual" | "automatico" (Uber Direct) | null (ainda não decidiu). */
+  entrega_terceirizada_modo: 'manual' | 'automatico' | null
 }
 
 export type ContractKind = 'platform_subscription' | 'checkout_compra_normal' | 'checkout_mais18'
@@ -381,6 +383,7 @@ export interface EditOnboardingInput {
   oferece_servicos?: boolean
   precisa_tela_cozinha?: boolean
   tem_motoboy_proprio?: boolean
+  entrega_terceirizada_modo?: 'manual' | 'automatico' | null
   precisa_vendedor?: boolean
   atende_domicilio?: boolean
   landing_hero_image_url?: string

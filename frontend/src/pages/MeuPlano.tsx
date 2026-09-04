@@ -154,6 +154,7 @@ export default function MeuPlano() {
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
   const [entregaSomentePix, setEntregaSomentePix] = useState(true)
   const [temMotoboyProprio, setTemMotoboyProprio] = useState(false)
+  const [entregaTerceirizadaModo, setEntregaTerceirizadaModo] = useState<'manual' | 'automatico'>('manual')
   const [precisaVendedor, setPrecisaVendedor] = useState(false)
   /** Estado próprio (não derivado) pra dar play/pause real ao "não tenho
    * funcionários": marcar trava e zera os três abaixo; desmarcar só destrava
@@ -237,6 +238,7 @@ export default function MeuPlano() {
         setPrecisaTelaCozinha(!!m.precisa_tela_cozinha)
         setAtendeDomicilio(!!m.atende_domicilio)
         setTemMotoboyProprio(!!m.tem_motoboy_proprio)
+        setEntregaTerceirizadaModo(m.entrega_terceirizada_modo === 'automatico' ? 'automatico' : 'manual')
         setPrecisaVendedor(!!m.precisa_vendedor)
         setNenhumFuncionario(!m.tem_motoboy_proprio && !m.precisa_vendedor && !m.precisa_tela_cozinha)
         setColetaGratis(!!m.coleta_gratis)
@@ -780,6 +782,7 @@ export default function MeuPlano() {
       // Eletrônica não tem conceito de cozinha (não é F&B).
       precisa_tela_cozinha: me.vertical === 'eletronicos' ? false : precisaTelaCozinha,
       tem_motoboy_proprio: !apenasRetirada && temMotoboyProprio,
+      entrega_terceirizada_modo: !apenasRetirada && !temMotoboyProprio ? entregaTerceirizadaModo : null,
       precisa_vendedor: precisaVendedor,
       // Pagar na retirada não depende de motoboy (é o cliente vindo na loja);
       // pagar na entrega só é seguro com motoboy próprio (terceiro/99pop não
@@ -1256,6 +1259,39 @@ export default function MeuPlano() {
                               Pedidos prontos caem na fila do motoboy. Se desmarcado, você chama um motoboy/99pop terceiro e o card do pedido mostra a localização do cliente.
                             </span>
                           </label>
+                        )}
+                        {!apenasRetirada && !temMotoboyProprio && (
+                          <div className="uf-glass rounded-xl px-3 py-2.5" data-testid="pref-entrega-terceirizada-modo">
+                            <span className="block text-uf-silver text-xs font-semibold mb-2">Como você despacha a entrega terceirizada?</span>
+                            <label className="flex items-start gap-2.5 cursor-pointer mb-2">
+                              <input
+                                type="radio"
+                                name="entrega_terceirizada_modo"
+                                checked={entregaTerceirizadaModo === 'manual'}
+                                onChange={() => setEntregaTerceirizadaModo('manual')}
+                                className="w-4 h-4 mt-0.5"
+                                data-testid="pref-entrega-modo-manual"
+                              />
+                              <span className="text-xs text-uf-silver-dim">
+                                <span className="block text-uf-silver font-semibold mb-0.5">Eu mesmo chamo (manual)</span>
+                                Você liga pro motoboy/99pop terceiro, como já funciona hoje.
+                              </span>
+                            </label>
+                            <label className="flex items-start gap-2.5 cursor-pointer">
+                              <input
+                                type="radio"
+                                name="entrega_terceirizada_modo"
+                                checked={entregaTerceirizadaModo === 'automatico'}
+                                onChange={() => setEntregaTerceirizadaModo('automatico')}
+                                className="w-4 h-4 mt-0.5"
+                                data-testid="pref-entrega-modo-automatico"
+                              />
+                              <span className="text-xs text-uf-silver-dim">
+                                <span className="block text-uf-silver font-semibold mb-0.5">Uso Uber Direct (automática)</span>
+                                Entrega é chamada automaticamente pela Uber Direct. Você ainda precisa conectar sua conta Uber Direct em Configurações → Entregas terceirizadas.
+                              </span>
+                            </label>
+                          </div>
                         )}
                       </>
                     )

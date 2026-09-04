@@ -514,6 +514,8 @@ pub struct EditOnboardingInput {
     pub cart_fab_animate: Option<bool>,
     #[serde(default)]
     pub atende_domicilio: Option<bool>,
+    #[serde(default)]
+    pub entrega_terceirizada_modo: Option<String>,
 }
 
 /// Edição pós-onboarding (/meu-plano) — atualiza os mesmos campos, mas
@@ -601,6 +603,13 @@ pub async fn editar_onboarding(
             ));
         }
     }
+    if let Some(modo) = &body.entrega_terceirizada_modo {
+        if !matches!(modo.as_str(), "manual" | "automatico") {
+            return Err(AppError::BadRequest(
+                "entrega_terceirizada_modo deve ser 'manual' ou 'automatico'".to_string(),
+            ));
+        }
+    }
     if let Some(fab) = &body.cart_fab_style {
         if !matches!(fab.as_str(), "sacola" | "cart_icon") {
             return Err(AppError::BadRequest(
@@ -651,6 +660,7 @@ pub async fn editar_onboarding(
          atende_domicilio = CASE \
            WHEN COALESCE($34, oferece_servicos) = false THEN false \
            ELSE COALESCE($38, atende_domicilio) END, \
+         entrega_terceirizada_modo = COALESCE($39, entrega_terceirizada_modo), \
          onboarding_status = CASE \
            WHEN onboarding_status = 'aguardando_onboarding' THEN 'provisionado' \
            ELSE onboarding_status END, \
@@ -704,6 +714,7 @@ pub async fn editar_onboarding(
     .bind(body.tem_motoboy_proprio)
     .bind(body.precisa_vendedor)
     .bind(body.atende_domicilio)
+    .bind(&body.entrega_terceirizada_modo)
     .execute(&state.pool)
     .await?;
 
@@ -778,6 +789,18 @@ pub async fn editar_onboarding(
         .await
         {
             tracing::warn!("sync-feature-flags after edit failed: {e:?}");
+        }
+        // Só faz sentido escolher Uber Direct automático vs motoboy/99pop
+        // manual pra quem entrega e não tem motoboy próprio (quem tem
+        // motoboy já cai na fila dele; quem só retira não tem entrega
+        // terceirizada nenhuma).
+        if body.entrega_terceirizada_modo.is_some() && !tem_motoboy_proprio {
+            if let Err(e) =
+                sync_delivery_preference(&state, &slug, body.entrega_terceirizada_modo.as_deref())
+                    .await
+            {
+                tracing::warn!("sync-delivery-preference after edit failed: {e:?}");
+            }
         }
     }
 
@@ -856,6 +879,51 @@ pub(crate) async fn sync_feature_flags(
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         return Err(AppError::Internal(format!("sync-feature-flags failed: {status} {text}")));
+    }
+    Ok(())
+}
+
+/// Espelho de `sync_feature_flags` — reflete a escolha de /meu-plano ("uso
+/// Uber Direct automático" vs "eu mesmo chamo motoboy/99pop manual") em
+/// `tenant_delivery_settings` no ecommerce-api, ligando junto a feature
+/// `entrega_terceirizada` (senão a tela de admin da loja continuaria 403
+/// mesmo depois do lojista escolher o modo aqui).
+pub(crate) async fn sync_delivery_preference(
+    state: &AppState,
+    slug: &str,
+    modo: Option<&str>,
+) -> Result<(), AppError> {
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Ok(());
+    }
+    let Some(modo) = modo else { return Ok(()) };
+    let (mode, primary_provider) = match modo {
+        "automatico" => ("automatico", Some("uber_direct")),
+        _ => ("manual", None),
+    };
+    let url = format!(
+        "{}/internal/sync-delivery-settings",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "tenant_slug": slug,
+            "mode": mode,
+            "primary_provider": primary_provider,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("sync-delivery-settings unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!(
+            "sync-delivery-settings failed: {status} {text}"
+        )));
     }
     Ok(())
 }
