@@ -1,25 +1,27 @@
-//! Uber Direct -- implementado contra a API pública documentada (OAuth2
-//! client-credentials + "Direct API" v1, `https://developer.uber.com/docs/deliveries`).
+//! Uber Direct -- implementado contra a spec OpenAPI oficial da "Direct API"
+//! v1.0.1 (Create Quote, Create Delivery, Get Delivery), colada pelo usuário
+//! nesta sessão a partir do developer.uber.com/dashboard (Redoc renderizado
+//! client-side, inacessível por fetch automatizado -- por isso o texto
+//! bruto da spec foi a fonte real usada aqui, não treinamento).
 //!
-//! ⚠️ AVISO HONESTO (regra 32 do pedido): este código foi escrito a partir de
-//! conhecimento de treinamento sobre a API pública da Uber Direct, SEM
-//! acesso à documentação/sandbox ao vivo nesta sessão (sem credenciais
-//! disponíveis pra testar de verdade -- confirmado com o usuário antes de
-//! implementar). Os nomes de endpoint, campos de request/response e o
-//! esquema de assinatura de webhook abaixo precisam ser validados contra a
-//! documentação oficial atual (ou um sandbox real) ANTES de qualquer uso
-//! além de desenvolvimento local. Nada aqui foi inventado sem base — mas
-//! "base em treinamento" não é o mesmo que "confirmado ao vivo", e este
-//! comentário existe pra isso nunca virar confiança implícita.
-//!
-//! Pontos que precisam de confirmação explícita antes de produção:
-//! - Path exato de quote/create/get/cancel (assumido `/v1/customers/{customer_id}/...`).
-//! - Nome e formato exatos dos campos de endereço/pacote no payload.
-//! - Header e algoritmo exatos de assinatura de webhook (assumido
-//!   `X-Uber-Signature` HMAC-SHA256 sobre o corpo cru, mesmo padrão do
-//!   Mercado Pago já usado neste backend -- ver `webhooks.rs::signature_looks_valid`).
-//! - Scope OAuth exato (`eats.deliveries` é o valor mais comumente
-//!   documentado publicamente, mas pode ter mudado).
+//! ⚠️ O QUE AINDA NÃO ESTÁ CONFIRMADO:
+//! - **Cancel Delivery**: a spec colada foi cortada antes dessa seção (só a
+//!   tabela de conteúdo confirmou que o endpoint existe). Path assumido por
+//!   convenção REST (`POST .../deliveries/{id}/cancel`) -- se estiver
+//!   errado, falha limpo com 404 (não silenciosamente).
+//! - **Formato do endereço estruturado**: `pickup_address`/`dropoff_address`
+//!   são strings JSON obrigatórias com `street_address`/`city`/`state`/
+//!   `zip_code`/`country` -- confirmado pela spec. O que NÃO está confirmado
+//!   é se a Uber aceita esses campos vazios/aproximados: nosso modelo interno
+//!   (`DeliveryAddress`) só guarda um endereço em texto livre, sem
+//!   city/state/zip capturados em lugar nenhum do sistema (nem
+//!   `orders.address`, nem `tenants.pickup_address`). `build_address_json`
+//!   abaixo joga o texto inteiro em `street_address[0]` e deixa
+//!   city/state/zip vazios, `country: "BR"` fixo -- é uma aposta educada,
+//!   só fica confirmada com uma cotação real bem-sucedida.
+//! - Nunca testado contra credenciais válidas nesta sessão (a única
+//!   tentativa deu "client secret mismatch" -- provável erro de
+//!   transcrição de uma credencial vista só por screenshot).
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -27,11 +29,11 @@ use serde_json::json;
 use crate::error::AppError;
 
 use super::super::{
-    DeliveryCreateRequest, DeliveryHandle, DeliveryQuote, DeliveryQuoteRequest, DeliveryStatus,
-    NormalizedDeliveryEvent,
+    DeliveryAddress, DeliveryCreateRequest, DeliveryHandle, DeliveryQuote, DeliveryQuoteRequest,
+    DeliveryStatus, NormalizedDeliveryEvent,
 };
 
-const AUTH_URL: &str = "https://auth.uber.com/oauth/token";
+const AUTH_URL: &str = "https://auth.uber.com/oauth/v2/token";
 const DEFAULT_BASE_URL: &str = "https://api.uber.com";
 const DEFAULT_SCOPE: &str = "eats.deliveries";
 
@@ -51,16 +53,40 @@ pub struct UberDirectProvider {
     credentials: UberDirectCredentials,
 }
 
+/// Corpo de `pickup_address`/`dropoff_address` -- a Uber exige uma STRING
+/// JSON (não um objeto aninhado) contendo isso serializado, ver
+/// `build_address_json`.
+#[derive(Debug, Serialize)]
+struct UberAddressJson {
+    street_address: Vec<String>,
+    city: String,
+    state: String,
+    zip_code: String,
+    country: String,
+}
+
+/// Nosso `DeliveryAddress.address` é texto livre (sem city/state/zip
+/// capturados em lugar nenhum do sistema hoje) -- todo o texto vai pra
+/// `street_address[0]`, o resto fica vazio. Ver aviso no topo do arquivo.
+fn build_address_json(addr: &DeliveryAddress) -> String {
+    let json = UberAddressJson {
+        street_address: vec![addr.address.clone()],
+        city: String::new(),
+        state: String::new(),
+        zip_code: String::new(),
+        country: "BR".to_string(),
+    };
+    serde_json::to_string(&json).unwrap_or_default()
+}
+
 impl UberDirectProvider {
     pub fn new(http: reqwest::Client, credentials: UberDirectCredentials) -> Self {
         Self { http, base_url: DEFAULT_BASE_URL.to_string(), credentials }
     }
 
-    /// Token de curta duração via OAuth2 client-credentials -- essa parte
-    /// segue o padrão OAuth2 documentado (fluxo padrão, não específico da
-    /// Uber). Sem cache nesta primeira versão: busca um token novo a cada
-    /// chamada (funciona, não é o mais eficiente -- ver limitações no
-    /// relatório final).
+    /// Token de curta duração via OAuth2 client-credentials. Sem cache
+    /// nesta primeira versão: busca um token novo a cada chamada (funciona,
+    /// não é o mais eficiente -- ver limitações no relatório final).
     async fn fetch_token(&self) -> Result<String, AppError> {
         #[derive(Deserialize)]
         struct TokenResponse {
@@ -96,10 +122,10 @@ impl UberDirectProvider {
     pub async fn quote(&self, req: &DeliveryQuoteRequest) -> Result<DeliveryQuote, AppError> {
         let token = self.fetch_token().await?;
         let body = json!({
-            "pickup_address": req.pickup.address,
+            "pickup_address": build_address_json(&req.pickup),
             "pickup_latitude": req.pickup.lat,
             "pickup_longitude": req.pickup.lng,
-            "dropoff_address": req.dropoff.address,
+            "dropoff_address": build_address_json(&req.dropoff),
             "dropoff_latitude": req.dropoff.lat,
             "dropoff_longitude": req.dropoff.lng,
             "external_store_id": req.order_reference,
@@ -116,6 +142,9 @@ impl UberDirectProvider {
             let text = resp.text().await.unwrap_or_default();
             return Err(AppError::BadRequest(format!("uber direct quote failed: {text}")));
         }
+        // Campos confirmados contra a spec OpenAPI oficial (Create Quote
+        // 200): kind, id, created, expires, fee, currency, currency_type,
+        // dropoff_eta, duration, pickup_duration, dropoff_deadline.
         #[derive(Deserialize)]
         struct QuoteResponse {
             id: String,
@@ -129,9 +158,7 @@ impl UberDirectProvider {
         Ok(DeliveryQuote {
             provider: super::super::ProviderCode::UberDirect,
             external_quote_id: Some(parsed.id),
-            // Uber Direct cobra em centavos por padrão na documentação
-            // pública -- convertido pra reais aqui; confirmar moeda/escala
-            // real antes de produção.
+            // fee vem em centavos (confirmado pela spec: "$10.99 => 1099").
             amount: parsed.fee / 100.0,
             eta_minutes: parsed.duration,
         })
@@ -139,14 +166,25 @@ impl UberDirectProvider {
 
     pub async fn create(&self, req: &DeliveryCreateRequest) -> Result<DeliveryHandle, AppError> {
         let token = self.fetch_token().await?;
+        // manifest_items é obrigatório na spec -- item genérico mínimo
+        // (size default "small" quando omitido, confirmado pela spec).
+        let manifest_items = json!([{
+            "name": format!("Pedido #{}", req.order_reference),
+            "quantity": 1,
+        }]);
         let body = json!({
             "quote_id": req.quote.external_quote_id,
             "pickup_name": req.pickup.name,
-            "pickup_address": req.pickup.address,
+            "pickup_address": build_address_json(&req.pickup),
             "pickup_phone_number": req.pickup.phone,
+            "pickup_latitude": req.pickup.lat,
+            "pickup_longitude": req.pickup.lng,
             "dropoff_name": req.dropoff.name,
-            "dropoff_address": req.dropoff.address,
+            "dropoff_address": build_address_json(&req.dropoff),
             "dropoff_phone_number": req.dropoff.phone,
+            "dropoff_latitude": req.dropoff.lat,
+            "dropoff_longitude": req.dropoff.lng,
+            "manifest_items": manifest_items,
             "external_id": req.order_reference,
         });
         let resp = self
@@ -188,6 +226,8 @@ impl UberDirectProvider {
         parse_delivery_response(raw)
     }
 
+    /// ⚠️ Path não confirmado pela spec (cortada antes desta seção) --
+    /// convenção REST, ver aviso no topo do arquivo.
     pub async fn cancel(&self, external_id: &str) -> Result<(), AppError> {
         let token = self.fetch_token().await?;
         let resp = self
@@ -226,39 +266,47 @@ fn parse_delivery_response(raw: serde_json::Value) -> Result<DeliveryHandle, App
     })
 }
 
-/// Mapeia os status documentados publicamente da Uber Direct pro enum
-/// normalizado interno (seção 17 do pedido). Nomes de status assumidos a
-/// partir da doc pública -- confirmar contra live docs antes de produção.
+/// Valores confirmados pela spec: pending, pickup, pickup_complete,
+/// dropoff, delivered, canceled, returned.
 fn normalize_status(uber_status: &str) -> DeliveryStatus {
     match uber_status {
         "pending" => DeliveryStatus::Created,
         "pickup" => DeliveryStatus::CourierAssigned,
-        "pickup_complete" | "en_route_to_pickup" => DeliveryStatus::EnRouteToPickup,
-        "picked_up" => DeliveryStatus::PickedUp,
-        "dropoff" | "en_route_to_dropoff" => DeliveryStatus::EnRouteToDropoff,
+        "pickup_complete" => DeliveryStatus::EnRouteToPickup,
+        "dropoff" => DeliveryStatus::EnRouteToDropoff,
         "delivered" => DeliveryStatus::Delivered,
-        "canceled" | "cancelled" => DeliveryStatus::Cancelled,
+        "canceled" | "cancelled" | "returned" => DeliveryStatus::Cancelled,
         _ => DeliveryStatus::Failed,
     }
 }
 
+/// Formato real do webhook (confirmado pela spec + payload de exemplo
+/// colado pelo usuário): `kind` é o tipo do evento
+/// (`event.delivery_status` | `event.courier_update` | `event.refund_request`),
+/// `id` é o id do próprio evento (usado direto pro dedupe -- muito melhor
+/// que inventar uma chave sintética). Status de entrega só existe pra
+/// delivery_status/courier_update, e mesmo assim só de forma confiável
+/// dentro de `data.status` (courier_update não tem status no top-level);
+/// refund_request não tem status de entrega nenhum.
 #[derive(Debug, Deserialize, Serialize)]
 struct UberWebhookPayload {
+    id: String,
+    kind: String,
     delivery_id: String,
-    /// Assumido como o id do evento em si -- se a Uber não mandar um campo
-    /// dedicado, cair pro par (delivery_id, status, timestamp) como chave
-    /// de dedupe é a alternativa (ver `parse_webhook`).
     #[serde(default)]
-    event_id: Option<String>,
-    status: String,
+    status: Option<String>,
     #[serde(default)]
-    timestamp: Option<String>,
+    data: Option<serde_json::Value>,
 }
 
 /// Valida a assinatura (best-effort, mesmo padrão tolerante do webhook do
 /// Mercado Pago -- loga e segue mesmo se a assinatura não bater, porque a
 /// defesa real é sempre re-consultar `GET /deliveries/{id}` antes de
 /// confiar no conteúdo, nunca confiar cegamente no corpo do webhook).
+/// Aceita `x-uber-signature` OU `x-postmates-signature` -- a spec confirma
+/// que ambos são válidos pros eventos delivery_status/courier_update
+/// (refund_request só aceita x-uber-signature, mas verificar os dois aqui
+/// não enfraquece isso, só é mais tolerante em ambos os casos).
 pub fn verify_signature(signing_key: Option<&str>, signature_header: Option<&str>, raw_body: &[u8]) -> bool {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
@@ -277,18 +325,20 @@ pub fn verify_signature(signing_key: Option<&str>, signature_header: Option<&str
 pub fn parse_webhook(payload: &serde_json::Value) -> Result<NormalizedDeliveryEvent, AppError> {
     let parsed: UberWebhookPayload = serde_json::from_value(payload.clone())
         .map_err(|e| AppError::BadRequest(format!("uber direct webhook payload inválido: {e}")))?;
-    let external_event_id = parsed.event_id.clone().unwrap_or_else(|| {
-        format!(
-            "{}:{}:{}",
-            parsed.delivery_id,
-            parsed.status,
-            parsed.timestamp.as_deref().unwrap_or("")
-        )
-    });
+    // data.status é a fonte mais confiável (presente em delivery_status e
+    // courier_update); cai pro status top-level se data vier ausente;
+    // refund_request não tem nenhum dos dois -- fica None, o webhook route
+    // trata isso como "não atualiza status, só loga o evento".
+    let status_raw = parsed
+        .data
+        .as_ref()
+        .and_then(|d| d.get("status"))
+        .and_then(|s| s.as_str())
+        .or(parsed.status.as_deref());
     Ok(NormalizedDeliveryEvent {
         external_delivery_id: parsed.delivery_id,
-        external_event_id,
-        status: normalize_status(&parsed.status),
+        external_event_id: parsed.id,
+        status: status_raw.map(normalize_status),
         raw: payload.clone(),
     })
 }
@@ -300,8 +350,9 @@ mod tests {
     #[test]
     fn normalizes_known_statuses() {
         assert_eq!(normalize_status("delivered"), DeliveryStatus::Delivered);
-        assert_eq!(normalize_status("picked_up"), DeliveryStatus::PickedUp);
+        assert_eq!(normalize_status("pickup_complete"), DeliveryStatus::EnRouteToPickup);
         assert_eq!(normalize_status("canceled"), DeliveryStatus::Cancelled);
+        assert_eq!(normalize_status("returned"), DeliveryStatus::Cancelled);
     }
 
     #[test]
@@ -310,10 +361,59 @@ mod tests {
     }
 
     #[test]
-    fn webhook_without_event_id_still_gets_a_stable_dedupe_key() {
-        let payload = json!({"delivery_id": "d1", "status": "delivered", "timestamp": "2026-01-01T00:00:00Z"});
+    fn address_builds_valid_json_string() {
+        let addr = DeliveryAddress {
+            address: "Rua Teste, 123".to_string(),
+            lat: Some(-7.1),
+            lng: Some(-34.8),
+            name: None,
+            phone: None,
+        };
+        let json_str = build_address_json(&addr);
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(parsed["street_address"][0], "Rua Teste, 123");
+        assert_eq!(parsed["country"], "BR");
+    }
+
+    #[test]
+    fn parses_real_delivery_status_webhook_using_data_status() {
+        // Payload resumido do exemplo real colado pelo usuário (doc oficial).
+        let payload = json!({
+            "id": "evt_Bouz7BhPTYGDz9FFQNgODw",
+            "kind": "event.delivery_status",
+            "delivery_id": "del_QbLowiwHQM-b4e8YmOZNOw",
+            "status": "delivered",
+            "data": { "status": "delivered" }
+        });
         let ev = parse_webhook(&payload).unwrap();
-        assert_eq!(ev.external_event_id, "d1:delivered:2026-01-01T00:00:00Z");
-        assert_eq!(ev.status, DeliveryStatus::Delivered);
+        assert_eq!(ev.external_event_id, "evt_Bouz7BhPTYGDz9FFQNgODw");
+        assert_eq!(ev.external_delivery_id, "del_QbLowiwHQM-b4e8YmOZNOw");
+        assert_eq!(ev.status, Some(DeliveryStatus::Delivered));
+    }
+
+    #[test]
+    fn parses_real_courier_update_webhook_status_only_in_data() {
+        // courier_update não tem status no top-level, só dentro de data.
+        let payload = json!({
+            "id": "evt_WNjLziAJT4eiOKgPsLNtbw",
+            "kind": "event.courier_update",
+            "delivery_id": "del_y_aY8RuTQ0CRKu2aFXe8qQ",
+            "location": {"lat": 40.71093, "lng": -74.0119},
+            "data": { "status": "pickup" }
+        });
+        let ev = parse_webhook(&payload).unwrap();
+        assert_eq!(ev.status, Some(DeliveryStatus::CourierAssigned));
+    }
+
+    #[test]
+    fn refund_webhook_has_no_delivery_status() {
+        let payload = json!({
+            "id": "evt_nyNh-zBTR-uxdQjq5kYxhg",
+            "kind": "event.refund_request",
+            "delivery_id": "del_G_8_eeo4Q5WrYpYkATt6SA",
+            "data": { "id": "6817a070-115e-4ca9-8266-c245fe18a2d6" }
+        });
+        let ev = parse_webhook(&payload).unwrap();
+        assert_eq!(ev.status, None);
     }
 }

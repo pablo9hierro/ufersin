@@ -185,27 +185,41 @@ async fn load_addresses(
             .bind(tenant_id)
             .fetch_optional(pool)
             .await?;
-    let tenant_row: Option<(String, Option<String>)> =
-        sqlx::query_as("SELECT name, pickup_address FROM tenants WHERE id = $1")
-            .bind(tenant_id)
-            .fetch_optional(pool)
-            .await?;
+    let tenant_row: Option<(String, Option<String>, String)> = sqlx::query_as(
+        "SELECT t.name, t.pickup_address, COALESCE(o.phone, '') \
+         FROM tenants t JOIN organizations o ON o.id = t.organization_id \
+         WHERE t.id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await?;
     let (store_lat, store_lng) = store.unwrap_or((None, None));
-    let (tenant_name, pickup_address) = tenant_row.unwrap_or(("Loja".to_string(), None));
+    let (tenant_name, pickup_address, org_phone) =
+        tenant_row.unwrap_or(("Loja".to_string(), None, String::new()));
+
+    // Uber Direct exige telefone no formato "+<dígitos>" (regex
+    // ^\+[0-9]+$) tanto pra pickup quanto dropoff -- normaliza os dois do
+    // mesmo jeito que o resto do backend já normaliza WhatsApp
+    // (`whatsapp::digits_only`), só prefixando o "+".
+    let pickup_phone = {
+        let digits = crate::whatsapp::digits_only(&org_phone);
+        if digits.is_empty() { None } else { Some(format!("+{digits}")) }
+    };
+    let dropoff_phone = format!("+{}", crate::whatsapp::digits_only(&order.customer_whatsapp));
 
     let pickup = DeliveryAddress {
         address: pickup_address.unwrap_or_default(),
         lat: store_lat,
         lng: store_lng,
         name: Some(tenant_name),
-        phone: None,
+        phone: pickup_phone,
     };
     let dropoff = DeliveryAddress {
         address: order.address.clone().unwrap_or_default(),
         lat: order.customer_lat,
         lng: order.customer_lng,
         name: Some(order.customer_name.clone()),
-        phone: Some(order.customer_whatsapp.clone()),
+        phone: Some(dropoff_phone),
     };
     Ok((pickup, dropoff))
 }

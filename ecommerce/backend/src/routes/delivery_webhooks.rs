@@ -51,7 +51,13 @@ pub async fn uber_webhook(
     .await
     .ok()
     .flatten();
-    let signature_header = headers.get("X-Uber-Signature").and_then(|v| v.to_str().ok());
+    // A spec confirma que delivery_status/courier_update aceitam qualquer
+    // um dos dois headers (refund_request só x-uber-signature, mas checar
+    // os dois aqui não enfraquece isso).
+    let signature_header = headers
+        .get("X-Uber-Signature")
+        .or_else(|| headers.get("X-Postmates-Signature"))
+        .and_then(|v| v.to_str().ok());
     let _signature_ok = uber_direct::verify_signature(signing_key.as_deref(), signature_header, &body);
 
     match already_processed(&state.pool, "uber_direct", &event.external_event_id).await {
@@ -60,14 +66,18 @@ pub async fn uber_webhook(
         Err(_) => return Json(serde_json::json!({ "ok": true })),
     }
 
-    let _ = sqlx::query(
-        "UPDATE deliveries SET status = $1, updated_at = now()::text \
-         WHERE id = (SELECT delivery_id FROM delivery_attempts WHERE external_delivery_id = $2 ORDER BY attempt_number DESC LIMIT 1)",
-    )
-    .bind(event.status.as_str())
-    .bind(&event.external_delivery_id)
-    .execute(&state.pool)
-    .await;
+    // event.refund_request não carrega status de entrega -- só loga/dedupe,
+    // sem tentar atualizar `deliveries.status`.
+    if let Some(status) = event.status {
+        let _ = sqlx::query(
+            "UPDATE deliveries SET status = $1, updated_at = now()::text \
+             WHERE id = (SELECT delivery_id FROM delivery_attempts WHERE external_delivery_id = $2 ORDER BY attempt_number DESC LIMIT 1)",
+        )
+        .bind(status.as_str())
+        .bind(&event.external_delivery_id)
+        .execute(&state.pool)
+        .await;
+    }
 
     Json(serde_json::json!({ "ok": true }))
 }

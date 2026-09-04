@@ -127,7 +127,9 @@ pub struct DeliveryHandle {
 pub struct NormalizedDeliveryEvent {
     pub external_delivery_id: String,
     pub external_event_id: String,
-    pub status: DeliveryStatus,
+    /// `None` quando o evento não carrega status de entrega (ex.:
+    /// `event.refund_request`) -- o webhook route pula o UPDATE nesse caso.
+    pub status: Option<DeliveryStatus>,
     pub raw: serde_json::Value,
 }
 
