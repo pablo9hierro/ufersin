@@ -74,6 +74,16 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Módulo fiscal Jubilados (.NET separado) -- ver
+    // routes/onboarding.rs::sync_fiscal_config.
+    let jubilados_api_url = env_trimmed("JUBILADOS_API_URL");
+    let jubilados_internal_key = env_trimmed("JUBILADOS_INTERNAL_KEY");
+    if jubilados_api_url.is_empty() || jubilados_internal_key.is_empty() {
+        tracing::warn!(
+            "JUBILADOS_API_URL/JUBILADOS_INTERNAL_KEY not set — Meu Plano -> Financeiro -> Fiscal ficará indisponível"
+        );
+    }
+
     // Assinantes Resolutoo vivem em schema `resolutoo` (pooler role resolutoo_svc).
     // `public.subscribers` é legado sem layout_style — sem search_path o GET
     // público omite o campo e a vitrine sempre cai em ufersin.
@@ -162,6 +172,8 @@ async fn main() -> anyhow::Result<()> {
         back_url: Arc::new(back_url),
         ecommerce_internal_url: Arc::new(ecommerce_internal_url),
         ecommerce_internal_key: Arc::new(ecommerce_internal_key),
+        jubilados_api_url: Arc::new(jubilados_api_url),
+        jubilados_internal_key: Arc::new(jubilados_internal_key),
         pandadoc,
         supabase_url: supabase_url.clone(),
         supabase_service_key,
@@ -220,6 +232,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/onboarding",
             post(routes::onboarding::onboarding).put(routes::onboarding::editar_onboarding),
+        )
+        .route(
+            "/api/onboarding/fiscal",
+            post(routes::onboarding::salvar_fiscal_config),
         )
         .route("/api/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start))
         .route("/api/mercadopago/oauth/callback", get(mercadopago_oauth::oauth_callback))

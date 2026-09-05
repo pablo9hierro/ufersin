@@ -1312,3 +1312,201 @@ pub async fn tenant_config(
         atende_domicilio: row.oferece_servicos && row.atende_domicilio,
     }))
 }
+
+// ---------- Meu Plano -> Financeiro -> Fiscal ----------
+//
+// Endpoint isolado (não empilhado no PATCH gigante de editar_onboarding
+// acima) porque os campos aqui são de um domínio bem separado (dados
+// fiscais da empresa) e o UPDATE dedicado é mais fácil de auditar do que
+// mais um bind posicional no meio de uma query com ~40 campos já.
+
+#[derive(Debug, Deserialize)]
+pub struct FiscalConfigInput {
+    pub cnpj: String,
+    pub razao_social: String,
+    #[serde(default)]
+    pub nome_fantasia: Option<String>,
+    #[serde(default)]
+    pub inscricao_estadual: Option<String>,
+    pub logradouro: String,
+    pub numero: String,
+    #[serde(default)]
+    pub complemento: Option<String>,
+    pub bairro: String,
+    pub municipio: String,
+    pub uf: String,
+    pub cep: String,
+    /// "simples_nacional" | "lucro_presumido" | "lucro_real" — mesma
+    /// nomenclatura usada em Empresa.RegimeTributario do Jubilados.
+    pub regime_tributario: String,
+    /// CRT (Código de Regime Tributário do Jubilados): 1=Simples Nacional,
+    /// 2=Simples excesso sublimite, 3=Regime Normal.
+    pub crt: i32,
+    pub ambiente: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FiscalConfigOutput {
+    pub jubilados_empresa_id: String,
+}
+
+pub async fn salvar_fiscal_config(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<FiscalConfigInput>,
+) -> Result<Json<FiscalConfigOutput>, AppError> {
+    if !matches!(body.ambiente.as_str(), "homologacao" | "producao") {
+        return Err(AppError::BadRequest("ambiente deve ser 'homologacao' ou 'producao'".to_string()));
+    }
+    if !matches!(body.regime_tributario.as_str(), "simples_nacional" | "lucro_presumido" | "lucro_real") {
+        return Err(AppError::BadRequest(
+            "regime_tributario deve ser 'simples_nacional', 'lucro_presumido' ou 'lucro_real'".to_string(),
+        ));
+    }
+    if state.jubilados_api_url.is_empty() || state.jubilados_internal_key.is_empty() {
+        return Err(AppError::Internal(
+            "módulo fiscal não configurado neste ambiente (JUBILADOS_API_URL/JUBILADOS_INTERNAL_KEY)".to_string(),
+        ));
+    }
+
+    let row: Option<(Option<String>, String, Option<String>)> = sqlx::query_as(
+        "SELECT slug, status, jubilados_empresa_id::text FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (slug_opt, status, existing_empresa_id) =
+        row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
+    let slug = slug_opt.as_deref().map(str::trim).filter(|s| !s.is_empty()).unwrap_or("").to_string();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest(
+            "conclua o cadastro da loja em /onboarding antes de configurar o fiscal".to_string(),
+        ));
+    }
+    if status != "ativo" {
+        return Err(AppError::BadRequest("assinatura não está ativa".to_string()));
+    }
+
+    let empresa_id = upsert_jubilados_empresa(&state, existing_empresa_id.as_deref(), &body).await?;
+
+    sqlx::query(
+        "UPDATE subscribers SET jubilados_empresa_id = $1, fiscal_cnpj = $2, fiscal_razao_social = $3, \
+           fiscal_nome_fantasia = $4, fiscal_inscricao_estadual = $5, fiscal_logradouro = $6, fiscal_numero = $7, \
+           fiscal_complemento = $8, fiscal_bairro = $9, fiscal_municipio = $10, fiscal_uf = $11, fiscal_cep = $12, \
+           fiscal_regime_tributario = $13, fiscal_crt = $14, fiscal_ambiente = $15, updated_at = now() \
+         WHERE id = $16",
+    )
+    .bind(&empresa_id)
+    .bind(&body.cnpj)
+    .bind(&body.razao_social)
+    .bind(&body.nome_fantasia)
+    .bind(&body.inscricao_estadual)
+    .bind(&body.logradouro)
+    .bind(&body.numero)
+    .bind(&body.complemento)
+    .bind(&body.bairro)
+    .bind(&body.municipio)
+    .bind(&body.uf)
+    .bind(&body.cep)
+    .bind(&body.regime_tributario)
+    .bind(body.crt)
+    .bind(&body.ambiente)
+    .bind(&claims.sub)
+    .execute(&state.pool)
+    .await?;
+
+    sync_fiscal_config(&state, &slug, &empresa_id, &body.ambiente).await?;
+
+    Ok(Json(FiscalConfigOutput { jubilados_empresa_id: empresa_id }))
+}
+
+/// Cria a Empresa no Jubilados (POST) na primeira vez, ou atualiza (PUT) se
+/// já existe um `jubilados_empresa_id` salvo -- nunca duplica.
+async fn upsert_jubilados_empresa(
+    state: &AppState,
+    existing_empresa_id: Option<&str>,
+    body: &FiscalConfigInput,
+) -> Result<String, AppError> {
+    let payload = serde_json::json!({
+        "cnpj": body.cnpj,
+        "razaoSocial": body.razao_social,
+        "nomeFantasia": body.nome_fantasia,
+        "inscricaoEstadual": body.inscricao_estadual,
+        "logradouro": body.logradouro,
+        "numero": body.numero,
+        "complemento": body.complemento,
+        "bairro": body.bairro,
+        "municipio": body.municipio,
+        "uf": body.uf,
+        "cep": body.cep,
+        "regimeTributario": body.regime_tributario,
+        "crt": body.crt,
+    });
+    let base = state.jubilados_api_url.trim_end_matches('/');
+    let resp = if let Some(id) = existing_empresa_id {
+        state
+            .http
+            .put(format!("{base}/api/empresa/{id}"))
+            .header("x-internal-key", state.jubilados_internal_key.as_str())
+            .json(&payload)
+            .send()
+            .await
+    } else {
+        state
+            .http
+            .post(format!("{base}/api/empresa"))
+            .header("x-internal-key", state.jubilados_internal_key.as_str())
+            .json(&payload)
+            .send()
+            .await
+    }
+    .map_err(|e| AppError::Internal(format!("jubilados empresa request failed: {e}")))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!("jubilados empresa failed: {status} {text}")));
+    }
+    #[derive(Deserialize)]
+    struct EmpresaIdResponse {
+        id: uuid::Uuid,
+    }
+    let parsed: EmpresaIdResponse = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("jubilados empresa parse failed: {e}")))?;
+    Ok(parsed.id.to_string())
+}
+
+/// Espelho de `sync_delivery_preference` — reflete o `jubilados_empresa_id`
+/// resolvido acima em `tenant_fiscal_settings` no ecommerce-api, ligando
+/// junto a feature `emissao_fiscal`.
+async fn sync_fiscal_config(state: &AppState, slug: &str, empresa_id: &str, ambiente: &str) -> Result<(), AppError> {
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Ok(());
+    }
+    let url = format!(
+        "{}/internal/sync-fiscal-config",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "tenant_slug": slug,
+            "jubilados_empresa_id": empresa_id,
+            "ambiente": ambiente,
+            "auto_emitir": false,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("sync-fiscal-config unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!("sync-fiscal-config failed: {status} {text}")));
+    }
+    Ok(())
+}

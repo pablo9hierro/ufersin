@@ -33,6 +33,12 @@ pub struct AppState {
     /// navegador; é uma chamada backend-a-backend.
     pub ecommerce_internal_url: Arc<String>,
     pub ecommerce_internal_key: Arc<String>,
+    /// Base URL + chave do módulo fiscal Jubilados (.NET separado,
+    /// `pablo9hierro/ouvir`) -- usado só pra criar/atualizar a Empresa
+    /// quando o lojista preenche Meu Plano -> Financeiro -> Fiscal. Nunca
+    /// exposto ao navegador. Vazio = módulo fiscal desligado.
+    pub jubilados_api_url: Arc<String>,
+    pub jubilados_internal_key: Arc<String>,
     /// PandaDoc (sandbox/prod). Sem API key = stub de contratos.
     pub pandadoc: PandadocConfig,
     /// Base URL do projeto Supabase (storage + JWKS).
