@@ -5,6 +5,7 @@ pub mod delivery_webhooks;
 pub mod demo;
 pub mod eletronicos;
 pub mod eletronicos_delivery;
+pub mod fiscal;
 pub mod internal;
 pub mod motoboy;
 pub mod payroll;

@@ -348,6 +348,31 @@ async fn handle_mercadopago(
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;
     tx.commit().await?;
 
+    // Emissão fiscal automática (NF-e/NFC-e) -- fire-and-forget, mesmo
+    // espírito do WhatsApp logo abaixo: nunca bloqueia nem falha a
+    // confirmação de pagamento se a SEFAZ/Jubilados estiver fora. Só faz
+    // algo se o tenant tiver `tenant_fiscal_settings.auto_emitir` ligado
+    // (ver routes/fiscal.rs::maybe_auto_emit).
+    {
+        let pool = state.pool.clone();
+        let http = state.http.clone();
+        let jubilados_api_url = state.jubilados_api_url.to_string();
+        let jubilados_internal_key = state.jubilados_internal_key.to_string();
+        let tenant_id_bg = tenant_id.clone();
+        let order_id_bg = order_id.clone();
+        tokio::spawn(async move {
+            crate::routes::fiscal::maybe_auto_emit(
+                &pool,
+                &http,
+                &jubilados_api_url,
+                &jubilados_internal_key,
+                &tenant_id_bg,
+                &order_id_bg,
+            )
+            .await;
+        });
+    }
+
     let tenant_row = tenant::load_tenant(&state.pool, &tenant_id)
         .await
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;

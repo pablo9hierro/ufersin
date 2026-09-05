@@ -57,4 +57,11 @@ pub struct AppState {
     /// Limitador de tentativas de login por conta (achado no audit de
     /// segurança do Paulo Ferro) -- ver rate_limit.rs.
     pub login_limiter: Arc<crate::rate_limit::LoginAttemptLimiter>,
+    /// URL base do módulo fiscal Jubilados (.NET, backend separado) e a
+    /// chave `x-internal-key` que ele agora exige (ver
+    /// RequireAuthFilter.cs do lado do Jubilados) -- nunca chega ao
+    /// navegador, chamada backend-a-backend só. Vazio = módulo fiscal
+    /// desligado (require_feature já barra antes de qualquer chamada).
+    pub jubilados_api_url: Arc<String>,
+    pub jubilados_internal_key: Arc<String>,
 }

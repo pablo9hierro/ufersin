@@ -30,6 +30,7 @@ pub enum Feature {
     Campanhas,
     Relatorios,
     EntregaTerceirizada,
+    EmissaoFiscal,
 }
 
 impl Feature {
@@ -51,6 +52,7 @@ impl Feature {
             Feature::Campanhas => "campanhas",
             Feature::Relatorios => "relatorios",
             Feature::EntregaTerceirizada => "entrega_terceirizada",
+            Feature::EmissaoFiscal => "emissao_fiscal",
         }
     }
 }

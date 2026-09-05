@@ -372,6 +372,78 @@ pub async fn sync_delivery_settings(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SyncFiscalConfigInput {
+    pub tenant_slug: String,
+    pub jubilados_empresa_id: Uuid,
+    /// "homologacao" | "producao" -- mesmo enum de `tenant_fiscal_settings.ambiente`.
+    pub ambiente: String,
+    pub cfop_padrao_saida: Option<String>,
+    #[serde(default)]
+    pub auto_emitir: bool,
+}
+
+/// Resolutoo (ufersin/backend) chama depois de garantir a `Empresa` no
+/// Jubilados (criar/atualizar CNPJ/certificado etc.) -- aqui só guardamos o
+/// `jubilados_empresa_id` resultante e o ambiente, pra este backend saber
+/// pra quem/como emitir. Liga a feature `emissao_fiscal` junto, mesmo
+/// padrão de `sync_delivery_settings` acima.
+pub async fn sync_fiscal_config(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SyncFiscalConfigInput>,
+) -> Result<StatusCode, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = input.tenant_slug.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest("tenant_slug obrigatório".to_string()));
+    }
+    if !matches!(input.ambiente.as_str(), "homologacao" | "producao") {
+        return Err(AppError::BadRequest(
+            "ambiente deve ser 'homologacao' ou 'producao'".to_string(),
+        ));
+    }
+    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((tenant_id,)) = row else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    sqlx::query(
+        "INSERT INTO tenant_fiscal_settings \
+           (tenant_id, jubilados_empresa_id, ambiente, cfop_padrao_saida, auto_emitir, enabled) \
+         VALUES ($1, $2, $3, $4, $5, true) \
+         ON CONFLICT (tenant_id) DO UPDATE SET \
+           jubilados_empresa_id = EXCLUDED.jubilados_empresa_id, \
+           ambiente = EXCLUDED.ambiente, \
+           cfop_padrao_saida = EXCLUDED.cfop_padrao_saida, \
+           auto_emitir = EXCLUDED.auto_emitir, \
+           enabled = true, \
+           updated_at = now()::text",
+    )
+    .bind(&tenant_id)
+    .bind(input.jubilados_empresa_id)
+    .bind(&input.ambiente)
+    .bind(&input.cfop_padrao_saida)
+    .bind(input.auto_emitir)
+    .execute(&state.pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO feature_flags (id, tenant_id, feature_code, enabled) \
+         VALUES ($1, $2, 'emissao_fiscal', true) \
+         ON CONFLICT (tenant_id, feature_code) DO UPDATE SET enabled = true",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&tenant_id)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }

@@ -4,6 +4,7 @@ mod cancel;
 mod delivery;
 mod error;
 mod features;
+mod fiscal;
 mod formulation;
 mod geocode;
 mod google_routes;
@@ -129,6 +130,17 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Módulo fiscal Jubilados (.NET, backend separado) — emissão de NF-e/
+    // NFC-e. Vazio = require_feature(Feature::EmissaoFiscal) já barra as
+    // rotas antes de qualquer chamada precisar dessas vars.
+    let jubilados_api_url = env_trimmed("JUBILADOS_API_URL");
+    let jubilados_internal_key = env_trimmed("JUBILADOS_INTERNAL_KEY");
+    if jubilados_api_url.is_empty() || jubilados_internal_key.is_empty() {
+        tracing::warn!(
+            "JUBILADOS_API_URL/JUBILADOS_INTERNAL_KEY not set — emissão fiscal ficará indisponível"
+        );
+    }
+
     // Server-side only — used to upload product images to Supabase Storage
     // (bypasses RLS). Never expose SUPABASE_SERVICE_ROLE_KEY to the frontend.
     let supabase_url = env_trimmed("SUPABASE_URL");
@@ -223,6 +235,8 @@ async fn main() -> anyhow::Result<()> {
         whatsapp_connect_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         mercadopago_webhook_secret: Arc::new(mercadopago_webhook_secret),
         login_limiter: Arc::new(rate_limit::LoginAttemptLimiter::default()),
+        jubilados_api_url: Arc::new(jubilados_api_url),
+        jubilados_internal_key: Arc::new(jubilados_internal_key),
     };
 
     // CORS_ORIGINS: comma-separated list of allowed frontend origins. Defaults
@@ -688,6 +702,27 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/eletronicos/service-requests/{id}/delivery/cancel",
             post(routes::eletronicos_delivery::cancel_delivery),
         )
+        .route(
+            "/api/admin/fiscal/settings",
+            get(routes::fiscal::get_settings).put(routes::fiscal::update_settings),
+        )
+        .route(
+            "/api/admin/fiscal/classificacao-tributaria",
+            get(routes::fiscal::classificacao_tributaria),
+        )
+        .route(
+            "/api/admin/products/{id}/fiscal",
+            put(routes::fiscal::update_product_fiscal),
+        )
+        .route(
+            "/api/admin/orders/{id}/fiscal/emitir",
+            post(routes::fiscal::emitir),
+        )
+        .route("/api/admin/orders/{id}/fiscal", get(routes::fiscal::get_fiscal))
+        .route(
+            "/api/admin/orders/{id}/fiscal/cancelar",
+            post(routes::fiscal::cancelar),
+        )
         .route("/api/admin/financeiro", get(routes::admin::financeiro))
         .route("/api/admin/financeiro/lucro", get(routes::admin::financeiro_lucro))
         .route("/api/admin/whatsapp/status", get(routes::admin::whatsapp_status))
@@ -939,6 +974,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/internal/sync-delivery-settings",
             post(routes::internal::sync_delivery_settings),
+        )
+        .route(
+            "/internal/sync-fiscal-config",
+            post(routes::internal::sync_fiscal_config),
         )
         .route(
             "/internal/mint-admin-token",
