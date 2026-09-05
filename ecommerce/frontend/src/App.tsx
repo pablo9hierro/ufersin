@@ -42,6 +42,7 @@ const AdminProdutosServicos = lazyWithReload(() => import('./pages/admin/AdminPr
 const AdminMotoboys = lazyWithReload(() => import('./pages/admin/AdminMotoboys'))
 const AdminFrete = lazyWithReload(() => import('./pages/admin/AdminFrete'))
 const AdminEntregasTerceirizadas = lazyWithReload(() => import('./pages/admin/AdminEntregasTerceirizadas'))
+const AdminFiscal = lazyWithReload(() => import('./pages/admin/AdminFiscal'))
 const AdminFinanceiro = lazyWithReload(() => import('./pages/admin/AdminFinanceiro'))
 const AdminSenha = lazyWithReload(() => import('./pages/admin/AdminSenha'))
 const AdminPromocoes = lazyWithReload(() => import('./pages/admin/AdminPromocoes'))
@@ -383,6 +384,7 @@ export default function App() {
             <Route path="estoque/xml" element={<AdminEstoqueXml />} />
             <Route path="frete" element={<AdminFrete />} />
             <Route path="entregas-terceirizadas" element={<AdminEntregasTerceirizadas />} />
+            <Route path="fiscal" element={<AdminFiscal />} />
             <Route path="motoboys" element={<AdminMotoboys />} />
             <Route path="crm" element={<AdminCrm />} />
             <Route path="chat" element={<AdminChat />} />

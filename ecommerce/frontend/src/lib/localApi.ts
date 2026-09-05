@@ -3006,6 +3006,26 @@ export const localApi = {
         throw new ApiError(403, 'recurso não está disponível no modo demonstração')
       },
     },
+    fiscal: {
+      getSettings: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      updateSettings: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      classificacaoTributaria: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      emitir: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      get: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      cancel: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+    },
     categories: { list: adminListCategories, create: createCategory, update: updateCategory, delete: deleteCategory },
     products: {
       list: adminListProducts,
@@ -3023,6 +3043,9 @@ export const localApi = {
       },
       updateFormulation: async () => {
         throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
+      },
+      updateFiscal: async () => {
+        throw new ApiError(400, 'Emissão fiscal não está disponível no modo demonstração.')
       },
     },
     ingredients: {

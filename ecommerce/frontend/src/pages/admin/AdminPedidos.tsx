@@ -8,6 +8,7 @@ import { StatusBadge } from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
 import WhatsAppLink from '../../components/ui/WhatsAppLink'
 import DeliveryDispatchControl from '../../components/admin/DeliveryDispatchControl'
+import FiscalStatusControl from '../../components/admin/FiscalStatusControl'
 import { ApiError } from '../../lib/apiError'
 import { planoAtLeast } from '../../lib/demoMode'
 import { adminService } from '../../services/adminService'
@@ -226,6 +227,14 @@ function OrderCard({
             dispatch={() => adminService.delivery.dispatch(order.id).then(() => undefined)}
             dispatchLabel="Chamar entrega"
             labelStatus={(s) => labelDeliveryStatus(ADMIN_DELIVERY_STATUS_LABEL, s)}
+          />
+        )}
+        {order.payment_status === 'pago' && (
+          <FiscalStatusControl
+            orderId={order.id}
+            get={() => adminService.fiscal.get(order.id)}
+            emitir={() => adminService.fiscal.emitir(order.id)}
+            cancelar={() => adminService.fiscal.cancel(order.id).then(() => undefined)}
           />
         )}
       </Card>

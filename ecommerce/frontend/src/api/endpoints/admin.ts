@@ -45,6 +45,7 @@ import {
   type SmokeSettings,
   type StoreHourDay,
   type FormulatedProductPayload,
+  type ProductFiscalPayload,
   type IngredientPayload,
   type ServicePayload,
 } from '../../types'
@@ -83,6 +84,8 @@ export const adminEndpoint = {
       validate(ProductSchema, await api.admin.products.createFormulation(payload), 'admin.products.createFormulation'),
     updateFormulation: async (id: string, payload: FormulatedProductPayload) =>
       validate(ProductSchema, await api.admin.products.updateFormulation(id, payload), 'admin.products.updateFormulation'),
+    updateFiscal: async (id: string, payload: ProductFiscalPayload) =>
+      validate(ProductSchema, await api.admin.products.updateFiscal(id, payload), 'admin.products.updateFiscal'),
   },
   ingredients: {
     list: async () => validateList(IngredientSchema, await api.admin.ingredients.list(), 'admin.ingredients.list'),
@@ -219,6 +222,20 @@ export const adminEndpoint = {
     dispatch: async (orderId: string) => api.admin.delivery.dispatch(orderId),
     get: async (orderId: string) => api.admin.delivery.get(orderId),
     cancel: async (orderId: string) => api.admin.delivery.cancel(orderId),
+  },
+  fiscal: {
+    getSettings: async () => api.admin.fiscal.getSettings(),
+    updateSettings: async (payload: {
+      jubilados_empresa_id?: string | null
+      ambiente: 'homologacao' | 'producao'
+      cfop_padrao_saida?: string | null
+      auto_emitir: boolean
+      enabled: boolean
+    }) => api.admin.fiscal.updateSettings(payload),
+    classificacaoTributaria: async () => api.admin.fiscal.classificacaoTributaria(),
+    emitir: async (orderId: string) => api.admin.fiscal.emitir(orderId),
+    get: async (orderId: string) => api.admin.fiscal.get(orderId),
+    cancel: async (orderId: string) => api.admin.fiscal.cancel(orderId),
   },
   messageTemplates: {
     list: async () => validateList(MessageTemplateSchema, await api.admin.messageTemplates.list(), 'admin.messageTemplates.list'),

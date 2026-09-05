@@ -28,6 +28,7 @@ import type {
   FinanceiroSummary,
   FinanceiroTimeseriesPoint,
   FormulatedProductPayload,
+  ProductFiscalPayload,
   Ingredient,
   IngredientPayload,
   Appointment,
@@ -106,6 +107,24 @@ export interface DeliveryStatus {
   status: string
   provider: string | null
   attempts: DeliveryAttempt[]
+}
+
+// Emissão fiscal (NF-e/NFC-e) -- módulo novo, integra com o Jubilados
+// (.NET separado), Rust-only igual entregas terceirizadas acima.
+export interface FiscalSettings {
+  jubilados_empresa_id: string | null
+  ambiente: 'homologacao' | 'producao'
+  cfop_padrao_saida: string | null
+  auto_emitir: boolean
+  enabled: boolean
+}
+export interface FiscalDocument {
+  id?: string
+  status: 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro'
+  chave_acesso: string | null
+  protocolo: string | null
+  cstat: string | null
+  xmotivo: string | null
 }
 
 // Ainda usado só pro login admin/motoboy e Pix, que continuam no backend
@@ -657,6 +676,13 @@ const remoteApi = {
           method: 'PUT',
           body: JSON.stringify(payload),
         }),
+      // Emissão fiscal (módulo Jubilados) -- feature nova, Railway-only,
+      // mesmo padrão de stockEntry/formulation acima.
+      updateFiscal: (id: string, payload: ProductFiscalPayload) =>
+        railwayAdmin<Product>(`/api/admin/products/${id}/fiscal`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
     },
     ingredients: {
       list: () => railwayAdmin<Ingredient[]>('/api/admin/ingredients'),
@@ -1201,6 +1227,29 @@ const remoteApi = {
       get: (orderId: string) => railwayAdmin<DeliveryStatus>(`/api/admin/orders/${orderId}/delivery`),
       cancel: (orderId: string) =>
         railwayAdmin<{ ok: boolean }>(`/api/admin/orders/${orderId}/delivery/cancel`, { method: 'POST' }),
+    },
+    fiscal: {
+      getSettings: () => railwayAdmin<FiscalSettings>('/api/admin/fiscal/settings'),
+      updateSettings: (payload: {
+        jubilados_empresa_id?: string | null
+        ambiente: 'homologacao' | 'producao'
+        cfop_padrao_saida?: string | null
+        auto_emitir: boolean
+        enabled: boolean
+      }) =>
+        railwayAdmin<FiscalSettings>('/api/admin/fiscal/settings', {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
+      // Passthrough cru da tabela oficial do Jubilados -- formato exato
+      // ainda não confirmado (endpoint real do Jubilados, não algo que
+      // definimos aqui), então não travamos num shape específico.
+      classificacaoTributaria: () => railwayAdmin<unknown>('/api/admin/fiscal/classificacao-tributaria'),
+      emitir: (orderId: string) =>
+        railwayAdmin<FiscalDocument>(`/api/admin/orders/${orderId}/fiscal/emitir`, { method: 'POST' }),
+      get: (orderId: string) => railwayAdmin<FiscalDocument | null>(`/api/admin/orders/${orderId}/fiscal`),
+      cancel: (orderId: string) =>
+        railwayAdmin<{ ok: boolean }>(`/api/admin/orders/${orderId}/fiscal/cancelar`, { method: 'POST' }),
     },
     messageTemplates: {
       list: () => railwayAdmin<MessageTemplate[]>('/api/admin/message-templates'),

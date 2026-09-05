@@ -6,6 +6,7 @@ import {
   ChefHat,
   ChevronDown,
   ClipboardList,
+  FileText,
   Loader2,
   LogOut,
   MapPinned,
@@ -68,6 +69,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/estoque', label: 'Estoque', icon: Boxes, requiredPlan: 'essential' },
   { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'essential', hideAtOrAbove: 'management' },
   { href: '/admin/entregas-terceirizadas', label: 'Entregas terceirizadas', icon: Send, requiredPlan: 'essential' },
+  { href: '/admin/fiscal', label: 'Fiscal', icon: FileText, requiredPlan: 'essential' },
   { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
   { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar, requiredPlan: 'essential' },
   { href: '/admin/template', label: 'Mensagens', icon: MessageSquareText, requiredPlan: 'essential' },
@@ -93,6 +95,7 @@ const NAV_GROUPS: Record<string, { id: string; label: string }> = {
   '/admin/estoque': { id: 'cadastros', label: 'Cadastros' },
   '/admin/frete': { id: 'cadastros', label: 'Cadastros' },
   '/admin/entregas-terceirizadas': { id: 'cadastros', label: 'Cadastros' },
+  '/admin/fiscal': { id: 'cadastros', label: 'Cadastros' },
   '/admin/template': { id: 'cadastros', label: 'Cadastros' },
   '/admin/motoboys': { id: 'cadastros', label: 'Cadastros' },
 }
@@ -200,6 +203,8 @@ export default function AdminLayout() {
   // acesso tentando o endpoint uma vez; 403 esconde o item, sem hardcode de
   // slug aqui.
   const [deliveryEnabled, setDeliveryEnabled] = useState(false)
+  // Mesma lógica: Feature::EmissaoFiscal ainda em beta, só por feature_flags.
+  const [fiscalEnabled, setFiscalEnabled] = useState(false)
 
   const hoursDoneRef = useRef(hoursDone)
   const gateLockedRef = useRef(gateLocked)
@@ -400,6 +405,22 @@ export default function AdminLayout() {
     }
   }, [demo, effectiveToken])
 
+  useEffect(() => {
+    if (demo || !effectiveToken) return
+    let cancelled = false
+    adminService.fiscal
+      .getSettings()
+      .then(() => {
+        if (!cancelled) setFiscalEnabled(true)
+      })
+      .catch(() => {
+        if (!cancelled) setFiscalEnabled(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [demo, effectiveToken])
+
   if (!effectiveToken || tenantMismatch) return <Navigate to="/admin/login" state={{ from: location }} replace />
 
   // Wait for Resolutoo tenant-config before rendering the shell — cancelado
@@ -507,6 +528,7 @@ export default function AdminLayout() {
     // Entregas terceirizadas: feature beta, só aparece se o backend liberou
     // (feature_flags) — nunca por plano/slug hardcoded aqui.
     if (i.href === '/admin/entregas-terceirizadas' && !deliveryEnabled) return false
+    if (i.href === '/admin/fiscal' && !fiscalEnabled) return false
     // Funcionários (motoboy/vendedor/cozinha): management+ sempre libera;
     // essential libera só se o lojista marcou precisar de algum desses em
     // /meu-plano (mesma necessidade que libera o backend via feature_flags).

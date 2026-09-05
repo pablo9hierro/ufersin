@@ -5,6 +5,7 @@ import Card from '../../components/ui/Card'
 import BarcodePreview from '../../components/admin/BarcodePreview'
 import CategorySelectField from '../../components/admin/CategorySelectField'
 import PackageUnitFields from '../../components/admin/PackageUnitFields'
+import FiscalFields, { EMPTY_FISCAL, fiscalPayload, type FiscalValue } from '../../components/admin/FiscalFields'
 import StockEntryDialog from '../../components/admin/StockEntryDialog'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
@@ -63,6 +64,10 @@ export default function AdminProdutos() {
   const [editing, setEditing] = useState<Product | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [fiscal, setFiscal] = useState<FiscalValue>(EMPTY_FISCAL)
+  const [fiscalSaving, setFiscalSaving] = useState(false)
+  const [fiscalError, setFiscalError] = useState<string | null>(null)
+  const [fiscalSaved, setFiscalSaved] = useState(false)
   const [newCategory, setNewCategory] = useState('')
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
@@ -107,6 +112,9 @@ export default function AdminProdutos() {
   const openNew = () => {
     setEditing(null)
     setForm(EMPTY_FORM)
+    setFiscal(EMPTY_FISCAL)
+    setFiscalError(null)
+    setFiscalSaved(false)
     setShowForm(true)
   }
   const openEdit = (p: Product) => {
@@ -126,7 +134,36 @@ export default function AdminProdutos() {
       package_qty: unitBits.package_qty,
       package_content_unit: unitBits.package_content_unit,
     })
+    setFiscal({
+      ncm: p.ncm ?? '',
+      cfop: p.cfop ?? '',
+      cst: p.cst ?? '',
+      csosn: p.csosn ?? '',
+      cest: p.cest ?? '',
+      origem: p.origem ?? '0',
+      unidade_fiscal: p.unidade_fiscal ?? '',
+      ean: p.ean ?? '',
+      cclass_trib: p.cclass_trib ?? '',
+    })
+    setFiscalError(null)
+    setFiscalSaved(false)
     setShowForm(true)
+  }
+
+  const saveFiscal = async () => {
+    if (!editing) return
+    setFiscalSaving(true)
+    setFiscalError(null)
+    setFiscalSaved(false)
+    try {
+      await adminService.products.updateFiscal(editing.id, fiscalPayload(fiscal))
+      setFiscalSaved(true)
+      load()
+    } catch (err) {
+      setFiscalError(err instanceof ApiError ? err.message : 'Erro ao salvar dados fiscais.')
+    } finally {
+      setFiscalSaving(false)
+    }
   }
 
   const save = async () => {
@@ -589,6 +626,23 @@ export default function AdminProdutos() {
                 }}
                 onChange={(patch) => setForm({ ...form, ...patch })}
               />
+              {editing && (
+                <div className="space-y-2">
+                  <FiscalFields value={fiscal} onChange={(patch) => setFiscal({ ...fiscal, ...patch })} />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs px-3 py-1.5"
+                      onClick={saveFiscal}
+                      disabled={fiscalSaving}
+                    >
+                      {fiscalSaving ? 'Salvando…' : 'Salvar dados fiscais'}
+                    </button>
+                    {fiscalSaved && <span className="text-xs text-green-400">Salvo.</span>}
+                    {fiscalError && <span className="text-xs text-red-400">{fiscalError}</span>}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="label flex items-center gap-1.5">
                   <Barcode className="w-3.5 h-3.5" /> Código de barras

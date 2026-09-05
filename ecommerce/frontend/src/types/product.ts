@@ -29,8 +29,33 @@ export const ProductSchema = z.object({
   // nunca editáveis à mão. Opcional só pra não quebrar schemas antigos que
   // ainda não passaram por esse campo (backend sempre manda, na prática).
   origin_type: z.enum(['manual', 'erp_formulation']).optional(),
+  // Dados fiscais (módulo Jubilados, emissão de NF-e/NFC-e) -- tudo
+  // opcional: produto sem isso configurado simplesmente não pode ser
+  // emitido, nunca preenchido com valor inventado.
+  ncm: z.string().nullable().optional(),
+  cfop: z.string().nullable().optional(),
+  cst: z.string().nullable().optional(),
+  csosn: z.string().nullable().optional(),
+  cest: z.string().nullable().optional(),
+  origem: z.string().nullable().optional(),
+  unidade_fiscal: z.string().nullable().optional(),
+  ean: z.string().nullable().optional(),
+  cclass_trib: z.string().nullable().optional(),
 })
 export type Product = z.infer<typeof ProductSchema>
+
+/** Corpo de `PUT /api/admin/products/{id}/fiscal` -- só os campos fiscais. */
+export type ProductFiscalPayload = {
+  ncm?: string | null
+  cfop?: string | null
+  cst?: string | null
+  csosn?: string | null
+  cest?: string | null
+  origem?: string | null
+  unidade_fiscal?: string | null
+  ean?: string | null
+  cclass_trib?: string | null
+}
 
 // ---------- ERP Formulação (insumos / ficha técnica) ----------
 
