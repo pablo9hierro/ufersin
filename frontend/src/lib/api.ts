@@ -310,6 +310,23 @@ export interface ContractCatalogItem {
   pandadoc_ready: boolean
 }
 
+export interface FiscalConfigInput {
+  cnpj: string
+  razao_social: string
+  nome_fantasia?: string
+  inscricao_estadual?: string
+  logradouro: string
+  numero: string
+  complemento?: string
+  bairro: string
+  municipio: string
+  uf: string
+  cep: string
+  regime_tributario: 'simples_nacional' | 'lucro_presumido' | 'lucro_real'
+  crt: number
+  ambiente: 'homologacao' | 'producao'
+}
+
 export interface OnboardingInput {
   nome_loja: string
   categoria?: string
@@ -597,6 +614,11 @@ export const api = {
   onboarding: (input: OnboardingInput) => request<OnboardingOutput>('/api/onboarding', { method: 'POST', body: JSON.stringify(input) }),
   editarOnboarding: (input: EditOnboardingInput) =>
     request<{ updated: boolean }>('/api/onboarding', { method: 'PUT', body: JSON.stringify(input) }),
+  salvarFiscal: (input: FiscalConfigInput) =>
+    request<{ jubilados_empresa_id: string }>('/api/onboarding/fiscal', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   mercadoPagoOAuthStart: () =>
     request<{ authorize_url: string }>('/api/mercadopago/oauth/start', { method: 'POST' }),
   mercadoPagoOAuthDisconnect: () =>

@@ -33,6 +33,7 @@ import { storeAdminLoginUrl, storeFuncionarioLoginUrl, storePublicUrl } from '..
 import { needsOnboardingLock } from '../lib/postPayRedirect'
 import AddressField from '../components/AddressField'
 import EntregaTerceirizadaModoField from '../components/EntregaTerceirizadaModoField'
+import FiscalCadastroSection from '../components/FiscalCadastroSection'
 import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
 import StorefrontCmsPreview, { type CartFabStyle } from '../components/StorefrontCmsPreview'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
@@ -1662,6 +1663,7 @@ export default function MeuPlano() {
               )}
             </div>
           )}
+          {tab === 'financeiro' && hasActiveSub && <FiscalCadastroSection />}
 
           {tab === 'redes' && !hasActiveSub && (
             <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{tabLocked}</p>
