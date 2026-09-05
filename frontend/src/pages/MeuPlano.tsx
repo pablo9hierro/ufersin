@@ -32,6 +32,7 @@ import { fetchPlans, formatBRL, getPlanMap, planDisplayName, priceForCycle } fro
 import { storeAdminLoginUrl, storeFuncionarioLoginUrl, storePublicUrl } from '../lib/ecommerceUrl'
 import { needsOnboardingLock } from '../lib/postPayRedirect'
 import AddressField from '../components/AddressField'
+import EntregaTerceirizadaModoField from '../components/EntregaTerceirizadaModoField'
 import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
 import StorefrontCmsPreview, { type CartFabStyle } from '../components/StorefrontCmsPreview'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
@@ -1261,37 +1262,11 @@ export default function MeuPlano() {
                           </label>
                         )}
                         {!apenasRetirada && !temMotoboyProprio && (
-                          <div className="uf-glass rounded-xl px-3 py-2.5" data-testid="pref-entrega-terceirizada-modo">
-                            <span className="block text-uf-silver text-xs font-semibold mb-2">Como você despacha a entrega terceirizada?</span>
-                            <label className="flex items-start gap-2.5 cursor-pointer mb-2">
-                              <input
-                                type="radio"
-                                name="entrega_terceirizada_modo"
-                                checked={entregaTerceirizadaModo === 'manual'}
-                                onChange={() => setEntregaTerceirizadaModo('manual')}
-                                className="w-4 h-4 mt-0.5"
-                                data-testid="pref-entrega-modo-manual"
-                              />
-                              <span className="text-xs text-uf-silver-dim">
-                                <span className="block text-uf-silver font-semibold mb-0.5">Eu mesmo chamo (manual)</span>
-                                Você liga pro motoboy/99pop terceiro, como já funciona hoje.
-                              </span>
-                            </label>
-                            <label className="flex items-start gap-2.5 cursor-pointer">
-                              <input
-                                type="radio"
-                                name="entrega_terceirizada_modo"
-                                checked={entregaTerceirizadaModo === 'automatico'}
-                                onChange={() => setEntregaTerceirizadaModo('automatico')}
-                                className="w-4 h-4 mt-0.5"
-                                data-testid="pref-entrega-modo-automatico"
-                              />
-                              <span className="text-xs text-uf-silver-dim">
-                                <span className="block text-uf-silver font-semibold mb-0.5">Uso Uber Direct (automática)</span>
-                                Entrega é chamada automaticamente pela Uber Direct. Você ainda precisa conectar sua conta Uber Direct em Configurações → Entregas terceirizadas.
-                              </span>
-                            </label>
-                          </div>
+                          <EntregaTerceirizadaModoField
+                            vertical={me.vertical}
+                            value={entregaTerceirizadaModo}
+                            onChange={setEntregaTerceirizadaModo}
+                          />
                         )}
                       </>
                     )

@@ -215,6 +215,10 @@ pub fn build() -> OpenApi {
         ("/api/admin/orders/{id}/delivery/dispatch", Post, "Despachar entrega terceirizada (Chamar entrega)", "Delivery", true, false),
         ("/api/admin/orders/{id}/delivery", Get, "Status da entrega terceirizada do pedido", "Delivery", true, false),
         ("/api/admin/orders/{id}/delivery/cancel", Post, "Cancelar entrega terceirizada em andamento", "Delivery", true, false),
+        ("/api/admin/eletronicos/service-requests/{id}/delivery/quote", Post, "Cotar coleta/entrega terceirizada de aparelho em reparo", "Delivery", true, false),
+        ("/api/admin/eletronicos/service-requests/{id}/delivery/dispatch", Post, "Despachar coleta/entrega terceirizada de aparelho em reparo", "Delivery", true, false),
+        ("/api/admin/eletronicos/service-requests/{id}/delivery", Get, "Status da entrega terceirizada da solicitação de servico", "Delivery", true, false),
+        ("/api/admin/eletronicos/service-requests/{id}/delivery/cancel", Post, "Cancelar entrega terceirizada da solicitação de servico", "Delivery", true, false),
         // Vertical eletronicos (assistencia tecnica) -- schema `eletronicos`
         // proprio (ver migrations/0022_eletronicos_module.sql), so serve
         // tenants com vertical='eletronicos'. Ver src/routes/eletronicos.rs.

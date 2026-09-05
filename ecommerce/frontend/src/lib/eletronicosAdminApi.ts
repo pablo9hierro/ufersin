@@ -175,6 +175,25 @@ export const eletronicosAdmin = {
         body: JSON.stringify({ quote_value: quoteValue }),
       }),
   },
+  /** Entregas terceirizadas (Uber Direct) pra coleta/entrega de aparelho em
+   * reparo -- beta, atrás de Feature::EntregaTerceirizada (404/403 esconde
+   * o controle, mesmo padrão do fluxo de pedidos). */
+  delivery: {
+    quote: (requestId: string, direction: 'coleta' | 'entrega') =>
+      req<{ provider: string; amount?: number; eta_minutes?: number | null; error?: string }[]>(
+        `${BASE}/service-requests/${requestId}/delivery/quote?direction=${direction}`,
+        { method: 'POST' },
+      ),
+    dispatch: (requestId: string, direction: 'coleta' | 'entrega') =>
+      req<{ delivery_id: string; provider: string; status: string; tracking_url: string | null }>(
+        `${BASE}/service-requests/${requestId}/delivery/dispatch?direction=${direction}`,
+        { method: 'POST' },
+      ),
+    get: (requestId: string) =>
+      req<{ delivery_id: string; status: string; provider: string | null }>(`${BASE}/service-requests/${requestId}/delivery`),
+    cancel: (requestId: string) =>
+      req<{ ok: boolean }>(`${BASE}/service-requests/${requestId}/delivery/cancel`, { method: 'POST' }),
+  },
   serviceOrders: {
     getOrCreate: (requestId: string) =>
       req<ServiceOrderDto>(`${BASE}/service-requests/${requestId}/service-order`),

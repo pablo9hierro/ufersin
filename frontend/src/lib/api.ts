@@ -335,6 +335,7 @@ export interface OnboardingInput {
   oferece_servicos?: boolean
   precisa_tela_cozinha?: boolean
   tem_motoboy_proprio?: boolean
+  entrega_terceirizada_modo?: 'manual' | 'automatico' | null
   precisa_vendedor?: boolean
   atende_domicilio?: boolean
   whatsapp_habilitado: boolean

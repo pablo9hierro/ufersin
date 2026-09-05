@@ -672,6 +672,22 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/orders/{id}/delivery/cancel",
             post(routes::delivery::cancel_delivery),
         )
+        .route(
+            "/api/admin/eletronicos/service-requests/{id}/delivery/quote",
+            post(routes::eletronicos_delivery::quote_delivery),
+        )
+        .route(
+            "/api/admin/eletronicos/service-requests/{id}/delivery/dispatch",
+            post(routes::eletronicos_delivery::dispatch_delivery),
+        )
+        .route(
+            "/api/admin/eletronicos/service-requests/{id}/delivery",
+            get(routes::eletronicos_delivery::get_delivery),
+        )
+        .route(
+            "/api/admin/eletronicos/service-requests/{id}/delivery/cancel",
+            post(routes::eletronicos_delivery::cancel_delivery),
+        )
         .route("/api/admin/financeiro", get(routes::admin::financeiro))
         .route("/api/admin/financeiro/lucro", get(routes::admin::financeiro_lucro))
         .route("/api/admin/whatsapp/status", get(routes::admin::whatsapp_status))

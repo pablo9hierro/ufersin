@@ -2,16 +2,16 @@ import { tenantHasOnlinePix, tenantUsesManualPayment } from '../../lib/tenantCon
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Reorder, useDragControls } from 'framer-motion'
-import { Copy, GripVertical, Loader2, MapPin, Package, QrCode, Send, X } from 'lucide-react'
+import { Copy, GripVertical, Loader2, MapPin, Package, QrCode, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { StatusBadge } from '../../components/ui/Badge'
 import Card from '../../components/ui/Card'
 import WhatsAppLink from '../../components/ui/WhatsAppLink'
+import DeliveryDispatchControl from '../../components/admin/DeliveryDispatchControl'
 import { ApiError } from '../../lib/apiError'
 import { planoAtLeast } from '../../lib/demoMode'
 import { adminService } from '../../services/adminService'
 import { orderService } from '../../services/orderService'
-import type { DeliveryStatus } from '../../lib/api'
 import { ADMIN_DELIVERY_STATUS_LABEL, labelDeliveryStatus } from '../../lib/deliveryStatus'
 import { pdvService } from '../../services/pdvService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
@@ -84,70 +84,6 @@ const NEXT_LABEL: Record<string, string> = {
   pedido_pronto: 'Pronto pra retirada',
   retiradas: 'Concluir retirada',
   entregas: 'Marcar entregue',
-}
-
-/** Beta: só aparece pra tenants com Feature::EntregaTerceirizada liberada
- * (feature_flags) — 403 no GET inicial esconde o controle inteiro, sem
- * precisar de outro sinal vindo do backend. */
-function DeliveryDispatchControl({ order }: { order: Order }) {
-  const [visible, setVisible] = useState(false)
-  const [status, setStatus] = useState<DeliveryStatus | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    adminService.delivery
-      .get(order.id)
-      .then((s) => {
-        if (cancelled) return
-        setStatus(s)
-        setVisible(true)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        // 404 = feature liberada mas ainda sem entrega despachada pra este
-        // pedido -- ainda mostra o botão de despachar. 403 = feature
-        // desligada pro tenant -- esconde o controle inteiro.
-        setVisible(!(e instanceof ApiError && e.status === 403))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [order.id])
-
-  const dispatch = async () => {
-    setError(null)
-    setBusy(true)
-    try {
-      await adminService.delivery.dispatch(order.id)
-      const s = await adminService.delivery.get(order.id)
-      setStatus(s)
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Não foi possível despachar a entrega.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (!visible) return null
-
-  return (
-    <div className="mt-2 pt-2 border-t border-white/10">
-      {status ? (
-        <p className="text-xs text-son-silver-dim flex items-center gap-1.5">
-          <Send className="w-3.5 h-3.5" />
-          Entrega ({status.provider ?? '—'}): {labelDeliveryStatus(ADMIN_DELIVERY_STATUS_LABEL, status.status)}
-        </p>
-      ) : (
-        <button onClick={dispatch} disabled={busy} className="btn-secondary w-full text-sm py-2">
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-          Chamar entrega
-        </button>
-      )}
-      {error && <p className="error-msg mt-1">{error}</p>}
-    </div>
-  )
 }
 
 function OrderCard({
@@ -284,7 +220,13 @@ function OrderCard({
           <p className="text-xs text-son-silver-dim text-center mt-2">Aguardando motoboy</p>
         )}
         {order.status === 'entregas' && order.delivery_type === 'entrega' && adminDelivery && (
-          <DeliveryDispatchControl order={order} />
+          <DeliveryDispatchControl
+            resourceKey={order.id}
+            get={() => adminService.delivery.get(order.id)}
+            dispatch={() => adminService.delivery.dispatch(order.id).then(() => undefined)}
+            dispatchLabel="Chamar entrega"
+            labelStatus={(s) => labelDeliveryStatus(ADMIN_DELIVERY_STATUS_LABEL, s)}
+          />
         )}
       </Card>
     </Reorder.Item>

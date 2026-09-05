@@ -19,6 +19,8 @@ import type { ServiceRequestDto } from '../../lib/eletronicosApi'
 import EletronicaDiagnosticSection from './EletronicaDiagnosticSection'
 import EletronicaServiceOrderPanel, { isServiceOrderStatus } from './EletronicaServiceOrderPanel'
 import PatternLockInput from '../../components/PatternLockInput'
+import DeliveryDispatchControl from '../../components/admin/DeliveryDispatchControl'
+import { ADMIN_DELIVERY_STATUS_LABEL, labelDeliveryStatus } from '../../lib/deliveryStatus'
 
 // Port 1:1 (adaptado) de src/components/RequestDetailModal.tsx do vrtech --
 // mesmo STATUS_LABELS/getAdvanceConfig (fluxo guiado single/choice em vez
@@ -524,6 +526,16 @@ export default function EletronicaRequestDetailModal({
                 )}
               </div>
 
+              {status === 'em_busca' && (
+                <DeliveryDispatchControl
+                  resourceKey={`${request.id}-coleta`}
+                  get={() => eletronicosAdmin.delivery.get(request.id)}
+                  dispatch={() => eletronicosAdmin.delivery.dispatch(request.id, 'coleta').then(() => undefined)}
+                  dispatchLabel="Chamar coleta"
+                  labelStatus={(s) => labelDeliveryStatus(ADMIN_DELIVERY_STATUS_LABEL, s)}
+                />
+              )}
+
               <div className="border border-gray-200 rounded-xl overflow-hidden">
                 <button
                   type="button"
@@ -589,6 +601,19 @@ export default function EletronicaRequestDetailModal({
                   </div>
                 )}
               </div>
+            </section>
+          )}
+
+          {status === 'em_entrega' && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Entrega do aparelho consertado</h3>
+              <DeliveryDispatchControl
+                resourceKey={`${request.id}-entrega`}
+                get={() => eletronicosAdmin.delivery.get(request.id)}
+                dispatch={() => eletronicosAdmin.delivery.dispatch(request.id, 'entrega').then(() => undefined)}
+                dispatchLabel="Chamar entrega do reparo"
+                labelStatus={(s) => labelDeliveryStatus(ADMIN_DELIVERY_STATUS_LABEL, s)}
+              />
             </section>
           )}
 

@@ -65,6 +65,11 @@ pub struct OnboardingInput {
     /// Loja vai precisar de conta de usuário vendedor (PDV).
     #[serde(default)]
     pub precisa_vendedor: bool,
+    /// "manual" | "automatico" (Uber Direct) -- só relevante quando não tem
+    /// motoboy próprio. Cobre entrega de pedidos e, no ramo eletrônica,
+    /// coleta/entrega de aparelho em reparo.
+    #[serde(default)]
+    pub entrega_terceirizada_modo: Option<String>,
     /// Quando oferece serviço, também atende a domicílio (além de presencial).
     #[serde(default)]
     pub atende_domicilio: bool,
@@ -273,7 +278,7 @@ pub async fn onboarding(
          entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, \
          coleta_gratis = $28, entrega_reparado_gratis = $29, oferece_servicos = $30, \
          precisa_tela_cozinha = $31, tem_motoboy_proprio = $32, precisa_vendedor = $33, \
-         atende_domicilio = $34, updated_at = now() \
+         atende_domicilio = $34, entrega_terceirizada_modo = $35, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -314,6 +319,7 @@ pub async fn onboarding(
     .bind(body.tem_motoboy_proprio)
     .bind(body.precisa_vendedor)
     .bind(body.oferece_servicos && body.atende_domicilio)
+    .bind(&body.entrega_terceirizada_modo)
     .execute(&state.pool)
     .await?;
 
@@ -342,6 +348,14 @@ pub async fn onboarding(
     .await
     {
         tracing::warn!("sync-feature-flags after onboarding failed: {e:?}");
+    }
+
+    if body.entrega_terceirizada_modo.is_some() && !body.tem_motoboy_proprio {
+        if let Err(e) =
+            sync_delivery_preference(&state, &slug, body.entrega_terceirizada_modo.as_deref()).await
+        {
+            tracing::warn!("sync-delivery-preference after onboarding failed: {e:?}");
+        }
     }
 
     Ok(Json(OnboardingOutput { tenant_id: parsed.tenant_id, slug, admin_login_hint: email }))

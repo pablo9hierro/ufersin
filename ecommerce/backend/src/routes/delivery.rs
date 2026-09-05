@@ -14,7 +14,7 @@ use crate::orders_common;
 use crate::state::AppState;
 use crate::tenant;
 
-async fn require_beta(pool: &sqlx::PgPool, tenant_id: &str) -> Result<(), AppError> {
+pub(crate) async fn require_beta(pool: &sqlx::PgPool, tenant_id: &str) -> Result<(), AppError> {
     features::require_feature(pool, tenant_id, Feature::EntregaTerceirizada).await
 }
 
@@ -346,7 +346,7 @@ pub async fn dispatch_delivery(
         &state.pool,
         &state.http,
         &tenant_id,
-        &order_id,
+        orchestrator::DeliverableRef::Order(&order_id),
         pickup,
         dropoff,
         order.shipping_price,

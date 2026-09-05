@@ -17,6 +17,25 @@ pub struct DispatchOutcome {
     pub handle: DeliveryHandle,
 }
 
+/// "Dono" da entrega -- um pedido normal (`orders`, fluxo genérico) ou uma
+/// solicitação de serviço (`eletronicos.service_requests`, coleta/entrega de
+/// aparelho em reparo). `deliveries` aceita só um dos dois por linha (ver
+/// migration 0049) -- reaproveita 100% da lógica de fallback/tentativa
+/// abaixo, só muda qual coluna recebe o id.
+#[derive(Debug, Clone, Copy)]
+pub enum DeliverableRef<'a> {
+    Order(&'a str),
+    ServiceRequest(&'a str),
+}
+
+impl<'a> DeliverableRef<'a> {
+    fn id(&self) -> &'a str {
+        match self {
+            DeliverableRef::Order(id) | DeliverableRef::ServiceRequest(id) => id,
+        }
+    }
+}
+
 /// Carrega as credenciais de um provider pro tenant e monta a struct
 /// concreta. `None` quando o provider não está conectado -- orchestrator
 /// trata isso como uma tentativa falha e segue pro próximo da lista.
@@ -63,7 +82,7 @@ pub async fn dispatch(
     pool: &PgPool,
     http: &reqwest::Client,
     tenant_id: &str,
-    order_id: &str,
+    deliverable: DeliverableRef<'_>,
     pickup: DeliveryAddress,
     dropoff: DeliveryAddress,
     customer_delivery_fee: f64,
@@ -95,25 +114,32 @@ pub async fn dispatch(
     }
 
     let delivery_id = uuid::Uuid::new_v4().to_string();
+    let (order_id, service_request_id): (Option<&str>, Option<&str>) = match deliverable {
+        DeliverableRef::Order(id) => (Some(id), None),
+        DeliverableRef::ServiceRequest(id) => (None, Some(id)),
+    };
+    // service_request_id é uuid (não text como order_id) -- ::uuid explícito
+    // no INSERT em vez de tentar bindar tipo Rust diferente por variante.
     let inserted: Option<(String,)> = sqlx::query_as(
-        "INSERT INTO deliveries (id, tenant_id, order_id, status, customer_delivery_fee) \
-         VALUES ($1, $2, $3, 'quote_requested', $4) \
-         ON CONFLICT (order_id) WHERE status NOT IN ('cancelled', 'failed') DO NOTHING \
+        "INSERT INTO deliveries (id, tenant_id, order_id, service_request_id, status, customer_delivery_fee) \
+         VALUES ($1, $2, $3, $4::uuid, 'quote_requested', $5) \
+         ON CONFLICT ((COALESCE(order_id, service_request_id::text))) WHERE status NOT IN ('cancelled', 'failed') DO NOTHING \
          RETURNING id",
     )
     .bind(&delivery_id)
     .bind(tenant_id)
     .bind(order_id)
+    .bind(service_request_id)
     .bind(customer_delivery_fee)
     .fetch_optional(pool)
     .await?;
     let Some((delivery_id,)) = inserted else {
         return Err(AppError::Conflict(
-            "já existe uma entrega em andamento pra este pedido".to_string(),
+            "já existe uma entrega em andamento pra este item".to_string(),
         ));
     };
 
-    let order_reference = order_id.to_string();
+    let order_reference = deliverable.id().to_string();
     let mut attempt_number = 0i32;
     let mut last_error: Option<String> = None;
 

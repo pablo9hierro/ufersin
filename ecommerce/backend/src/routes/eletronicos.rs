@@ -635,6 +635,13 @@ pub async fn update_service_request_status(
     }
 
     tx.commit().await?;
+
+    // Modo automático (Uber Direct): em_busca despacha coleta, em_entrega
+    // despacha a devolução do aparelho consertado. Fire-and-forget -- nunca
+    // bloqueia nem falha a troca de status (lojista sempre pode despachar
+    // manualmente depois se a automática falhar).
+    crate::routes::eletronicos_delivery::maybe_auto_dispatch(&state.pool, &state.http, &claims.tenant_id, &id, &input.status).await;
+
     Ok(Json(row))
 }
 

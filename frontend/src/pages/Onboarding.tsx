@@ -5,6 +5,7 @@ import { AtSign, CheckCircle2, CreditCard, Loader2, LogOut, Rocket, Store, Uploa
 import { api, ApiError, type MeResponse, type TipoDocumento } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import AddressField from '../components/AddressField'
+import EntregaTerceirizadaModoField from '../components/EntregaTerceirizadaModoField'
 import { isValidDocumento, onlyDigits } from '../lib/documento'
 import { planDisplayName, verticalForPlan } from '../lib/plans'
 import { needsOnboardingLock, storeAlreadyExists } from '../lib/postPayRedirect'
@@ -94,6 +95,8 @@ function applyMePrefill(me: MeResponse): {
   venderExternamente: boolean
   vendeMais18: boolean
   apenasRetirada: boolean
+  temMotoboyProprio: boolean
+  entregaTerceirizadaModo: 'manual' | 'automatico'
   ofereceServicos: boolean
   pagamentoNaRetirada: boolean
   entregaSomentePix: boolean
@@ -118,6 +121,8 @@ function applyMePrefill(me: MeResponse): {
     venderExternamente: me.vender_externamente !== false,
     vendeMais18: Boolean(me.vende_mais_18),
     apenasRetirada: Boolean(me.apenas_retirada),
+    temMotoboyProprio: Boolean(me.tem_motoboy_proprio),
+    entregaTerceirizadaModo: me.entrega_terceirizada_modo === 'automatico' ? 'automatico' : 'manual',
     ofereceServicos: Boolean(me.oferece_servicos),
     pagamentoNaRetirada: Boolean(me.pagamento_na_retirada),
     entregaSomentePix: Boolean(me.entrega_somente_pix),
@@ -153,6 +158,8 @@ export default function Onboarding() {
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
+  const [temMotoboyProprio, setTemMotoboyProprio] = useState(false)
+  const [entregaTerceirizadaModo, setEntregaTerceirizadaModo] = useState<'manual' | 'automatico'>('manual')
   const [ofereceServicos, setOfereceServicos] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
   // Regra fixa do plano essential — entrega só sai com pagamento prévio
@@ -208,6 +215,8 @@ export default function Onboarding() {
         setVenderExternamente(pre.venderExternamente)
         setVendeMais18(pre.vendeMais18)
         setApenasRetirada(pre.apenasRetirada)
+        setTemMotoboyProprio(pre.temMotoboyProprio)
+        setEntregaTerceirizadaModo(pre.entregaTerceirizadaModo)
         setOfereceServicos(pre.ofereceServicos)
         setPagamentoNaRetirada(pre.pagamentoNaRetirada)
         setLayoutStyle(pre.layoutStyle)
@@ -382,6 +391,8 @@ export default function Onboarding() {
           vender_externamente: venderExternamente,
           vende_mais_18: vendeMais18,
           apenas_retirada: apenasRetirada,
+          tem_motoboy_proprio: !apenasRetirada && temMotoboyProprio,
+          entrega_terceirizada_modo: !apenasRetirada && !temMotoboyProprio ? entregaTerceirizadaModo : null,
           oferece_servicos: ofereceServicos,
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
@@ -405,6 +416,8 @@ export default function Onboarding() {
           vender_externamente: venderExternamente,
           vende_mais_18: vendeMais18,
           apenas_retirada: apenasRetirada,
+          tem_motoboy_proprio: !apenasRetirada && temMotoboyProprio,
+          entrega_terceirizada_modo: !apenasRetirada && !temMotoboyProprio ? entregaTerceirizadaModo : null,
           oferece_servicos: ofereceServicos,
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
@@ -716,6 +729,29 @@ export default function Onboarding() {
                   A vitrine não pede endereço de entrega; em vez disso mostra um botão com o endereço da loja no Google Maps.
                 </span>
               </label>
+
+              {!apenasRetirada && (
+                <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={temMotoboyProprio}
+                    onChange={(e) => setTemMotoboyProprio(e.target.checked)}
+                    className="w-4 h-4 mt-0.5"
+                  />
+                  <span className="text-xs text-uf-silver-dim">
+                    <span className="block text-uf-silver font-semibold mb-0.5">Tenho motoboy próprio para entrega</span>
+                    Se desmarcado, você escolhe abaixo como despacha a entrega terceirizada.
+                  </span>
+                </label>
+              )}
+
+              {!apenasRetirada && !temMotoboyProprio && (
+                <EntregaTerceirizadaModoField
+                  vertical={vertical}
+                  value={entregaTerceirizadaModo}
+                  onChange={setEntregaTerceirizadaModo}
+                />
+              )}
 
               <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                 <input
