@@ -14,6 +14,7 @@ mod models;
 mod openapi;
 mod order_expiration;
 mod orders_common;
+mod point;
 mod rate_limit;
 mod routes;
 mod seed;
@@ -540,10 +541,15 @@ async fn main() -> anyhow::Result<()> {
             get(routes::pdv::list_comandas).post(routes::pdv::create_comanda),
         )
         .route("/api/pdv/comandas/{id}", get(routes::pdv::get_comanda))
+        .route("/api/pdv/comandas/{id}/history", get(routes::pdv::get_comanda_history))
         .route("/api/pdv/comandas/{id}/items", post(routes::pdv::add_comanda_item))
         .route(
             "/api/pdv/comandas/{id}/items/{item_id}",
             axum::routing::delete(routes::pdv::remove_comanda_item),
+        )
+        .route(
+            "/api/pdv/comandas/{id}/items/{item_id}/replace",
+            post(routes::pdv::replace_comanda_item),
         )
         .route("/api/pdv/comandas/{id}/pay", post(routes::pdv::pay_comanda))
         // Cliente deslogado que esqueceu a senha — dispara o código de 3
@@ -722,6 +728,50 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/admin/orders/{id}/fiscal/cancelar",
             post(routes::fiscal::cancelar),
+        )
+        .route(
+            "/api/admin/point/stores",
+            get(routes::point::list_stores).post(routes::point::sync_store),
+        )
+        .route(
+            "/api/admin/point/pos",
+            get(routes::point::list_pos).post(routes::point::create_pos),
+        )
+        .route(
+            "/api/admin/point/pos/{id}",
+            axum::routing::delete(routes::point::delete_pos),
+        )
+        .route(
+            "/api/admin/point/terminals",
+            get(routes::point::list_terminals),
+        )
+        .route(
+            "/api/admin/point/terminals/sync",
+            post(routes::point::sync_terminals),
+        )
+        .route(
+            "/api/admin/point/employees/{role}/{id}/pos",
+            get(routes::point::get_employee_pos).put(routes::point::set_employee_pos),
+        )
+        .route(
+            "/api/admin/point/vendedores/{id}/point-tap",
+            put(routes::point::set_vendedor_point_tap),
+        )
+        .route(
+            "/api/admin/point/orders",
+            post(routes::point::create_order),
+        )
+        .route(
+            "/api/admin/point/orders/{id}",
+            get(routes::point::get_order),
+        )
+        .route(
+            "/api/admin/point/orders/{id}/cancel",
+            post(routes::point::cancel_order),
+        )
+        .route(
+            "/api/webhooks/mercadopago-point",
+            post(routes::point_webhooks::mercadopago_point_webhook),
         )
         .route("/api/admin/financeiro", get(routes::admin::financeiro))
         .route("/api/admin/financeiro/lucro", get(routes::admin::financeiro_lucro))

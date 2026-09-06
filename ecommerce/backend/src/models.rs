@@ -650,6 +650,10 @@ pub struct ComandaRow {
     pub created_at: chrono::DateTime<chrono::Utc>,
     #[serde(skip)]
     pub closed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Optimistic locking -- toda escrita exige o version lido por último
+    /// (`UPDATE ... WHERE version = $n`); se não bater, outra pessoa mexeu
+    /// na comanda entre a leitura e a escrita.
+    pub version: i32,
 }
 
 #[derive(Debug, sqlx::FromRow, Serialize)]
@@ -670,6 +674,10 @@ pub struct ComandaDto {
     pub created_at: String,
     pub items: Vec<ComandaItemRow>,
     pub total: f64,
+    /// Cliente deve mandar de volta em toda escrita seguinte
+    /// (`expected_version`) -- se não bater mais, a comanda mudou por outra
+    /// mão desde a última leitura.
+    pub version: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -681,6 +689,35 @@ pub struct CreateComandaInput {
 pub struct AddComandaItemInput {
     pub product_id: String,
     pub quantity: i64,
+    pub expected_version: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RemoveComandaItemInput {
+    /// Obrigatório, não pode ser vazio -- nunca remove item sem justificativa.
+    pub reason: String,
+    pub expected_version: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReplaceComandaItemInput {
+    pub new_product_id: String,
+    pub new_quantity: i64,
+    pub reason: String,
+    pub expected_version: i32,
+}
+
+#[derive(Debug, sqlx::FromRow, Serialize)]
+pub struct ComandaHistoryRow {
+    pub id: String,
+    pub employee_role: String,
+    pub employee_id: String,
+    pub action: String,
+    pub item_id: Option<String>,
+    pub old_value: Option<serde_json::Value>,
+    pub new_value: Option<serde_json::Value>,
+    pub reason: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -692,6 +729,7 @@ pub struct PayComandaInput {
     pub card_type: Option<String>,
     #[serde(default)]
     pub card_installments: Option<i64>,
+    pub expected_version: i32,
 }
 
 #[derive(Debug, Deserialize)]

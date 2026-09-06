@@ -38,6 +38,20 @@ impl TenantPayment {
             .filter(|s| !s.is_empty())
     }
 
+    /// `user_id` da conta Mercado Pago do tenant (mesmo JSON do OAuth) --
+    /// exigido pela API de Stores do Point (`/users/{user_id}/stores`).
+    /// Gravado pelo OAuth como `serde_json::Value` cru (pode vir número ou
+    /// string dependendo da resposta da Mercado Pago) -- aceita os dois,
+    /// mesmo tratamento já usado pro `id` de pagamento em `mercadopago_link.rs`.
+    pub fn mp_user_id(&self) -> Option<String> {
+        self.mp_access_token()?;
+        match self.plataforma_credenciais.as_ref()?.get("user_id")? {
+            serde_json::Value::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
     pub fn online_provider(&self) -> Option<&'static str> {
         if self.forma_pagamento != "plataforma" {
             return None;

@@ -2974,6 +2974,8 @@ export const localApi = {
       get: async () => { throw new ApiError(404, 'not found') },
       addItem: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
       removeItem: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+      replaceItem: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+      history: async () => [],
       pay: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
     },
   },

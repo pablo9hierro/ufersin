@@ -16,6 +16,7 @@ import type {
   CarouselStyle,
   Category,
   Comanda,
+  ComandaHistoryEntry,
   CozinhaUser,
   Coupon,
   CouponGrant,
@@ -1734,16 +1735,37 @@ const remoteApi = {
       create: (label: string) =>
         railwayAdmin<Comanda>('/api/pdv/comandas', { method: 'POST', body: JSON.stringify({ label }) }),
       get: (id: string) => railwayAdmin<Comanda>(`/api/pdv/comandas/${id}`),
-      addItem: (id: string, productId: string, quantity: number) =>
+      addItem: (id: string, productId: string, quantity: number, expectedVersion: number) =>
         railwayAdmin<Comanda>(`/api/pdv/comandas/${id}/items`, {
           method: 'POST',
-          body: JSON.stringify({ product_id: productId, quantity }),
+          body: JSON.stringify({ product_id: productId, quantity, expected_version: expectedVersion }),
         }),
-      removeItem: (id: string, itemId: string) =>
-        railwayAdmin<Comanda>(`/api/pdv/comandas/${id}/items/${itemId}`, { method: 'DELETE' }),
+      /** `reason` obrigatório e não-vazio -- backend recusa remoção sem justificativa. */
+      removeItem: (id: string, itemId: string, reason: string, expectedVersion: number) =>
+        railwayAdmin<Comanda>(`/api/pdv/comandas/${id}/items/${itemId}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ reason, expected_version: expectedVersion }),
+        }),
+      /** `reason` obrigatório -- mesma regra de remoção. */
+      replaceItem: (
+        id: string,
+        itemId: string,
+        payload: { new_product_id: string; new_quantity: number; reason: string; expected_version: number },
+      ) =>
+        railwayAdmin<Comanda>(`/api/pdv/comandas/${id}/items/${itemId}/replace`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }),
+      history: (id: string) => railwayAdmin<ComandaHistoryEntry[]>(`/api/pdv/comandas/${id}/history`),
       pay: (
         id: string,
-        payload: { payment_method: PaymentMethod; card_payment_mode?: 'nfc' | 'link' | 'transparente'; card_type?: string; card_installments?: number },
+        payload: {
+          payment_method: PaymentMethod
+          card_payment_mode?: 'nfc' | 'link' | 'transparente'
+          card_type?: string
+          card_installments?: number
+          expected_version: number
+        },
       ) => railwayAdmin<Order>(`/api/pdv/comandas/${id}/pay`, { method: 'POST', body: JSON.stringify(payload) }),
     },
   },

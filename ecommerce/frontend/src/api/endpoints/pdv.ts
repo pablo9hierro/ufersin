@@ -1,6 +1,14 @@
 import { api } from '../../lib/api'
 import { validate, validateList } from '../validate'
-import { ComandaSchema, OrderSchema, ProductSchema, VendedorRelatorioSchema, type PaymentMethod, type PdvSaleItemInput } from '../../types'
+import {
+  ComandaHistoryEntrySchema,
+  ComandaSchema,
+  OrderSchema,
+  ProductSchema,
+  VendedorRelatorioSchema,
+  type PaymentMethod,
+  type PdvSaleItemInput,
+} from '../../types'
 
 // Módulo PDV (venda de balcão) — acessível por admin OU vendedor, mesma
 // sessão (useAdminAuth com role diferente). Único ponto do app
@@ -29,13 +37,26 @@ export const pdvEndpoint = {
     list: async () => validateList(ComandaSchema, await api.pdv.comandas.list(), 'pdv.comandas.list'),
     create: async (label: string) => validate(ComandaSchema, await api.pdv.comandas.create(label), 'pdv.comandas.create'),
     get: async (id: string) => validate(ComandaSchema, await api.pdv.comandas.get(id), 'pdv.comandas.get'),
-    addItem: async (id: string, productId: string, quantity: number) =>
-      validate(ComandaSchema, await api.pdv.comandas.addItem(id, productId, quantity), 'pdv.comandas.addItem'),
-    removeItem: async (id: string, itemId: string) =>
-      validate(ComandaSchema, await api.pdv.comandas.removeItem(id, itemId), 'pdv.comandas.removeItem'),
+    addItem: async (id: string, productId: string, quantity: number, expectedVersion: number) =>
+      validate(ComandaSchema, await api.pdv.comandas.addItem(id, productId, quantity, expectedVersion), 'pdv.comandas.addItem'),
+    removeItem: async (id: string, itemId: string, reason: string, expectedVersion: number) =>
+      validate(ComandaSchema, await api.pdv.comandas.removeItem(id, itemId, reason, expectedVersion), 'pdv.comandas.removeItem'),
+    replaceItem: async (
+      id: string,
+      itemId: string,
+      payload: { new_product_id: string; new_quantity: number; reason: string; expected_version: number },
+    ) => validate(ComandaSchema, await api.pdv.comandas.replaceItem(id, itemId, payload), 'pdv.comandas.replaceItem'),
+    history: async (id: string) =>
+      validateList(ComandaHistoryEntrySchema, await api.pdv.comandas.history(id), 'pdv.comandas.history'),
     pay: async (
       id: string,
-      payload: { payment_method: PaymentMethod; card_payment_mode?: 'nfc' | 'link' | 'transparente'; card_type?: string; card_installments?: number },
+      payload: {
+        payment_method: PaymentMethod
+        card_payment_mode?: 'nfc' | 'link' | 'transparente'
+        card_type?: string
+        card_installments?: number
+        expected_version: number
+      },
     ) => validate(OrderSchema, await api.pdv.comandas.pay(id, payload), 'pdv.comandas.pay'),
   },
 }

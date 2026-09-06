@@ -146,11 +146,13 @@ function ComandaDialog({
 
   const results = filterPdvProducts(products, query)
 
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null)
+
   const addItem = async (product: Product) => {
     setBusy(true)
     setError(null)
     try {
-      const updated = await pdvService.comandas.addItem(comanda.id, product.id, 1)
+      const updated = await pdvService.comandas.addItem(comanda.id, product.id, 1, comanda.version)
       onChange(updated)
       setQuery('')
     } catch (err) {
@@ -160,12 +162,13 @@ function ComandaDialog({
     }
   }
 
-  const removeItem = async (itemId: string) => {
+  const removeItem = async (itemId: string, reason: string) => {
     setBusy(true)
     setError(null)
     try {
-      const updated = await pdvService.comandas.removeItem(comanda.id, itemId)
+      const updated = await pdvService.comandas.removeItem(comanda.id, itemId, reason, comanda.version)
       onChange(updated)
+      setRemoveTarget(null)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Não foi possível remover o item.')
     } finally {
@@ -221,7 +224,12 @@ function ComandaDialog({
                   </p>
                   <p className="text-xs text-son-silver-dim">{currency(i.unit_price)} cada</p>
                 </div>
-                <button type="button" onClick={() => removeItem(i.id)} disabled={busy} className="text-son-silver-dim hover:text-son-pink flex-shrink-0 ml-2">
+                <button
+                  type="button"
+                  onClick={() => setRemoveTarget({ id: i.id, name: `${i.quantity}x ${i.product_name}` })}
+                  disabled={busy}
+                  className="text-son-silver-dim hover:text-son-pink flex-shrink-0 ml-2"
+                >
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -254,6 +262,65 @@ function ComandaDialog({
           onPaid={onClosed}
         />
       )}
+
+      {removeTarget && (
+        <RemoveItemReasonDialog
+          itemLabel={removeTarget.name}
+          busy={busy}
+          onCancel={() => setRemoveTarget(null)}
+          onConfirm={(reason) => removeItem(removeTarget.id, reason)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Remoção nunca é silenciosa -- exige justificativa não-vazia antes de
+ * confirmar, sempre registrada no histórico da comanda. */
+function RemoveItemReasonDialog({
+  itemLabel,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  itemLabel: string
+  busy: boolean
+  onCancel: () => void
+  onConfirm: (reason: string) => void
+}) {
+  const [reason, setReason] = useState('')
+  const trimmed = reason.trim()
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[70] flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-white mb-1">Remover item</h3>
+        <p className="text-sm text-son-silver-dim mb-4">Você está removendo: {itemLabel}</p>
+        <label className="label">Justificativa obrigatória</label>
+        <textarea
+          className="input-field min-h-[80px]"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          autoFocus
+          placeholder="Ex: cliente desistiu do item, item enviado errado..."
+        />
+        {reason.length > 0 && !trimmed && (
+          <p className="error-msg mt-1">Informe uma justificativa para remover este item.</p>
+        )}
+        <div className="flex gap-2 mt-4">
+          <button type="button" onClick={onCancel} className="btn-secondary flex-1">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(trimmed)}
+            disabled={busy || !trimmed}
+            className="btn-primary flex-1"
+          >
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Confirmar remoção
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -279,7 +346,7 @@ function PayComandaDialog({
     setBusy(true)
     setError(null)
     try {
-      const order = await pdvService.comandas.pay(comanda.id, { payment_method: method })
+      const order = await pdvService.comandas.pay(comanda.id, { payment_method: method, expected_version: comanda.version })
       if (method === 'pix' && onlinePix) {
         try {
           const withPix = await orderService.createPixPayment(order.id)

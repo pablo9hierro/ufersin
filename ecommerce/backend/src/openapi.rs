@@ -167,7 +167,7 @@ pub fn build() -> OpenApi {
         ("/api/pdv/comandas", Post, "Criar comanda", "PDV", true, true),
         ("/api/pdv/comandas/{id}", Get, "Detalhe da comanda (itens + total)", "PDV", true, false),
         ("/api/pdv/comandas/{id}/items", Post, "Adicionar item na comanda", "PDV", true, true),
-        ("/api/pdv/comandas/{id}/items/{item_id}", Delete, "Remover item da comanda", "PDV", true, false),
+        ("/api/pdv/comandas/{id}/items/{item_id}", Delete, "Remover item da comanda (exige justificativa)", "PDV", true, true),
         ("/api/pdv/comandas/{id}/pay", Post, "Fechar comanda (vira venda de balcao)", "PDV", true, true),
         ("/api/admin/financeiro", Get, "Resumo financeiro da loja", "Admin - Financeiro", true, false),
         ("/api/admin/financeiro/lucro", Get, "Lucro por periodo", "Admin - Financeiro", true, false),
@@ -306,6 +306,34 @@ pub fn build() -> OpenApi {
         ("/api/admin/eletronicos/upload", Post, "Admin: upload de foto/video/pdf (multipart, campo file)", "Admin - Eletronicos", true, true),
         ("/api/admin/eletronicos/service-orders/{id}/pdf", Post, "Salva a URL do PDF gerado da OS", "Admin - Eletronicos", true, true),
         ("/api/public/eletronicos/{slug}/catalog", Get, "Vitrine: catalogo de marcas/modelos/servicos pro wizard de solicitacao", "Publico - Eletronicos", false, false),
+        // Fiscal (NF-e/NFC-e via modulo Jubilados) -- documentado aqui pra
+        // fechar uma lacuna deixada na tarefa que criou essas rotas.
+        ("/api/admin/fiscal/settings", Get, "Config fiscal do tenant (empresa Jubilados, ambiente, CFOP padrao)", "Fiscal", true, false),
+        ("/api/admin/fiscal/settings", Put, "Atualizar config fiscal do tenant", "Fiscal", true, true),
+        ("/api/admin/fiscal/classificacao-tributaria", Get, "Tabela oficial de Classificacao Tributaria (IBS/CBS), passthrough do Jubilados", "Fiscal", true, false),
+        ("/api/admin/products/{id}/fiscal", Put, "Atualizar dados fiscais do produto (NCM/CFOP/CST/CSOSN/...)", "Fiscal", true, true),
+        ("/api/admin/orders/{id}/fiscal/emitir", Post, "Emitir NF-e/NFC-e do pedido", "Fiscal", true, false),
+        ("/api/admin/orders/{id}/fiscal", Get, "Status fiscal do pedido (chave, protocolo, cStat)", "Fiscal", true, false),
+        ("/api/admin/orders/{id}/fiscal/cancelar", Post, "Cancelar nota fiscal autorizada", "Fiscal", true, false),
+        // Mercado Pago Point/POS -- reaproveita o token OAuth ja sincronizado
+        // em tenants.plataforma_credenciais (mesmo de Pix/Cartao).
+        ("/api/admin/point/stores", Get, "Listar lojas fisicas (Store) da conta Mercado Pago do tenant", "Mercado Pago Point", true, false),
+        ("/api/admin/point/stores", Post, "Criar/sincronizar loja fisica (Store) na conta Mercado Pago", "Mercado Pago Point", true, true),
+        ("/api/admin/point/pos", Get, "Listar caixas (POS) do tenant", "Mercado Pago Point", true, false),
+        ("/api/admin/point/pos", Post, "Criar caixa (POS) associado a uma loja", "Mercado Pago Point", true, true),
+        ("/api/admin/point/pos/{id}", Delete, "Remover caixa (POS)", "Mercado Pago Point", true, false),
+        ("/api/admin/point/terminals", Get, "Listar terminais (maquininhas) espelhados localmente", "Mercado Pago Point", true, false),
+        ("/api/admin/point/terminals/sync", Post, "Sincronizar terminais com a Mercado Pago (GET /terminals/v1/list)", "Mercado Pago Point", true, false),
+        ("/api/admin/point/employees/{role}/{id}/pos", Get, "Caixas (POS) permitidos de um funcionario", "Mercado Pago Point", true, false),
+        ("/api/admin/point/employees/{role}/{id}/pos", Put, "Definir caixas (POS) permitidos + padrao de um funcionario", "Mercado Pago Point", true, true),
+        ("/api/admin/point/vendedores/{id}/point-tap", Put, "Habilitar/desabilitar Point Tap pro vendedor (flag interna, nunca senha MP)", "Mercado Pago Point", true, true),
+        ("/api/admin/point/orders", Post, "Criar cobranca Point (envia pro terminal do POS)", "Mercado Pago Point", true, true),
+        ("/api/admin/point/orders/{id}", Get, "Status de uma cobranca Point", "Mercado Pago Point", true, false),
+        ("/api/admin/point/orders/{id}/cancel", Post, "Cancelar cobranca Point pendente", "Mercado Pago Point", true, false),
+        ("/api/webhooks/mercadopago-point", Post, "Webhook Mercado Pago Point (mudanca de status de Order)", "Webhooks", false, true),
+        // Comandas -- endurecimento (concorrencia + historico + justificativa).
+        ("/api/pdv/comandas/{id}/history", Get, "Historico de alteracoes da comanda (auditoria)", "PDV", true, false),
+        ("/api/pdv/comandas/{id}/items/{item_id}/replace", Post, "Substituir item da comanda (exige justificativa)", "PDV", true, true),
     ];
 
     for (path, method, summary, tag, auth, body) in routes {

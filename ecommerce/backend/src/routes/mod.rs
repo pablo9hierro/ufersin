@@ -8,6 +8,8 @@ pub mod eletronicos_delivery;
 pub mod fiscal;
 pub mod internal;
 pub mod motoboy;
+pub mod point;
+pub mod point_webhooks;
 pub mod payroll;
 pub mod pdv;
 pub mod public;

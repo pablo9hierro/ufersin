@@ -7,8 +7,9 @@ use crate::auth::PdvUser;
 use crate::error::AppError;
 use crate::features::{self, Feature};
 use crate::models::{
-    AddComandaItemInput, ComandaDto, ComandaItemRow, ComandaRow, CreateComandaInput, OrderDto,
-    OrderRow, PayComandaInput, PdvSaleInput, PdvSaleItemInput, ProductDto, ProductRow,
+    AddComandaItemInput, ComandaDto, ComandaHistoryRow, ComandaItemRow, ComandaRow, CreateComandaInput,
+    OrderDto, OrderRow, PayComandaInput, PdvSaleInput, PdvSaleItemInput, ProductDto, ProductRow,
+    RemoveComandaItemInput, ReplaceComandaItemInput,
 };
 use crate::orders_common;
 use crate::orders_common::fetch_order_dto;
@@ -477,7 +478,83 @@ async fn load_comanda_dto(
         created_at: comanda.created_at.to_rfc3339(),
         items,
         total,
+        version: comanda.version,
     }))
+}
+
+/// Optimistic locking: toda escrita numa comanda aberta passa por aqui
+/// primeiro. Se `version` não bater mais com o que está no banco, alguém
+/// (vendedor ou PDV) mexeu na comanda desde a última leitura -- erro claro
+/// em vez de sobrescrever silenciosamente.
+async fn bump_comanda_version(
+    tx: &mut sqlx::PgTransaction<'_>,
+    tenant_id: &str,
+    comanda_id: &str,
+    expected_version: i32,
+) -> Result<(), AppError> {
+    let updated: Option<(String,)> = sqlx::query_as(
+        "UPDATE comandas SET version = version + 1, updated_at = now() \
+         WHERE tenant_id = $1 AND id = $2 AND version = $3 AND status = 'aberta' \
+         RETURNING id",
+    )
+    .bind(tenant_id)
+    .bind(comanda_id)
+    .bind(expected_version)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if updated.is_none() {
+        // Distingue "não existe/fechada" de "versão desatualizada" só pra
+        // dar uma mensagem melhor -- não é obrigatório, mas evita confundir
+        // "recarregue" com "comanda não existe".
+        let exists: Option<(i32,)> = sqlx::query_as(
+            "SELECT version FROM comandas WHERE tenant_id = $1 AND id = $2 AND status = 'aberta'",
+        )
+        .bind(tenant_id)
+        .bind(comanda_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        return match exists {
+            Some(_) => Err(AppError::Conflict(
+                "Esta comanda foi alterada por outra pessoa enquanto você editava. Recarregue e tente de novo."
+                    .to_string(),
+            )),
+            None => Err(AppError::NotFound("comanda not found or already closed".to_string())),
+        };
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn add_comanda_history(
+    tx: &mut sqlx::PgTransaction<'_>,
+    tenant_id: &str,
+    comanda_id: &str,
+    employee_role: &str,
+    employee_id: &str,
+    action: &str,
+    item_id: Option<&str>,
+    old_value: Option<serde_json::Value>,
+    new_value: Option<serde_json::Value>,
+    reason: Option<&str>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO comanda_history \
+           (id, tenant_id, comanda_id, employee_role, employee_id, action, item_id, old_value, new_value, reason) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(tenant_id)
+    .bind(comanda_id)
+    .bind(employee_role)
+    .bind(employee_id)
+    .bind(action)
+    .bind(item_id)
+    .bind(old_value)
+    .bind(new_value)
+    .bind(reason)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
 
 pub async fn list_comandas(
@@ -524,11 +601,30 @@ pub async fn create_comanda(
     .bind(&claims.sub)
     .execute(&mut *tx)
     .await?;
+    add_comanda_history(&mut tx, &claims.tenant_id, &id, &claims.role, &claims.sub, "COMMAND_CREATED", None, None, None, None)
+        .await?;
     let dto = load_comanda_dto(&mut tx, &claims.tenant_id, &id)
         .await?
         .ok_or_else(|| AppError::Internal("comanda vanished after insert".to_string()))?;
     tx.commit().await?;
     Ok(Json(dto))
+}
+
+pub async fn get_comanda_history(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<ComandaHistoryRow>>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let rows: Vec<ComandaHistoryRow> = sqlx::query_as(
+        "SELECT id, employee_role, employee_id, action, item_id, old_value, new_value, reason, created_at \
+         FROM comanda_history WHERE tenant_id = $1 AND comanda_id = $2 ORDER BY created_at",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(rows))
 }
 
 pub async fn get_comanda(
@@ -556,16 +652,7 @@ pub async fn add_comanda_item(
         return Err(AppError::BadRequest("quantity must be positive".to_string()));
     }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    let comanda: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM comandas WHERE tenant_id = $1 AND id = $2 AND status = 'aberta'",
-    )
-    .bind(&claims.tenant_id)
-    .bind(&id)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if comanda.is_none() {
-        return Err(AppError::NotFound("comanda not found or already closed".to_string()));
-    }
+    bump_comanda_version(&mut tx, &claims.tenant_id, &id, input.expected_version).await?;
     let product: Option<(String, String, f64, i64)> = sqlx::query_as(
         "SELECT id, name, price, active FROM products WHERE tenant_id = $1 AND id = $2",
     )
@@ -593,6 +680,11 @@ pub async fn add_comanda_item(
     .bind(input.quantity)
     .execute(&mut *tx)
     .await?;
+    add_comanda_history(
+        &mut tx, &claims.tenant_id, &id, &claims.role, &claims.sub, "ITEM_ADDED", Some(&item_id),
+        None, Some(serde_json::json!({ "product_id": product_id, "product_name": product_name, "quantity": input.quantity })), None,
+    )
+    .await?;
     let dto = load_comanda_dto(&mut tx, &claims.tenant_id, &id)
         .await?
         .ok_or_else(|| AppError::Internal("comanda vanished after item insert".to_string()))?;
@@ -600,19 +692,39 @@ pub async fn add_comanda_item(
     Ok(Json(dto))
 }
 
+/// Remoção NUNCA é silenciosa -- exige justificativa não-vazia, sempre
+/// registrada no histórico junto com o item removido.
 pub async fn remove_comanda_item(
     State(state): State<AppState>,
     PdvUser(claims): PdvUser,
     Path((id, item_id)): Path<(String, String)>,
+    Json(input): Json<RemoveComandaItemInput>,
 ) -> Result<Json<ComandaDto>, AppError> {
     features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let reason = input.reason.trim();
+    if reason.is_empty() {
+        return Err(AppError::BadRequest("Informe uma justificativa para remover este item.".to_string()));
+    }
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
-    sqlx::query("DELETE FROM comanda_items WHERE tenant_id = $1 AND comanda_id = $2 AND id = $3")
-        .bind(&claims.tenant_id)
-        .bind(&id)
-        .bind(&item_id)
-        .execute(&mut *tx)
-        .await?;
+    bump_comanda_version(&mut tx, &claims.tenant_id, &id, input.expected_version).await?;
+    let removed: Option<ComandaItemRow> = sqlx::query_as(
+        "DELETE FROM comanda_items WHERE tenant_id = $1 AND comanda_id = $2 AND id = $3 \
+         RETURNING id, comanda_id, product_id, product_name, unit_price, quantity",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(&item_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(removed) = removed else {
+        return Err(AppError::NotFound("item not found in this comanda".to_string()));
+    };
+    add_comanda_history(
+        &mut tx, &claims.tenant_id, &id, &claims.role, &claims.sub, "ITEM_REMOVED", Some(&item_id),
+        Some(serde_json::json!({ "product_name": removed.product_name, "quantity": removed.quantity })),
+        None, Some(reason),
+    )
+    .await?;
     let dto = load_comanda_dto(&mut tx, &claims.tenant_id, &id)
         .await?
         .ok_or_else(|| AppError::NotFound("comanda not found".to_string()))?;
@@ -638,6 +750,7 @@ pub async fn pay_comanda(
 
     let (label, items): (String, Vec<ComandaItemRow>) = {
         let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+        bump_comanda_version(&mut tx, &claims.tenant_id, &id, input.expected_version).await?;
         let comanda: Option<(String,)> = sqlx::query_as(
             "SELECT label FROM comandas WHERE tenant_id = $1 AND id = $2 AND status = 'aberta'",
         )
@@ -685,7 +798,87 @@ pub async fn pay_comanda(
         .bind(&id)
         .execute(&mut *tx)
         .await?;
+    add_comanda_history(
+        &mut tx, &claims.tenant_id, &id, &claims.role, &claims.sub, "COMMAND_FINALIZED", None,
+        None, Some(serde_json::json!({ "order_id": dto.id })), None,
+    )
+    .await?;
     tx.commit().await?;
 
+    Ok(Json(dto))
+}
+
+/// Substituição também exige justificativa (mesma regra de remoção) --
+/// registra item antigo e novo no histórico.
+pub async fn replace_comanda_item(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+    Path((id, item_id)): Path<(String, String)>,
+    Json(input): Json<ReplaceComandaItemInput>,
+) -> Result<Json<ComandaDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let reason = input.reason.trim();
+    if reason.is_empty() {
+        return Err(AppError::BadRequest("Informe uma justificativa para substituir este item.".to_string()));
+    }
+    if input.new_quantity <= 0 {
+        return Err(AppError::BadRequest("quantity must be positive".to_string()));
+    }
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    bump_comanda_version(&mut tx, &claims.tenant_id, &id, input.expected_version).await?;
+
+    let old_item: Option<ComandaItemRow> = sqlx::query_as(
+        "SELECT id, comanda_id, product_id, product_name, unit_price, quantity \
+         FROM comanda_items WHERE tenant_id = $1 AND comanda_id = $2 AND id = $3",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(&item_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(old_item) = old_item else {
+        return Err(AppError::NotFound("item not found in this comanda".to_string()));
+    };
+
+    let product: Option<(String, String, f64, i64)> = sqlx::query_as(
+        "SELECT id, name, price, active FROM products WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&input.new_product_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((product_id, product_name, price, active)) = product else {
+        return Err(AppError::BadRequest("product not found".to_string()));
+    };
+    if active == 0 {
+        return Err(AppError::BadRequest(format!("product {product_name} is not available")));
+    }
+
+    sqlx::query(
+        "UPDATE comanda_items SET product_id = $1, product_name = $2, unit_price = $3, quantity = $4 \
+         WHERE tenant_id = $5 AND comanda_id = $6 AND id = $7",
+    )
+    .bind(&product_id)
+    .bind(&product_name)
+    .bind(price)
+    .bind(input.new_quantity)
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .bind(&item_id)
+    .execute(&mut *tx)
+    .await?;
+
+    add_comanda_history(
+        &mut tx, &claims.tenant_id, &id, &claims.role, &claims.sub, "ITEM_REPLACED", Some(&item_id),
+        Some(serde_json::json!({ "product_name": old_item.product_name, "quantity": old_item.quantity })),
+        Some(serde_json::json!({ "product_name": product_name, "quantity": input.new_quantity })),
+        Some(reason),
+    )
+    .await?;
+
+    let dto = load_comanda_dto(&mut tx, &claims.tenant_id, &id)
+        .await?
+        .ok_or_else(|| AppError::Internal("comanda vanished after item replace".to_string()))?;
+    tx.commit().await?;
     Ok(Json(dto))
 }

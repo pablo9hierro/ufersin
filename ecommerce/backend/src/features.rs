@@ -31,6 +31,7 @@ pub enum Feature {
     Relatorios,
     EntregaTerceirizada,
     EmissaoFiscal,
+    MercadoPagoPoint,
 }
 
 impl Feature {
@@ -53,6 +54,7 @@ impl Feature {
             Feature::Relatorios => "relatorios",
             Feature::EntregaTerceirizada => "entrega_terceirizada",
             Feature::EmissaoFiscal => "emissao_fiscal",
+            Feature::MercadoPagoPoint => "mercadopago_point",
         }
     }
 }
