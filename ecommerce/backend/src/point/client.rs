@@ -153,16 +153,13 @@ pub async fn create_pos(
     // Point (terminal físico) rejeita esse campo (confirmado testando de
     // verdade: "additionalProperties 'fixed_amount' not allowed"). Também
     // não manda "external_store_id" solto -- redundante com "store_id".
-    // "store_id" é numérico na API real (exemplo oficial: 1234567), não
-    // string -- o `mp_store_id` que guardamos localmente vem como texto,
-    // então parseia aqui.
-    let store_id_num: i64 = store_id
-        .parse()
-        .map_err(|_| AppError::Internal(format!("mp_store_id inesperado (não numérico): {store_id}")))?;
+    // "store_id" é STRING na API real -- um exemplo de doc de terceiros
+    // mostrava número, mas a própria API rejeitou number com "store_id
+    // expected string, but got number" (confirmado testando de verdade).
     let body = json!({
         "name": name,
         "external_id": external_pos_id,
-        "store_id": store_id_num,
+        "store_id": store_id,
     });
     let resp = state
         .http
