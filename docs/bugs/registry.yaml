@@ -320,6 +320,54 @@
     Sempre usar `docker build -f Dockerfile.local` (não Dockerfile.fast)
     quando buildando localmente no Windows.
 
+- id: BUG-021
+  title: "Mercado Pago Point (Stores/POS): schema de request inventado a partir de doc de terceiros não batia com a API real"
+  area: [backend, api]
+  service: ecommerce-api
+  severity: medium
+  status: fixed
+  reported_at: "2026-09-06"
+  fixed_at: "2026-09-06"
+  symptom: >
+    Testando de verdade contra a API do Mercado Pago (não simulado): toda
+    tentativa de criar Store ou POS via /api/admin/point/stores e
+    /api/admin/point/pos devolvia 400, mesmo com o mesmo token OAuth que já
+    funciona pra Pix/Cartão nesta loja.
+  root_cause: >
+    Quatro campos do payload foram implementados com base em busca/doc de
+    terceiros em vez de confirmação direta contra a API, e cada um
+    divergia do schema real: (1) location aceitava só "address_line" na
+    implementação original -- a API exige location estruturada
+    (street_name/street_number/city_name/state_name/latitude/longitude/
+    reference), sem address_line nenhum; (2) state_name precisa do nome
+    completo do estado ("Paraíba"), não a sigla ("PB") -- a própria API
+    devolveu a lista das 27 opções válidas no corpo do erro; (3) POST
+    /v2/pos mandava um campo "fixed_amount" que só existe pro modo QR Code
+    estático, rejeitado com "additionalProperties not allowed" pro POS de
+    Point; (4) "external_id" gerado como UUID com hífen era rejeitado por
+    formato -- precisa ser alfanumérico sem hífen (Uuid::simple()); e uma
+    quinta tentativa errada no meio do caminho: um exemplo de doc de
+    terceiros mostrava "store_id" como número, mas a API real quer string
+    (confirmado só depois de tentar number e levar outro 400).
+  fix_commit: "ufersin:b550648 / ufersin:441cdff / ufersin:559b77a / ufersin:7af51ba"
+  fix_files:
+    - "ecommerce/backend/src/point/client.rs"
+    - "ecommerce/backend/src/point/mod.rs"
+    - "ecommerce/backend/src/routes/point.rs"
+  regression_test_id: null
+  manual_verification: >
+    Não automatizado de propósito -- criar Store/POS de verdade grava
+    objetos permanentes na conta Mercado Pago real do tenant, não é algo
+    pra rodar em todo CI. Verificado manualmente em produção (tenant
+    resusu): POST /api/admin/point/stores com endereço real de João
+    Pessoa/PB devolveu 200 com mp_store_id real (80848169); POST
+    /api/admin/point/pos apontando pra essa store devolveu 200 com
+    mp_pos_id real (137701295). Se voltar a dar 400 num payload que já
+    funcionou, comparar o corpo do erro (a Mercado Pago geralmente devolve
+    a lista de valores/campos aceitos) antes de reintroduzir qualquer
+    campo "óbvio" de doc de terceiros sem testar contra a API de verdade
+    primeiro.
+
 - id: GAP-001
   title: "IA não conseguia cancelar/editar pedido já com pagamento gerado"
   area: [ai-pipeline, backend]
