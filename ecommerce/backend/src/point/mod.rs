@@ -75,6 +75,44 @@ impl PointOrderStatus {
     }
 }
 
+/// UF (sigla) -> nome completo do estado exigido por `location.state_name`
+/// em `POST /users/{user_id}/stores`. Lista EXATA confirmada testando
+/// contra a API de verdade -- a própria Mercado Pago devolveu esses 27
+/// nomes no corpo do erro de validação quando mandamos a sigla ("PB")
+/// sozinha, então não é suposição/tradução nossa.
+pub fn uf_to_mp_state_name(uf: &str) -> Option<&'static str> {
+    Some(match uf.to_uppercase().as_str() {
+        "AC" => "Acre",
+        "AL" => "Alagoas",
+        "AP" => "Amapá",
+        "AM" => "Amazonas",
+        "BA" => "Bahia",
+        "CE" => "Ceará",
+        "DF" => "Distrito Federal",
+        "ES" => "Espírito Santo",
+        "GO" => "Goiás",
+        "MA" => "Maranhão",
+        "MT" => "Mato Grosso",
+        "MS" => "Mato Grosso do Sul",
+        "MG" => "Minas Gerais",
+        "PR" => "Paraná",
+        "PB" => "Paraíba",
+        "PA" => "Pará",
+        "PE" => "Pernambuco",
+        "PI" => "Piauí",
+        "RN" => "Rio Grande do Norte",
+        "RS" => "Rio Grande do Sul",
+        "RJ" => "Rio de Janeiro",
+        "RO" => "Rondônia",
+        "RR" => "Roraima",
+        "SC" => "Santa Catarina",
+        "SE" => "Sergipe",
+        "SP" => "São Paulo",
+        "TO" => "Tocantins",
+        _ => return None,
+    })
+}
+
 /// Referência pra quem está fazendo a cobrança -- nunca confiado vindo cru
 /// do frontend; sempre resolvido a partir do JWT autenticado (`PdvUser`/
 /// `StaffUser`) e revalidado contra `mp_point_employee_pos` antes de criar

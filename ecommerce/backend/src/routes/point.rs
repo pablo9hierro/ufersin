@@ -107,6 +107,9 @@ pub async fn sync_store(
         AppError::Internal("conexão Mercado Pago sem user_id salvo -- reconecte em Meu Plano".to_string())
     })?;
 
+    let mp_state_name = crate::point::uf_to_mp_state_name(&input.state_name).ok_or_else(|| {
+        AppError::BadRequest("UF inválida -- use a sigla do estado (ex: PB, SP, RJ).".to_string())
+    })?;
     let full_address = format!(
         "{}, {}, {}, {}",
         input.street_name, input.street_number, input.city_name, input.state_name
@@ -123,7 +126,7 @@ pub async fn sync_store(
         street_name: &input.street_name,
         street_number: &input.street_number,
         city_name: &input.city_name,
-        state_name: &input.state_name,
+        state_name: mp_state_name,
         latitude,
         longitude,
         reference: &input.reference,
