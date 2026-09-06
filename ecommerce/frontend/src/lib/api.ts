@@ -1291,8 +1291,14 @@ const remoteApi = {
     },
     point: {
       listStores: () => railwayAdmin<PointStore[]>('/api/admin/point/stores'),
-      syncStore: (payload: { name: string; address: string }) =>
-        railwayAdmin<PointStore>('/api/admin/point/stores', { method: 'POST', body: JSON.stringify(payload) }),
+      syncStore: (payload: {
+        name: string
+        street_name: string
+        street_number: string
+        city_name: string
+        state_name: string
+        reference?: string
+      }) => railwayAdmin<PointStore>('/api/admin/point/stores', { method: 'POST', body: JSON.stringify(payload) }),
       listPos: () => railwayAdmin<PointPos[]>('/api/admin/point/pos'),
       createPos: (payload: { name: string; store_id: string }) =>
         railwayAdmin<PointPos>('/api/admin/point/pos', { method: 'POST', body: JSON.stringify(payload) }),

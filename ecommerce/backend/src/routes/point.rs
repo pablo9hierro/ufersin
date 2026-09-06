@@ -82,11 +82,20 @@ pub async fn list_stores(
 #[derive(Debug, Deserialize)]
 pub struct SyncStoreInput {
     pub name: String,
-    pub address: String,
+    pub street_name: String,
+    pub street_number: String,
+    pub city_name: String,
+    pub state_name: String,
+    #[serde(default)]
+    pub reference: String,
 }
 
 /// Cria (ou reaproveita, se já existir com o mesmo nome) a Store na conta
-/// Mercado Pago do tenant e espelha localmente.
+/// Mercado Pago do tenant e espelha localmente. `location` exige
+/// latitude/longitude reais (confirmado testando contra a API de verdade,
+/// `address_line` sozinho não é aceito) -- geocodifica o endereço digitado
+/// em vez de pedir coordenada crua no formulário; se não conseguir
+/// geocodificar, bloqueia com mensagem clara em vez de inventar coordenada.
 pub async fn sync_store(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
@@ -98,13 +107,36 @@ pub async fn sync_store(
         AppError::Internal("conexão Mercado Pago sem user_id salvo -- reconecte em Meu Plano".to_string())
     })?;
 
+    let full_address = format!(
+        "{}, {}, {}, {}",
+        input.street_name, input.street_number, input.city_name, input.state_name
+    );
+    let (latitude, longitude) = crate::geocode::geocode_address(&state.http, &full_address)
+        .await
+        .ok_or_else(|| {
+            AppError::BadRequest(
+                "Não foi possível localizar esse endereço no mapa -- confira rua/número/cidade/UF e tente de novo."
+                    .to_string(),
+            )
+        })?;
+    let location = point_client::StoreLocation {
+        street_name: &input.street_name,
+        street_number: &input.street_number,
+        city_name: &input.city_name,
+        state_name: &input.state_name,
+        latitude,
+        longitude,
+        reference: &input.reference,
+    };
+
     let existing = point_client::list_stores(&state, &token, &user_id)
         .await?
         .into_iter()
         .find(|s| s.name.as_deref() == Some(input.name.as_str()));
+    let external_id = Uuid::new_v4().to_string();
     let mp_store = match existing {
         Some(s) => s,
-        None => point_client::create_store(&state, &token, &user_id, &input.name, &input.address).await?,
+        None => point_client::create_store(&state, &token, &user_id, &input.name, &external_id, &location).await?,
     };
 
     let id = Uuid::new_v4().to_string();
@@ -118,7 +150,7 @@ pub async fn sync_store(
     .bind(&claims.tenant_id)
     .bind(&mp_store.id)
     .bind(&input.name)
-    .bind(&input.address)
+    .bind(&full_address)
     .fetch_one(&state.pool)
     .await?;
 
@@ -126,7 +158,7 @@ pub async fn sync_store(
         id,
         mp_store_id: mp_store.id,
         name: input.name,
-        address: Some(input.address),
+        address: Some(full_address),
         status: "active".to_string(),
     }))
 }

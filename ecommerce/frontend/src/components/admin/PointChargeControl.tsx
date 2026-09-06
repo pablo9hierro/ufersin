@@ -16,6 +16,24 @@ const STATUS_LABEL: Record<string, string> = {
   unknown: 'desconhecido',
 }
 
+const STATUS_TONE: Record<string, 'ok' | 'warn' | 'off'> = {
+  created: 'warn',
+  pending: 'warn',
+  in_process: 'warn',
+  approved: 'ok',
+  rejected: 'off',
+  canceled: 'off',
+  refunded: 'off',
+  failed: 'off',
+  unknown: 'off',
+}
+
+/** Mesma bolinha de status de MercadoPagoPointCard.tsx. */
+function StatusDot({ tone }: { tone: 'ok' | 'warn' | 'off' }) {
+  const color = tone === 'ok' ? 'bg-emerald-400' : tone === 'warn' ? 'bg-amber-400' : 'bg-son-silver-dim'
+  return <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${color}`} />
+}
+
 /** Beta: só aparece pra tenants com Feature::MercadoPagoPoint liberada
  * (403 no GET esconde o controle) -- mesmo padrão de FiscalStatusControl. */
 export default function PointChargeControl({ orderId }: { orderId: string }) {
@@ -93,6 +111,7 @@ export default function PointChargeControl({ orderId }: { orderId: string }) {
         <div className="text-xs text-son-silver-dim space-y-1">
           <p className="flex items-center gap-1.5">
             <Store className="w-3.5 h-3.5" />
+            <StatusDot tone={STATUS_TONE[charge.status] ?? 'off'} />
             Point: {STATUS_LABEL[charge.status] ?? charge.status}
           </p>
           {(charge.status === 'created' || charge.status === 'pending' || charge.status === 'in_process') && (

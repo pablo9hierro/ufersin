@@ -87,17 +87,42 @@ pub async fn list_stores(state: &AppState, access_token: &str, user_id: &str) ->
     Ok(parsed.results)
 }
 
+/// Dados de localização confirmados como o schema real de
+/// `location` no corpo de `POST /users/{user_id}/stores` (testado contra a
+/// API de verdade -- `address_line` sozinho não existe, a doc oficial usa
+/// `street_name`/`street_number`/`city_name`/`state_name`/`latitude`/
+/// `longitude`/`reference`).
+pub struct StoreLocation<'a> {
+    pub street_name: &'a str,
+    pub street_number: &'a str,
+    pub city_name: &'a str,
+    pub state_name: &'a str,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub reference: &'a str,
+}
+
 /// `POST /users/{user_id}/stores` -- cria uma loja física na conta do tenant.
 pub async fn create_store(
     state: &AppState,
     access_token: &str,
     user_id: &str,
     name: &str,
-    address_line: &str,
+    external_id: &str,
+    location: &StoreLocation<'_>,
 ) -> Result<MpStore, AppError> {
     let body = json!({
         "name": name,
-        "location": { "address_line": address_line },
+        "external_id": external_id,
+        "location": {
+            "street_name": location.street_name,
+            "street_number": location.street_number,
+            "city_name": location.city_name,
+            "state_name": location.state_name,
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "reference": location.reference,
+        },
     });
     let resp = state
         .http

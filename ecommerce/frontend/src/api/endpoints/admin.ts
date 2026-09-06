@@ -239,7 +239,14 @@ export const adminEndpoint = {
   },
   point: {
     listStores: async () => api.admin.point.listStores(),
-    syncStore: async (payload: { name: string; address: string }) => api.admin.point.syncStore(payload),
+    syncStore: async (payload: {
+      name: string
+      street_name: string
+      street_number: string
+      city_name: string
+      state_name: string
+      reference?: string
+    }) => api.admin.point.syncStore(payload),
     listPos: async () => api.admin.point.listPos(),
     createPos: async (payload: { name: string; store_id: string }) => api.admin.point.createPos(payload),
     deletePos: async (id: string) => api.admin.point.deletePos(id),
