@@ -1503,7 +1503,6 @@ async fn find_jubilados_empresa_by_cnpj(state: &AppState, cnpj: &str) -> Result<
     #[derive(Deserialize)]
     struct EmpresaListItem {
         id: uuid::Uuid,
-        #[serde(rename = "cNPJ")]
         cnpj: String,
     }
     let list: Vec<EmpresaListItem> = resp
