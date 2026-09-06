@@ -237,6 +237,32 @@ export const adminEndpoint = {
     get: async (orderId: string) => api.admin.fiscal.get(orderId),
     cancel: async (orderId: string) => api.admin.fiscal.cancel(orderId),
   },
+  point: {
+    listStores: async () => api.admin.point.listStores(),
+    syncStore: async (payload: { name: string; address: string }) => api.admin.point.syncStore(payload),
+    listPos: async () => api.admin.point.listPos(),
+    createPos: async (payload: { name: string; store_id: string }) => api.admin.point.createPos(payload),
+    deletePos: async (id: string) => api.admin.point.deletePos(id),
+    listTerminals: async () => api.admin.point.listTerminals(),
+    syncTerminals: async () => api.admin.point.syncTerminals(),
+    getEmployeePos: async (role: string, id: string) => api.admin.point.getEmployeePos(role, id),
+    setEmployeePos: async (role: string, id: string, payload: { pos_ids: string[]; default_pos_id: string | null }) =>
+      api.admin.point.setEmployeePos(role, id, payload),
+    setVendedorPointTap: async (vendedorId: string, payload: { enabled: boolean; invite_email?: string | null }) =>
+      api.admin.point.setVendedorPointTap(vendedorId, payload),
+    createOrder: async (payload: {
+      pos_id: string
+      amount: number
+      comanda_id?: string | null
+      order_id?: string | null
+      idempotency_ref: string
+    }) => api.admin.point.createOrder(payload),
+    getOrder: async (id: string) => api.admin.point.getOrder(id),
+    cancelOrder: async (id: string) => api.admin.point.cancelOrder(id),
+    getOrderCharge: async (orderId: string) => api.admin.point.getOrderCharge(orderId),
+    chargeOrder: async (orderId: string, posId: string) => api.admin.point.chargeOrder(orderId, posId),
+    cancelOrderCharge: async (orderId: string) => api.admin.point.cancelOrderCharge(orderId),
+  },
   messageTemplates: {
     list: async () => validateList(MessageTemplateSchema, await api.admin.messageTemplates.list(), 'admin.messageTemplates.list'),
     save: async (key: string, payload: { body: string; enabled: boolean; trigger_delay_minutes: number }) =>

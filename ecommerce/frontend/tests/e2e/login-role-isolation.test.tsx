@@ -39,16 +39,24 @@ vi.mock('../../src/lib/api', async () => {
           }
           throw new ApiError(401, 'Credenciais inválidas')
         }),
-        vendedorLogin: vi.fn(async (email: string, password: string) => {
-          if (email === 'vendedor@sunset.com' && password === 'senha-vendedor') {
+        vendedorLogin: vi.fn(async (phone: string, password: string) => {
+          if (phone === '83999990002' && password === 'senha-vendedor') {
             return { token: 'tok-vendedor-real', name: 'Vendedor Real' }
           }
           throw new ApiError(401, 'Credenciais inválidas')
         }),
-        motoboyLogin: vi.fn(async (email: string, password: string) => {
-          if (email === 'motoboy@sunset.com' && password === 'senha-motoboy') {
+        motoboyLogin: vi.fn(async (phone: string, password: string) => {
+          if (phone === '83999990001' && password === 'senha-motoboy') {
             return { token: 'tok-motoboy-real', name: 'Motoboy Real' }
           }
+          throw new ApiError(401, 'Credenciais inválidas')
+        }),
+        // FuncionarioLogin tenta motoboy -> vendedor -> cozinha em sequência
+        // com a mesma credencial (ver src/pages/admin/FuncionarioLogin.tsx) --
+        // precisa existir mesmo quando o teste só quer testar vendedor/motoboy,
+        // senão a tentativa de cozinha (sempre a última) explode com
+        // "cozinhaLogin is not a function" antes do catch genérico da tela.
+        cozinhaLogin: vi.fn(async () => {
           throw new ApiError(401, 'Credenciais inválidas')
         }),
       },
@@ -70,6 +78,19 @@ async function submitLogin(email: string, password: string) {
   const emailInput = document.querySelector<HTMLInputElement>('input[type="email"]')!
   const passwordInput = document.querySelector<HTMLInputElement>('input[type="password"]')!
   fireEvent.change(emailInput, { target: { value: email } })
+  fireEvent.change(passwordInput, { target: { value: password } })
+  fireEvent.click(screen.getByRole('button', { name: /^entrar$/i }))
+}
+
+// FuncionarioLogin não tem mais seletor de papel nem campo de e-mail (ver
+// src/pages/admin/FuncionarioLogin.tsx) -- login único por WhatsApp+senha,
+// a tela tenta motoboy -> vendedor -> cozinha sozinha com a mesma
+// credencial. O campo de WhatsApp não tem type="tel"/"email" (só
+// inputMode="numeric"), então localiza pelo placeholder real da tela.
+async function submitFuncionarioLogin(phoneDigits: string, password: string) {
+  const phoneInput = screen.getByPlaceholderText('(83) 99999-9999')
+  const passwordInput = document.querySelector<HTMLInputElement>('input[type="password"]')!
+  fireEvent.change(phoneInput, { target: { value: phoneDigits } })
   fireEvent.change(passwordInput, { target: { value: password } })
   fireEvent.click(screen.getByRole('button', { name: /^entrar$/i }))
 }
@@ -116,8 +137,9 @@ describe('fluxo completo de login (tela → API mockada → store) não cruza se
         <FuncionarioLogin />
       </MemoryRouter>
     )
-    // aba "Vendedor" já vem selecionada por padrão
-    await submitLogin('vendedor@sunset.com', 'senha-vendedor')
+    // Sem seletor de papel -- a tela tenta motoboy primeiro (falha com essa
+    // credencial) e cai pra vendedor sozinha.
+    await submitFuncionarioLogin('83999990002', 'senha-vendedor')
 
     await waitFor(() => expect(useVendedorAuth.getState().token).toBe('tok-vendedor-real'))
     expect(useVendedorAuth.getState().name).toBe('Vendedor Real')
@@ -137,8 +159,9 @@ describe('fluxo completo de login (tela → API mockada → store) não cruza se
         <FuncionarioLogin />
       </MemoryRouter>
     )
-    fireEvent.click(screen.getByRole('button', { name: /^motoboy$/i }))
-    await submitLogin('motoboy@sunset.com', 'senha-motoboy')
+    // Sem seletor de papel -- motoboy é a primeira tentativa da tela, então
+    // acerta de primeira com a credencial certa.
+    await submitFuncionarioLogin('83999990001', 'senha-motoboy')
 
     await waitFor(() => expect(useMotoboyAuth.getState().token).toBe('tok-motoboy-real'))
     expect(useAdminAuth.getState().token).toBe('tok-admin-real')

@@ -331,6 +331,9 @@ pub fn build() -> OpenApi {
         ("/api/admin/point/orders/{id}", Get, "Status de uma cobranca Point", "Mercado Pago Point", true, false),
         ("/api/admin/point/orders/{id}/cancel", Post, "Cancelar cobranca Point pendente", "Mercado Pago Point", true, false),
         ("/api/webhooks/mercadopago-point", Post, "Webhook Mercado Pago Point (mudanca de status de Order)", "Webhooks", false, true),
+        ("/api/admin/orders/{id}/point", Get, "Status da cobranca Point de um pedido especifico", "Mercado Pago Point", true, false),
+        ("/api/admin/orders/{id}/point/charge", Post, "Cobrar um pedido especifico via Point (escolhe o POS)", "Mercado Pago Point", true, true),
+        ("/api/admin/orders/{id}/point/cancel", Post, "Cancelar cobranca Point pendente de um pedido", "Mercado Pago Point", true, false),
         // Comandas -- endurecimento (concorrencia + historico + justificativa).
         ("/api/pdv/comandas/{id}/history", Get, "Historico de alteracoes da comanda (auditoria)", "PDV", true, false),
         ("/api/pdv/comandas/{id}/items/{item_id}/replace", Post, "Substituir item da comanda (exige justificativa)", "PDV", true, true),

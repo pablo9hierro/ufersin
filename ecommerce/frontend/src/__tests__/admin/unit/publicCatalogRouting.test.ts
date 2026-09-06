@@ -4,6 +4,9 @@ const resolveTenantSlug = vi.fn(() => '')
 
 vi.mock('../../../lib/demoMode', () => ({
   isDemoModeActive: () => false,
+  isSeededDemoTenant: () => false,
+  isMutatingDemoRpc: () => false,
+  simulateDemoWrite: () => Promise.resolve(undefined),
 }))
 
 vi.mock('../../../lib/tenantConfig', () => ({

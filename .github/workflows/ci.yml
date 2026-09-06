@@ -1,8 +1,13 @@
-name: CI (Rodoletas platform)
+name: CI (Rodoletas platform + motor de loja)
 
-# Mesmo padrão já usado em ecommerce/.github/workflows/ci.yml — valida ANTES
-# do deploy pra Vercel pegar build quebrado na hora. Escopo é só backend/ e
-# frontend/ (a plataforma Rodoletas); ecommerce/ tem seu próprio workflow.
+# Valida ANTES do deploy (Railway/Vercel redeployam sozinhos a cada push em
+# main) pra pegar build quebrado na hora. Cobre os dois lados do monorepo:
+# backend/frontend (plataforma) e ecommerce/backend + ecommerce/frontend (o
+# motor de loja). Existia um ci.yml duplicado em
+# ecommerce/.github/workflows/ci.yml que nunca rodou de verdade -- GitHub
+# Actions só reconhece workflows em .github/workflows/ na RAIZ do repo, não
+# em subpastas -- por isso o motor de loja nunca teve CI real. Os jobs
+# `ecommerce-*` abaixo substituem aquele arquivo morto (removido).
 
 on:
   push:
@@ -44,3 +49,44 @@ jobs:
         run: |
           npm ci
           npm run build
+
+  ecommerce-backend:
+    name: Motor de loja - backend (cargo check + test + clippy)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ecommerce/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ecommerce/backend
+      - run: cargo check --all-targets
+      - run: cargo test
+      # Sem -D warnings de propósito: o projeto já tem débito técnico de
+      # warnings pré-existente (confirmado, ~64 no momento desta mudança)
+      # que não é escopo desta tarefa limpar -- travar CI nisso quebraria
+      # todo PR futuro por warning antigo, não pelo que a PR mudou. Roda e
+      # reporta; virar bloqueante é uma decisão separada, pra depois que o
+      # débito existente for zerado.
+      - run: cargo clippy --all-targets
+
+  ecommerce-frontend:
+    name: Motor de loja - frontend (tsc + test + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ecommerce/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ecommerce/frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

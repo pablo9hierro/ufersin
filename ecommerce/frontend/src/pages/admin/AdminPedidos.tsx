@@ -9,6 +9,7 @@ import Card from '../../components/ui/Card'
 import WhatsAppLink from '../../components/ui/WhatsAppLink'
 import DeliveryDispatchControl from '../../components/admin/DeliveryDispatchControl'
 import FiscalStatusControl from '../../components/admin/FiscalStatusControl'
+import PointChargeControl from '../../components/admin/PointChargeControl'
 import { ApiError } from '../../lib/apiError'
 import { planoAtLeast } from '../../lib/demoMode'
 import { adminService } from '../../services/adminService'
@@ -237,6 +238,7 @@ function OrderCard({
             cancelar={() => adminService.fiscal.cancel(order.id).then(() => undefined)}
           />
         )}
+        {order.payment_status === 'pendente' && <PointChargeControl orderId={order.id} />}
       </Card>
     </Reorder.Item>
   )

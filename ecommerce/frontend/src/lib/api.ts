@@ -128,6 +128,43 @@ export interface FiscalDocument {
   xmotivo: string | null
 }
 
+// Mercado Pago Point/POS -- reaproveita o mesmo token OAuth já sincronizado
+// (Pix/Cartão), Rust-only igual fiscal/delivery acima.
+export interface PointStore {
+  id: string
+  mp_store_id: string
+  name: string
+  address: string | null
+  status: string
+}
+export interface PointPos {
+  id: string
+  store_id: string | null
+  mp_pos_id: string | null
+  external_pos_id: string
+  name: string
+  status: string
+  terminal_id: string | null
+}
+export interface PointTerminal {
+  id: string
+  mp_terminal_id: string
+  pos_id: string | null
+  serial: string | null
+  model: string | null
+  operating_mode: string | null
+  status: string | null
+  last_synced_at: string | null
+}
+export interface PointEmployeePos {
+  pos_id: string
+  is_default: boolean
+}
+export interface PointOrder {
+  id: string
+  status: string
+}
+
 // Ainda usado só pro login admin/motoboy e Pix, que continuam no backend
 // Rust (Railway) até a migração de auth/Pix pra Supabase Auth/Edge Functions.
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
@@ -1251,6 +1288,49 @@ const remoteApi = {
       get: (orderId: string) => railwayAdmin<FiscalDocument | null>(`/api/admin/orders/${orderId}/fiscal`),
       cancel: (orderId: string) =>
         railwayAdmin<{ ok: boolean }>(`/api/admin/orders/${orderId}/fiscal/cancelar`, { method: 'POST' }),
+    },
+    point: {
+      listStores: () => railwayAdmin<PointStore[]>('/api/admin/point/stores'),
+      syncStore: (payload: { name: string; address: string }) =>
+        railwayAdmin<PointStore>('/api/admin/point/stores', { method: 'POST', body: JSON.stringify(payload) }),
+      listPos: () => railwayAdmin<PointPos[]>('/api/admin/point/pos'),
+      createPos: (payload: { name: string; store_id: string }) =>
+        railwayAdmin<PointPos>('/api/admin/point/pos', { method: 'POST', body: JSON.stringify(payload) }),
+      deletePos: (id: string) => railwayAdmin<{ ok: boolean }>(`/api/admin/point/pos/${id}`, { method: 'DELETE' }),
+      listTerminals: () => railwayAdmin<PointTerminal[]>('/api/admin/point/terminals'),
+      syncTerminals: () => railwayAdmin<PointTerminal[]>('/api/admin/point/terminals/sync', { method: 'POST' }),
+      getEmployeePos: (role: string, id: string) =>
+        railwayAdmin<PointEmployeePos[]>(`/api/admin/point/employees/${role}/${id}/pos`),
+      setEmployeePos: (role: string, id: string, payload: { pos_ids: string[]; default_pos_id: string | null }) =>
+        railwayAdmin<{ ok: boolean }>(`/api/admin/point/employees/${role}/${id}/pos`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
+      setVendedorPointTap: (vendedorId: string, payload: { enabled: boolean; invite_email?: string | null }) =>
+        railwayAdmin<{ ok: boolean }>(`/api/admin/point/vendedores/${vendedorId}/point-tap`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
+      createOrder: (payload: {
+        pos_id: string
+        amount: number
+        comanda_id?: string | null
+        order_id?: string | null
+        idempotency_ref: string
+      }) => railwayAdmin<PointOrder>('/api/admin/point/orders', { method: 'POST', body: JSON.stringify(payload) }),
+      getOrder: (id: string) => railwayAdmin<PointOrder>(`/api/admin/point/orders/${id}`),
+      cancelOrder: (id: string) =>
+        railwayAdmin<{ ok: boolean }>(`/api/admin/point/orders/${id}/cancel`, { method: 'POST' }),
+      // Escopado por pedido (order_id) -- usado em /admin/pedidos, mesmo
+      // padrão de fiscal.get/emitir/cancelar por order_id.
+      getOrderCharge: (orderId: string) => railwayAdmin<PointOrder>(`/api/admin/orders/${orderId}/point`),
+      chargeOrder: (orderId: string, posId: string) =>
+        railwayAdmin<PointOrder>(`/api/admin/orders/${orderId}/point/charge`, {
+          method: 'POST',
+          body: JSON.stringify({ pos_id: posId }),
+        }),
+      cancelOrderCharge: (orderId: string) =>
+        railwayAdmin<{ ok: boolean }>(`/api/admin/orders/${orderId}/point/cancel`, { method: 'POST' }),
     },
     messageTemplates: {
       list: () => railwayAdmin<MessageTemplate[]>('/api/admin/message-templates'),

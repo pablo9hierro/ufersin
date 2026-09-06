@@ -773,6 +773,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/webhooks/mercadopago-point",
             post(routes::point_webhooks::mercadopago_point_webhook),
         )
+        .route(
+            "/api/admin/orders/{id}/point",
+            get(routes::point::get_order_point),
+        )
+        .route(
+            "/api/admin/orders/{id}/point/charge",
+            post(routes::point::charge_order_point),
+        )
+        .route(
+            "/api/admin/orders/{id}/point/cancel",
+            post(routes::point::cancel_order_point),
+        )
         .route("/api/admin/financeiro", get(routes::admin::financeiro))
         .route("/api/admin/financeiro/lucro", get(routes::admin::financeiro_lucro))
         .route("/api/admin/whatsapp/status", get(routes::admin::whatsapp_status))

@@ -550,3 +550,152 @@ pub async fn cancel_order(
         .await?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
+
+// ---------- Cobrança Point escopada por pedido (order_id) ----------
+//
+// Mesmo padrão de fiscal.rs (GET/emitir/cancelar por order_id) -- usado por
+// AdminPedidos.tsx pra cobrar via maquininha um pedido específico, sem o
+// admin precisar saber o id interno da mp_point_order.
+
+#[derive(Debug, Serialize)]
+pub struct OrderPointDto {
+    pub id: String,
+    pub status: String,
+}
+
+pub async fn get_order_point(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(order_id): Path<String>,
+) -> Result<Json<OrderPointDto>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let row: Option<(String, String)> = sqlx::query_as(
+        "SELECT id, status FROM mp_point_orders WHERE tenant_id = $1 AND order_id = $2 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&order_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((id, status)) = row else {
+        return Err(AppError::NotFound("nenhuma cobrança Point pra este pedido".to_string()));
+    };
+    Ok(Json(OrderPointDto { id, status }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChargeOrderPointInput {
+    pub pos_id: String,
+}
+
+pub async fn charge_order_point(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+    Path(order_id): Path<String>,
+    Json(input): Json<ChargeOrderPointInput>,
+) -> Result<Json<OrderPointDto>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+
+    let order: Option<(f64,)> = sqlx::query_as("SELECT total FROM orders WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&order_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((amount,)) = order else {
+        return Err(AppError::NotFound("pedido não encontrado".to_string()));
+    };
+
+    let pos: Option<(String,)> = sqlx::query_as(
+        "SELECT external_pos_id FROM mp_point_pos WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&input.pos_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((external_pos_id,)) = pos else {
+        return Err(AppError::BadRequest("O caixa (POS) selecionado não pertence a esta loja.".to_string()));
+    };
+
+    let employee = EmployeeRef { role: claims.role.clone(), id: claims.sub.clone() };
+    if employee.role != "admin" {
+        let allowed: Vec<(String,)> = sqlx::query_as(
+            "SELECT pos_id FROM mp_point_employee_pos WHERE tenant_id = $1 AND employee_role = $2 AND employee_id = $3",
+        )
+        .bind(&claims.tenant_id)
+        .bind(&employee.role)
+        .bind(&employee.id)
+        .fetch_all(&state.pool)
+        .await?;
+        let allowed_ids: Vec<String> = allowed.into_iter().map(|(p,)| p).collect();
+        if !employee_can_use_pos(&employee, &allowed_ids, &input.pos_id) {
+            return Err(AppError::Forbidden("Você não tem permissão para usar este caixa (POS).".to_string()));
+        }
+    }
+
+    let (token, _payment) = access_token(&state, &claims.tenant_id).await?;
+
+    // idempotency_ref = o próprio order_id -- nunca duas cobranças ativas
+    // pro mesmo pedido, mesmo padrão de fiscal_documents/deliveries.
+    let id = Uuid::new_v4().to_string();
+    let inserted: Option<(String,)> = sqlx::query_as(
+        "INSERT INTO mp_point_orders \
+           (id, tenant_id, pos_id, order_id, employee_role, employee_id, amount, status, external_reference) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'created', $4) \
+         ON CONFLICT (external_reference) WHERE status NOT IN ('canceled', 'rejected', 'failed') DO NOTHING \
+         RETURNING id",
+    )
+    .bind(&id)
+    .bind(&claims.tenant_id)
+    .bind(&input.pos_id)
+    .bind(&order_id)
+    .bind(&employee.role)
+    .bind(&employee.id)
+    .bind(amount)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((id,)) = inserted else {
+        return Err(AppError::Conflict("Já existe uma cobrança em andamento para este pedido.".to_string()));
+    };
+
+    let result = point_client::create_order(&state, &token, &external_pos_id, amount, &order_id, "Cobrança Resolutoo").await;
+    let (status, mp_order_id) = match &result {
+        Ok(r) => (PointOrderStatus::from_mp_status(r.status.as_deref().unwrap_or("created")), Some(r.id.clone())),
+        Err(_) => (PointOrderStatus::Failed, None),
+    };
+    sqlx::query("UPDATE mp_point_orders SET status = $1, mp_order_id = $2, updated_at = now()::text WHERE id = $3")
+        .bind(status.as_str())
+        .bind(&mp_order_id)
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+
+    match result {
+        Ok(_) => Ok(Json(OrderPointDto { id, status: status.as_str().to_string() })),
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn cancel_order_point(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(order_id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT id, mp_order_id FROM mp_point_orders \
+         WHERE tenant_id = $1 AND order_id = $2 AND status IN ('created', 'pending', 'in_process')",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&order_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((id, Some(mp_order_id))) = row else {
+        return Err(AppError::NotFound("Não existe cobrança Point pendente pra cancelar neste pedido.".to_string()));
+    };
+    let (token, _payment) = access_token(&state, &claims.tenant_id).await?;
+    point_client::cancel_order(&state, &token, &mp_order_id).await?;
+    sqlx::query("UPDATE mp_point_orders SET status = 'canceled', updated_at = now()::text WHERE id = $1")
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}

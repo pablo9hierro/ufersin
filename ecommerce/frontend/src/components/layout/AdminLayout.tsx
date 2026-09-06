@@ -17,6 +17,7 @@ import {
   Send,
   Settings,
   ShoppingCart,
+  Store,
   Truck,
   Users,
   Wallet,
@@ -70,6 +71,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'essential', hideAtOrAbove: 'management' },
   { href: '/admin/entregas-terceirizadas', label: 'Entregas terceirizadas', icon: Send, requiredPlan: 'essential' },
   { href: '/admin/fiscal', label: 'Fiscal', icon: FileText, requiredPlan: 'essential' },
+  { href: '/admin/mercadopago-point', label: 'Mercado Pago Point', icon: Store, requiredPlan: 'essential' },
   { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
   { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar, requiredPlan: 'essential' },
   { href: '/admin/template', label: 'Mensagens', icon: MessageSquareText, requiredPlan: 'essential' },
@@ -96,6 +98,7 @@ const NAV_GROUPS: Record<string, { id: string; label: string }> = {
   '/admin/frete': { id: 'cadastros', label: 'Cadastros' },
   '/admin/entregas-terceirizadas': { id: 'cadastros', label: 'Cadastros' },
   '/admin/fiscal': { id: 'cadastros', label: 'Cadastros' },
+  '/admin/mercadopago-point': { id: 'cadastros', label: 'Cadastros' },
   '/admin/template': { id: 'cadastros', label: 'Cadastros' },
   '/admin/motoboys': { id: 'cadastros', label: 'Cadastros' },
 }
@@ -205,6 +208,8 @@ export default function AdminLayout() {
   const [deliveryEnabled, setDeliveryEnabled] = useState(false)
   // Mesma lógica: Feature::EmissaoFiscal ainda em beta, só por feature_flags.
   const [fiscalEnabled, setFiscalEnabled] = useState(false)
+  // Mesma lógica: Feature::MercadoPagoPoint ainda em beta, só por feature_flags.
+  const [pointEnabled, setPointEnabled] = useState(false)
 
   const hoursDoneRef = useRef(hoursDone)
   const gateLockedRef = useRef(gateLocked)
@@ -421,6 +426,22 @@ export default function AdminLayout() {
     }
   }, [demo, effectiveToken])
 
+  useEffect(() => {
+    if (demo || !effectiveToken) return
+    let cancelled = false
+    adminService.point
+      .listStores()
+      .then(() => {
+        if (!cancelled) setPointEnabled(true)
+      })
+      .catch(() => {
+        if (!cancelled) setPointEnabled(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [demo, effectiveToken])
+
   if (!effectiveToken || tenantMismatch) return <Navigate to="/admin/login" state={{ from: location }} replace />
 
   // Wait for Resolutoo tenant-config before rendering the shell — cancelado
@@ -529,6 +550,7 @@ export default function AdminLayout() {
     // (feature_flags) — nunca por plano/slug hardcoded aqui.
     if (i.href === '/admin/entregas-terceirizadas' && !deliveryEnabled) return false
     if (i.href === '/admin/fiscal' && !fiscalEnabled) return false
+    if (i.href === '/admin/mercadopago-point' && !pointEnabled) return false
     // Funcionários (motoboy/vendedor/cozinha): management+ sempre libera;
     // essential libera só se o lojista marcou precisar de algum desses em
     // /meu-plano (mesma necessidade que libera o backend via feature_flags).
