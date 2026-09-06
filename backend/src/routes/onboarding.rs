@@ -1462,6 +1462,13 @@ async fn upsert_jubilados_empresa(
     }
     .map_err(|e| AppError::Internal(format!("jubilados empresa request failed: {e}")))?;
 
+    // Empresa já existe no Jubilados com este CNPJ (cenário real: tentativa
+    // anterior criou lá mas falhou antes de persistir o id aqui) -- busca
+    // pelo CNPJ em vez de travar num 409 pra sempre.
+    if resp.status() == reqwest::StatusCode::CONFLICT && existing_empresa_id.is_none() {
+        return find_jubilados_empresa_by_cnpj(state, &body.cnpj).await;
+    }
+
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
@@ -1476,6 +1483,38 @@ async fn upsert_jubilados_empresa(
         .await
         .map_err(|e| AppError::Internal(format!("jubilados empresa parse failed: {e}")))?;
     Ok(parsed.id.to_string())
+}
+
+/// Não existe endpoint de busca por CNPJ no Jubilados -- só listar e
+/// filtrar (confirmado lendo `EmpresaController.ListarAsync`, que devolve
+/// CNPJ de toda empresa). Usado só como recuperação do cenário acima.
+async fn find_jubilados_empresa_by_cnpj(state: &AppState, cnpj: &str) -> Result<String, AppError> {
+    let base = state.jubilados_api_url.trim_end_matches('/');
+    let resp = state
+        .http
+        .get(format!("{base}/api/empresa"))
+        .header("x-internal-key", state.jubilados_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("jubilados empresa list failed: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(AppError::Internal("jubilados empresa list failed".to_string()));
+    }
+    #[derive(Deserialize)]
+    struct EmpresaListItem {
+        id: uuid::Uuid,
+        #[serde(rename = "cNPJ")]
+        cnpj: String,
+    }
+    let list: Vec<EmpresaListItem> = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("jubilados empresa list parse failed: {e}")))?;
+    let digits: String = cnpj.chars().filter(char::is_ascii_digit).collect();
+    list.into_iter()
+        .find(|e| e.cnpj.chars().filter(char::is_ascii_digit).collect::<String>() == digits)
+        .map(|e| e.id.to_string())
+        .ok_or_else(|| AppError::Internal("empresa com este CNPJ não encontrada no Jubilados".to_string()))
 }
 
 /// Espelho de `sync_delivery_preference` — reflete o `jubilados_empresa_id`
