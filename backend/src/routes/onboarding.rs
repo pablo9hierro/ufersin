@@ -1390,7 +1390,7 @@ pub async fn salvar_fiscal_config(
     let empresa_id = upsert_jubilados_empresa(&state, existing_empresa_id.as_deref(), &body).await?;
 
     sqlx::query(
-        "UPDATE subscribers SET jubilados_empresa_id = $1, fiscal_cnpj = $2, fiscal_razao_social = $3, \
+        "UPDATE subscribers SET jubilados_empresa_id = $1::uuid, fiscal_cnpj = $2, fiscal_razao_social = $3, \
            fiscal_nome_fantasia = $4, fiscal_inscricao_estadual = $5, fiscal_logradouro = $6, fiscal_numero = $7, \
            fiscal_complemento = $8, fiscal_bairro = $9, fiscal_municipio = $10, fiscal_uf = $11, fiscal_cep = $12, \
            fiscal_regime_tributario = $13, fiscal_crt = $14, fiscal_ambiente = $15, updated_at = now() \
