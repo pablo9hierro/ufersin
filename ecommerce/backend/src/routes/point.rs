@@ -220,8 +220,10 @@ pub async fn create_pos(
     };
 
     // external_pos_id gerado aqui, único por tenant -- é o que garante
-    // idempotência do lado da Mercado Pago numa nova tentativa.
-    let external_pos_id = Uuid::new_v4().to_string();
+    // idempotência do lado da Mercado Pago numa nova tentativa. UUID sem
+    // hífen -- confirmado testando de verdade que o formato com hífen é
+    // rejeitado ("external_id does not meet the expected format").
+    let external_pos_id = Uuid::new_v4().simple().to_string();
     let mp_pos = point_client::create_pos(&state, &token, &input.name, &external_pos_id, &mp_store_id).await?;
 
     let id = Uuid::new_v4().to_string();

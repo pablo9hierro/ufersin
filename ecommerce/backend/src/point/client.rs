@@ -149,12 +149,20 @@ pub async fn create_pos(
     external_pos_id: &str,
     store_id: &str,
 ) -> Result<MpPos, AppError> {
+    // "fixed_amount" existe na doc só pro modo QR Code estático -- POS de
+    // Point (terminal físico) rejeita esse campo (confirmado testando de
+    // verdade: "additionalProperties 'fixed_amount' not allowed"). Também
+    // não manda "external_store_id" solto -- redundante com "store_id".
+    // "store_id" é numérico na API real (exemplo oficial: 1234567), não
+    // string -- o `mp_store_id` que guardamos localmente vem como texto,
+    // então parseia aqui.
+    let store_id_num: i64 = store_id
+        .parse()
+        .map_err(|_| AppError::Internal(format!("mp_store_id inesperado (não numérico): {store_id}")))?;
     let body = json!({
         "name": name,
-        "fixed_amount": false,
-        "external_store_id": store_id,
         "external_id": external_pos_id,
-        "store_id": store_id,
+        "store_id": store_id_num,
     });
     let resp = state
         .http
