@@ -21,6 +21,28 @@ async fn require_beta(pool: &sqlx::PgPool, tenant_id: &str) -> Result<(), AppErr
     features::require_feature(pool, tenant_id, Feature::MercadoPagoPoint).await
 }
 
+/// Auto-ativação da beta pro próprio tenant -- só grava em `feature_flags`
+/// pro `claims.tenant_id` do próprio admin autenticado (nunca outro
+/// tenant). Existe pra não depender do endpoint interno genérico (que
+/// exige INTERNAL_API_KEY e não cobre feature codes arbitrários) só pra
+/// ligar uma feature em beta -- mesmo espírito de "beta opt-in" que features
+/// como fiscal/delivery hoje só ligam via sync da plataforma.
+pub async fn enable_beta(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    sqlx::query(
+        "INSERT INTO feature_flags (id, tenant_id, feature_code, enabled) \
+         VALUES ($1, $2, 'mercadopago_point', true) \
+         ON CONFLICT (tenant_id, feature_code) DO UPDATE SET enabled = true",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&claims.tenant_id)
+    .execute(&state.pool)
+    .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 async fn access_token(state: &AppState, tenant_id: &str) -> Result<(String, tenant::TenantPayment), AppError> {
     let payment = tenant::load_tenant_payment(&state.pool, tenant_id).await?;
     let token = payment.mp_access_token().map(str::to_string).ok_or_else(|| {

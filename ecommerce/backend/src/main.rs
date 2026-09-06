@@ -742,6 +742,10 @@ async fn main() -> anyhow::Result<()> {
             axum::routing::delete(routes::point::delete_pos),
         )
         .route(
+            "/api/admin/point/enable-beta",
+            post(routes::point::enable_beta),
+        )
+        .route(
             "/api/admin/point/terminals",
             get(routes::point::list_terminals),
         )

@@ -322,6 +322,7 @@ pub fn build() -> OpenApi {
         ("/api/admin/point/pos", Get, "Listar caixas (POS) do tenant", "Mercado Pago Point", true, false),
         ("/api/admin/point/pos", Post, "Criar caixa (POS) associado a uma loja", "Mercado Pago Point", true, true),
         ("/api/admin/point/pos/{id}", Delete, "Remover caixa (POS)", "Mercado Pago Point", true, false),
+        ("/api/admin/point/enable-beta", Post, "Auto-ativar a beta do Mercado Pago Point pro proprio tenant", "Mercado Pago Point", true, false),
         ("/api/admin/point/terminals", Get, "Listar terminais (maquininhas) espelhados localmente", "Mercado Pago Point", true, false),
         ("/api/admin/point/terminals/sync", Post, "Sincronizar terminais com a Mercado Pago (GET /terminals/v1/list)", "Mercado Pago Point", true, false),
         ("/api/admin/point/employees/{role}/{id}/pos", Get, "Caixas (POS) permitidos de um funcionario", "Mercado Pago Point", true, false),
