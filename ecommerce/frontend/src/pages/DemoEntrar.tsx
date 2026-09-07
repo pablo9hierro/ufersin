@@ -47,6 +47,11 @@ export default function DemoEntrar() {
   const adminName = searchParams.get('name')
   const planoParam = searchParams.get('plano') as PlanoCode | null
   const plano = planoParam === 'essential' || planoParam === 'management' || planoParam === 'premium' ? planoParam : null
+  // Preview 1:1 de um recurso específico da landing (ex: `next=/admin/fiscal`)
+  // -- só aceita path interno (nunca URL externa), demo mock local não tem
+  // dado sensível de tenant real pra vazar.
+  const nextParam = searchParams.get('next')
+  const next = nextParam && nextParam.startsWith('/') ? nextParam : null
   // Não navegar antes de ativar demo + staff session — senão AdminLayout
   // via real API / sem token e o 401 mandava pra /admin/login.
   const [ready, setReady] = useState(false)
@@ -118,9 +123,9 @@ export default function DemoEntrar() {
   }
 
   if (role === 'vitrine' && plano) return <Navigate to="/" replace />
-  if (role === 'admin') return <Navigate to="/admin/pedidos" replace />
-  if (role === 'motoboy') return <Navigate to="/funcionarios/motoboy" replace />
-  if (role === 'vendedor') return <Navigate to="/funcionarios/vendedor/pdv" replace />
+  if (role === 'admin') return <Navigate to={next || '/admin/pedidos'} replace />
+  if (role === 'motoboy') return <Navigate to={next || '/funcionarios/motoboy'} replace />
+  if (role === 'vendedor') return <Navigate to={next || '/funcionarios/vendedor/pdv'} replace />
 
   return (
     <main className="min-h-screen bg-son-black flex items-center justify-center">
