@@ -68,6 +68,10 @@ export default function DemoEntrar() {
       return
     }
     if (plano) {
+      // Purga sessão real que porventura esteja no localStorage global
+      // (ex: preview 1:1 da landing, que loga de verdade contra
+      // demo-ecommerce) -- senão a demo mockada herda tenant/token real.
+      useAdminAuth.getState().logout()
       activateDemoMode(plano)
       if (role === 'admin') {
         setDemoStaffSession({

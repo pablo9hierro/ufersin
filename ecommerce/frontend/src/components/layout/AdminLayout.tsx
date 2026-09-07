@@ -135,7 +135,13 @@ export default function AdminLayout() {
   const demo = isDemoModeActive()
   const demoStaff = getDemoStaffSession()
   const demoAdmin = demo && demoStaff?.role === 'admin'
-  const effectiveToken = token || (demoAdmin ? demoStaff!.token : null)
+  // Mock demo (activateDemoMode) tem que SEMPRE vencer um `token` real que
+  // porventura esteja parado no localStorage global (resolutoo_loja_admin_auth,
+  // compartilhado pela origem inteira -- ex: sobra do preview 1:1 da landing,
+  // que loga de verdade contra demo-ecommerce). Sem isso, abrir /demo depois
+  // de ter usado o preview herdava o tenant/token real errado (BUG real
+  // visto ao vivo: demo de eletrônica renderizando dado de demo-ecommerce).
+  const effectiveToken = demoAdmin ? demoStaff!.token : token
   const effectiveName = demoAdmin ? demoStaff!.name : name
   // Preview 1:1 da landing (SystemsShowcase.tsx): loga com JWT real contra
   // demo-ecommerce/demo-eletronica, tenants seedados que nunca têm assinatura
