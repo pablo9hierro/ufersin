@@ -469,8 +469,31 @@ async function fetchTenantConfigFromApi(slug: string): Promise<TenantConfig | nu
   }
 }
 
+/** Tenants seedados só no ecommerce-api pro preview 1:1 da landing
+ * (SystemsShowcase.tsx) -- nunca têm assinatura na plataforma, então as
+ * 3 tentativas de rede abaixo sempre falhavam antes de cair no fallback
+ * "loja offline". Config sintética instantânea, sem round-trip nenhum. */
+const PREVIEW_TENANT_CONFIG: Record<string, Partial<TenantConfig>> = {
+  'demo-ecommerce': { vertical: 'ecommerce' },
+  'demo-eletronica': { vertical: 'eletronicos' },
+}
+
 async function fetchTenantConfig(slug: string): Promise<TenantConfig> {
   if (!slug) return DEFAULT_CONFIG
+  const preview = PREVIEW_TENANT_CONFIG[slug]
+  if (preview) {
+    return {
+      ...DEFAULT_CONFIG,
+      ...preview,
+      slug,
+      loja_nome: slug === 'demo-eletronica' ? 'Demo Eletrônica' : 'Demo Ecommerce',
+      ativa: true,
+      plano: 'premium',
+      forma_pagamento: 'plataforma',
+      plataforma_pagamento: 'mercado_pago',
+      plataforma_oauth: true,
+    }
+  }
 
   // BUG-017: um único blip (timeout de cold-start, RPC do Supabase demorando
   // pra responder, rede instável) fazia as duas fontes falharem juntas UMA

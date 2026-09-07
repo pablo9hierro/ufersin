@@ -92,7 +92,9 @@ export default function SystemsShowcase() {
     setPreviewError(null)
     // Sessão real (JWT de verdade) contra o tenant demo-ecommerce seedado em
     // produção -- não é mock local. É a tela de admin de verdade rodando.
-    fetchDemoAdminAutoLoginUrl('ecommerce', open.path)
+    // previewMode=1 esconde a navegação (sidebar/tabs) -- o card é estático,
+    // só mostra a tela em si, sem deixar "andar" pra outra página do painel.
+    fetchDemoAdminAutoLoginUrl('ecommerce', `${open.path}?previewMode=1`)
       .then((url) => {
         if (!cancelled) setSrc(url)
       })

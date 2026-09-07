@@ -599,6 +599,11 @@ export default function AdminLayout() {
   }, null)
 
   const lojaLabel = tenantConfig?.loja_nome?.trim() || tenantConfig?.slug || null
+  // Preview 1:1 da landing (SystemsShowcase.tsx, iframe estático): esconde
+  // navegação (sidebar/tabs mobile/sair) pra travar o visitante na própria
+  // tela -- ele pode interagir com os componentes da tela (tabs internas,
+  // filtros), mas não pode "andar" pra outra tela do painel.
+  const previewMode = new URLSearchParams(location.search).get('previewMode') === '1'
 
   const groupActiveIds = new Set(
     visibleItems.filter((i) => i.href === activeHref && NAV_GROUPS[i.href]).map((i) => NAV_GROUPS[i.href].id)
@@ -606,6 +611,7 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-son-black text-white flex">
+      {previewMode ? null : (
       <aside className="hidden md:flex md:flex-col w-56 shrink-0 bg-son-surface border-r border-white/5 min-h-screen sticky top-0">
         <div className="px-5 py-5 border-b border-white/5">
           <div className="flex items-center justify-between">
@@ -677,8 +683,10 @@ export default function AdminLayout() {
           </button>
         </div>
       </aside>
+      )}
 
       <div className="flex-1 min-w-0">
+        {previewMode ? null : (
         <header className="md:hidden bg-son-surface border-b border-white/5 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
           <Logo size="sm" />
           <div className="flex items-center gap-2">
@@ -689,6 +697,8 @@ export default function AdminLayout() {
             </button>
           </div>
         </header>
+        )}
+        {previewMode ? null : (
         <nav className="md:hidden flex gap-2 overflow-x-auto px-4 py-3 bg-son-black border-b border-white/5 scrollbar-hide sticky top-[65px] z-10">
           {visibleItems.map(({ href, label, icon: Icon }) => {
             const active = href === activeHref
@@ -706,6 +716,7 @@ export default function AdminLayout() {
             )
           })}
         </nav>
+        )}
         <main className="p-5 sm:p-8 max-w-6xl mx-auto">
           <Suspense fallback={<AdminRouteFallback />}>
             <Outlet />
