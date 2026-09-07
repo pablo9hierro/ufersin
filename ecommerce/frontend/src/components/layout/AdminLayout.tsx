@@ -137,10 +137,18 @@ export default function AdminLayout() {
   const demoAdmin = demo && demoStaff?.role === 'admin'
   const effectiveToken = token || (demoAdmin ? demoStaff!.token : null)
   const effectiveName = demoAdmin ? demoStaff!.name : name
+  // Preview 1:1 da landing (SystemsShowcase.tsx): loga com JWT real contra
+  // demo-ecommerce/demo-eletronica, tenants seedados que nunca têm assinatura
+  // ativa na plataforma (não são lojista de verdade) -- sem isso, os gates de
+  // assinatura/Mercado Pago abaixo (pensados pro lojista real) derrubavam o
+  // preview pro /admin/login. Só afeta esses dois slugs fixos, nunca um
+  // tenant real.
+  const isSeededPreviewTenant = tenantSlug === 'demo-ecommerce' || tenantSlug === 'demo-eletronica'
+  const skipOperationalGates = demo || isSeededPreviewTenant
   // BUG-015: token de um tenant ficava "válido" ao navegar/clicar pra
   // outro tenant sem logout explícito, porque a sessão de admin é um único
   // registro global no localStorage. Ver detectAdminTenantMismatch.
-  const tenantMismatch = !demo && detectAdminTenantMismatch(token, tenantSlug)
+  const tenantMismatch = !skipOperationalGates && detectAdminTenantMismatch(token, tenantSlug)
 
   useEffect(() => {
     if (tenantMismatch) {
@@ -163,7 +171,7 @@ export default function AdminLayout() {
     tenantConfig?.forma_pagamento === 'plataforma' &&
     (tenantConfig?.plataforma_pagamento !== 'mercado_pago' || tenantConfig?.plataforma_oauth === true)
   const tenantReady = tenantConfig != null
-  const lojaOffline = !demo && tenantReady && tenantConfig?.ativa === false
+  const lojaOffline = !skipOperationalGates && tenantReady && tenantConfig?.ativa === false
 
   // Assinatura não ativa (cancelado / sem config Resolutoo): derruba sessão
   // mesmo com JWT antigo ainda no localStorage.
@@ -181,15 +189,15 @@ export default function AdminLayout() {
   // continua valendo: um tenant eletronicos acessando /loja/admin caía
   // neste painel de produto/pedido/PDV, que não é o dele.
   useEffect(() => {
-    if (demo || !tenantReady) return
+    if (skipOperationalGates || !tenantReady) return
     if (tenantConfig?.vertical === 'eletronicos' && !window.location.pathname.startsWith('/loja/admin-eletronica')) {
       navigate(`/admin-eletronica${withTenantSearch()}`, { replace: true })
     }
-  }, [demo, tenantReady, tenantConfig?.vertical, navigate])
+  }, [skipOperationalGates, tenantReady, tenantConfig?.vertical, navigate])
 
   // null = ainda checando; true = gate ativo; false = liberado
   const [gateLocked, setGateLocked] = useState<boolean | null>(() => {
-    if (demo) return false
+    if (skipOperationalGates) return false
     const slug = resolveTenantSlug()
     if (
       gateSession &&
@@ -252,7 +260,7 @@ export default function AdminLayout() {
   /** Initial mount + full re-eval. Waits for a definitive WA reading (no false unlock). */
   const bootstrapGate = useCallback(
     async (signal?: AbortSignal) => {
-      if (demo) {
+      if (skipOperationalGates) {
         setGateLocked(false)
         return
       }
@@ -327,7 +335,7 @@ export default function AdminLayout() {
         persistGate(true, hours)
       }
     },
-    [demo, tenantReady, whatsappRequired, applyVerdict, persistGate],
+    [skipOperationalGates, tenantReady, whatsappRequired, applyVerdict, persistGate],
   )
 
   useEffect(() => {
@@ -339,7 +347,7 @@ export default function AdminLayout() {
   // Manual disconnect is authoritative (immediate lock). Connected events only hint —
   // we re-fetch and still require a definitive `open` (no optimistic unlock).
   useEffect(() => {
-    if (demo || !whatsappRequired) return
+    if (skipOperationalGates || !whatsappRequired) return
     return subscribeWhatsAppGateChange((connected) => {
       if (!connected) {
         debouncerRef.current.force('closed')
@@ -360,12 +368,12 @@ export default function AdminLayout() {
         }
       })()
     })
-  }, [demo, whatsappRequired, applyVerdict])
+  }, [skipOperationalGates, whatsappRequired, applyVerdict])
 
   // While unlocked: poll for definitive disconnect only (debounced).
   // While locked: OnboardingGate owns unlock-on-open; avoid dual poll fight.
   useEffect(() => {
-    if (demo || !whatsappRequired || gateLocked !== false) return
+    if (skipOperationalGates || !whatsappRequired || gateLocked !== false) return
 
     const checkWa = async () => {
       try {
@@ -392,7 +400,7 @@ export default function AdminLayout() {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)
     }
-  }, [demo, whatsappRequired, gateLocked, applyVerdict])
+  }, [skipOperationalGates, whatsappRequired, gateLocked, applyVerdict])
 
   useEffect(() => {
     if (demo || !effectiveToken) return
@@ -446,7 +454,7 @@ export default function AdminLayout() {
 
   // Wait for Resolutoo tenant-config before rendering the shell — cancelado
   // must not flash the painel from a warm WA-gate session cache.
-  if (!demo && !tenantReady) {
+  if (!skipOperationalGates && !tenantReady) {
     return (
       <div className="min-h-screen bg-son-black flex items-center justify-center text-son-silver-dim text-sm">
         Carregando…
@@ -484,7 +492,7 @@ export default function AdminLayout() {
     )
   }
 
-  if (!demo && tenantReady && !paymentGatewayConnected) {
+  if (!skipOperationalGates && tenantReady && !paymentGatewayConnected) {
     return (
       <div className="min-h-screen bg-son-black text-white flex flex-col items-center">
         <header className="w-full px-5 py-8 sm:py-10 border-b border-white/5 bg-son-surface">
