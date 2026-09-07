@@ -49,8 +49,9 @@ export function demoExperienceUrl(role: DemoRole, plano: string): string {
  * URL interna do motor embutido — só usada pelo iframe de DemoExperience.
  * Já autentica com mock (nunca /admin/login).
  */
-export function demoEntrarUrl(role: DemoRole, plano: string): string {
+export function demoEntrarUrl(role: DemoRole, plano: string, next?: string): string {
   const q = new URLSearchParams({ role, plano })
+  if (next) q.set('next', next)
   return `${demoLojaUrl()}/demo-entrar?${q.toString()}`
 }
 
@@ -82,7 +83,10 @@ function ecommerceApiUrl(): string {
  * Isolado por tenant: o backend resolve o slug pelo `vertical` e o token
  * só carrega o tenant_id daquele tenant — nunca dá acesso a outra loja.
  */
-export async function fetchDemoAdminAutoLoginUrl(vertical: 'eletronica' | 'ecommerce'): Promise<string> {
+export async function fetchDemoAdminAutoLoginUrl(
+  vertical: 'eletronica' | 'ecommerce',
+  next?: string,
+): Promise<string> {
   const res = await fetch(`${ecommerceApiUrl()}/demo/tokens?vertical=${vertical}`)
   if (!res.ok) throw new Error('Falha ao emitir token de acesso da demo.')
   const data: { admin_token: string; tenant_slug: string; admin_name: string } = await res.json()
@@ -92,6 +96,7 @@ export async function fetchDemoAdminAutoLoginUrl(vertical: 'eletronica' | 'ecomm
     tenantSlug: data.tenant_slug,
     name: data.admin_name,
   })
+  if (next) q.set('next', next)
   return `${demoLojaUrl()}/demo-entrar?${q.toString()}`
 }
 

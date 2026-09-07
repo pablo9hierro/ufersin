@@ -1,16 +1,8 @@
-import { useState, type ReactElement } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import {
-  Bike,
-  ChefHat,
-  ClipboardList,
-  CreditCard,
-  FileText,
-  Package,
-  ShoppingBag,
-  Wrench,
-} from 'lucide-react'
+import { Bike, ChefHat, ClipboardList, CreditCard, FileText, Loader2, Package, ShoppingBag, Wrench } from 'lucide-react'
 import { CmsText } from '../../lib/cms'
+import { fetchDemoAdminAutoLoginUrl } from '../../lib/ecommerceUrl'
 import FeaturePreviewDialog from './FeaturePreviewDialog'
 
 type Item = {
@@ -18,11 +10,9 @@ type Item = {
   icon: typeof FileText
   title: string
   desc: string
-  preview: () => ReactElement
-}
-
-function MockCard({ children }: { children: React.ReactNode }) {
-  return <div className="bg-uf-surface border border-white/10 rounded-xl p-4 text-sm">{children}</div>
+  /** Rota real do painel admin (motor de loja) -- carregada num iframe
+   * autenticado em modo demo, é a tela de verdade, não print/mockup. */
+  path: string
 }
 
 const ITEMS: Item[] = [
@@ -31,130 +21,82 @@ const ITEMS: Item[] = [
     icon: FileText,
     title: 'Nota fiscal (NF-e/NFC-e)',
     desc: 'Emissão automática assim que o pagamento cai. Nunca mais tirar nota na mão.',
-    preview: () => (
-      <MockCard>
-        <p className="font-mono text-xs text-uf-silver-dim mb-2">Pedido #4821 — pago</p>
-        <div className="flex items-center justify-between border-t border-white/10 pt-2">
-          <span>NF-e emitida</span>
-          <span className="text-emerald-400 font-semibold">autorizada</span>
-        </div>
-        <p className="text-xs text-uf-silver-dim mt-2 break-all">chave: 3526...9012 · protocolo real da SEFAZ</p>
-      </MockCard>
-    ),
+    path: '/admin/fiscal',
   },
   {
     key: 'systems.servicos',
     icon: Wrench,
     title: 'Catálogo de serviços',
     desc: 'Vende produto e serviço na mesma vitrine, sem precisar de outro sistema.',
-    preview: () => (
-      <MockCard>
-        <p className="mb-2 font-semibold">Troca de tela — iPhone 13</p>
-        <p className="text-uf-silver-dim text-xs">Peça vinculada: Tela iPhone 13 (estoque: 4un)</p>
-        <p className="text-uf-blue font-bold mt-2">R$ 349,00</p>
-      </MockCard>
-    ),
+    path: '/admin/produtos/servicos',
   },
   {
     key: 'systems.formulacao',
     icon: Package,
-    title: 'Ficha técnica de produto',
+    title: 'Ficha técnica e estoque',
     desc: 'Cadastra os insumos de um produto e o estoque final é calculado sozinho.',
-    preview: () => (
-      <MockCard>
-        <p className="font-semibold mb-2">Combo Lanche + Suco</p>
-        <ul className="space-y-1 text-xs text-uf-silver-dim">
-          <li>Pão — 1un</li>
-          <li>Carne — 150g</li>
-          <li>Suco — 300ml</li>
-        </ul>
-        <p className="text-xs text-emerald-400 mt-2">Estoque disponível: calculado pelo insumo mais baixo</p>
-      </MockCard>
-    ),
+    path: '/admin/estoque',
   },
   {
     key: 'systems.estoque-servico',
     icon: ClipboardList,
-    title: 'Estoque baixado pelo serviço',
-    desc: 'Concluiu o serviço, a peça usada sai do estoque na hora — sem lançar nada manual.',
-    preview: () => (
-      <MockCard>
-        <p className="font-semibold mb-2">OS #118 concluída</p>
-        <div className="flex items-center justify-between text-xs">
-          <span>Tela iPhone 13</span>
-          <span className="text-uf-silver-dim">4un → 3un</span>
-        </div>
-      </MockCard>
-    ),
+    title: 'Serviço vinculado a estoque',
+    desc: 'Liga uma peça ao serviço — ao concluir, o estoque baixa sozinho, sem lançar nada manual.',
+    path: '/admin/produtos/servicos',
   },
   {
     key: 'systems.uber',
     icon: Bike,
     title: 'Uber Direct nativo',
     desc: 'Chama o entregador direto do painel e acompanha a corrida em tempo real, sem app terceiro.',
-    preview: () => (
-      <MockCard>
-        <p className="font-semibold mb-2">Entrega #92 — a caminho</p>
-        <div className="h-20 rounded-lg bg-gradient-to-br from-uf-blue/20 to-transparent border border-white/10 flex items-center justify-center text-xs text-uf-silver-dim">
-          mapa com localização do entregador em tempo real
-        </div>
-        <p className="text-xs text-uf-silver-dim mt-2">Chegada estimada: 12 min</p>
-      </MockCard>
-    ),
+    path: '/admin/entregas-terceirizadas',
   },
   {
     key: 'systems.point',
     icon: CreditCard,
     title: 'Mercado Pago Point',
     desc: 'Cobra na maquininha direto do pedido — sem sair do painel pra outro app.',
-    preview: () => (
-      <MockCard>
-        <p className="font-semibold mb-2">Cobrar R$ 87,90</p>
-        <button className="w-full bg-uf-blue/20 border border-uf-blue/40 rounded-lg py-2 text-xs text-center">
-          Enviar pra maquininha "Caixa 01"
-        </button>
-      </MockCard>
-    ),
+    path: '/admin/mercadopago-point',
   },
   {
     key: 'systems.cozinha',
     icon: ChefHat,
     title: 'Tela de cozinha',
     desc: 'Pedido cai direto na cozinha, organizado por status — sem grito, sem papel.',
-    preview: () => (
-      <MockCard>
-        <div className="grid grid-cols-3 gap-2 text-[10px] text-center">
-          <div><p className="text-uf-silver-dim mb-1">Pendente</p><div className="bg-white/5 rounded p-2">#4822</div></div>
-          <div><p className="text-uf-silver-dim mb-1">Montando</p><div className="bg-white/5 rounded p-2">#4820</div></div>
-          <div><p className="text-uf-silver-dim mb-1">Pronto</p><div className="bg-emerald-500/10 rounded p-2">#4818</div></div>
-        </div>
-      </MockCard>
-    ),
+    path: '/cozinha',
   },
   {
     key: 'systems.pdv',
     icon: ShoppingBag,
     title: 'PDV com comandas',
     desc: 'Venda de balcão e comanda de mesa no mesmo sistema, sincronizado com o estoque.',
-    preview: () => (
-      <MockCard>
-        <p className="font-semibold mb-2">Comanda — Mesa 4</p>
-        <ul className="text-xs text-uf-silver-dim space-y-1 mb-2">
-          <li>2x Refrigerante — R$ 12,00</li>
-          <li>1x Porção — R$ 38,00</li>
-        </ul>
-        <div className="flex justify-between border-t border-white/10 pt-2 text-sm font-semibold">
-          <span>Total</span><span>R$ 50,00</span>
-        </div>
-      </MockCard>
-    ),
+    path: '/admin/pdv',
   },
 ]
 
-/** Ilustrativo -- não é print real da tela, é mockup pra explicar o
- * recurso de forma visual e rápida. */
 export default function SystemsShowcase() {
   const [open, setOpen] = useState<Item | null>(null)
+  const [src, setSrc] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setSrc(null)
+    setPreviewError(null)
+    // Sessão real (JWT de verdade) contra o tenant demo-ecommerce seedado em
+    // produção -- não é mock local. É a tela de admin de verdade rodando.
+    fetchDemoAdminAutoLoginUrl('ecommerce', open.path)
+      .then((url) => {
+        if (!cancelled) setSrc(url)
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewError('Não foi possível carregar o preview agora. Tente de novo em instantes.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   return (
     <section className="uf-section">
@@ -171,7 +113,9 @@ export default function SystemsShowcase() {
             <CmsText contentKey="systems.title">Clique e veja cada recurso na prática</CmsText>
           </h2>
           <p className="mt-4 text-uf-silver-dim max-w-xl mx-auto">
-            <CmsText contentKey="systems.sub">Ilustrativo — clique em qualquer card pra ver como funciona de verdade.</CmsText>
+            <CmsText contentKey="systems.sub">
+              Sem enrolação — a tela que abre é o painel de verdade, rodando com dados de demonstração.
+            </CmsText>
           </p>
         </motion.div>
 
@@ -197,8 +141,22 @@ export default function SystemsShowcase() {
       </div>
 
       {open && (
-        <FeaturePreviewDialog title={open.title} desc={open.desc} onClose={() => setOpen(null)}>
-          {open.preview()}
+        <FeaturePreviewDialog title={open.title} desc={open.desc} onClose={() => setOpen(null)} wide>
+          {previewError ? (
+            <p className="error-msg">{previewError}</p>
+          ) : src ? (
+            <iframe
+              title={`Preview — ${open.title}`}
+              src={src}
+              className="w-full h-[65vh] rounded-xl border border-white/10 bg-black"
+              allow="clipboard-write"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="h-[65vh] flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
+            </div>
+          )}
         </FeaturePreviewDialog>
       )}
     </section>

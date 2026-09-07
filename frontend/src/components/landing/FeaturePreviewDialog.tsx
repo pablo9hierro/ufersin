@@ -9,11 +9,14 @@ export default function FeaturePreviewDialog({
   desc,
   onClose,
   children,
+  wide,
 }: {
   title: string
   desc: string
   onClose: () => void
   children: ReactNode
+  /** Preview com iframe do painel real -- precisa de mais espaço que o card ilustrativo. */
+  wide?: boolean
 }) {
   return (
     <div
@@ -25,7 +28,7 @@ export default function FeaturePreviewDialog({
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        className="uf-glass rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto"
+        className={`uf-glass rounded-2xl p-6 w-full max-h-[90vh] overflow-y-auto ${wide ? 'max-w-4xl' : 'max-w-md'}`}
       >
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>

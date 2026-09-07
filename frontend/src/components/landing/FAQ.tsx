@@ -29,6 +29,26 @@ const QUESTIONS = [
     q: 'Posso cancelar quando quiser?',
     a: 'Sim, sem fidelidade. O cancelamento é feito direto pelo painel do assinante.',
   },
+  {
+    key: 'faq.q6',
+    q: 'A Resolutoo cobra comissão em cima das minhas vendas?',
+    a: 'Não. Você paga só a mensalidade, e ela não sobe conforme você vende mais. A única taxa por fora é a do Mercado Pago (Pix/cartão) — é uma taxa do Mercado Pago, não nossa.',
+  },
+  {
+    key: 'faq.q7',
+    q: 'O que preciso pra usar o Uber Direct automático?',
+    a: 'Duas coisas: ter o Uber Direct conectado na sua conta e um cartão corporativo cadastrado (o mesmo que alguns bancos chamam de "cartão PJ" ou "cartão empresa" — é a mesma coisa). É o Uber Direct que cobra a corrida nesse cartão automaticamente a cada entrega.',
+  },
+  {
+    key: 'faq.q8',
+    q: 'Emito nota fiscal pela Resolutoo?',
+    a: 'Sim, NF-e e NFC-e são emitidas automaticamente assim que o pagamento é confirmado, sem precisar de outro sistema.',
+  },
+  {
+    key: 'faq.q9',
+    q: 'Dá pra vender serviço, não só produto?',
+    a: 'Sim. Você cadastra um catálogo de serviços e pode vincular cada serviço a um item de estoque — quando o serviço é concluído, o estoque baixa sozinho.',
+  },
 ]
 
 export default function FAQ() {

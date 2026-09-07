@@ -27,13 +27,14 @@ const SYSTEMS = [
     example: 'Sistemas de PDV avulsos',
     price: 'R$ 99 – 150/mês',
   },
-  {
-    icon: Bike,
-    name: 'Gestão de entrega terceirizada (Uber Direct)',
-    example: 'Não existe de prateleira — geralmente vira projeto sob encomenda',
-    price: 'R$ 100 – 300/mês',
-  },
 ]
+
+const UBER_ROW = {
+  icon: Bike,
+  name: 'Uber Direct integrado à loja',
+  example: 'Nenhuma plataforma de e-commerce do mercado oferece isso — você teria que chamar o motoboy manualmente, sempre.',
+  exclusive: true,
+}
 
 export default function FiveInOne() {
   return (
@@ -82,10 +83,20 @@ export default function FiveInOne() {
                   <p className="text-sm font-mono text-uf-silver-dim flex-shrink-0">{s.price}</p>
                 </div>
               ))}
+              <div className="flex items-start gap-3 pt-1">
+                <div className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0">
+                  <UBER_ROW.icon className="w-4 h-4 text-uf-silver-dim" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">{UBER_ROW.name}</p>
+                  <p className="text-xs text-uf-silver-dim">{UBER_ROW.example}</p>
+                </div>
+                <p className="text-xs font-bold text-red-400 flex-shrink-0">não existe</p>
+              </div>
             </div>
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
-              <p className="font-bold flex items-center gap-1.5"><X className="w-4 h-4 text-red-400" /> Total (5 painéis separados)</p>
-              <p className="font-mono font-bold text-red-400">R$ 707 – 1.898/mês</p>
+              <p className="font-bold flex items-center gap-1.5"><X className="w-4 h-4 text-red-400" /> Total (4 painéis + Uber Direct que ninguém vende)</p>
+              <p className="font-mono font-bold text-red-400">R$ 607 – 1.598/mês</p>
             </div>
           </motion.div>
 
@@ -99,7 +110,7 @@ export default function FiveInOne() {
           >
             <p className="text-xs font-bold text-uf-blue uppercase tracking-wide mb-4">Com a Resolutoo</p>
             <div className="space-y-3">
-              {['Loja virtual completa', 'Nota fiscal automática', 'Assistente IA no WhatsApp', 'PDV, comandas e estoque', 'Uber Direct com rastreio ao vivo'].map((s) => (
+              {['Loja virtual completa', 'Nota fiscal automática', 'Assistente IA no WhatsApp', 'PDV, comandas e estoque'].map((s) => (
                 <div key={s} className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
                     <Check className="w-4 h-4 text-emerald-400" />
@@ -107,6 +118,15 @@ export default function FiveInOne() {
                   <p className="text-sm font-semibold">{s}</p>
                 </div>
               ))}
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                  <Check className="w-4 h-4 text-emerald-400" />
+                </div>
+                <p className="text-sm font-semibold flex-1">Uber Direct com rastreio ao vivo</p>
+                <span className="text-[10px] font-bold text-uf-blue border border-uf-blue/40 rounded-full px-2 py-0.5 flex-shrink-0">
+                  exclusivo
+                </span>
+              </div>
             </div>
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
               <p className="font-bold">1 painel só, tudo integrado</p>
