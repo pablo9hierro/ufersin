@@ -154,23 +154,33 @@ export default function LayoutCmsEditor({
                     if (name && name !== p.name) void onSavePlanName(p.code, name)
                   }}
                 />
-                <input
-                  className="input-field w-24 text-sm"
-                  value={planPrices[p.code] ?? ''}
-                  onChange={(e) => onPlanPriceChange(p.code, e.target.value)}
-                  inputMode="decimal"
-                  aria-label={`Preço ${p.name}`}
-                />
-                <span className="text-xs text-uf-silver-dim">R$/mês normal</span>
-                <input
-                  className="input-field w-24 text-sm"
-                  value={planLaunchPrices[p.code] ?? ''}
-                  onChange={(e) => onPlanLaunchPriceChange(p.code, e.target.value)}
-                  placeholder="sem promo"
-                  inputMode="decimal"
-                  aria-label={`Preço de inauguração ${p.name}`}
-                />
-                <span className="text-xs text-uf-silver-dim">R$/mês inauguração</span>
+                {/* Rótulo ANTES do campo, os dois num container só -- antes o
+                    rótulo vinha depois do input, e com flex-wrap cada um
+                    quebrava numa linha própria, fazendo o rótulo parecer
+                    descrever o PRÓXIMO campo (o de baixo) em vez do que
+                    vinha antes dele. Resultado real já confirmado: valor
+                    digitado como inauguração era salvo como normal. */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-uf-silver-dim">R$/mês normal</span>
+                  <input
+                    className="input-field w-24 text-sm"
+                    value={planPrices[p.code] ?? ''}
+                    onChange={(e) => onPlanPriceChange(p.code, e.target.value)}
+                    inputMode="decimal"
+                    aria-label={`Preço normal ${p.name}`}
+                  />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] text-uf-silver-dim">R$/mês inauguração</span>
+                  <input
+                    className="input-field w-24 text-sm"
+                    value={planLaunchPrices[p.code] ?? ''}
+                    onChange={(e) => onPlanLaunchPriceChange(p.code, e.target.value)}
+                    placeholder="sem promo"
+                    inputMode="decimal"
+                    aria-label={`Preço de inauguração ${p.name}`}
+                  />
+                </div>
                 <label
                   htmlFor={`plan-active-${p.code}`}
                   className="flex items-center gap-1.5 text-xs text-uf-silver-dim cursor-pointer"
