@@ -1,13 +1,13 @@
 ﻿import { motion } from 'framer-motion'
-import { BadgePercent, LayoutGrid, MessageCircle, QrCode, ShoppingCart, Users2 } from 'lucide-react'
+import { BadgePercent, Bike, FileText, LayoutGrid, MessageCircle, QrCode, ShoppingCart, Users2, Wrench } from 'lucide-react'
 import { CmsText } from '../../lib/cms'
 
 const FEATURES = [
   {
     key: 'features.f1',
     icon: LayoutGrid,
-    title: 'Catálogo completo',
-    desc: 'Produtos, categorias, fotos e estoque — tudo gerenciado direto do painel, sem depender de ninguém.',
+    title: 'Catálogo de produto e serviço',
+    desc: 'Produtos, ficha técnica de insumo e serviços com peça vinculada — o mesmo catálogo, o mesmo estoque.',
   },
   {
     key: 'features.f2',
@@ -18,8 +18,20 @@ const FEATURES = [
   {
     key: 'features.f3',
     icon: QrCode,
-    title: 'Pix integrado',
-    desc: 'Cobrança via Pix direto no checkout, com confirmação automática de pagamento.',
+    title: 'Pix e Mercado Pago Point',
+    desc: 'Cobrança via Pix no checkout ou na maquininha física, direto do painel — sem outro app.',
+  },
+  {
+    key: 'features.f7',
+    icon: FileText,
+    title: 'Nota fiscal automática',
+    desc: 'NF-e e NFC-e emitidas sozinhas quando o pagamento cai. Sem digitar nada na mão.',
+  },
+  {
+    key: 'features.f8',
+    icon: Bike,
+    title: 'Uber Direct nativo',
+    desc: 'Despacha e acompanha o entregador em tempo real, direto do painel de pedidos.',
   },
   {
     key: 'features.f4',
@@ -32,6 +44,12 @@ const FEATURES = [
     icon: Users2,
     title: 'Equipe e motoboys',
     desc: 'Funcionários com acesso próprio e gestão de entregas com motoboys — disponível no plano Management.',
+  },
+  {
+    key: 'features.f9',
+    icon: Wrench,
+    title: 'PDV com comandas',
+    desc: 'Venda de balcão e comanda de mesa no mesmo sistema, sincronizado com o estoque.',
   },
   {
     key: 'features.f6',
