@@ -63,7 +63,7 @@ const ITEMS: Item[] = [
     icon: ChefHat,
     title: 'Tela de cozinha',
     desc: 'Pedido cai direto na cozinha, organizado por status — sem grito, sem papel.',
-    path: '/cozinha',
+    path: '/admin/cozinha',
   },
   {
     key: 'systems.pdv',
@@ -145,13 +145,22 @@ export default function SystemsShowcase() {
           {previewError ? (
             <p className="error-msg">{previewError}</p>
           ) : src ? (
-            <iframe
-              title={`Preview — ${open.title}`}
-              src={src}
-              className="w-full h-[65vh] rounded-xl border border-white/10 bg-black"
-              allow="clipboard-write"
-              referrerPolicy="no-referrer"
-            />
+            <div className="w-full h-[65vh] rounded-xl border border-white/10 bg-black overflow-hidden relative">
+              <iframe
+                title={`Preview — ${open.title}`}
+                src={src}
+                className="border-0 absolute top-0 left-0 origin-top-left w-[1440px] h-[900px]"
+                style={{ transform: 'scale(var(--preview-scale, 0.45))' }}
+                ref={(el) => {
+                  const box = el?.parentElement
+                  if (!box) return
+                  const scale = box.clientWidth / 1440
+                  box.style.setProperty('--preview-scale', String(scale))
+                }}
+                allow="clipboard-write"
+                referrerPolicy="no-referrer"
+              />
+            </div>
           ) : (
             <div className="h-[65vh] flex items-center justify-center">
               <Loader2 className="w-6 h-6 animate-spin text-uf-silver-dim" />
