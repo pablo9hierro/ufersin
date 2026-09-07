@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Bike, ChefHat, ClipboardList, CreditCard, FileText, Loader2, Package, ShoppingBag, Wrench } from 'lucide-react'
 import { CmsText } from '../../lib/cms'
-import { fetchDemoAdminAutoLoginUrl } from '../../lib/ecommerceUrl'
+import { fetchDemoAdminAutoLoginUrl, prefetchDemoAdminToken } from '../../lib/ecommerceUrl'
 import FeaturePreviewDialog from './FeaturePreviewDialog'
 
 type Item = {
@@ -78,6 +78,12 @@ export default function SystemsShowcase() {
   const [open, setOpen] = useState<Item | null>(null)
   const [src, setSrc] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
+
+  // Busca o token assim que a seção existe -- pelo tempo que o visitante
+  // decide qual card clicar, a URL já sai pronta, sem loader visível.
+  useEffect(() => {
+    prefetchDemoAdminToken('ecommerce')
+  }, [])
 
   useEffect(() => {
     if (!open) return

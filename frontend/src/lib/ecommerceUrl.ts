@@ -83,13 +83,36 @@ function ecommerceApiUrl(): string {
  * Isolado por tenant: o backend resolve o slug pelo `vertical` e o token
  * só carrega o tenant_id daquele tenant — nunca dá acesso a outra loja.
  */
+type DemoTokenData = { admin_token: string; tenant_slug: string; admin_name: string }
+
+/** Cache por vertical -- evita refazer o fetch a cada clique num card de
+ * preview diferente (landing SystemsShowcase abre vários seguidos). */
+const demoTokenCache = new Map<string, Promise<DemoTokenData>>()
+
+function getDemoToken(vertical: 'eletronica' | 'ecommerce'): Promise<DemoTokenData> {
+  let pending = demoTokenCache.get(vertical)
+  if (!pending) {
+    pending = fetch(`${ecommerceApiUrl()}/demo/tokens?vertical=${vertical}`).then((res) => {
+      if (!res.ok) throw new Error('Falha ao emitir token de acesso da demo.')
+      return res.json()
+    })
+    demoTokenCache.set(vertical, pending)
+    pending.catch(() => demoTokenCache.delete(vertical))
+  }
+  return pending
+}
+
+/** Dispara o fetch do token antes do clique -- pelo tempo que o usuário
+ * decide em qual card clicar, o token já está pronto e a URL sai na hora. */
+export function prefetchDemoAdminToken(vertical: 'eletronica' | 'ecommerce'): void {
+  getDemoToken(vertical).catch(() => {})
+}
+
 export async function fetchDemoAdminAutoLoginUrl(
   vertical: 'eletronica' | 'ecommerce',
   next?: string,
 ): Promise<string> {
-  const res = await fetch(`${ecommerceApiUrl()}/demo/tokens?vertical=${vertical}`)
-  if (!res.ok) throw new Error('Falha ao emitir token de acesso da demo.')
-  const data: { admin_token: string; tenant_slug: string; admin_name: string } = await res.json()
+  const data = await getDemoToken(vertical)
   const q = new URLSearchParams({
     role: 'admin',
     token: data.admin_token,
