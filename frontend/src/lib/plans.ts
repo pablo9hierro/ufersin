@@ -26,7 +26,17 @@ export const FALLBACK_PLANS: PlanInfo[] = [
     name: 'Essential',
     price: 60,
     tagline: 'Pra começar a vender online',
-    features: ['Catálogo de produto e serviço', 'Checkout', 'Pix', 'Nota fiscal automática', 'WhatsApp', 'Pedidos'],
+    features: [
+      'Catálogo de produto e serviço',
+      'Catálogo de serviços com ficha técnica',
+      'Checkout',
+      'Pix e Mercado Pago Point',
+      'Nota fiscal automática',
+      'Uber Direct',
+      'PDV com comandas e estoque',
+      'Assistente de IA no WhatsApp',
+      'Pedidos',
+    ],
     vertical: 'ecommerce',
   },
   {
