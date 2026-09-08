@@ -62,7 +62,13 @@ export default function DemoPlanoEletronica() {
       const tab = window.open('', '_blank')
       if (tab) tab.opener = null
       try {
-        const url = await fetchDemoAdminAutoLoginUrl('eletronica')
+        // next='/admin-eletronica' explícito -- sem isso cai primeiro no
+        // AdminLayout padrão de ecommerce (/admin/pedidos) e só troca pro
+        // painel de eletrônica depois que o redirect por vertical roda (um
+        // useEffect, só depois do tenant-config carregar): dava pra ver o
+        // flash da chrome de ecommerce (Pedidos/PDV/Produtos, tema
+        // dourado) por um instante antes do painel vermelho de verdade.
+        const url = await fetchDemoAdminAutoLoginUrl('eletronica', '/admin-eletronica')
         if (tab) tab.location.href = url
         else window.alert('Seu navegador bloqueou a nova aba — habilite pop-ups pra este site e tente de novo.')
       } catch {

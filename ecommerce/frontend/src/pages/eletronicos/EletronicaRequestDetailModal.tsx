@@ -28,6 +28,11 @@ import { ADMIN_DELIVERY_STATUS_LABEL, labelDeliveryStatus } from '../../lib/deli
 // (reaproveita eletronicosAdmin.pix, o mesmo mecanismo do PDV), e o
 // ServiceOrderPanel real (checklist por componente/timeline/conclusão com
 // garantia/PDF/reabertura -- ver EletronicaServiceOrderPanel.tsx).
+//
+// Paleta portada era tema claro (bg-white/gray-*) do vrtech original --
+// destoava do resto do painel de eletrônica (#0a0a0b/#161618/#d4d4d8),
+// abria como um modal branco em cima de um painel escuro. Recolorido pro
+// mesmo padrão do resto (EletronicaAdminDashboard.tsx).
 
 type ServiceStatus = string
 
@@ -156,6 +161,13 @@ function googleMapsLink(lat: number, lng: number) {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
 }
 
+/** `Number(x).toFixed(2)` mas nunca "NaN" na tela -- valores de pagamento
+ * ausentes/inválidos (ex: dado de seed antigo) caem em R$ 0,00. */
+function money(value: unknown): string {
+  const n = Number(value)
+  return (Number.isFinite(n) ? n : 0).toFixed(2)
+}
+
 type PixState = {
   amount: number
   payment_id: string
@@ -168,19 +180,19 @@ function PixQrDialog({ state, onClose }: { state: PixState; onClose: () => void 
   const [copied, setCopied] = useState(false)
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4">
+      <div className="bg-[#161618] border border-white/10 rounded-2xl w-full max-w-sm p-5 space-y-4">
         <div className="flex items-center gap-2">
           <QrCode className="w-5 h-5 text-[#e0211a]" />
-          <h3 className="font-bold text-gray-900">Pix — R$ {state.amount.toFixed(2)}</h3>
+          <h3 className="font-bold text-white">Pix — R$ {money(state.amount)}</h3>
         </div>
         {state.status === 'aprovado' ? (
-          <p className="text-sm text-green-600 flex items-center gap-1.5 py-6 justify-center font-semibold">
+          <p className="text-sm text-emerald-300 flex items-center gap-1.5 py-6 justify-center font-semibold">
             <Check className="w-5 h-5" /> Pagamento aprovado!
           </p>
         ) : (
           <>
             {state.qr_code_base64 && (
-              <img src={state.qr_code_base64} alt="QR Code Pix" className="w-full rounded-xl border border-gray-100 p-2" />
+              <img src={state.qr_code_base64} alt="QR Code Pix" className="w-full rounded-xl bg-white p-2" />
             )}
             <button
               type="button"
@@ -189,16 +201,16 @@ function PixQrDialog({ state, onClose }: { state: PixState; onClose: () => void 
                 setCopied(true)
                 setTimeout(() => setCopied(false), 1500)
               }}
-              className="w-full px-3 py-2.5 rounded-xl text-xs font-mono text-gray-500 bg-gray-50 border border-gray-200 hover:border-[#e0211a]/40 transition-colors truncate"
+              className="w-full px-3 py-2.5 rounded-xl text-xs font-mono text-[#d4d4d8]/60 bg-white/5 border border-white/10 hover:border-[#e0211a]/40 transition-colors truncate"
             >
               {copied ? 'Copiado!' : 'Copiar código copia-e-cola'}
             </button>
-            <p className="text-xs text-gray-400 flex items-center gap-1.5">
+            <p className="text-xs text-[#d4d4d8]/40 flex items-center gap-1.5">
               <Loader2 className="w-3.5 h-3.5 animate-spin" /> Aguardando pagamento...
             </p>
           </>
         )}
-        <button type="button" onClick={onClose} className="w-full px-4 py-2 rounded-xl text-sm text-gray-500 hover:text-gray-800 transition-colors">
+        <button type="button" onClick={onClose} className="w-full px-4 py-2 rounded-xl text-sm text-[#d4d4d8]/60 hover:text-white transition-colors">
           Fechar
         </button>
       </div>
@@ -406,50 +418,50 @@ export default function EletronicaRequestDetailModal({
   const advance = getAdvanceConfig(status, osCompleted, paymentSaved, !!request.self_pickup, !!request.diagnosis_requested, estimatedQuoteValue)
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between rounded-t-3xl z-10">
-          <h2 className="font-bold text-gray-900">Detalhes da solicitação</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
-            <X className="w-4 h-4 text-gray-600" />
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-[#161618] border border-white/10 w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-[#161618] border-b border-white/10 px-5 py-4 flex items-center justify-between rounded-t-3xl z-10">
+          <h2 className="font-bold text-white">Detalhes da solicitação</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition-colors">
+            <X className="w-4 h-4 text-[#d4d4d8]" />
           </button>
         </div>
 
         <div className="p-5 space-y-5">
           <section className="space-y-2">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cliente</h3>
-            <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
+            <h3 className="text-xs font-bold text-[#d4d4d8]/40 uppercase tracking-wider">Cliente</h3>
+            <div className="bg-white/5 rounded-2xl p-4 space-y-2">
               <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-gray-400 shrink-0" />
-                <span className="font-semibold text-gray-900">{request.customer_name}</span>
+                <User className="w-4 h-4 text-[#d4d4d8]/40 shrink-0" />
+                <span className="font-semibold text-white">{request.customer_name}</span>
               </div>
-              <a href={`https://wa.me/55${phoneDigits}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-green-600 hover:text-green-700">
+              <a href={`https://wa.me/55${phoneDigits}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300">
                 <Phone className="w-4 h-4 shrink-0" />
                 <span className="text-sm">{request.customer_phone}</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
               {request.customer_email && (
                 <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-gray-400 shrink-0" />
-                  <span className="text-sm text-gray-600">{request.customer_email}</span>
+                  <Mail className="w-4 h-4 text-[#d4d4d8]/40 shrink-0" />
+                  <span className="text-sm text-[#d4d4d8]/70">{request.customer_email}</span>
                 </div>
               )}
             </div>
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Celular</h3>
-            <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
+            <h3 className="text-xs font-bold text-[#d4d4d8]/40 uppercase tracking-wider">Celular</h3>
+            <div className="bg-white/5 rounded-2xl p-4 space-y-2">
               <div className="flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-gray-400 shrink-0" />
-                <span className="font-semibold text-gray-900">
+                <Smartphone className="w-4 h-4 text-[#d4d4d8]/40 shrink-0" />
+                <span className="font-semibold text-white">
                   {request.phone_model ?? (request.diagnosis_requested ? '🔍 Diagnóstico solicitado' : '—')}
                 </span>
               </div>
               {request.problem_description && (
                 <div className="flex items-start gap-2">
-                  <MessageSquare className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-                  <p className="text-sm text-gray-700">{request.problem_description}</p>
+                  <MessageSquare className="w-4 h-4 text-[#d4d4d8]/40 shrink-0 mt-0.5" />
+                  <p className="text-sm text-[#d4d4d8]/80">{request.problem_description}</p>
                 </div>
               )}
               {request.image_url && (
@@ -471,12 +483,12 @@ export default function EletronicaRequestDetailModal({
           )}
 
           <section className="space-y-2">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Endereço</h3>
-            <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
+            <h3 className="text-xs font-bold text-[#d4d4d8]/40 uppercase tracking-wider">Endereço</h3>
+            <div className="bg-white/5 rounded-2xl p-4 space-y-2">
               <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+                <MapPin className="w-4 h-4 text-[#d4d4d8]/40 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm text-gray-900">
+                  <p className="text-sm text-white">
                     {request.self_pickup ? 'Cliente vai levar/buscar o aparelho — sem coleta/entrega' : request.address_label || 'Endereço a confirmar'}
                   </p>
                   {!request.self_pickup && request.address_lat != null && request.address_lng != null && (
@@ -484,7 +496,7 @@ export default function EletronicaRequestDetailModal({
                       href={googleMapsLink(request.address_lat, request.address_lng)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-blue-600 hover:underline mt-0.5 inline-block"
+                      className="text-xs text-blue-400 hover:underline mt-0.5 inline-block"
                     >
                       📍 Ver localização exata no mapa
                     </a>
@@ -496,13 +508,13 @@ export default function EletronicaRequestDetailModal({
 
           {(status === 'retirada_local' || status === 'em_busca') && (
             <section className="space-y-2">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Coleta do aparelho</h3>
+              <h3 className="text-xs font-bold text-[#d4d4d8]/40 uppercase tracking-wider">Coleta do aparelho</h3>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">
-                  Orçamento estimado (R$) <span className="font-normal text-gray-400">— falado de boca, confirmado no diagnóstico</span>
+                <label className="block text-xs text-[#d4d4d8]/50 mb-1">
+                  Orçamento estimado (R$) <span className="font-normal text-[#d4d4d8]/40">— falado de boca, confirmado no diagnóstico</span>
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-3.5 text-gray-400 font-medium">R$</span>
+                  <span className="absolute left-4 top-3.5 text-[#d4d4d8]/40 font-medium">R$</span>
                   <input
                     type="number"
                     step="0.01"
@@ -511,17 +523,17 @@ export default function EletronicaRequestDetailModal({
                     onChange={(e) => setEstimatedQuoteValue(e.target.value)}
                     onBlur={saveEstimatedQuote}
                     placeholder="0,00"
-                    className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#e0211a]"
+                    className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm outline-none focus:border-[#e0211a]"
                   />
                 </div>
                 {savingEstimate && (
-                  <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                  <p className="text-xs text-[#d4d4d8]/40 mt-1 flex items-center gap-1">
                     <Loader2 className="w-3 h-3 animate-spin" /> Salvando...
                   </p>
                 )}
                 {!request.self_pickup && request.shipping_price && (
-                  <p className="text-xs text-amber-600 mt-1.5">
-                    Frete (coleta): R$ {Number(request.shipping_price).toFixed(2)} — será somado automaticamente ao total.
+                  <p className="text-xs text-amber-300 mt-1.5">
+                    Frete (coleta): R$ {money(request.shipping_price)} — será somado automaticamente ao total.
                   </p>
                 )}
               </div>
@@ -536,27 +548,27 @@ export default function EletronicaRequestDetailModal({
                 />
               )}
 
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <div className="border border-white/10 rounded-xl overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setCredentialsOpen((v) => !v)}
-                  className="w-full flex items-center justify-between px-3.5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="w-full flex items-center justify-between px-3.5 py-2.5 text-sm font-medium text-[#d4d4d8] hover:bg-white/5 transition-colors"
                 >
                   <span className="flex items-center gap-1.5">🔒 Senha do cliente (PIN ou padrão)</span>
-                  <span className="text-gray-400 text-xs">{credentialsOpen ? '▲' : '▼'}</span>
+                  <span className="text-[#d4d4d8]/40 text-xs">{credentialsOpen ? '▲' : '▼'}</span>
                 </button>
                 {credentialsOpen && (
-                  <div className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-gray-100">
+                  <div className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-white/10">
                     {credentialSaved ? (
-                      <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                      <div className="bg-white/5 rounded-xl p-3 space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs text-gray-500">{credentialKind === 'pin' ? 'PIN' : 'Padrão'} cadastrado</p>
-                          <button type="button" onClick={() => setCredentialSaved(false)} className="text-xs text-gray-400 hover:text-gray-600">
+                          <p className="text-xs text-[#d4d4d8]/50">{credentialKind === 'pin' ? 'PIN' : 'Padrão'} cadastrado</p>
+                          <button type="button" onClick={() => setCredentialSaved(false)} className="text-xs text-[#d4d4d8]/40 hover:text-[#d4d4d8]">
                             Editar
                           </button>
                         </div>
                         {credentialKind === 'pin' ? (
-                          <p className="text-sm font-mono font-semibold text-gray-900">{credentialValue}</p>
+                          <p className="text-sm font-mono font-semibold text-white">{credentialValue}</p>
                         ) : (
                           <PatternLockInput value={credentialValue} readOnly />
                         )}
@@ -570,7 +582,7 @@ export default function EletronicaRequestDetailModal({
                               type="button"
                               onClick={() => setCredentialKind(k)}
                               className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                credentialKind === k ? 'border-[#e0211a] bg-red-50 text-[#e0211a]' : 'border-gray-200 text-gray-500'
+                                credentialKind === k ? 'border-[#e0211a] bg-red-500/10 text-[#e0211a]' : 'border-white/10 text-[#d4d4d8]/50'
                               }`}
                             >
                               {k === 'pin' ? 'PIN numérico' : 'Padrão de desenho'}
@@ -583,7 +595,7 @@ export default function EletronicaRequestDetailModal({
                             value={credentialValue}
                             onChange={(e) => setCredentialValue(e.target.value)}
                             placeholder="Ex: 1234"
-                            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#e0211a]"
+                            className="w-full rounded-xl bg-white/5 border border-white/10 text-white px-3 py-2.5 text-sm outline-none focus:border-[#e0211a]"
                           />
                         ) : (
                           <PatternLockInput value={credentialValue} onChange={setCredentialValue} />
@@ -592,7 +604,7 @@ export default function EletronicaRequestDetailModal({
                           type="button"
                           onClick={saveCredential}
                           disabled={savingCredential || !credentialValue.trim()}
-                          className="w-full py-2 rounded-xl text-sm font-semibold bg-gray-900 text-white disabled:opacity-50"
+                          className="w-full py-2 rounded-xl text-sm font-semibold bg-[#e0211a] hover:bg-[#a3140f] text-white disabled:opacity-50 transition-colors"
                         >
                           {savingCredential ? 'Salvando...' : 'Salvar senha'}
                         </button>
@@ -606,7 +618,7 @@ export default function EletronicaRequestDetailModal({
 
           {status === 'em_entrega' && (
             <section className="space-y-2">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Entrega do aparelho consertado</h3>
+              <h3 className="text-xs font-bold text-[#d4d4d8]/40 uppercase tracking-wider">Entrega do aparelho consertado</h3>
               <DeliveryDispatchControl
                 resourceKey={`${request.id}-entrega`}
                 get={() => eletronicosAdmin.delivery.get(request.id)}
@@ -619,13 +631,13 @@ export default function EletronicaRequestDetailModal({
 
           {status !== 'retirada_local' && status !== 'em_busca' && Number(quoteValue) > 0 && (
             <section className="space-y-2">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Orçamento</h3>
-              <div className="bg-slate-50 rounded-2xl p-4">
-                <p className="text-sm text-gray-600">
-                  Valor atual: <span className="font-semibold text-gray-900">R$ {Number(quoteValue || 0).toFixed(2)}</span>
+              <h3 className="text-xs font-bold text-[#d4d4d8]/40 uppercase tracking-wider">Orçamento</h3>
+              <div className="bg-white/5 rounded-2xl p-4">
+                <p className="text-sm text-[#d4d4d8]/70">
+                  Valor atual: <span className="font-semibold text-white">R$ {money(quoteValue)}</span>
                 </p>
                 {!request.self_pickup && request.shipping_price && (
-                  <p className="text-xs text-gray-400 mt-0.5">Inclui frete (coleta): R$ {Number(request.shipping_price).toFixed(2)}</p>
+                  <p className="text-xs text-[#d4d4d8]/40 mt-0.5">Inclui frete (coleta): R$ {money(request.shipping_price)}</p>
                 )}
               </div>
             </section>
@@ -647,24 +659,24 @@ export default function EletronicaRequestDetailModal({
             <button
               type="button"
               onClick={() => setPaymentDialogOpen(true)}
-              className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-[#e0211a] border border-[#e0211a]/30 rounded-xl py-2.5 hover:bg-red-50 transition-colors"
+              className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-[#e0211a] border border-[#e0211a]/30 rounded-xl py-2.5 hover:bg-red-500/10 transition-colors"
             >
               💳 Confirmar pagamento
             </button>
           )}
 
           {status === 'em_pagamento' && paymentDialogOpen && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
-              <div className="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto p-5 space-y-3">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+              <div className="bg-[#161618] border border-white/10 w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto p-5 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Confirmar pagamento</h3>
-                  <button type="button" onClick={() => setPaymentDialogOpen(false)} className="text-gray-400 hover:text-gray-700">
+                  <h3 className="text-xs font-bold text-[#d4d4d8]/40 uppercase tracking-wider">Confirmar pagamento</h3>
+                  <button type="button" onClick={() => setPaymentDialogOpen(false)} className="text-[#d4d4d8]/40 hover:text-white">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                <div className="bg-white/5 rounded-2xl p-4 space-y-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Desconto (%)</label>
+                    <label className="block text-xs text-[#d4d4d8]/50 mb-1">Desconto (%)</label>
                     <input
                       type="number"
                       inputMode="numeric"
@@ -677,21 +689,21 @@ export default function EletronicaRequestDetailModal({
                         setPaymentSaved(false)
                       }}
                       placeholder="0"
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#e0211a]"
+                      className="w-full rounded-xl bg-white/5 border border-white/10 text-white px-3 py-2.5 text-sm outline-none focus:border-[#e0211a]"
                     />
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Valor original</span>
-                    <span className="font-semibold text-gray-700">R$ {baseValue.toFixed(2)}</span>
+                    <span className="text-[#d4d4d8]/50">Valor original</span>
+                    <span className="font-semibold text-[#d4d4d8]">R$ {money(baseValue)}</span>
                   </div>
                   {discountNum > 0 && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Valor com desconto</span>
-                      <span className="font-bold text-[#e0211a]">R$ {discountedValue.toFixed(2)}</span>
+                      <span className="text-[#d4d4d8]/50">Valor com desconto</span>
+                      <span className="font-bold text-[#e0211a]">R$ {money(discountedValue)}</span>
                     </div>
                   )}
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Forma de pagamento</label>
+                    <label className="block text-xs text-[#d4d4d8]/50 mb-1">Forma de pagamento</label>
                     <div className="flex flex-wrap gap-2">
                       {PAYMENT_METHODS.map((m) => (
                         <button
@@ -699,7 +711,7 @@ export default function EletronicaRequestDetailModal({
                           type="button"
                           onClick={() => toggleMethod(m)}
                           className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors
-                            ${selectedMethods.includes(m) ? 'bg-[#e0211a] text-white border-[#e0211a]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#e0211a]/40'}`}
+                            ${selectedMethods.includes(m) ? 'bg-[#e0211a] text-white border-[#e0211a]' : 'bg-white/5 text-[#d4d4d8]/70 border-white/10 hover:border-[#e0211a]/40'}`}
                         >
                           {m}
                         </button>
@@ -708,12 +720,12 @@ export default function EletronicaRequestDetailModal({
                   </div>
                   {selectedMethods.length > 1 && (
                     <div className="space-y-2">
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-[#d4d4d8]/40">
                         Informe o valor pago em cada forma — a última é calculada automaticamente com o restante.
                       </p>
                       {otherMethods.map((m) => (
                         <div key={m} className="flex items-center gap-2">
-                          <span className="text-sm text-gray-600 flex-1">{m}</span>
+                          <span className="text-sm text-[#d4d4d8]/70 flex-1">{m}</span>
                           <input
                             type="number"
                             inputMode="decimal"
@@ -725,20 +737,20 @@ export default function EletronicaRequestDetailModal({
                               setPaymentSaved(false)
                             }}
                             placeholder="0,00"
-                            className="w-28 rounded-xl border border-gray-200 px-2 py-1.5 text-sm outline-none focus:border-[#e0211a]"
+                            className="w-28 rounded-xl bg-white/5 border border-white/10 text-white px-2 py-1.5 text-sm outline-none focus:border-[#e0211a]"
                           />
                         </div>
                       ))}
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-600 flex-1">
-                          {lastMethod} <span className="text-gray-400">(restante)</span>
+                        <span className="text-sm text-[#d4d4d8]/70 flex-1">
+                          {lastMethod} <span className="text-[#d4d4d8]/40">(restante)</span>
                         </span>
-                        <input disabled value={remainder.toFixed(2)} className="w-28 rounded-xl border border-gray-200 px-2 py-1.5 text-sm opacity-60" />
+                        <input disabled value={money(remainder)} className="w-28 rounded-xl bg-white/5 border border-white/10 text-[#d4d4d8]/60 px-2 py-1.5 text-sm opacity-60" />
                       </div>
-                      {!methodsValid && <p className="text-xs text-amber-600">Os valores informados já passam do total com desconto.</p>}
+                      {!methodsValid && <p className="text-xs text-amber-300">Os valores informados já passam do total com desconto.</p>}
                     </div>
                   )}
-                  {paymentError && <p className="text-xs text-red-500">{paymentError}</p>}
+                  {paymentError && <p className="text-xs text-red-400">{paymentError}</p>}
                   <button
                     type="button"
                     onClick={handleSavePayment}
@@ -760,36 +772,36 @@ export default function EletronicaRequestDetailModal({
 
           {status !== 'em_pagamento' && !!request.payment_methods?.length && (
             <section className="space-y-2">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pagamento</h3>
-              <div className="bg-slate-50 rounded-2xl p-4 space-y-1">
-                {!!request.discount_percent && <p className="text-sm text-gray-600">Desconto aplicado: {request.discount_percent}%</p>}
+              <h3 className="text-xs font-bold text-[#d4d4d8]/40 uppercase tracking-wider">Pagamento</h3>
+              <div className="bg-white/5 rounded-2xl p-4 space-y-1">
+                {!!request.discount_percent && <p className="text-sm text-[#d4d4d8]/70">Desconto aplicado: {request.discount_percent}%</p>}
                 {request.payment_methods.map((p) => (
-                  <p key={p.method} className="text-sm text-gray-700 flex justify-between">
+                  <p key={p.method} className="text-sm text-[#d4d4d8]/80 flex justify-between">
                     <span>{p.method}</span>
-                    <span className="font-semibold">R$ {Number(p.value).toFixed(2)}</span>
+                    <span className="font-semibold text-white">R$ {money(p.value)}</span>
                   </p>
                 ))}
               </div>
             </section>
           )}
 
-          <section className="space-y-3 pt-2 border-t border-gray-100">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Status do atendimento</h3>
+          <section className="space-y-3 pt-2 border-t border-white/10">
+            <h3 className="text-xs font-bold text-[#d4d4d8]/40 uppercase tracking-wider">Status do atendimento</h3>
 
-            <div className="bg-slate-50 rounded-2xl p-4">
-              <p className="text-xs text-gray-400 mb-1">Status atual</p>
-              <p className="font-semibold text-gray-900">{STATUS_LABELS[status] ?? status}</p>
+            <div className="bg-white/5 rounded-2xl p-4">
+              <p className="text-xs text-[#d4d4d8]/40 mb-1">Status atual</p>
+              <p className="font-semibold text-white">{STATUS_LABELS[status] ?? status}</p>
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
+              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-300 text-sm">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {error}
               </div>
             )}
 
             {advance.type !== 'terminal' && advance.type !== 'diagnostic' && !advance.ready && advance.blockedMessage && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2.5">{advance.blockedMessage}</p>
+              <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5">{advance.blockedMessage}</p>
             )}
 
             {advance.type === 'single' && (
@@ -797,7 +809,7 @@ export default function EletronicaRequestDetailModal({
                 onClick={() => handleAdvance(advance.next)}
                 disabled={loading || !advance.ready}
                 className={`w-full rounded-xl text-white font-semibold py-2.5 flex items-center justify-center gap-2 transition-all disabled:opacity-50
-                  ${saved ? 'bg-green-600' : 'bg-[#e0211a] hover:bg-[#a3140f]'}`}
+                  ${saved ? 'bg-emerald-600' : 'bg-[#e0211a] hover:bg-[#a3140f]'}`}
               >
                 {loading ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</>
@@ -828,14 +840,14 @@ export default function EletronicaRequestDetailModal({
               <button
                 onClick={() => handleAdvance('cancelled')}
                 disabled={loading}
-                className="w-full text-sm font-medium text-red-600 border border-red-200 rounded-xl py-2 hover:bg-red-50 transition-colors disabled:opacity-50"
+                className="w-full text-sm font-medium text-red-300 border border-red-500/20 rounded-xl py-2 hover:bg-red-500/10 transition-colors disabled:opacity-50"
               >
                 Recusar / cancelar solicitação
               </button>
             )}
           </section>
 
-          <p className="text-xs text-gray-400 text-center pb-2">Solicitado em {new Date(request.created_at).toLocaleString('pt-BR')}</p>
+          <p className="text-xs text-[#d4d4d8]/40 text-center pb-2">Solicitado em {new Date(request.created_at).toLocaleString('pt-BR')}</p>
         </div>
       </div>
 
