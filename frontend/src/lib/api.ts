@@ -159,6 +159,13 @@ export interface SuperadminStore {
    * assinantes do mesmo cupom). Exatamente um dos dois vem preenchido. */
   discount_percent: number | null
   discount_amount: number | null
+  /** Vencimento da próxima renovação (ver billing.rs no backend). */
+  next_billing_at: string | null
+  /** Setado enquanto `status = 'pausado'` — prazo pra pagar sem perder cupom. */
+  billing_grace_until: string | null
+  /** Presente só em cancelamento voluntário (lojista) — ausente quando o
+   * cancelamento veio da janela de tolerância de pagamento estourada. */
+  cancelled_at: string | null
 }
 
 export interface AdjustDiscountOutput {

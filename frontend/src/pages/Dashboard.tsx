@@ -40,6 +40,35 @@ import LayoutCmsEditor, { defaultPlansSeed } from '../components/cms/LayoutCmsEd
 
 type Section = 'relatorios' | 'lojas' | 'layout' | 'cupons' | 'financeiro' | 'ia'
 
+/** Rótulo humano do status de pagamento pro card de loja — distingue
+ * "cancelado pelo lojista" (voluntário, tem `cancelled_at`) de "cancelado
+ * por falta de pagamento" (janela de tolerância de billing.rs estourada,
+ * `cancelled_at` fica null), e mostra a janela de tolerância quando
+ * `pausado`. Ver StoreRow no backend (routes/superadmin.rs). */
+function billingStatusLabel(s: SuperadminStore): { text: string; className: string } {
+  switch (s.status) {
+    case 'ativo':
+      return { text: 'Ativo', className: 'bg-emerald-500/15 text-emerald-300' }
+    case 'pendente':
+      return { text: 'Pendente (aguardando 1º pagamento)', className: 'bg-amber-500/15 text-amber-300' }
+    case 'pausado': {
+      const until = s.billing_grace_until
+        ? new Date(s.billing_grace_until).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+        : null
+      return {
+        text: until ? `Mensalidade vencida — paga até ${until}` : 'Mensalidade vencida',
+        className: 'bg-red-500/15 text-red-300',
+      }
+    }
+    case 'cancelado':
+      return s.cancelled_at
+        ? { text: 'Cancelado pelo lojista', className: 'bg-white/10 text-uf-silver-dim' }
+        : { text: 'Cancelado por falta de pagamento', className: 'bg-red-500/15 text-red-300' }
+    default:
+      return { text: 'Sem assinatura', className: 'bg-white/10 text-uf-silver-dim' }
+  }
+}
+
 const NAV: { id: Section; label: string; icon: typeof BarChart3; path: string }[] = [
   { id: 'relatorios', label: 'Relatórios', icon: BarChart3, path: '/dashboard' },
   { id: 'lojas', label: 'Lojas', icon: Store, path: '/lojas' },
@@ -769,7 +798,9 @@ export default function Dashboard() {
                         <p className="font-semibold text-sm truncate">{s.loja_nome}</p>
                         <p className="text-xs text-uf-silver-dim truncate">{s.email}</p>
                       </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-white/10">{s.status}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${billingStatusLabel(s).className}`}>
+                        {billingStatusLabel(s).text}
+                      </span>
                     </button>
                     {open && (
                       <div className="px-4 pb-4 pt-1 border-t border-white/5 text-sm space-y-2">
@@ -783,6 +814,22 @@ export default function Dashboard() {
                         <p>
                           <span className="text-uf-silver-dim">Slug:</span> {s.slug ?? '—'} · Onboarding: {s.onboarding_status}
                         </p>
+                        {s.status === 'ativo' && s.next_billing_at && (
+                          <p>
+                            <span className="text-uf-silver-dim">Próxima cobrança:</span>{' '}
+                            {new Date(s.next_billing_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                          </p>
+                        )}
+                        {s.status === 'pausado' && s.billing_grace_until && (
+                          <p className="text-red-300">
+                            <span className="text-uf-silver-dim">Tolerância até:</span>{' '}
+                            {new Date(s.billing_grace_until).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            {' '}— se não pagar até lá, perde o cupom e a assinatura é cancelada.
+                          </p>
+                        )}
+                        {s.status === 'cancelado' && !s.cancelled_at && (
+                          <p className="text-red-300">Assinatura cancelada automaticamente por falta de pagamento — cupom perdido, próxima assinatura paga preço de tabela.</p>
+                        )}
                         {s.coupon_code && (
                           <>
                             <p>

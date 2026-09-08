@@ -26,6 +26,7 @@ import {
 import Logo from '../ui/Logo'
 import PayrollBell from './PayrollBell'
 import OnboardingGate from '../admin/OnboardingGate'
+import BillingGate from '../admin/BillingGate'
 import { useAdminAuth, detectAdminTenantMismatch } from '../../store/adminAuth'
 import {
   clearDemoStaffSession,
@@ -38,6 +39,7 @@ import {
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import {
   LOJA_OFFLINE_MSG,
+  resetTenantConfigCache,
   resolveTenantSlug,
   stashLojaOfflineMessage,
   withTenantSearch,
@@ -178,15 +180,6 @@ export default function AdminLayout() {
     (tenantConfig?.plataforma_pagamento !== 'mercado_pago' || tenantConfig?.plataforma_oauth === true)
   const tenantReady = tenantConfig != null
   const lojaOffline = !skipOperationalGates && tenantReady && tenantConfig?.ativa === false
-
-  // Assinatura não ativa (cancelado / sem config Resolutoo): derruba sessão
-  // mesmo com JWT antigo ainda no localStorage.
-  useEffect(() => {
-    if (!lojaOffline) return
-    stashLojaOfflineMessage(LOJA_OFFLINE_MSG)
-    gateSession = null
-    logout()
-  }, [lojaOffline, logout])
 
   // Ramo eletrônicos tem painel PRÓPRIO (visual dedicado, nunca a chrome de
   // ecommerce deste layout) -- migrado de app externo (vrtech-jp.vercel.app,
@@ -473,7 +466,25 @@ export default function AdminLayout() {
   }
 
   if (lojaOffline) {
-    return <Navigate to="/admin/login" state={{ from: location, offline: true }} replace />
+    // 'pausado'/'cancelado' por falta de pagamento tem tela própria (paga
+    // sem sair do painel, mesmo espírito do gate de WhatsApp) -- só cai no
+    // logout antigo se o assinante nem existir mais na plataforma.
+    return (
+      <BillingGate
+        slug={resolveTenantSlug()}
+        onUnlocked={() => {
+          gateSession = null
+          resetTenantConfigCache()
+          navigate(0)
+        }}
+        onNotFound={() => {
+          stashLojaOfflineMessage(LOJA_OFFLINE_MSG)
+          gateSession = null
+          logout()
+          navigate('/admin/login', { state: { from: location, offline: true }, replace: true })
+        }}
+      />
+    )
   }
 
   if (gateLocked === null) {

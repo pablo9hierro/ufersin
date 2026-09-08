@@ -269,6 +269,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/public/plans", get(routes::plans::list_public))
         .route("/api/public/content", get(routes::plans::list_content))
         .route("/api/public/coupons/preview", post(routes::plans::coupon_preview))
+        .route("/api/public/loja/{slug}/fatura", get(routes::assinatura::fatura_por_slug))
+        .route("/api/public/loja/{slug}/fatura/pagar", post(routes::assinatura::pagar_fatura_por_slug))
         .route("/api/superadmin/whoami", get(routes::superadmin::whoami))
         .route("/api/superadmin/overview", get(routes::superadmin::overview))
         .route("/api/superadmin/mercadopago/status", get(routes::superadmin::mercadopago_status))

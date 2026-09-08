@@ -9,6 +9,17 @@ export function platformOrigin(): string {
   return 'http://localhost:5174'
 }
 
+/** Base da API da plataforma (ufersin-api) -- mesma env var que
+ * tenantConfig.ts usa pra buscar tenant-config. Usado pela tela
+ * persistente de cobrança (BillingGate), que fala com a API da
+ * plataforma sem ter o JWT de assinante (só o token de admin da loja). */
+export function platformApiUrl(): string {
+  const fromEnv = (import.meta.env.VITE_RODOLETAS_API_URL as string | undefined)?.trim()
+  if (fromEnv) return fromEnv.replace(/\/$/, '')
+  if (import.meta.env.PROD) return 'https://ufersin-api-production.up.railway.app'
+  return 'http://localhost:8081'
+}
+
 export type PlatformPoliticaSlug =
   | 'compra'
   | 'compra-mais-18'

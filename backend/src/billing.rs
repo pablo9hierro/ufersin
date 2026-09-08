@@ -107,8 +107,8 @@ async fn bill_due_subscribers(state: &AppState) -> Result<(), crate::error::AppE
         let grace_until = add_business_days(now, 3);
 
         sqlx::query(
-            "INSERT INTO subscriber_invoices (id, subscriber_id, amount, billing_cycle, status, gateway, external_id, due_date) \
-             VALUES ($1, $2, $3, $4, 'pendente', 'mercadopago', $5, $6)",
+            "INSERT INTO subscriber_invoices (id, subscriber_id, amount, billing_cycle, status, gateway, external_id, due_date, pix_qr_code, pix_qr_base64) \
+             VALUES ($1, $2, $3, $4, 'pendente', 'mercadopago', $5, $6, $7, $8)",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&sub.id)
@@ -116,6 +116,8 @@ async fn bill_due_subscribers(state: &AppState) -> Result<(), crate::error::AppE
         .bind(cycle.as_str())
         .bind(&charge.external_id)
         .bind(now)
+        .bind(&charge.pix_qr_code)
+        .bind(&charge.pix_qr_base64)
         .execute(&state.pool)
         .await?;
 

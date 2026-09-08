@@ -2,11 +2,12 @@ import { useEffect } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Boxes, CalendarDays, ClipboardList, LogOut, MessageCircle, MessageSquare, Package, ShoppingCart, Truck, UserCog, Wallet } from 'lucide-react'
 import { useAdminAuth, detectAdminTenantMismatch } from '../../store/adminAuth'
-import { withTenantSearch } from '../../lib/tenantConfig'
+import { resetTenantConfigCache, resolveTenantSlug, withTenantSearch } from '../../lib/tenantConfig'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import EletronicaLogo from './EletronicaLogo'
 import { useDriverLocationPush } from '../../hooks/useDriverLocationPush'
+import BillingGate from '../../components/admin/BillingGate'
 
 // Port 1:1 de src/components/dashboard/DashboardSidebar.tsx do vrtech --
 // mesmos 9 itens, mesmos ícones, mesma ordem. AdminLink (Next Link) vira
@@ -65,6 +66,25 @@ export default function EletronicaAdminLayout() {
   }, [token])
 
   if (!token || tenantMismatch) return <Navigate to={`/admin/login${withTenantSearch()}`} replace />
+
+  // Mesmo gate de cobrança do painel de ecommerce (AdminLayout.tsx) --
+  // aqui precisa de novo porque /admin-eletronica é uma rota irmã, não
+  // aninhada sob /admin, então nunca passa pelo check de lá.
+  if (tenantConfig != null && tenantConfig.ativa === false) {
+    return (
+      <BillingGate
+        slug={resolveTenantSlug()}
+        onUnlocked={() => {
+          resetTenantConfigCache()
+          navigate(0)
+        }}
+        onNotFound={() => {
+          logout()
+          navigate('/admin/login', { replace: true })
+        }}
+      />
+    )
+  }
 
   function handleLogout() {
     logout()

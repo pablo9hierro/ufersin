@@ -103,6 +103,16 @@ pub struct StoreRow {
     /// dois vem preenchido, espelhando `discount_type` do cupom.
     pub discount_percent: Option<f64>,
     pub discount_amount: Option<f64>,
+    /// Vencimento da próxima renovação (ver billing.rs).
+    pub next_billing_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Setado enquanto `status = 'pausado'` -- prazo pra pagar sem perder cupom.
+    pub billing_grace_until: Option<chrono::DateTime<chrono::Utc>>,
+    /// Presente só quando o CANCELAMENTO foi voluntário (lojista, via
+    /// `/api/me/cancelar`) -- ausente quando `status = 'cancelado'' veio
+    /// da janela de tolerância estourada sem pagar (billing.rs). É assim
+    /// que o front distingue "cancelado pelo lojista" de "cancelado por
+    /// falta de pagamento" sem precisar de coluna nova.
+    pub cancelled_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub async fn list_stores(
@@ -111,7 +121,8 @@ pub async fn list_stores(
 ) -> Result<Json<Vec<StoreRow>>, AppError> {
     let rows = sqlx::query_as::<_, StoreRow>(
         "SELECT id, loja_nome, email, whatsapp, slug, plan_code, valor_mensal, status, \
-         onboarding_status, coupon_code, created_at, discount_percent, discount_amount \
+         onboarding_status, coupon_code, created_at, discount_percent, discount_amount, \
+         next_billing_at, billing_grace_until, cancelled_at \
          FROM subscribers ORDER BY created_at DESC LIMIT 500",
     )
     .fetch_all(&state.pool)

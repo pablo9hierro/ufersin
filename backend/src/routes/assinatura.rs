@@ -618,7 +618,10 @@ pub async fn sync_pending_subscription_payment(
     // "cancelado" incluído: lojista que cancelou e assinou de novo precisa
     // poder reativar por aqui — sem isso, o poll via /assinatuas/{id}/status
     // nunca via o pagamento aprovado pra quem tinha status=cancelado.
-    if !matches!(status_atual.as_str(), "pendente" | "sem_assinatura" | "cancelado") {
+    // "pausado" incluído: assinatura vencida dentro da janela de tolerância
+    // (ver billing.rs) — a tela persistente de cobrança no painel da loja
+    // faz poll aqui pra saber quando o Pix da renovação foi pago.
+    if !matches!(status_atual.as_str(), "pendente" | "sem_assinatura" | "cancelado" | "pausado") {
         return Ok(Some((status_atual, onboarding_status)));
     }
 
@@ -730,6 +733,179 @@ pub async fn activate_from_mp_payment_id(
         "mp webhook: subscriber activated after approved payment"
     );
     Ok(true)
+}
+
+#[derive(Debug, Serialize)]
+pub struct FaturaPendente {
+    /// "ativo" (nada pendente) | "pausado" (vencida, dentro da janela de
+    /// tolerância) | "cancelado" (janela estourada, cupom perdido).
+    pub status: String,
+    pub valor: f64,
+    pub ciclo: String,
+    pub loja_nome: String,
+    pub grace_until: Option<chrono::DateTime<chrono::Utc>>,
+    pub pix_qr_code: Option<String>,
+    pub pix_qr_base64: Option<String>,
+}
+
+/// Tela persistente de cobrança do painel da loja (AdminLayout do motor,
+/// `ecommerce/frontend`) não tem o JWT de assinante da plataforma — só o
+/// token de admin da loja. Público por slug, mesmo nível de exposição que
+/// `tenant_config` (nenhum dado sensível, só o necessário pra mostrar o
+/// QR e o prazo).
+pub async fn fatura_por_slug(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<FaturaPendente>, AppError> {
+    let row: Option<(String, String, String, f64, String, Option<chrono::DateTime<chrono::Utc>>)> =
+        sqlx::query_as(
+            "SELECT id, loja_nome, status, valor_mensal, billing_cycle, billing_grace_until \
+             FROM subscribers WHERE slug = $1",
+        )
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    let Some((subscriber_id, loja_nome, status, valor, ciclo, grace_until)) = row else {
+        return Err(AppError::NotFound("loja não encontrada".to_string()));
+    };
+
+    if status != "pausado" {
+        return Ok(Json(FaturaPendente {
+            status,
+            valor,
+            ciclo,
+            loja_nome,
+            grace_until: None,
+            pix_qr_code: None,
+            pix_qr_base64: None,
+        }));
+    }
+
+    // Sincroniza ativamente com o Mercado Pago -- não depende só do webhook
+    // (mesma lógica de sync_pending_subscription_payment, reaproveitada).
+    if let Some((new_status, _)) = sync_pending_subscription_payment(&state, &subscriber_id).await? {
+        if new_status == "ativo" {
+            return Ok(Json(FaturaPendente {
+                status: new_status,
+                valor,
+                ciclo,
+                loja_nome,
+                grace_until: None,
+                pix_qr_code: None,
+                pix_qr_base64: None,
+            }));
+        }
+    }
+
+    let invoice: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT pix_qr_code, pix_qr_base64 FROM subscriber_invoices \
+         WHERE subscriber_id = $1 AND status = 'pendente' ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&subscriber_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let (pix_qr_code, pix_qr_base64) = invoice.unwrap_or((None, None));
+
+    Ok(Json(FaturaPendente {
+        status: "pausado".to_string(),
+        valor,
+        ciclo,
+        loja_nome,
+        grace_until,
+        pix_qr_code,
+        pix_qr_base64,
+    }))
+}
+
+/// Gera um Pix NOVO pra fatura vencida (o QR original pode ter expirado no
+/// Mercado Pago) -- sempre pelo valor JÁ TRAVADO (`valor_mensal`), nunca
+/// recalcula por cupom/preço atual. Só funciona em 'pausado' (dentro da
+/// janela de tolerância); depois de 'cancelado' o lojista reassina pelo
+/// painel normal (resolutoo.com), a preço de tabela do momento.
+pub async fn pagar_fatura_por_slug(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<FaturaPendente>, AppError> {
+    let row: Option<(String, String, String, f64, String, String, Option<String>, Option<chrono::DateTime<chrono::Utc>>)> =
+        sqlx::query_as(
+            "SELECT id, loja_nome, status, valor_mensal, billing_cycle, email, mp_preapproval_id, billing_grace_until \
+             FROM subscribers WHERE slug = $1",
+        )
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    let Some((subscriber_id, loja_nome, status, valor, ciclo_str, email, prev_ext_id, grace_until)) = row else {
+        return Err(AppError::NotFound("loja não encontrada".to_string()));
+    };
+
+    if status != "pausado" {
+        return Err(AppError::BadRequest(
+            "essa assinatura não está aguardando pagamento de renovação".to_string(),
+        ));
+    }
+
+    let cycle = BillingCycle::parse(&ciclo_str).unwrap_or(BillingCycle::Mensal);
+    let reason = format!("Renovação Resolutoo ({}) — {}", cycle.as_str(), loja_nome.trim());
+
+    if let Some(ext_id) = prev_ext_id.as_deref().filter(|s| !s.is_empty()) {
+        gateway::cancel(&state, "mercadopago", ext_id).await;
+    }
+
+    let charge = gateway::create_subscription(
+        &state,
+        "mercadopago",
+        &reason,
+        email.trim(),
+        "",
+        valor,
+        cycle,
+        &subscriber_id,
+        PaymentMethod::Pix,
+    )
+    .await?;
+
+    sqlx::query(
+        "UPDATE subscriber_invoices SET status = 'expirado' \
+         WHERE subscriber_id = $1 AND status = 'pendente'",
+    )
+    .bind(&subscriber_id)
+    .execute(&state.pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO subscriber_invoices (id, subscriber_id, amount, billing_cycle, status, gateway, external_id, due_date, pix_qr_code, pix_qr_base64) \
+         VALUES ($1, $2, $3, $4, 'pendente', 'mercadopago', $5, now(), $6, $7)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&subscriber_id)
+    .bind(valor)
+    .bind(cycle.as_str())
+    .bind(&charge.external_id)
+    .bind(&charge.pix_qr_code)
+    .bind(&charge.pix_qr_base64)
+    .execute(&state.pool)
+    .await?;
+
+    // Nunca mexe em billing_grace_until aqui -- gerar QR novo não pode
+    // estender o prazo de tolerância além dos 3 dias úteis originais.
+    sqlx::query("UPDATE subscribers SET mp_preapproval_id = $1, updated_at = now() WHERE id = $2")
+        .bind(&charge.external_id)
+        .bind(&subscriber_id)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(FaturaPendente {
+        status: "pausado".to_string(),
+        valor,
+        ciclo: cycle.as_str().to_string(),
+        loja_nome,
+        grace_until,
+        pix_qr_code: charge.pix_qr_code,
+        pix_qr_base64: charge.pix_qr_base64,
+    }))
 }
 
 #[cfg(test)]
