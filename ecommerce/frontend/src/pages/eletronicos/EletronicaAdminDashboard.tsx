@@ -60,21 +60,25 @@ const GROUP_FILTERS: { key: StatusGroup; label: string }[] = [
   { key: 'concluidos', label: STATUS_GROUP_LABEL.concluidos },
 ]
 
+// Badges no tom escuro do painel (fundo translúcido + texto claro da
+// própria cor) -- antes usava variantes claras (bg-yellow-100/text-yellow-700
+// etc), pensadas pra fundo branco, plantadas em cima do painel escuro
+// (#0a0a0b/#161618): o contraste ficava artificial e destoava do resto.
 const STATUS_CONFIG: Record<ServiceStatus, { label: string; color: string; bg: string }> = {
-  pending: { label: 'Solicitação nova', color: 'text-yellow-700', bg: 'bg-yellow-100' },
-  accepted: { label: 'Aceito', color: 'text-green-700', bg: 'bg-green-100' },
-  rejected: { label: 'Recusado', color: 'text-red-700', bg: 'bg-red-100' },
-  retirada_local: { label: 'Retirada/entrega pelo cliente', color: 'text-teal-700', bg: 'bg-teal-100' },
-  em_busca: { label: 'Em rota de recolhimento', color: 'text-orange-700', bg: 'bg-orange-100' },
-  in_progress: { label: 'Em reparo', color: 'text-purple-700', bg: 'bg-purple-100' },
-  completed: { label: 'Pronto', color: 'text-gray-700', bg: 'bg-gray-100' },
-  em_pagamento: { label: 'Em pagamento', color: 'text-lime-700', bg: 'bg-lime-100' },
-  em_entrega: { label: 'Em rota de entrega', color: 'text-indigo-700', bg: 'bg-indigo-100' },
-  delivered: { label: 'Aparelho entregue', color: 'text-cyan-700', bg: 'bg-cyan-100' },
-  finished: { label: 'Atendimento concluído', color: 'text-emerald-700', bg: 'bg-emerald-100' },
-  cancelled: { label: 'Cancelado', color: 'text-rose-700', bg: 'bg-rose-100' },
-  aguardando_diagnostico: { label: 'Aguardando diagnóstico', color: 'text-blue-700', bg: 'bg-blue-100' },
-  diagnostico_enviado: { label: 'Diagnóstico enviado', color: 'text-violet-700', bg: 'bg-violet-100' },
+  pending: { label: 'Solicitação nova', color: 'text-amber-300', bg: 'bg-amber-500/15' },
+  accepted: { label: 'Aceito', color: 'text-emerald-300', bg: 'bg-emerald-500/15' },
+  rejected: { label: 'Recusado', color: 'text-red-300', bg: 'bg-red-500/15' },
+  retirada_local: { label: 'Retirada/entrega pelo cliente', color: 'text-teal-300', bg: 'bg-teal-500/15' },
+  em_busca: { label: 'Em rota de recolhimento', color: 'text-orange-300', bg: 'bg-orange-500/15' },
+  in_progress: { label: 'Em reparo', color: 'text-purple-300', bg: 'bg-purple-500/15' },
+  completed: { label: 'Pronto', color: 'text-[#d4d4d8]', bg: 'bg-white/10' },
+  em_pagamento: { label: 'Em pagamento', color: 'text-lime-300', bg: 'bg-lime-500/15' },
+  em_entrega: { label: 'Em rota de entrega', color: 'text-indigo-300', bg: 'bg-indigo-500/15' },
+  delivered: { label: 'Aparelho entregue', color: 'text-cyan-300', bg: 'bg-cyan-500/15' },
+  finished: { label: 'Atendimento concluído', color: 'text-emerald-300', bg: 'bg-emerald-500/15' },
+  cancelled: { label: 'Cancelado', color: 'text-rose-300', bg: 'bg-rose-500/15' },
+  aguardando_diagnostico: { label: 'Aguardando diagnóstico', color: 'text-blue-300', bg: 'bg-blue-500/15' },
+  diagnostico_enviado: { label: 'Diagnóstico enviado', color: 'text-violet-300', bg: 'bg-violet-500/15' },
 }
 
 function googleMapsLink(lat: number, lng: number) {
@@ -225,44 +229,52 @@ export default function EletronicaAdminDashboard() {
               (req.status === 'em_busca' || req.status === 'em_entrega') &&
               !req.self_pickup && req.address_lat != null && req.address_lng != null
             return (
-              <div key={req.id} className="w-full bg-[#161618] rounded-2xl border border-white/5 overflow-hidden hover:border-[#e0211a]/30 transition-all group">
-                <button type="button" onClick={() => setSelected(req)} className="w-full p-4 text-left">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${sc.bg} ${sc.color}`}>{sc.label}</span>
-                        {req.quote_value != null && (
-                          <span className="text-xs font-bold text-[#e0211a]">R$ {Number(req.quote_value).toFixed(2)}</span>
-                        )}
-                      </div>
+              <div
+                key={req.id}
+                className="w-full bg-[#161618] rounded-2xl border border-white/5 overflow-hidden hover:border-[#e0211a]/30 transition-colors group"
+              >
+                <button type="button" onClick={() => setSelected(req)} className="w-full p-4 text-left flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
+                    <Smartphone className="w-5 h-5 text-[#d4d4d8]/70" />
+                  </div>
+
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
                       <h3 className="font-semibold text-white truncate">{req.customer_name}</h3>
-                      <div className="flex items-center gap-1 text-[#d4d4d8]/70 text-sm">
-                        <Smartphone className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{req.phone_model ?? (req.diagnosis_requested ? '🔍 Diagnóstico solicitado' : '—')}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-[#d4d4d8]/40 text-xs mt-1">
-                        <MapPin className="w-3 h-3 shrink-0" />
-                        <span className="truncate">{req.self_pickup ? 'Retirada pelo cliente' : req.address_label || 'Coleta/entrega'}</span>
-                        {!req.self_pickup && req.address_lat != null && req.address_lng != null && (
-                          <a
-                            href={googleMapsLink(req.address_lat, req.address_lng)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-blue-400 hover:underline shrink-0"
-                          >
-                            📍
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <span className="text-xs text-[#d4d4d8]/40">
+                      <span className="text-xs text-[#d4d4d8]/40 shrink-0">
                         {new Date(req.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-[#d4d4d8]/30 group-hover:text-[#e0211a] transition-colors" />
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${sc.bg} ${sc.color}`}>{sc.label}</span>
+                      {req.quote_value != null && (
+                        <span className="text-xs font-bold text-[#e0211a]">R$ {Number(req.quote_value).toFixed(2)}</span>
+                      )}
+                    </div>
+
+                    <p className="text-[#d4d4d8]/70 text-sm truncate">
+                      {req.phone_model ?? (req.diagnosis_requested ? '🔍 Diagnóstico solicitado' : '—')}
+                    </p>
+
+                    <div className="flex items-center gap-1 text-[#d4d4d8]/40 text-xs">
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{req.self_pickup ? 'Retirada pelo cliente' : req.address_label || 'Coleta/entrega'}</span>
+                      {!req.self_pickup && req.address_lat != null && req.address_lng != null && (
+                        <a
+                          href={googleMapsLink(req.address_lat, req.address_lng)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-blue-400 hover:underline shrink-0"
+                        >
+                          📍
+                        </a>
+                      )}
                     </div>
                   </div>
+
+                  <ChevronRight className="w-4 h-4 text-[#d4d4d8]/30 group-hover:text-[#e0211a] transition-colors shrink-0 mt-2.5" />
                 </button>
                 {showLiveMap && (
                   <div className="px-4 pb-4">
