@@ -98,7 +98,7 @@ pub async fn assinar_plano(
         documento,
         vertical_atual,
     ) = row.ok_or_else(|| AppError::NotFound("conta não encontrada — finalize o cadastro primeiro".to_string()))?;
-    if matches!(status.as_str(), "ativo" | "pausado") {
+    if status == "ativo" {
         return Err(AppError::BadRequest("essa conta já tem uma assinatura ativa".to_string()));
     }
 
@@ -123,7 +123,11 @@ pub async fn assinar_plano(
     }
 
     // Reuse pending subscription when switching Pix ↔ cartão (same plan pricing).
-    let reuse_pending = status == "pendente" && existing_monthly.is_some();
+    // 'pausado' também reaproveita: é a loja vencida, dentro da janela de 3
+    // dias úteis de tolerância (ver billing.rs) -- pagar aqui tem que honrar
+    // o MESMO valor_mensal já travado, nunca recalcular pelo preço/cupom
+    // atual (isso só volta a valer se a janela expirar e ela virar 'cancelado').
+    let reuse_pending = matches!(status.as_str(), "pendente" | "pausado") && existing_monthly.is_some();
 
     let cupom_code = body
         .cupom
@@ -494,12 +498,18 @@ pub async fn activate_paid_subscriber(
     // linha nenhuma (status ficava travado em "cancelado" pra sempre, sem
     // erro nenhum) — /api/me nunca reportava ativo, então o site nunca
     // redirecionava pra /onboarding ou /meu-plano depois de pagar de novo.
+    // 'pausado' incluído: é o estado de "assinatura vencida, dentro da
+    // janela de tolerância de 3 dias úteis" (ver billing.rs) -- pagar
+    // dentro da janela tem que reativar exatamente como pendente/cancelado
+    // reativam, senão o pagamento da renovação nunca reflete no banco.
     if let Some(ext) = payment_external_id.map(str::trim).filter(|s| !s.is_empty()) {
         sqlx::query(
             "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, \
              mp_preapproval_id = COALESCE(NULLIF(trim(mp_preapproval_id), ''), $2), \
+             billing_grace_until = NULL, last_billed_at = now(), \
+             next_billing_at = now() + CASE WHEN billing_cycle = 'semestral' THEN INTERVAL '6 months' ELSE INTERVAL '1 month' END, \
              updated_at = now() \
-             WHERE id = $3 AND status IN ('pendente', 'sem_assinatura', 'cancelado')",
+             WHERE id = $3 AND status IN ('pendente', 'sem_assinatura', 'cancelado', 'pausado')",
         )
         .bind(novo_onboarding)
         .bind(ext)
@@ -508,14 +518,27 @@ pub async fn activate_paid_subscriber(
         .await?;
     } else {
         sqlx::query(
-            "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, updated_at = now() \
-             WHERE id = $2 AND status IN ('pendente', 'sem_assinatura', 'cancelado')",
+            "UPDATE subscribers SET status = 'ativo', onboarding_status = $1, \
+             billing_grace_until = NULL, last_billed_at = now(), \
+             next_billing_at = now() + CASE WHEN billing_cycle = 'semestral' THEN INTERVAL '6 months' ELSE INTERVAL '1 month' END, \
+             updated_at = now() \
+             WHERE id = $2 AND status IN ('pendente', 'sem_assinatura', 'cancelado', 'pausado')",
         )
         .bind(novo_onboarding)
         .bind(id)
         .execute(&state.pool)
         .await?;
     }
+
+    // Fatura de renovação em aberto pra esse assinante vira "paga" (best
+    // effort — não falha a ativação se não houver nenhuma).
+    let _ = sqlx::query(
+        "UPDATE subscriber_invoices SET status = 'pago', paid_at = now() \
+         WHERE subscriber_id = $1 AND status = 'pendente'",
+    )
+    .bind(id)
+    .execute(&state.pool)
+    .await;
 
     // Idempotent: if already ativo, still fix onboarding_status when stuck on aguardando_pagamento.
     sqlx::query(

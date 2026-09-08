@@ -1,4 +1,5 @@
 mod auth;
+mod billing;
 mod coupons;
 mod error;
 mod gateway;
@@ -181,6 +182,8 @@ async fn main() -> anyhow::Result<()> {
         public_api_url: Arc::new(public_api_url),
         mercadopago_oauth,
     };
+
+    billing::spawn_recurring_billing(state.clone());
 
     let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:5174".to_string())
