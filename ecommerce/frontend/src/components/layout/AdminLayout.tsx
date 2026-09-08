@@ -195,11 +195,15 @@ export default function AdminLayout() {
   // continua valendo: um tenant eletronicos acessando /loja/admin caía
   // neste painel de produto/pedido/PDV, que não é o dele.
   useEffect(() => {
-    if (skipOperationalGates || !tenantReady) return
+    // Roteamento por vertical é estrutural, não um gate de assinatura --
+    // usa `demo` puro (nunca skipOperationalGates), senão o preview real da
+    // demo-eletronica (isSeededPreviewTenant) fica preso no chrome de
+    // ecommerce em vez de ir pro /admin-eletronica dela.
+    if (demo || !tenantReady) return
     if (tenantConfig?.vertical === 'eletronicos' && !window.location.pathname.startsWith('/loja/admin-eletronica')) {
       navigate(`/admin-eletronica${withTenantSearch()}`, { replace: true })
     }
-  }, [skipOperationalGates, tenantReady, tenantConfig?.vertical, navigate])
+  }, [demo, tenantReady, tenantConfig?.vertical, navigate])
 
   // null = ainda checando; true = gate ativo; false = liberado
   const [gateLocked, setGateLocked] = useState<boolean | null>(() => {
