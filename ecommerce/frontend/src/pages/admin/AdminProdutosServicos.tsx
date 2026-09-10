@@ -8,6 +8,7 @@ import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { convertUnit } from '../../lib/ingredientUnits'
 import type { Category, Ingredient, Service } from '../../types'
 
 function currency(v: number) {
@@ -101,6 +102,20 @@ export default function AdminProdutosServicos() {
 
   const hasIngredientLines = (f: { ingredientLines: ServiceIngredientLine[] }) =>
     f.ingredientLines.some((l) => l.ingredient_id && Number(l.quantity) > 0)
+
+  const computeAvailableFromStock = (f: { ingredientLines: ServiceIngredientLine[] }) => {
+    let min = Infinity
+    for (const line of f.ingredientLines) {
+      const needed = Number(line.quantity)
+      if (!line.ingredient_id || !Number.isFinite(needed) || needed <= 0) continue
+      const ingredient = ingredients.find((i) => i.id === line.ingredient_id)
+      if (!ingredient) return null
+      const available = convertUnit(ingredient.quantity, ingredient.unit, line.unit)
+      if (available == null) return null
+      min = Math.min(min, Math.floor(available / needed))
+    }
+    return Number.isFinite(min) ? Math.max(0, min) : null
+  }
 
   const addIngredientLine = () =>
     setForm((f) => (f ? { ...f, ingredientLines: [...f.ingredientLines, { ...EMPTY_INGREDIENT_LINE }] } : f))
@@ -411,7 +426,16 @@ export default function AdminProdutosServicos() {
                   <label className="label">Quantidade de serviços disponíveis</label>
                   {hasIngredientLines(form) ? (
                     <>
-                      <input className="input-field opacity-60 cursor-not-allowed" value="calculado pelo estoque" disabled readOnly />
+                      <input
+                        className="input-field opacity-60 cursor-not-allowed"
+                        value={
+                          computeAvailableFromStock(form) != null
+                            ? String(computeAvailableFromStock(form))
+                            : 'não foi possível calcular'
+                        }
+                        disabled
+                        readOnly
+                      />
                       <p className="text-[10px] text-son-silver-dim mt-1">
                         Calculado automaticamente pela disponibilidade dos itens de estoque ligados acima.
                       </p>

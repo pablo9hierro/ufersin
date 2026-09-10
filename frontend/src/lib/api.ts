@@ -317,6 +317,12 @@ export interface ContractCatalogItem {
   pandadoc_ready: boolean
 }
 
+export interface CfopOption {
+  codigo: string
+  descricao: string
+  contexto: string
+  is_default: boolean
+}
 export interface DeliveryStatus {
   connected: boolean
   connected_at: string | null
@@ -662,6 +668,16 @@ export const api = {
   getDeliveryStatus: () => request<DeliveryStatus>('/api/onboarding/delivery'),
   conectarUberDirect: (input: UberDirectInput) =>
     request<DeliveryStatus>('/api/onboarding/delivery', { method: 'POST', body: JSON.stringify(input) }),
+  cfops: {
+    list: () => request<CfopOption[]>('/api/onboarding/cfops'),
+    search: (q: string) => request<CfopOption[]>(`/api/onboarding/cfops/search?q=${encodeURIComponent(q)}`),
+    add: (codigo: string) =>
+      request<CfopOption[]>('/api/onboarding/cfops', { method: 'POST', body: JSON.stringify({ codigo }) }),
+    setDefault: (codigo: string) =>
+      request<CfopOption[]>('/api/onboarding/cfops/default', { method: 'POST', body: JSON.stringify({ codigo }) }),
+    remove: (codigo: string) =>
+      request<CfopOption[]>('/api/onboarding/cfops/remove', { method: 'POST', body: JSON.stringify({ codigo }) }),
+  },
   fiscalStates: () => request<FiscalStateOption[]>('/api/fiscal/states'),
   fiscalCities: (uf: string) => request<FiscalCityOption[]>(`/api/fiscal/states/${uf}/cities`),
   uploadCertificadoFiscal: (file: File, senha: string) => {

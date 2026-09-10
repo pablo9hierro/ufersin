@@ -1061,6 +1061,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::internal::sync_delivery_credentials),
         )
         .route("/internal/delivery-status", get(routes::internal::delivery_status))
+        .route("/internal/cfops", get(routes::internal::list_cfops).post(routes::internal::add_cfop))
+        .route("/internal/cfops/search", get(routes::internal::search_cfops))
+        .route("/internal/cfops/default", post(routes::internal::set_default_cfop))
+        .route("/internal/cfops/remove", post(routes::internal::remove_cfop))
         .route(
             "/internal/mint-admin-token",
             post(routes::internal::mint_admin_token),

@@ -34,6 +34,7 @@ import { needsOnboardingLock } from '../lib/postPayRedirect'
 import AddressField from '../components/AddressField'
 import EntregaTerceirizadaModoField from '../components/EntregaTerceirizadaModoField'
 import FiscalCadastroSection from '../components/FiscalCadastroSection'
+import CfopCatalogSection from '../components/CfopCatalogSection'
 import UberDirectSection from '../components/UberDirectSection'
 import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
 import StorefrontCmsPreview, { type CartFabStyle } from '../components/StorefrontCmsPreview'
@@ -55,18 +56,19 @@ function maskMpAccessToken(token: string): string {
   return `••••••••${last}`
 }
 
-type Tab = 'plano' | 'layout' | 'financeiro' | 'redes' | 'assistente-ia'
+type Tab = 'plano' | 'layout' | 'integracoes' | 'redes' | 'assistente-ia'
 
 const TAB_PATH: Record<Tab, string> = {
   plano: '/meu-plano',
   layout: '/meu-plano/layout',
-  financeiro: '/meu-plano/financeiro',
+  integracoes: '/meu-plano/integracoes',
   redes: '/meu-plano/redes',
   'assistente-ia': '/meu-plano/assistente-ia',
 }
 
 function tabFromParam(param: string | undefined): Tab {
-  if (param === 'layout' || param === 'financeiro' || param === 'redes' || param === 'assistente-ia') return param
+  if (param === 'financeiro') return 'integracoes'
+  if (param === 'layout' || param === 'integracoes' || param === 'redes' || param === 'assistente-ia') return param
   return 'plano'
 }
 
@@ -804,7 +806,7 @@ export default function MeuPlano() {
   const TABS: { id: Tab; label: string; path: string }[] = [
     { id: 'plano', label: 'Meu plano atual', path: TAB_PATH.plano },
     { id: 'layout', label: 'Layout', path: TAB_PATH.layout },
-    { id: 'financeiro', label: 'Integrações', path: TAB_PATH.financeiro },
+    { id: 'integracoes', label: 'Integrações', path: TAB_PATH.integracoes },
     { id: 'redes', label: 'Redes sociais', path: TAB_PATH.redes },
     ...(isAssistantIaBetaTenant(me.slug, me.vertical) ? [{ id: 'assistente-ia' as const, label: 'Assistente IA', path: TAB_PATH['assistente-ia'] }] : []),
   ]
@@ -1616,16 +1618,16 @@ export default function MeuPlano() {
             </form>
           )}
 
-          {tab === 'financeiro' && !hasActiveSub && (
+          {tab === 'integracoes' && !hasActiveSub && (
             <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{tabLocked}</p>
           )}
-          {tab === 'financeiro' && hasActiveSub && (
+          {tab === 'integracoes' && hasActiveSub && (
             <div className="mb-3">
               <h2 className="text-lg font-bold text-uf-silver">Pagamento</h2>
               <p className="text-xs text-uf-silver-dim">Receba pelos pedidos da loja.</p>
             </div>
           )}
-          {tab === 'financeiro' && hasActiveSub && (
+          {tab === 'integracoes' && hasActiveSub && (
             <div className="uf-glass rounded-2xl p-6 space-y-4">
               <p className="text-xs text-uf-silver-dim">
                 {content['meu_plano.financeiro_hint'] ??
@@ -1670,21 +1672,22 @@ export default function MeuPlano() {
               )}
             </div>
           )}
-          {tab === 'financeiro' && hasActiveSub && (
+          {tab === 'integracoes' && hasActiveSub && (
             <div className="mt-8 mb-3">
               <h2 className="text-lg font-bold text-uf-silver">Fiscal</h2>
               <p className="text-xs text-uf-silver-dim">Emissão de NF-e/NFC-e nas vendas.</p>
             </div>
           )}
-          {tab === 'financeiro' && hasActiveSub && <FiscalCadastroSection />}
+          {tab === 'integracoes' && hasActiveSub && <FiscalCadastroSection />}
+          {tab === 'integracoes' && hasActiveSub && <CfopCatalogSection />}
 
-          {tab === 'financeiro' && hasActiveSub && (
+          {tab === 'integracoes' && hasActiveSub && (
             <div className="mt-8 mb-3">
               <h2 className="text-lg font-bold text-uf-silver">Entregas</h2>
               <p className="text-xs text-uf-silver-dim">Uber Direct nativo — sem precisar ligar pro motoboy.</p>
             </div>
           )}
-          {tab === 'financeiro' && hasActiveSub && <UberDirectSection />}
+          {tab === 'integracoes' && hasActiveSub && <UberDirectSection />}
 
           {tab === 'redes' && !hasActiveSub && (
             <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{tabLocked}</p>

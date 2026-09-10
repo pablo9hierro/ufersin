@@ -202,6 +202,10 @@ export default function AdminProdutos() {
       setUploadError('Informe o alerta de estoque baixo (repor ao chegar em).')
       return
     }
+    if (!form.unit) {
+      setUploadError('Escolha a unidade do produto.')
+      return
+    }
     if (form.unit === 'pacote') {
       const pq = Number(form.package_qty)
       if (!Number.isFinite(pq) || pq <= 0 || form.package_qty.trim() === '') {
@@ -622,12 +626,19 @@ export default function AdminProdutos() {
                 />
               </div>
               <PackageUnitFields
+                required
                 value={{
                   unit: form.unit,
                   package_qty: form.package_qty,
                   package_content_unit: form.package_content_unit,
                 }}
-                onChange={(patch) => setForm({ ...form, ...patch })}
+                onChange={(patch) => {
+                  setForm({ ...form, ...patch })
+                  if (patch.unit) {
+                    const mapped = catalogUnitToFiscal(patch.unit)
+                    if (mapped) setFiscal((f) => ({ ...f, unidade_fiscal: mapped }))
+                  }
+                }}
               />
               {editing && (
                 <div className="space-y-2">

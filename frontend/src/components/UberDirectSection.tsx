@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bike, CheckCircle2, ExternalLink, Loader2, Save } from 'lucide-react'
-import { api, ApiError, type DeliveryStatus, type UberDirectInput } from '../lib/api'
+import { api, ApiError, type DeliveryStatus, type FiscalCityOption, type FiscalStateOption, type UberDirectInput } from '../lib/api'
 
 const EMPTY: UberDirectInput = { client_id: '', client_secret: '', customer_id: '', pickup_city: '', pickup_state: '' }
 
@@ -16,9 +16,35 @@ export default function UberDirectSection() {
   const [error, setError] = useState<string | null>(null)
   const [showHelp, setShowHelp] = useState(false)
 
+  const [states, setStates] = useState<FiscalStateOption[]>([])
+  const [cities, setCities] = useState<FiscalCityOption[]>([])
+  const [loadingCities, setLoadingCities] = useState(false)
+
   useEffect(() => {
     api.getDeliveryStatus().then(setStatus).catch(() => setStatus({ connected: false, connected_at: null }))
+    api.fiscalStates().then(setStates).catch(() => {})
   }, [])
+
+  // Mesmo catálogo de município do cadastro fiscal -- reaproveitado, não
+  // duplicado. Cidade/UF aqui só ajudam o Uber Direct a geocodificar o
+  // endereço da loja (a coordenada real já vem de `tenants`/`organizations`
+  // no despacho, isso não é a fonte da geolocalização).
+  useEffect(() => {
+    if (!form.pickup_state) {
+      setCities([])
+      return
+    }
+    let cancelled = false
+    setLoadingCities(true)
+    api
+      .fiscalCities(form.pickup_state)
+      .then((list) => !cancelled && setCities(list))
+      .catch(() => {})
+      .finally(() => !cancelled && setLoadingCities(false))
+    return () => {
+      cancelled = true
+    }
+  }, [form.pickup_state])
 
   const set = <K extends keyof UberDirectInput>(k: K, v: UberDirectInput[K]) => setForm((f) => ({ ...f, [k]: v }))
 
@@ -103,24 +129,43 @@ export default function UberDirectSection() {
               />
             </div>
             <div>
-              <label className="label">Cidade da loja (retirada)</label>
-              <input className="input-field" value={form.pickup_city} onChange={(e) => set('pickup_city', e.target.value)} />
+              <label className="label">UF da loja (retirada) *</label>
+              <select
+                className="input-field"
+                value={form.pickup_state}
+                onChange={(e) => set('pickup_state', e.target.value)}
+              >
+                <option value="">Selecione</option>
+                {states.map((s) => (
+                  <option key={s.uf} value={s.uf}>
+                    {s.uf} — {s.nome}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="label">UF da loja</label>
-              <input
+              <label className="label">Cidade da loja *</label>
+              <select
                 className="input-field"
-                maxLength={2}
-                value={form.pickup_state}
-                onChange={(e) => set('pickup_state', e.target.value.toUpperCase())}
-                placeholder="PB"
-              />
+                value={form.pickup_city}
+                disabled={!form.pickup_state || loadingCities}
+                onChange={(e) => set('pickup_city', e.target.value)}
+              >
+                <option value="">
+                  {!form.pickup_state ? 'Escolha a UF primeiro' : loadingCities ? 'Carregando…' : 'Selecione'}
+                </option>
+                {cities.map((c) => (
+                  <option key={c.codigo_ibge} value={c.nome}>
+                    {c.nome}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           <button
             type="button"
             onClick={save}
-            disabled={saving || !form.client_id || !form.client_secret || !form.customer_id}
+            disabled={saving || !form.client_id || !form.client_secret || !form.customer_id || !form.pickup_city || !form.pickup_state}
             className="btn-primary w-full py-3 flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

@@ -247,6 +247,13 @@ async fn main() -> anyhow::Result<()> {
             "/api/onboarding/delivery",
             get(routes::onboarding::get_delivery_status).post(routes::onboarding::conectar_uber_direct),
         )
+        .route(
+            "/api/onboarding/cfops",
+            get(routes::onboarding::get_cfops).post(routes::onboarding::add_cfop),
+        )
+        .route("/api/onboarding/cfops/search", get(routes::onboarding::search_cfops))
+        .route("/api/onboarding/cfops/default", post(routes::onboarding::set_default_cfop))
+        .route("/api/onboarding/cfops/remove", post(routes::onboarding::remove_cfop))
         .route("/api/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start))
         .route("/api/mercadopago/oauth/callback", get(mercadopago_oauth::oauth_callback))
         .route("/api/mercadopago/oauth/disconnect", post(mercadopago_oauth::oauth_disconnect))

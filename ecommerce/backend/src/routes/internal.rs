@@ -566,6 +566,170 @@ pub async fn delivery_status(
     }
 }
 
+async fn tenant_id_by_slug(state: &AppState, slug: &str) -> Result<String, AppError> {
+    let slug = slug.trim().to_lowercase();
+    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    row.map(|(id,)| id).ok_or_else(|| AppError::NotFound("tenant not found".to_string()))
+}
+
+#[derive(Debug, Serialize)]
+pub struct CfopOutput {
+    pub codigo: String,
+    pub descricao: String,
+    pub contexto: String,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CfopListQuery {
+    pub tenant_slug: String,
+}
+
+/// Meu Plano → Integrações mostra o mesmo catálogo de CFOP que o painel da
+/// loja -- não é uma segunda fonte, é o mesmo `tenant_cfops`/`fiscal_cfops`
+/// (migration 0053), só acessado pela plataforma via chave interna.
+pub async fn list_cfops(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<CfopListQuery>,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &q.tenant_slug).await?;
+    let rows: Vec<(String, String, String, bool)> = sqlx::query_as(
+        "SELECT tc.cfop_codigo, fc.descricao, fc.contexto, tc.is_default \
+         FROM tenant_cfops tc JOIN fiscal_cfops fc ON fc.codigo = tc.cfop_codigo \
+         WHERE tc.tenant_id = $1 ORDER BY tc.is_default DESC, tc.cfop_codigo",
+    )
+    .bind(&tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(codigo, descricao, contexto, is_default)| CfopOutput { codigo, descricao, contexto, is_default })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CfopSearchQuery {
+    #[serde(default)]
+    pub q: String,
+}
+
+/// Busca na tabela oficial -- não depende de tenant, só chave interna.
+pub async fn search_cfops(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<CfopSearchQuery>,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let term = format!("%{}%", q.q.trim());
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT codigo, descricao, contexto FROM fiscal_cfops \
+         WHERE codigo ILIKE $1 OR descricao ILIKE $1 ORDER BY codigo LIMIT 30",
+    )
+    .bind(&term)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(codigo, descricao, contexto)| CfopOutput { codigo, descricao, contexto, is_default: false })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CfopMutationInput {
+    pub tenant_slug: String,
+    pub codigo: String,
+}
+
+pub async fn add_cfop(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CfopMutationInput>,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &body.tenant_slug).await?;
+    let exists: Option<(String,)> = sqlx::query_as("SELECT codigo FROM fiscal_cfops WHERE codigo = $1")
+        .bind(&body.codigo)
+        .fetch_optional(&state.pool)
+        .await?;
+    if exists.is_none() {
+        return Err(AppError::BadRequest("CFOP não encontrado na tabela oficial".to_string()));
+    }
+    let has_default: Option<(bool,)> =
+        sqlx::query_as("SELECT true FROM tenant_cfops WHERE tenant_id = $1 AND is_default LIMIT 1")
+            .bind(&tenant_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    sqlx::query(
+        "INSERT INTO tenant_cfops (id, tenant_id, cfop_codigo, is_default) VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (tenant_id, cfop_codigo) DO NOTHING",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&tenant_id)
+    .bind(&body.codigo)
+    .bind(has_default.is_none())
+    .execute(&state.pool)
+    .await?;
+    list_cfops(
+        State(state),
+        headers,
+        axum::extract::Query(CfopListQuery { tenant_slug: body.tenant_slug }),
+    )
+    .await
+}
+
+pub async fn set_default_cfop(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CfopMutationInput>,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &body.tenant_slug).await?;
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("UPDATE tenant_cfops SET is_default = false WHERE tenant_id = $1")
+        .bind(&tenant_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE tenant_cfops SET is_default = true WHERE tenant_id = $1 AND cfop_codigo = $2")
+        .bind(&tenant_id)
+        .bind(&body.codigo)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    list_cfops(
+        State(state),
+        headers,
+        axum::extract::Query(CfopListQuery { tenant_slug: body.tenant_slug }),
+    )
+    .await
+}
+
+pub async fn remove_cfop(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CfopMutationInput>,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &body.tenant_slug).await?;
+    sqlx::query("DELETE FROM tenant_cfops WHERE tenant_id = $1 AND cfop_codigo = $2")
+        .bind(&tenant_id)
+        .bind(&body.codigo)
+        .execute(&state.pool)
+        .await?;
+    list_cfops(
+        State(state),
+        headers,
+        axum::extract::Query(CfopListQuery { tenant_slug: body.tenant_slug }),
+    )
+    .await
+}
+
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }

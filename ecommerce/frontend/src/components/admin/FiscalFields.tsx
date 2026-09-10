@@ -15,6 +15,11 @@ export type FiscalValue = {
   cclass_trib: string
 }
 
+/** Sem enum oficial rígido pra unidade comercial na NF-e (texto livre até
+ * 6 chars) — lista curada com os códigos mais comuns só pra evitar erro de
+ * digitação, sempre editável se o lojista precisar de outro código. */
+export const UNIDADE_FISCAL_OPTIONS = ['UN', 'KG', 'G', 'M', 'M2', 'M3', 'L', 'ML', 'CX', 'PC', 'PAR', 'DZ']
+
 export const EMPTY_FISCAL: FiscalValue = {
   ncm: '',
   cfop: '',
@@ -147,14 +152,22 @@ export default function FiscalFields({ value, onChange, disabled }: Props) {
           </select>
         </div>
         <div>
-          <label className="label">Unidade fiscal</label>
-          <input
+          <label className="label">
+            Unidade fiscal <span className="text-amber-400">*</span>
+          </label>
+          <select
             className="input-field"
             value={value.unidade_fiscal}
             onChange={(e) => onChange({ unidade_fiscal: e.target.value })}
             disabled={disabled}
-            placeholder="Ex: UN, KG"
-          />
+          >
+            <option value="">Selecionar…</option>
+            {UNIDADE_FISCAL_OPTIONS.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="label">EAN/GTIN</label>

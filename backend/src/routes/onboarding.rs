@@ -1915,6 +1915,140 @@ pub async fn conectar_uber_direct(
     Ok(Json(DeliveryStatusOutput { connected: true, connected_at: Some(chrono::Utc::now().to_rfc3339()) }))
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CfopOutput {
+    pub codigo: String,
+    pub descricao: String,
+    pub contexto: String,
+    pub is_default: bool,
+}
+
+async fn subscriber_slug(state: &AppState, subscriber_id: &str) -> Result<String, AppError> {
+    let row: Option<(Option<String>,)> = sqlx::query_as("SELECT slug FROM subscribers WHERE id = $1")
+        .bind(subscriber_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    row.and_then(|(s,)| s)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| AppError::BadRequest("conclua o cadastro da loja em /onboarding antes de configurar o fiscal".to_string()))
+}
+
+fn ecommerce_internal_url(state: &AppState, path: &str) -> Result<String, AppError> {
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Err(AppError::Internal("integração fiscal não configurada neste ambiente".to_string()));
+    }
+    Ok(format!("{}{}", state.ecommerce_internal_url.trim_end_matches('/'), path))
+}
+
+/// Catálogo de CFOP do tenant -- mesma tabela `tenant_cfops`/`fiscal_cfops`
+/// que o painel da loja usa (migration 0053), só que acessado daqui pela
+/// plataforma via chave interna (a loja não tem JWT de assinante, e o
+/// contrário também é verdade).
+pub async fn get_cfops(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    let url = ecommerce_internal_url(&state, "/internal/cfops")?;
+    let resp = state
+        .http
+        .get(&url)
+        .query(&[("tenant_slug", &slug)])
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("cfops unreachable: {e}")))?;
+    let parsed: Vec<CfopOutput> = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("cfops parse failed: {e}")))?;
+    Ok(Json(parsed))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CfopSearchParams {
+    #[serde(default)]
+    pub q: String,
+}
+
+pub async fn search_cfops(
+    State(state): State<AppState>,
+    AuthSubscriber(_claims): AuthSubscriber,
+    axum::extract::Query(q): axum::extract::Query<CfopSearchParams>,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    let url = ecommerce_internal_url(&state, "/internal/cfops/search")?;
+    let resp = state
+        .http
+        .get(&url)
+        .query(&[("q", &q.q)])
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("cfops search unreachable: {e}")))?;
+    let parsed: Vec<CfopOutput> = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("cfops search parse failed: {e}")))?;
+    Ok(Json(parsed))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CfopCodigoInput {
+    pub codigo: String,
+}
+
+async fn cfop_mutation(
+    state: &AppState,
+    slug: &str,
+    path: &str,
+    codigo: &str,
+) -> Result<Vec<CfopOutput>, AppError> {
+    let url = ecommerce_internal_url(state, path)?;
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .json(&serde_json::json!({ "tenant_slug": slug, "codigo": codigo }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("cfops mutation unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::BadRequest(format!("{status}: {text}")));
+    }
+    resp.json()
+        .await
+        .map_err(|e| AppError::Internal(format!("cfops mutation parse failed: {e}")))
+}
+
+pub async fn add_cfop(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<CfopCodigoInput>,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    Ok(Json(cfop_mutation(&state, &slug, "/internal/cfops", &body.codigo).await?))
+}
+
+pub async fn set_default_cfop(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<CfopCodigoInput>,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    Ok(Json(cfop_mutation(&state, &slug, "/internal/cfops/default", &body.codigo).await?))
+}
+
+pub async fn remove_cfop(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<CfopCodigoInput>,
+) -> Result<Json<Vec<CfopOutput>>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    Ok(Json(cfop_mutation(&state, &slug, "/internal/cfops/remove", &body.codigo).await?))
+}
+
 async fn sync_fiscal_config(state: &AppState, slug: &str, empresa_id: &str, ambiente: &str) -> Result<(), AppError> {
     if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
         return Ok(());
