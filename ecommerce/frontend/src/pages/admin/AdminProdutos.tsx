@@ -66,9 +66,7 @@ export default function AdminProdutos() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [fiscal, setFiscal] = useState<FiscalValue>(EMPTY_FISCAL)
-  const [fiscalSaving, setFiscalSaving] = useState(false)
   const [fiscalError, setFiscalError] = useState<string | null>(null)
-  const [fiscalSaved, setFiscalSaved] = useState(false)
   const [newCategory, setNewCategory] = useState('')
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
@@ -115,7 +113,6 @@ export default function AdminProdutos() {
     setForm(EMPTY_FORM)
     setFiscal(EMPTY_FISCAL)
     setFiscalError(null)
-    setFiscalSaved(false)
     setShowForm(true)
   }
   const openEdit = (p: Product) => {
@@ -149,24 +146,7 @@ export default function AdminProdutos() {
       cclass_trib: p.cclass_trib ?? '',
     })
     setFiscalError(null)
-    setFiscalSaved(false)
     setShowForm(true)
-  }
-
-  const saveFiscal = async () => {
-    if (!editing) return
-    setFiscalSaving(true)
-    setFiscalError(null)
-    setFiscalSaved(false)
-    try {
-      await adminService.products.updateFiscal(editing.id, fiscalPayload(fiscal))
-      setFiscalSaved(true)
-      load()
-    } catch (err) {
-      setFiscalError(err instanceof ApiError ? err.message : 'Erro ao salvar dados fiscais.')
-    } finally {
-      setFiscalSaving(false)
-    }
   }
 
   const save = async () => {
@@ -215,6 +195,7 @@ export default function AdminProdutos() {
     }
     setSaving(true)
     setUploadError(null)
+    setFiscalError(null)
     const description = mergeUnitIntoDescription(
       form.description,
       form.unit,
@@ -223,8 +204,14 @@ export default function AdminProdutos() {
     )
     const payload = buildProductPayload({ ...form, description })
     try {
-      if (editing) await adminService.products.update(editing.id, payload)
-      else await adminService.products.create(payload)
+      const saved = editing
+        ? await adminService.products.update(editing.id, payload)
+        : await adminService.products.create(payload)
+      try {
+        await adminService.products.updateFiscal(saved.id, fiscalPayload(fiscal))
+      } catch (err) {
+        setFiscalError(err instanceof ApiError ? err.message : 'Produto salvo, mas os dados fiscais não puderam ser salvos.')
+      }
       setShowForm(false)
       load()
     } finally {
@@ -640,23 +627,8 @@ export default function AdminProdutos() {
                   }
                 }}
               />
-              {editing && (
-                <div className="space-y-2">
-                  <FiscalFields value={fiscal} onChange={(patch) => setFiscal({ ...fiscal, ...patch })} />
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="btn-secondary text-xs px-3 py-1.5"
-                      onClick={saveFiscal}
-                      disabled={fiscalSaving}
-                    >
-                      {fiscalSaving ? 'Salvando…' : 'Salvar dados fiscais'}
-                    </button>
-                    {fiscalSaved && <span className="text-xs text-green-400">Salvo.</span>}
-                    {fiscalError && <span className="text-xs text-red-400">{fiscalError}</span>}
-                  </div>
-                </div>
-              )}
+              <FiscalFields value={fiscal} onChange={(patch) => setFiscal({ ...fiscal, ...patch })} />
+              {fiscalError && <p className="error-msg">{fiscalError}</p>}
               <div>
                 <label className="label flex items-center gap-1.5">
                   <Barcode className="w-3.5 h-3.5" /> Código de barras

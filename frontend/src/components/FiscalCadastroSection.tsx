@@ -178,153 +178,35 @@ export default function FiscalCadastroSection() {
     }
   }
 
-  return (
-    <div className="uf-glass rounded-2xl p-6 space-y-4">
-      <p className="text-xs text-uf-silver-dim flex items-center gap-1.5">
-        <FileText className="w-3.5 h-3.5" /> Fiscal (NF-e/NFC-e) — cadastro da empresa pra emissão de nota nas vendas.
-      </p>
-      {savedId && (
-        <p className="text-sm text-uf-silver flex items-center gap-1.5">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Dados fiscais salvos.
-        </p>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="label">CNPJ *</label>
-          <input className="input-field" value={form.cnpj} onChange={(e) => set('cnpj', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Inscrição Estadual</label>
-          <input
-            className="input-field"
-            value={form.inscricao_estadual}
-            onChange={(e) => set('inscricao_estadual', e.target.value)}
-          />
-        </div>
-        <div className="col-span-2">
-          <label className="label">Razão Social *</label>
-          <input
-            className="input-field"
-            value={form.razao_social}
-            onChange={(e) => set('razao_social', e.target.value)}
-          />
-        </div>
-        <div className="col-span-2">
-          <label className="label">Nome Fantasia</label>
-          <input
-            className="input-field"
-            value={form.nome_fantasia}
-            onChange={(e) => set('nome_fantasia', e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="label flex items-center gap-1.5">
-            CEP * {cepLooking && <Loader2 className="w-3 h-3 animate-spin" />}
-          </label>
-          <input
-            className="input-field"
-            value={form.cep}
-            onChange={(e) => set('cep', e.target.value)}
-            placeholder="Preenche rua/bairro/UF/município sozinho"
-          />
-          {cepError && <p className="error-msg mt-1">{cepError}</p>}
-        </div>
-        <div />
-        <div className="col-span-2">
-          <label className="label">Logradouro *</label>
-          <input className="input-field" value={form.logradouro} onChange={(e) => set('logradouro', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Número *</label>
-          <input className="input-field" value={form.numero} onChange={(e) => set('numero', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Complemento</label>
-          <input className="input-field" value={form.complemento} onChange={(e) => set('complemento', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Bairro *</label>
-          <input className="input-field" value={form.bairro} onChange={(e) => set('bairro', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">UF *</label>
-          <select
-            className="input-field"
-            value={form.uf}
-            onChange={(e) => set('uf', e.target.value)}
-          >
-            <option value="">Selecione a UF</option>
-            {states.map((s) => (
-              <option key={s.uf} value={s.uf}>
-                {s.uf} — {s.nome}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label">Município *</label>
-          <select
-            className="input-field"
-            value={form.municipio_codigo_ibge}
-            disabled={!form.uf || loadingCities}
-            onChange={(e) => {
-              const codigo = e.target.value
-              const city = cities.find((c) => c.codigo_ibge === codigo)
-              setForm((f) => ({ ...f, municipio_codigo_ibge: codigo, municipio: city?.nome ?? '' }))
-            }}
-          >
-            <option value="">{!form.uf ? 'Escolha a UF primeiro' : loadingCities ? 'Carregando…' : 'Selecione o município'}</option>
-            {cities.map((c) => (
-              <option key={c.codigo_ibge} value={c.codigo_ibge}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-          {citiesError && <p className="error-msg mt-1">{citiesError}</p>}
-        </div>
-        <div>
-          <label className="label">Regime tributário *</label>
-          <select
-            className="input-field"
-            value={form.regime_tributario}
-            onChange={(e) => set('regime_tributario', e.target.value as FiscalConfigInput['regime_tributario'])}
-          >
-            <option value="simples_nacional">Simples Nacional</option>
-            <option value="lucro_presumido">Lucro Presumido</option>
-            <option value="lucro_real">Lucro Real</option>
-          </select>
-        </div>
-        <div>
-          <label className="label">Ambiente *</label>
-          <select
-            className="input-field"
-            value={form.ambiente}
-            onChange={(e) => set('ambiente', e.target.value as FiscalConfigInput['ambiente'])}
-          >
-            <option value="homologacao">Homologação</option>
-            <option value="producao">Produção</option>
-          </select>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={save}
-        disabled={saving}
-        className="btn-primary w-full py-3 flex items-center justify-center gap-2"
-      >
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-        Salvar dados fiscais
-      </button>
-      {error && <p className="error-msg">{error}</p>}
+  const sectionTitle = (text: string) => (
+    <p className="text-[11px] font-bold uppercase tracking-wide text-uf-silver-dim/70 mb-2">{text}</p>
+  )
 
-      {savedId && (
-        <div className="border-t border-white/10 pt-4 space-y-3">
-          <p className="text-xs text-uf-silver-dim flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5" /> Certificado digital A1 (.pfx/.p12) — necessário pra assinar a nota
-            fiscal. Nunca fica salvo aqui: é validado e repassado direto pro emissor.
+  return (
+    <div className="uf-glass rounded-2xl p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-uf-silver-dim flex items-center gap-1.5">
+          <FileText className="w-3.5 h-3.5" /> Fiscal (NF-e/NFC-e) — cadastro da empresa pra emissão de nota nas vendas.
+        </p>
+        {savedId && (
+          <p className="text-xs text-emerald-400 flex items-center gap-1.5 shrink-0">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Salvo
           </p>
+        )}
+      </div>
+
+      {/* Certificado digital — primeiro porque é o que assina a nota, mas só
+       * pode ser enviado depois que a empresa existe no Jubilados (savedId). */}
+      <div>
+        {sectionTitle('Certificado digital')}
+        <div className={!savedId ? 'opacity-50 pointer-events-none' : undefined}>
+          {!savedId && (
+            <p className="text-xs text-uf-silver-dim mb-2">
+              Salve os dados da empresa abaixo pra liberar o envio do certificado.
+            </p>
+          )}
           {certStatus?.valido && (
-            <p className="text-sm text-uf-silver flex items-center gap-1.5">
+            <p className="text-sm text-uf-silver flex items-center gap-1.5 mb-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               Certificado válido{certStatus.titular ? ` — ${certStatus.titular}` : ''}
               {certStatus.dias_restantes != null && ` — vence em ${certStatus.dias_restantes} dias`}
@@ -354,14 +236,162 @@ export default function FiscalCadastroSection() {
             type="button"
             onClick={uploadCertificado}
             disabled={certUploading || !certFile || !certSenha}
-            className="btn-secondary w-full py-3 flex items-center justify-center gap-2"
+            className="btn-secondary w-full py-2.5 mt-2 flex items-center justify-center gap-2"
           >
             {certUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             Enviar certificado
           </button>
-          {certError && <p className="error-msg">{certError}</p>}
+          {certError && <p className="error-msg mt-1">{certError}</p>}
         </div>
-      )}
+        <p className="text-[10px] text-uf-silver-dim/70 flex items-center gap-1 mt-2">
+          <ShieldCheck className="w-3 h-3" /> Nunca fica salvo aqui: é validado e repassado direto pro emissor.
+        </p>
+      </div>
+
+      <div className="border-t border-white/10" />
+
+      {/* Empresa */}
+      <div>
+        {sectionTitle('Empresa')}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">CNPJ *</label>
+            <input className="input-field" value={form.cnpj} onChange={(e) => set('cnpj', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Inscrição Estadual</label>
+            <input
+              className="input-field"
+              value={form.inscricao_estadual}
+              onChange={(e) => set('inscricao_estadual', e.target.value)}
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="label">Razão Social *</label>
+            <input
+              className="input-field"
+              value={form.razao_social}
+              onChange={(e) => set('razao_social', e.target.value)}
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="label">Nome Fantasia</label>
+            <input
+              className="input-field"
+              value={form.nome_fantasia}
+              onChange={(e) => set('nome_fantasia', e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Endereço — CEP primeiro de propósito: preenche o resto sozinho. */}
+      <div>
+        {sectionTitle('Endereço')}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="label flex items-center gap-1.5">
+              CEP * {cepLooking && <Loader2 className="w-3 h-3 animate-spin" />}
+            </label>
+            <input
+              className="input-field"
+              value={form.cep}
+              onChange={(e) => set('cep', e.target.value)}
+              placeholder="Preenche rua/bairro/UF/município sozinho"
+            />
+            {cepError && <p className="error-msg mt-1">{cepError}</p>}
+          </div>
+          <div className="col-span-2">
+            <label className="label">Logradouro *</label>
+            <input className="input-field" value={form.logradouro} onChange={(e) => set('logradouro', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Bairro *</label>
+            <input className="input-field" value={form.bairro} onChange={(e) => set('bairro', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">UF *</label>
+            <select className="input-field" value={form.uf} onChange={(e) => set('uf', e.target.value)}>
+              <option value="">Selecione a UF</option>
+              {states.map((s) => (
+                <option key={s.uf} value={s.uf}>
+                  {s.uf} — {s.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className="label">Cidade *</label>
+            <select
+              className="input-field"
+              value={form.municipio_codigo_ibge}
+              disabled={!form.uf || loadingCities}
+              onChange={(e) => {
+                const codigo = e.target.value
+                const city = cities.find((c) => c.codigo_ibge === codigo)
+                setForm((f) => ({ ...f, municipio_codigo_ibge: codigo, municipio: city?.nome ?? '' }))
+              }}
+            >
+              <option value="">{!form.uf ? 'Escolha a UF primeiro' : loadingCities ? 'Carregando…' : 'Selecione a cidade'}</option>
+              {cities.map((c) => (
+                <option key={c.codigo_ibge} value={c.codigo_ibge}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+            {citiesError && <p className="error-msg mt-1">{citiesError}</p>}
+          </div>
+          <div>
+            <label className="label">Complemento</label>
+            <input className="input-field" value={form.complemento} onChange={(e) => set('complemento', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Número *</label>
+            <input className="input-field" value={form.numero} onChange={(e) => set('numero', e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      {/* Configuração fiscal */}
+      <div>
+        {sectionTitle('Configuração fiscal')}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Regime tributário *</label>
+            <select
+              className="input-field"
+              value={form.regime_tributario}
+              onChange={(e) => set('regime_tributario', e.target.value as FiscalConfigInput['regime_tributario'])}
+            >
+              <option value="simples_nacional">Simples Nacional</option>
+              <option value="lucro_presumido">Lucro Presumido</option>
+              <option value="lucro_real">Lucro Real</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Ambiente *</label>
+            <select
+              className="input-field"
+              value={form.ambiente}
+              onChange={(e) => set('ambiente', e.target.value as FiscalConfigInput['ambiente'])}
+            >
+              <option value="homologacao">Homologação</option>
+              <option value="producao">Produção</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving}
+        className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+      >
+        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+        Salvar dados fiscais
+      </button>
+      {error && <p className="error-msg">{error}</p>}
     </div>
   )
 }

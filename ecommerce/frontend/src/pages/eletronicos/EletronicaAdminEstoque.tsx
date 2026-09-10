@@ -223,6 +223,7 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [newFiscal, setNewFiscal] = useState<FiscalValue>(EMPTY_FISCAL)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [activeBrand, setActiveBrand] = useState<string | null>(null)
@@ -309,6 +310,7 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
     setName(''); setNewDeviceIds([]); setNewBrandIds([]); setNewModelIds([])
     setPrice(''); setQuantity(''); setDescription('')
     setLowStockThreshold(''); setImageUrl(null); setImageFile(null)
+    setNewFiscal(EMPTY_FISCAL)
     setCreateError(null); setShowForm(false)
   }
 
@@ -338,6 +340,11 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
         low_stock_threshold: lowStockThreshold.trim() ? Number(lowStockThreshold) : undefined,
       })
       await eletronicosAdmin.products.saveLinks(created.id, { device_ids: newDeviceIds, brand_ids: newBrandIds, model_ids: newModelIds })
+      try {
+        await adminService.products.updateFiscal(created.id, fiscalPayload(newFiscal))
+      } catch (e) {
+        setCreateError(e instanceof Error ? e.message : 'Produto salvo, mas os dados fiscais não puderam ser salvos.')
+      }
       setProductDevices((prev) => [...prev, ...newDeviceIds.map((device_type_id) => ({ product_id: created.id, device_type_id }))])
       setProductBrands((prev) => [...prev, ...newBrandIds.map((brand_id) => ({ product_id: created.id, brand_id }))])
       setProductModels((prev) => [...prev, ...newModelIds.map((model_id) => ({ product_id: created.id, model_id }))])
@@ -525,6 +532,7 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
               <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Alertar baixo estoque quando chegar em:</label>
               <input type="number" step="1" min="0" value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} placeholder="Opcional — ex: 5" className={`${INPUT} mt-1`} />
             </div>
+            <FiscalFields value={newFiscal} onChange={(patch) => setNewFiscal({ ...newFiscal, ...patch })} />
             {createError && <p className="text-xs text-red-400">{createError}</p>}
             <div className="flex gap-2">
               <button type="submit" disabled={creating} className="flex-1 flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">

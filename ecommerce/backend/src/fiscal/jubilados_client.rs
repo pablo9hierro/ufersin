@@ -24,6 +24,18 @@ use crate::error::AppError;
 
 use super::{DocumentKind, FiscalItem};
 
+/// Frete e forma de pagamento reais do pedido -- sem isso, a DANFE sempre
+/// mostrava "Sem Frete"/pagamento em branco mesmo quando o pedido tinha
+/// entrega paga e um método de pagamento real (o Jubilados já tem as
+/// colunas/linhas certas na DANFE pra isso, só nunca recebia o dado).
+pub struct FreightInfo {
+    pub valor: f64,
+    /// "0"=emitente,"1"=destinatário,"2"=terceiros,"9"=sem frete (ver NFeDto.cs)
+    pub modalidade: String,
+    /// "01"=dinheiro,"03"=cartão crédito,"04"=cartão débito,"15"=boleto,"17"=pix,"99"=outros
+    pub forma_pagamento: String,
+}
+
 pub struct JubiladosClient {
     http: reqwest::Client,
     base_url: String,
@@ -123,6 +135,7 @@ impl JubiladosClient {
         cfop_padrao: &str,
         order_reference: &str,
         items: &[(FiscalItem, Uuid)],
+        frete: &FreightInfo,
     ) -> Result<EmitirResult, AppError> {
         // "1"=produção,"2"=homologação -- confirmado em NFeDto.cs, nunca
         // deixamos `null`/omitido (sidestepa o gap de Ambiente não existir
@@ -150,6 +163,9 @@ impl JubiladosClient {
                     itens,
                     ambiente: ambiente_code.to_string(),
                     informacao_complementar: Some(format!("Pedido Resolutoo #{order_reference}")),
+                    valor_frete: frete.valor,
+                    modalidade_frete: frete.modalidade.clone(),
+                    forma_pagamento: frete.forma_pagamento.clone(),
                 };
                 let resp = self
                     .http
@@ -173,9 +189,10 @@ impl JubiladosClient {
                     empresa_id,
                     itens,
                     serie: serie.to_string(),
-                    forma_pagamento: "01".to_string(),
+                    forma_pagamento: frete.forma_pagamento.clone(),
                     ambiente: ambiente_code.to_string(),
                     informacao_complementar: Some(format!("Pedido Resolutoo #{order_reference}")),
+                    valor_frete: frete.valor,
                 };
                 let resp = self
                     .http
@@ -306,6 +323,9 @@ struct EmitirNFeRequest {
     itens: Vec<ItemPayload>,
     ambiente: String,
     informacao_complementar: Option<String>,
+    valor_frete: f64,
+    modalidade_frete: String,
+    forma_pagamento: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -317,6 +337,7 @@ struct EmitirNFCeRequest {
     forma_pagamento: String,
     ambiente: String,
     informacao_complementar: Option<String>,
+    valor_frete: f64,
 }
 
 #[derive(Debug, Serialize)]

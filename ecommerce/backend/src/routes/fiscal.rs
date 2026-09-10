@@ -13,13 +13,29 @@ use uuid::Uuid;
 use crate::auth::AdminUser;
 use crate::error::AppError;
 use crate::features::{self, Feature};
-use crate::fiscal::{self, jubilados_client::JubiladosClient, DocumentKind, FiscalItem};
+use crate::fiscal::{self, jubilados_client::{FreightInfo, JubiladosClient}, DocumentKind, FiscalItem};
 use crate::orders_common;
 use crate::state::AppState;
 use crate::tenant;
 
 async fn require_beta(pool: &sqlx::PgPool, tenant_id: &str) -> Result<(), AppError> {
     features::require_feature(pool, tenant_id, Feature::EmissaoFiscal).await
+}
+
+/// Frete/pagamento reais do pedido pra DANFE -- sem isso ela sempre mostrava
+/// "Sem Frete" e pagamento em branco mesmo em pedido com entrega paga e
+/// método real. Códigos conforme NFeDto.cs do Jubilados (ver jubilados_client.rs).
+fn order_freight_info(order: &crate::models::OrderRow) -> FreightInfo {
+    let forma_pagamento = match (order.payment_method.as_str(), order.card_type.as_deref()) {
+        ("pix", _) => "17",
+        ("cartao", Some("debito")) => "04",
+        ("cartao", _) => "03",
+        ("dinheiro", _) => "01",
+        _ => "99",
+    }
+    .to_string();
+    let modalidade = if order.delivery_type == "retirada" { "9" } else { "0" }.to_string();
+    FreightInfo { valor: order.shipping_price, modalidade, forma_pagamento }
 }
 
 fn client(state: &AppState) -> Result<JubiladosClient, AppError> {
@@ -338,7 +354,16 @@ pub async fn emitir(
     };
 
     let result = c
-        .emitir(kind, empresa_id, &ambiente, "1", cfop_padrao.as_deref().unwrap_or("5102"), &order_id, &resolved_items)
+        .emitir(
+            kind,
+            empresa_id,
+            &ambiente,
+            "1",
+            cfop_padrao.as_deref().unwrap_or("5102"),
+            &order_id,
+            &resolved_items,
+            &order_freight_info(&order),
+        )
         .await;
 
     let (status, cstat, xmotivo, chave, protocolo, jubilados_nota_id) = match &result {
@@ -547,7 +572,16 @@ pub async fn maybe_auto_emit(pool: &sqlx::PgPool, http: &reqwest::Client, jubila
     let Some((doc_id,)) = inserted else { return }; // já tem nota pra esse pedido -- idempotente
 
     let result = c
-        .emitir(kind, empresa_id, &ambiente, "1", cfop_padrao.as_deref().unwrap_or("5102"), order_id, &resolved)
+        .emitir(
+            kind,
+            empresa_id,
+            &ambiente,
+            "1",
+            cfop_padrao.as_deref().unwrap_or("5102"),
+            order_id,
+            &resolved,
+            &order_freight_info(&order),
+        )
         .await;
     let (status, cstat, xmotivo, chave, protocolo, jubilados_nota_id) = match &result {
         Ok(r) if r.sucesso => (
