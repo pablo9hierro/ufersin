@@ -34,7 +34,6 @@ import { needsOnboardingLock } from '../lib/postPayRedirect'
 import AddressField from '../components/AddressField'
 import EntregaTerceirizadaModoField from '../components/EntregaTerceirizadaModoField'
 import FiscalCadastroSection from '../components/FiscalCadastroSection'
-import CfopCatalogSection from '../components/CfopCatalogSection'
 import UberDirectSection from '../components/UberDirectSection'
 import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
 import StorefrontCmsPreview, { type CartFabStyle } from '../components/StorefrontCmsPreview'
@@ -1679,7 +1678,6 @@ export default function MeuPlano() {
             </div>
           )}
           {tab === 'integracoes' && hasActiveSub && <FiscalCadastroSection />}
-          {tab === 'integracoes' && hasActiveSub && <CfopCatalogSection />}
 
           {tab === 'integracoes' && hasActiveSub && (
             <div className="mt-8 mb-3">
