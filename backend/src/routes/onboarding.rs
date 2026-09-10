@@ -1,4 +1,4 @@
-use axum::{extract::State, Json};
+use axum::{extract::Path, extract::State, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthSubscriber;
@@ -1320,6 +1320,53 @@ pub async fn tenant_config(
 // fiscais da empresa) e o UPDATE dedicado é mais fácil de auditar do que
 // mais um bind posicional no meio de uma query com ~40 campos já.
 
+/// 27 UFs -- lista fixa, não precisa de tabela (nunca muda). Usada pelo
+/// dropdown de UF em vez do `<input maxLength={2}>` livre que existia.
+const BRAZIL_STATES: [(&str, &str); 27] = [
+    ("AC", "Acre"), ("AL", "Alagoas"), ("AP", "Amapá"), ("AM", "Amazonas"),
+    ("BA", "Bahia"), ("CE", "Ceará"), ("DF", "Distrito Federal"), ("ES", "Espírito Santo"),
+    ("GO", "Goiás"), ("MA", "Maranhão"), ("MT", "Mato Grosso"), ("MS", "Mato Grosso do Sul"),
+    ("MG", "Minas Gerais"), ("PA", "Pará"), ("PB", "Paraíba"), ("PR", "Paraná"),
+    ("PE", "Pernambuco"), ("PI", "Piauí"), ("RJ", "Rio de Janeiro"), ("RN", "Rio Grande do Norte"),
+    ("RS", "Rio Grande do Sul"), ("RO", "Rondônia"), ("RR", "Roraima"), ("SC", "Santa Catarina"),
+    ("SP", "São Paulo"), ("SE", "Sergipe"), ("TO", "Tocantins"),
+];
+
+#[derive(Debug, Serialize)]
+pub struct StateOption {
+    pub uf: &'static str,
+    pub nome: &'static str,
+}
+
+pub async fn list_states() -> Json<Vec<StateOption>> {
+    Json(BRAZIL_STATES.iter().map(|(uf, nome)| StateOption { uf, nome }).collect())
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct CityOption {
+    pub codigo_ibge: String,
+    pub nome: String,
+}
+
+/// Município depende da UF -- só carrega depois que o front sabe a UF,
+/// nunca os ~5.570 municípios do Brasil de uma vez (seção 53 do pedido).
+pub async fn list_cities_by_state(
+    State(state): State<AppState>,
+    Path(uf): Path<String>,
+) -> Result<Json<Vec<CityOption>>, AppError> {
+    let uf = uf.trim().to_uppercase();
+    if !BRAZIL_STATES.iter().any(|(code, _)| *code == uf) {
+        return Err(AppError::BadRequest("UF inválida".to_string()));
+    }
+    let cities: Vec<CityOption> = sqlx::query_as(
+        "SELECT codigo_ibge, nome FROM municipios_ibge WHERE uf = $1 ORDER BY nome",
+    )
+    .bind(&uf)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(cities))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct FiscalConfigInput {
     pub cnpj: String,
@@ -1334,6 +1381,10 @@ pub struct FiscalConfigInput {
     pub complemento: Option<String>,
     pub bairro: String,
     pub municipio: String,
+    /// Código oficial IBGE do município escolhido no dropdown (FK pra
+    /// `municipios_ibge`) -- o nome sozinho (`municipio` acima, mantido só
+    /// pro payload que já vai pro Jubilados) não basta pro documento fiscal.
+    pub municipio_codigo_ibge: String,
     pub uf: String,
     pub cep: String,
     /// "simples_nacional" | "lucro_presumido" | "lucro_real" — mesma
@@ -1361,6 +1412,24 @@ pub async fn salvar_fiscal_config(
     if !matches!(body.regime_tributario.as_str(), "simples_nacional" | "lucro_presumido" | "lucro_real") {
         return Err(AppError::BadRequest(
             "regime_tributario deve ser 'simples_nacional', 'lucro_presumido' ou 'lucro_real'".to_string(),
+        ));
+    }
+    let uf_upper = body.uf.trim().to_uppercase();
+    if !BRAZIL_STATES.iter().any(|(code, _)| *code == uf_upper) {
+        return Err(AppError::BadRequest("UF inválida".to_string()));
+    }
+    // Município tem que pertencer à UF escolhida -- nunca aceita um código
+    // IBGE de outro estado deixado pra trás depois de trocar a UF no front.
+    let municipio_valido: Option<(String,)> = sqlx::query_as(
+        "SELECT nome FROM municipios_ibge WHERE codigo_ibge = $1 AND uf = $2",
+    )
+    .bind(&body.municipio_codigo_ibge)
+    .bind(&uf_upper)
+    .fetch_optional(&state.pool)
+    .await?;
+    if municipio_valido.is_none() {
+        return Err(AppError::BadRequest(
+            "município inválido para a UF selecionada".to_string(),
         ));
     }
     if state.jubilados_api_url.is_empty() || state.jubilados_internal_key.is_empty() {
@@ -1393,8 +1462,9 @@ pub async fn salvar_fiscal_config(
         "UPDATE subscribers SET jubilados_empresa_id = $1::uuid, fiscal_cnpj = $2, fiscal_razao_social = $3, \
            fiscal_nome_fantasia = $4, fiscal_inscricao_estadual = $5, fiscal_logradouro = $6, fiscal_numero = $7, \
            fiscal_complemento = $8, fiscal_bairro = $9, fiscal_municipio = $10, fiscal_uf = $11, fiscal_cep = $12, \
-           fiscal_regime_tributario = $13, fiscal_crt = $14, fiscal_ambiente = $15, updated_at = now() \
-         WHERE id = $16",
+           fiscal_regime_tributario = $13, fiscal_crt = $14, fiscal_ambiente = $15, \
+           fiscal_municipio_codigo_ibge = $16, updated_at = now() \
+         WHERE id = $17",
     )
     .bind(&empresa_id)
     .bind(&body.cnpj)
@@ -1406,11 +1476,12 @@ pub async fn salvar_fiscal_config(
     .bind(&body.complemento)
     .bind(&body.bairro)
     .bind(&body.municipio)
-    .bind(&body.uf)
+    .bind(&uf_upper)
     .bind(&body.cep)
     .bind(&body.regime_tributario)
     .bind(body.crt)
     .bind(&body.ambiente)
+    .bind(&body.municipio_codigo_ibge)
     .bind(&claims.sub)
     .execute(&state.pool)
     .await?;
@@ -1514,6 +1585,125 @@ async fn find_jubilados_empresa_by_cnpj(state: &AppState, cnpj: &str) -> Result<
         .find(|e| e.cnpj.chars().filter(char::is_ascii_digit).collect::<String>() == digits)
         .map(|e| e.id.to_string())
         .ok_or_else(|| AppError::Internal("empresa com este CNPJ não encontrada no Jubilados".to_string()))
+}
+
+#[derive(Debug, Serialize)]
+pub struct CertificadoStatus {
+    pub valido: bool,
+    pub titular: Option<String>,
+    pub validade: Option<chrono::DateTime<chrono::Utc>>,
+    pub dias_restantes: Option<i64>,
+}
+
+/// Upload do certificado digital A1 (.pfx/.p12). NUNCA persiste o
+/// certificado nem a senha no nosso banco -- abre localmente só pra
+/// validar (senha certa? ainda válido?), extrai titular/validade, e
+/// repassa direto pro Jubilados (`PUT /api/empresa/{id}/certificado`, que
+/// é quem de fato guarda e usa isso pra assinar XML). Nunca loga, nunca
+/// devolve o certificado/senha na resposta.
+pub async fn upload_certificado(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    mut multipart: axum::extract::Multipart,
+) -> Result<Json<CertificadoStatus>, AppError> {
+    if state.jubilados_api_url.is_empty() || state.jubilados_internal_key.is_empty() {
+        return Err(AppError::Internal(
+            "módulo fiscal não configurado neste ambiente (JUBILADOS_API_URL/JUBILADOS_INTERNAL_KEY)".to_string(),
+        ));
+    }
+
+    let empresa_id: Option<(String,)> = sqlx::query_as(
+        "SELECT jubilados_empresa_id::text FROM subscribers WHERE id = $1 AND jubilados_empresa_id IS NOT NULL",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (empresa_id,) = empresa_id.ok_or_else(|| {
+        AppError::BadRequest("salve os dados fiscais da empresa antes de enviar o certificado".to_string())
+    })?;
+
+    let mut file_bytes: Option<Vec<u8>> = None;
+    let mut senha: Option<String> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("upload inválido: {e}")))?
+    {
+        match field.name() {
+            Some("certificado") => {
+                file_bytes = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| AppError::BadRequest(format!("falha ao ler o arquivo: {e}")))?
+                        .to_vec(),
+                );
+            }
+            Some("senha") => {
+                senha = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| AppError::BadRequest(format!("falha ao ler a senha: {e}")))?,
+                );
+            }
+            _ => {}
+        }
+    }
+    let file_bytes = file_bytes.ok_or_else(|| AppError::BadRequest("arquivo do certificado ausente".to_string()))?;
+    let senha = senha.ok_or_else(|| AppError::BadRequest("senha do certificado ausente".to_string()))?;
+
+    // Abre o PKCS#12 com a senha informada -- rejeita aqui mesmo (nunca
+    // manda pro Jubilados) se a senha estiver errada ou o arquivo não for
+    // um certificado válido.
+    let pfx = p12::PFX::parse(&file_bytes)
+        .map_err(|_| AppError::BadRequest("arquivo não é um certificado .pfx/.p12 válido".to_string()))?;
+    let certs = pfx
+        .cert_bags(&senha)
+        .map_err(|_| AppError::BadRequest("senha do certificado incorreta".to_string()))?;
+    let cert_der = certs
+        .first()
+        .ok_or_else(|| AppError::BadRequest("certificado não contém nenhum certificado X.509".to_string()))?;
+
+    let (_, x509) = x509_parser::parse_x509_certificate(cert_der)
+        .map_err(|_| AppError::BadRequest("não foi possível ler os dados do certificado".to_string()))?;
+    let titular = x509
+        .subject()
+        .iter_common_name()
+        .next()
+        .and_then(|cn| cn.as_str().ok())
+        .map(str::to_string);
+    let validade_asn1 = x509.validity().not_after;
+    let validade = chrono::DateTime::from_timestamp(validade_asn1.timestamp(), 0);
+    let dias_restantes = validade.map(|v| (v - chrono::Utc::now()).num_days());
+    if dias_restantes.is_some_and(|d| d < 0) {
+        return Err(AppError::BadRequest("certificado vencido — envie um certificado válido".to_string()));
+    }
+
+    // Repassa pro Jubilados exatamente no contrato dele (confirmado lendo
+    // EmpresaController.cs: PUT /api/empresa/{id}/certificado, body
+    // { base64, senha, validade }) -- nunca fica com cópia local depois disso.
+    let base = state.jubilados_api_url.trim_end_matches('/');
+    let resp = state
+        .http
+        .put(format!("{base}/api/empresa/{empresa_id}/certificado"))
+        .header("x-internal-key", state.jubilados_internal_key.as_str())
+        .json(&serde_json::json!({
+            "base64": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &file_bytes),
+            "senha": senha,
+            "validade": validade,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("jubilados certificado request failed: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        // Nunca inclui o corpo da resposta de erro aqui -- poderia ecoar
+        // senha/certificado de volta se o Jubilados os repetir no erro.
+        return Err(AppError::Internal(format!("jubilados recusou o certificado: {status}")));
+    }
+
+    Ok(Json(CertificadoStatus { valido: true, titular, validade, dias_restantes }))
 }
 
 /// Espelho de `sync_delivery_preference` — reflete o `jubilados_empresa_id`

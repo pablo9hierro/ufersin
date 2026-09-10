@@ -315,6 +315,12 @@ pub fn build() -> OpenApi {
         ("/api/admin/orders/{id}/fiscal/emitir", Post, "Emitir NF-e/NFC-e do pedido", "Fiscal", true, false),
         ("/api/admin/orders/{id}/fiscal", Get, "Status fiscal do pedido (chave, protocolo, cStat)", "Fiscal", true, false),
         ("/api/admin/orders/{id}/fiscal/cancelar", Post, "Cancelar nota fiscal autorizada", "Fiscal", true, false),
+        ("/api/admin/fiscal/cfops", Get, "Catalogo de CFOPs cadastrados pelo tenant, com o padrao marcado", "Fiscal", true, false),
+        ("/api/admin/fiscal/cfops", Post, "Adicionar um CFOP da tabela oficial ao catalogo do tenant", "Fiscal", true, true),
+        ("/api/admin/fiscal/cfops/search", Get, "Buscar CFOP na tabela oficial por codigo ou descricao", "Fiscal", true, false),
+        ("/api/admin/fiscal/cfops/{codigo}", Delete, "Remover um CFOP do catalogo do tenant", "Fiscal", true, false),
+        ("/api/admin/fiscal/cfops/{codigo}/default", Put, "Definir qual CFOP cadastrado e o padrao", "Fiscal", true, false),
+        ("/api/admin/fiscal/documents", Get, "Listar notas fiscais emitidas (com links de XML/DANFE do Jubilados)", "Fiscal", true, false),
         // Mercado Pago Point/POS -- reaproveita o token OAuth ja sincronizado
         // em tenants.plataforma_credenciais (mesmo de Pix/Cartao).
         ("/api/admin/point/stores", Get, "Listar lojas fisicas (Store) da conta Mercado Pago do tenant", "Mercado Pago Point", true, false),

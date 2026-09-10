@@ -240,6 +240,9 @@ async fn main() -> anyhow::Result<()> {
             "/api/onboarding/fiscal",
             post(routes::onboarding::salvar_fiscal_config),
         )
+        .route("/api/fiscal/states", get(routes::onboarding::list_states))
+        .route("/api/fiscal/states/{uf}/cities", get(routes::onboarding::list_cities_by_state))
+        .route("/api/onboarding/fiscal/certificado", post(routes::onboarding::upload_certificado))
         .route("/api/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start))
         .route("/api/mercadopago/oauth/callback", get(mercadopago_oauth::oauth_callback))
         .route("/api/mercadopago/oauth/disconnect", post(mercadopago_oauth::oauth_disconnect))

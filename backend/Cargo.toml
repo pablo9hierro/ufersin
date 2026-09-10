@@ -29,3 +29,8 @@ urlencoding = "2"
 base64 = "0.22"
 utoipa = "5"
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
+# Validação de certificado digital A1 (.pfx/.p12) -- abre com a senha
+# informada e lê a validade antes de repassar ao Jubilados. Nunca
+# persistimos o certificado localmente (ver routes/onboarding.rs).
+p12 = "0.6"
+x509-parser = "0.16"

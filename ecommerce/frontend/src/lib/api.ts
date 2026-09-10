@@ -119,6 +119,27 @@ export interface FiscalSettings {
   auto_emitir: boolean
   enabled: boolean
 }
+export interface CfopOption {
+  codigo: string
+  descricao: string
+  contexto: string
+}
+export interface TenantCfop extends CfopOption {
+  is_default: boolean
+}
+export interface FiscalDocumentListItem {
+  id: string
+  order_id: string
+  modelo: string
+  status: string
+  chave_acesso: string | null
+  protocolo: string | null
+  xml_url: string | null
+  danfe_url: string | null
+  created_at: string
+  customer_name: string | null
+  total: number | null
+}
 export interface FiscalDocument {
   id?: string
   status: 'processando' | 'autorizada' | 'rejeitada' | 'cancelada' | 'erro'
@@ -1283,9 +1304,23 @@ const remoteApi = {
       // ainda não confirmado (endpoint real do Jubilados, não algo que
       // definimos aqui), então não travamos num shape específico.
       classificacaoTributaria: () => railwayAdmin<unknown>('/api/admin/fiscal/classificacao-tributaria'),
+      cfops: {
+        list: () => railwayAdmin<TenantCfop[]>('/api/admin/fiscal/cfops'),
+        search: (q: string) =>
+          railwayAdmin<CfopOption[]>(`/api/admin/fiscal/cfops/search?q=${encodeURIComponent(q)}`),
+        add: (codigo: string) =>
+          railwayAdmin<TenantCfop[]>('/api/admin/fiscal/cfops', { method: 'POST', body: JSON.stringify({ codigo }) }),
+        remove: (codigo: string) =>
+          railwayAdmin<TenantCfop[]>(`/api/admin/fiscal/cfops/${encodeURIComponent(codigo)}`, { method: 'DELETE' }),
+        setDefault: (codigo: string) =>
+          railwayAdmin<TenantCfop[]>(`/api/admin/fiscal/cfops/${encodeURIComponent(codigo)}/default`, {
+            method: 'PUT',
+          }),
+      },
       emitir: (orderId: string) =>
         railwayAdmin<FiscalDocument>(`/api/admin/orders/${orderId}/fiscal/emitir`, { method: 'POST' }),
       get: (orderId: string) => railwayAdmin<FiscalDocument | null>(`/api/admin/orders/${orderId}/fiscal`),
+      listDocuments: () => railwayAdmin<FiscalDocumentListItem[]>('/api/admin/fiscal/documents'),
       cancel: (orderId: string) =>
         railwayAdmin<{ ok: boolean }>(`/api/admin/orders/${orderId}/fiscal/cancelar`, { method: 'POST' }),
     },

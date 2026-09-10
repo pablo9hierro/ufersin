@@ -3018,10 +3018,30 @@ export const localApi = {
       classificacaoTributaria: async () => {
         throw new ApiError(403, 'recurso não está disponível no modo demonstração')
       },
+      cfops: {
+        list: async () => {
+          throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+        },
+        search: async () => {
+          throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+        },
+        add: async () => {
+          throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+        },
+        remove: async () => {
+          throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+        },
+        setDefault: async () => {
+          throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+        },
+      },
       emitir: async () => {
         throw new ApiError(403, 'recurso não está disponível no modo demonstração')
       },
       get: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      listDocuments: async () => {
         throw new ApiError(403, 'recurso não está disponível no modo demonstração')
       },
       cancel: async () => {

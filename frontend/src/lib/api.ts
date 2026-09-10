@@ -327,11 +327,31 @@ export interface FiscalConfigInput {
   complemento?: string
   bairro: string
   municipio: string
+  /** Código IBGE do município (FK real) -- `municipio` acima é só o nome
+   * pro payload do Jubilados, quem valida é este código. */
+  municipio_codigo_ibge: string
   uf: string
   cep: string
   regime_tributario: 'simples_nacional' | 'lucro_presumido' | 'lucro_real'
   crt: number
   ambiente: 'homologacao' | 'producao'
+}
+
+export interface FiscalStateOption {
+  uf: string
+  nome: string
+}
+
+export interface FiscalCityOption {
+  codigo_ibge: string
+  nome: string
+}
+
+export interface CertificadoStatus {
+  valido: boolean
+  titular: string | null
+  validade: string | null
+  dias_restantes: number | null
 }
 
 export interface OnboardingInput {
@@ -626,6 +646,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  fiscalStates: () => request<FiscalStateOption[]>('/api/fiscal/states'),
+  fiscalCities: (uf: string) => request<FiscalCityOption[]>(`/api/fiscal/states/${uf}/cities`),
+  uploadCertificadoFiscal: (file: File, senha: string) => {
+    const form = new FormData()
+    form.append('certificado', file)
+    form.append('senha', senha)
+    return request<CertificadoStatus>('/api/onboarding/fiscal/certificado', { method: 'POST', body: form })
+  },
   mercadoPagoOAuthStart: () =>
     request<{ authorize_url: string }>('/api/mercadopago/oauth/start', { method: 'POST' }),
   mercadoPagoOAuthDisconnect: () =>

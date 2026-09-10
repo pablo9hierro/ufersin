@@ -166,6 +166,26 @@ struct ProductFiscalRow {
     jubilados_produto_id: Option<Uuid>,
 }
 
+/// CFOP efetivo do produto: usa o específico se setado, senão o padrão
+/// cadastrado do tenant (`tenant_cfops.is_default`) -- nunca inventa nem
+/// deixa `None` silenciosamente quando existe um padrão configurado.
+async fn effective_cfop(
+    pool: &sqlx::PgPool,
+    tenant_id: &str,
+    product_cfop: Option<&str>,
+) -> Result<Option<String>, AppError> {
+    if let Some(cfop) = product_cfop.map(str::trim).filter(|s| !s.is_empty()) {
+        return Ok(Some(cfop.to_string()));
+    }
+    let default: Option<(String,)> = sqlx::query_as(
+        "SELECT cfop_codigo FROM tenant_cfops WHERE tenant_id = $1 AND is_default LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(default.map(|(c,)| c))
+}
+
 async fn build_fiscal_items(
     pool: &sqlx::PgPool,
     tenant_id: &str,
@@ -221,12 +241,13 @@ async fn build_fiscal_items(
             cclass_trib: None,
             jubilados_produto_id: None,
         });
+        let cfop = effective_cfop(pool, tenant_id, row.cfop.as_deref()).await?;
         fiscal_items.push(FiscalItem {
             product_id: item.product_id,
             jubilados_produto_id: row.jubilados_produto_id,
             product_name: item.product_name,
             ncm: row.ncm,
-            cfop: row.cfop,
+            cfop,
             cst: row.cst,
             csosn: row.csosn,
             cest: row.cest,
@@ -353,6 +374,46 @@ pub async fn emitir(
         Ok(r) => Err(AppError::BadRequest(format!("SEFAZ rejeitou: {} - {}", r.cstat, r.xmotivo))),
         Err(e) => Err(e),
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct FiscalDocumentListItem {
+    pub id: String,
+    pub order_id: String,
+    pub modelo: String,
+    pub status: String,
+    pub chave_acesso: Option<String>,
+    pub protocolo: Option<String>,
+    pub xml_url: Option<String>,
+    pub danfe_url: Option<String>,
+    pub created_at: String,
+    pub customer_name: Option<String>,
+    pub total: Option<f64>,
+}
+
+/// Painel Fiscal → Documentos -- lista as últimas notas emitidas (nunca
+/// gera XML/DANFE aqui, só exibe os links que o Jubilados já devolveu).
+pub async fn list_documents(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<FiscalDocumentListItem>>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<(String, String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, Option<f64>)> = sqlx::query_as(
+        "SELECT fd.id, fd.order_id, fd.modelo, fd.status, fd.chave_acesso, fd.protocolo, \
+                fd.xml_url, fd.danfe_url, fd.created_at, o.customer_name, o.total \
+         FROM fiscal_documents fd LEFT JOIN orders o ON o.id = fd.order_id AND o.tenant_id = fd.tenant_id \
+         WHERE fd.tenant_id = $1 ORDER BY fd.created_at DESC LIMIT 200",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, order_id, modelo, status, chave_acesso, protocolo, xml_url, danfe_url, created_at, customer_name, total)| {
+                FiscalDocumentListItem { id, order_id, modelo, status, chave_acesso, protocolo, xml_url, danfe_url, created_at, customer_name, total }
+            })
+            .collect(),
+    ))
 }
 
 pub async fn get_fiscal(
@@ -516,4 +577,151 @@ pub async fn maybe_auto_emit(pool: &sqlx::PgPool, http: &reqwest::Client, jubila
     if status != "autorizada" {
         tracing::warn!("auto-emissão fiscal falhou pro pedido {order_id}: {xmotivo:?}");
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct CfopOption {
+    pub codigo: String,
+    pub descricao: String,
+    pub contexto: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TenantCfopDto {
+    pub codigo: String,
+    pub descricao: String,
+    pub contexto: String,
+    pub is_default: bool,
+}
+
+/// CFOPs que o tenant já cadastrou, com o padrão marcado -- é a lista que
+/// alimenta o dropdown de "CFOP de saída" no cadastro do produto (só
+/// aceita um destes, nunca um código arbitrário digitado).
+pub async fn list_cfops(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<TenantCfopDto>>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<(String, String, String, bool)> = sqlx::query_as(
+        "SELECT tc.cfop_codigo, fc.descricao, fc.contexto, tc.is_default \
+         FROM tenant_cfops tc JOIN fiscal_cfops fc ON fc.codigo = tc.cfop_codigo \
+         WHERE tc.tenant_id = $1 ORDER BY tc.is_default DESC, tc.cfop_codigo",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(codigo, descricao, contexto, is_default)| TenantCfopDto { codigo, descricao, contexto, is_default })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchCfopQuery {
+    #[serde(default)]
+    pub q: String,
+}
+
+/// Busca na tabela oficial (não na do tenant) por código ou descrição --
+/// alimenta o combobox "+ Adicionar CFOP" da Configuração Fiscal.
+pub async fn search_cfops(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    axum::extract::Query(q): axum::extract::Query<SearchCfopQuery>,
+) -> Result<Json<Vec<CfopOption>>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let term = format!("%{}%", q.q.trim());
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT codigo, descricao, contexto FROM fiscal_cfops \
+         WHERE codigo ILIKE $1 OR descricao ILIKE $1 ORDER BY codigo LIMIT 30",
+    )
+    .bind(&term)
+    .fetch_all(&state.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter().map(|(codigo, descricao, contexto)| CfopOption { codigo, descricao, contexto }).collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddCfopInput {
+    pub codigo: String,
+}
+
+/// Adiciona um CFOP ao catálogo do tenant -- primeiro adicionado vira
+/// padrão automaticamente se ainda não existir nenhum (seção 10 do pedido).
+pub async fn add_cfop(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(body): Json<AddCfopInput>,
+) -> Result<Json<Vec<TenantCfopDto>>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let exists: Option<(String,)> = sqlx::query_as("SELECT codigo FROM fiscal_cfops WHERE codigo = $1")
+        .bind(&body.codigo)
+        .fetch_optional(&state.pool)
+        .await?;
+    if exists.is_none() {
+        return Err(AppError::BadRequest("CFOP não encontrado na tabela oficial".to_string()));
+    }
+    let has_default: Option<(bool,)> =
+        sqlx::query_as("SELECT true FROM tenant_cfops WHERE tenant_id = $1 AND is_default LIMIT 1")
+            .bind(&claims.tenant_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    sqlx::query(
+        "INSERT INTO tenant_cfops (id, tenant_id, cfop_codigo, is_default) VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (tenant_id, cfop_codigo) DO NOTHING",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(&claims.tenant_id)
+    .bind(&body.codigo)
+    .bind(has_default.is_none())
+    .execute(&state.pool)
+    .await?;
+    list_cfops(State(state), AdminUser(claims)).await
+}
+
+/// Troca qual CFOP cadastrado é o padrão -- nunca mais de um por tenant
+/// (garantido pelo índice único parcial da migration).
+pub async fn set_default_cfop(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(codigo): Path<String>,
+) -> Result<Json<Vec<TenantCfopDto>>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("UPDATE tenant_cfops SET is_default = false WHERE tenant_id = $1")
+        .bind(&claims.tenant_id)
+        .execute(&mut *tx)
+        .await?;
+    let updated = sqlx::query(
+        "UPDATE tenant_cfops SET is_default = true WHERE tenant_id = $1 AND cfop_codigo = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&codigo)
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(AppError::NotFound("CFOP não cadastrado pra esta loja".to_string()));
+    }
+    tx.commit().await?;
+    list_cfops(State(state), AdminUser(claims)).await
+}
+
+/// Remove um CFOP do catálogo do tenant -- se era o padrão, ninguém mais é
+/// (produtos sem override ficam sem CFOP efetivo até o lojista escolher
+/// outro padrão; nunca promove um substituto sem o lojista decidir).
+pub async fn remove_cfop(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(codigo): Path<String>,
+) -> Result<Json<Vec<TenantCfopDto>>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    sqlx::query("DELETE FROM tenant_cfops WHERE tenant_id = $1 AND cfop_codigo = $2")
+        .bind(&claims.tenant_id)
+        .bind(&codigo)
+        .execute(&state.pool)
+        .await?;
+    list_cfops(State(state), AdminUser(claims)).await
 }

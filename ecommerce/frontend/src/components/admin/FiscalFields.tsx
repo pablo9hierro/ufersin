@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import type { ProductFiscalPayload } from '../../types'
+import type { TenantCfop } from '../../lib/api'
+import { adminService } from '../../services/adminService'
 
 export type FiscalValue = {
   ncm: string
@@ -49,6 +52,17 @@ type Props = {
  * emitido (bloqueado na hora da emissão, com o motivo exato), nunca
  * preenchido com valor inventado. */
 export default function FiscalFields({ value, onChange, disabled }: Props) {
+  const [cfops, setCfops] = useState<TenantCfop[]>([])
+
+  useEffect(() => {
+    adminService.fiscal.cfops
+      .list()
+      .then(setCfops)
+      .catch(() => {})
+  }, [])
+
+  const defaultCfop = cfops.find((c) => c.is_default)
+
   return (
     <div className="rounded-xl border border-son-silver-dim/20 bg-black/20 p-3 space-y-2" data-testid="fiscal-fields">
       <p className="text-xs text-son-silver-dim">
@@ -66,14 +80,27 @@ export default function FiscalFields({ value, onChange, disabled }: Props) {
           />
         </div>
         <div>
-          <label className="label">CFOP</label>
-          <input
+          <label className="label">CFOP de saída</label>
+          <select
             className="input-field"
             value={value.cfop}
             onChange={(e) => onChange({ cfop: e.target.value })}
             disabled={disabled}
-            placeholder="Ex: 5102"
-          />
+          >
+            <option value="">
+              {defaultCfop ? `${defaultCfop.codigo} — padrão da empresa` : 'Sem CFOP padrão cadastrado'}
+            </option>
+            {cfops.map((c) => (
+              <option key={c.codigo} value={c.codigo}>
+                {c.codigo} — {c.descricao}
+              </option>
+            ))}
+          </select>
+          {cfops.length === 0 && (
+            <p className="text-[10px] text-son-silver-dim mt-1">
+              Cadastre CFOPs em Fiscal → Configuração pra poder escolher aqui.
+            </p>
+          )}
         </div>
         <div>
           <label className="label">CST</label>

@@ -16,6 +16,7 @@ function convertUnit(qty: number, from: string, to: string): number | null {
 }
 import { adminService } from '../../services/adminService'
 import type { Product } from '../../types/product'
+import FiscalFields, { EMPTY_FISCAL, fiscalPayload, type FiscalValue } from '../../components/admin/FiscalFields'
 
 // Port de src/app/dashboard/produtos/ProdutosClient.tsx + ProdutosTab.tsx +
 // ServicosTab.tsx do vrtech -- só as abas Produtos/Serviços (CRUD comercial
@@ -243,6 +244,7 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
   const [editImageFile, setEditImageFile] = useState<File | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
   const [savingEdit, setSavingEdit] = useState(false)
+  const [editFiscal, setEditFiscal] = useState<FiscalValue>(EMPTY_FISCAL)
 
   async function load() {
     try {
@@ -361,6 +363,17 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
     setEditImageUrl(product.image_url ?? null)
     setEditImageFile(null)
     setEditError(null)
+    setEditFiscal({
+      ncm: product.ncm ?? '',
+      cfop: product.cfop ?? '',
+      cst: product.cst ?? '',
+      csosn: product.csosn ?? '',
+      cest: product.cest ?? '',
+      origem: product.origem ?? '0',
+      unidade_fiscal: product.unidade_fiscal ?? '',
+      ean: product.ean ?? '',
+      cclass_trib: product.cclass_trib ?? '',
+    })
   }
 
   const handleSaveEdit = async () => {
@@ -389,6 +402,7 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
         low_stock_threshold: editLowStockThreshold.trim() ? Number(editLowStockThreshold) : undefined,
       })
       await eletronicosAdmin.products.saveLinks(editProduct.id, { device_ids: editDeviceIds, brand_ids: editBrandIds, model_ids: editModelIds })
+      await adminService.products.updateFiscal(editProduct.id, fiscalPayload(editFiscal))
       setProductDevices((prev) => [...prev.filter((l) => l.product_id !== editProduct.id), ...editDeviceIds.map((device_type_id) => ({ product_id: editProduct.id, device_type_id }))])
       setProductBrands((prev) => [...prev.filter((l) => l.product_id !== editProduct.id), ...editBrandIds.map((brand_id) => ({ product_id: editProduct.id, brand_id }))])
       setProductModels((prev) => [...prev.filter((l) => l.product_id !== editProduct.id), ...editModelIds.map((model_id) => ({ product_id: editProduct.id, model_id }))])
@@ -690,6 +704,7 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
             <label className="text-xs font-semibold text-[#d4d4d8]/60 uppercase tracking-wide">Alertar baixo estoque quando chegar em:</label>
             <input type="number" step="1" min="0" value={editLowStockThreshold} onChange={(e) => setEditLowStockThreshold(e.target.value)} placeholder="Opcional — ex: 5" className={`${INPUT} mt-1`} />
           </div>
+          <FiscalFields value={editFiscal} onChange={(patch) => setEditFiscal({ ...editFiscal, ...patch })} />
           {editError && <p className="text-xs text-red-400">{editError}</p>}
           <button onClick={handleSaveEdit} disabled={savingEdit} className="w-full flex items-center justify-center gap-2 bg-[#e0211a] hover:bg-[#a3140f] disabled:opacity-40 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors">
             {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}

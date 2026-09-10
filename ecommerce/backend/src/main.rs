@@ -717,6 +717,16 @@ async fn main() -> anyhow::Result<()> {
             get(routes::fiscal::classificacao_tributaria),
         )
         .route(
+            "/api/admin/fiscal/cfops",
+            get(routes::fiscal::list_cfops).post(routes::fiscal::add_cfop),
+        )
+        .route("/api/admin/fiscal/cfops/search", get(routes::fiscal::search_cfops))
+        .route("/api/admin/fiscal/cfops/{codigo}", axum::routing::delete(routes::fiscal::remove_cfop))
+        .route(
+            "/api/admin/fiscal/cfops/{codigo}/default",
+            put(routes::fiscal::set_default_cfop),
+        )
+        .route(
             "/api/admin/products/{id}/fiscal",
             put(routes::fiscal::update_product_fiscal),
         )
@@ -725,6 +735,7 @@ async fn main() -> anyhow::Result<()> {
             post(routes::fiscal::emitir),
         )
         .route("/api/admin/orders/{id}/fiscal", get(routes::fiscal::get_fiscal))
+        .route("/api/admin/fiscal/documents", get(routes::fiscal::list_documents))
         .route(
             "/api/admin/orders/{id}/fiscal/cancelar",
             post(routes::fiscal::cancelar),

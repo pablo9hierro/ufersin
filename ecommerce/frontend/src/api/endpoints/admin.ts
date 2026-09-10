@@ -233,8 +233,16 @@ export const adminEndpoint = {
       enabled: boolean
     }) => api.admin.fiscal.updateSettings(payload),
     classificacaoTributaria: async () => api.admin.fiscal.classificacaoTributaria(),
+    cfops: {
+      list: async () => api.admin.fiscal.cfops.list(),
+      search: async (q: string) => api.admin.fiscal.cfops.search(q),
+      add: async (codigo: string) => api.admin.fiscal.cfops.add(codigo),
+      remove: async (codigo: string) => api.admin.fiscal.cfops.remove(codigo),
+      setDefault: async (codigo: string) => api.admin.fiscal.cfops.setDefault(codigo),
+    },
     emitir: async (orderId: string) => api.admin.fiscal.emitir(orderId),
     get: async (orderId: string) => api.admin.fiscal.get(orderId),
+    listDocuments: async () => api.admin.fiscal.listDocuments(),
     cancel: async (orderId: string) => api.admin.fiscal.cancel(orderId),
   },
   point: {

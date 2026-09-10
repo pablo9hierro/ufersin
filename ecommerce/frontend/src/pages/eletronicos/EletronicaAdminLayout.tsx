@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { Boxes, CalendarDays, ClipboardList, LogOut, MessageCircle, MessageSquare, Package, ShoppingCart, Truck, UserCog, Wallet } from 'lucide-react'
+import { Boxes, CalendarDays, ClipboardList, FileText, LogOut, MessageCircle, MessageSquare, Package, ShoppingCart, Truck, UserCog, Wallet } from 'lucide-react'
 import { useAdminAuth, detectAdminTenantMismatch } from '../../store/adminAuth'
 import { resetTenantConfigCache, resolveTenantSlug, withTenantSearch } from '../../lib/tenantConfig'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { to: 'servicodeslocamento', label: 'Serviço de deslocamento', icon: Truck },
   { to: 'relatorios', label: 'Relatórios', icon: Wallet },
   { to: 'template-zap', label: 'Template Zap', icon: MessageSquare },
+  { to: 'fiscal', label: 'Fiscal', icon: FileText },
   { to: 'conta', label: 'Conta', icon: UserCog },
 ]
 
