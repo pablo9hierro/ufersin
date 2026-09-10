@@ -254,6 +254,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/onboarding/cfops/search", get(routes::onboarding::search_cfops))
         .route("/api/onboarding/cfops/default", post(routes::onboarding::set_default_cfop))
         .route("/api/onboarding/cfops/remove", post(routes::onboarding::remove_cfop))
+        .route(
+            "/api/onboarding/fiscal-defaults",
+            get(routes::onboarding::get_fiscal_defaults).post(routes::onboarding::set_fiscal_defaults),
+        )
+        .route(
+            "/api/onboarding/classificacao-tributaria",
+            get(routes::onboarding::classificacao_tributaria),
+        )
         .route("/api/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start))
         .route("/api/mercadopago/oauth/callback", get(mercadopago_oauth::oauth_callback))
         .route("/api/mercadopago/oauth/disconnect", post(mercadopago_oauth::oauth_disconnect))

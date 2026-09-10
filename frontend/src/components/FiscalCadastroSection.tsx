@@ -5,10 +5,42 @@ import {
   ApiError,
   type CertificadoStatus,
   type CfopOption,
+  type ClassificacaoTributariaItem,
   type FiscalCityOption,
   type FiscalConfigInput,
+  type FiscalDefaults,
   type FiscalStateOption,
 } from '../lib/api'
+
+// Códigos oficiais fixos (Convênio s/n 70/97 Anexo/Ajuste SINIEF 07/05) --
+// não mudam com frequência, seguros pra hardcode (sem tabela de origem
+// externa igual CFOP/CEST, que têm milhares de linhas e exigiriam importar
+// a base oficial pra não arriscar inventar código).
+const CST_OPTIONS = [
+  { value: '00', label: '00 — Tributada integralmente' },
+  { value: '10', label: '10 — Tributada com ST' },
+  { value: '20', label: '20 — Com redução de base de cálculo' },
+  { value: '30', label: '30 — Isenta/não tributada com ST' },
+  { value: '40', label: '40 — Isenta' },
+  { value: '41', label: '41 — Não tributada' },
+  { value: '50', label: '50 — Suspensão' },
+  { value: '51', label: '51 — Diferimento' },
+  { value: '60', label: '60 — ICMS cobrado anteriormente por ST' },
+  { value: '70', label: '70 — Redução de base + ST' },
+  { value: '90', label: '90 — Outras' },
+]
+const CSOSN_OPTIONS = [
+  { value: '101', label: '101 — Tributada pelo Simples com crédito' },
+  { value: '102', label: '102 — Tributada pelo Simples sem crédito' },
+  { value: '103', label: '103 — Isenção (faixa de receita bruta)' },
+  { value: '201', label: '201 — Tributada pelo Simples com crédito e ST' },
+  { value: '202', label: '202 — Tributada pelo Simples sem crédito e ST' },
+  { value: '203', label: '203 — Isenção (faixa de receita bruta) e ST' },
+  { value: '300', label: '300 — Imune' },
+  { value: '400', label: '400 — Não tributada pelo Simples' },
+  { value: '500', label: '500 — ICMS cobrado anteriormente por ST/antecipação' },
+  { value: '900', label: '900 — Outros' },
+]
 
 const EMPTY: FiscalConfigInput = {
   cnpj: '',
@@ -57,6 +89,19 @@ export default function FiscalCadastroSection() {
   const [cfopResults, setCfopResults] = useState<CfopOption[]>([])
   const [cfopSearching, setCfopSearching] = useState(false)
   const [cfopError, setCfopError] = useState<string | null>(null)
+
+  const [defaults, setDefaults] = useState<FiscalDefaults>({
+    cst_padrao: null,
+    csosn_padrao: null,
+    cest_padrao: null,
+    cclass_trib_padrao: null,
+  })
+  const [savingDefaults, setSavingDefaults] = useState(false)
+  const [defaultsSaved, setDefaultsSaved] = useState(false)
+  const [defaultsError, setDefaultsError] = useState<string | null>(null)
+
+  const [classTribList, setClassTribList] = useState<ClassificacaoTributariaItem[]>([])
+  const [classTribQuery, setClassTribQuery] = useState('')
 
   useEffect(() => {
     api.fiscalStates().then(setStates).catch(() => {})
@@ -206,6 +251,40 @@ export default function FiscalCadastroSection() {
       setCfopError(e instanceof ApiError ? e.message : 'Não foi possível definir o padrão.')
     }
   }
+
+  useEffect(() => {
+    api.getFiscalDefaults().then(setDefaults).catch(() => {})
+    api
+      .classificacaoTributaria()
+      .then((r) => setClassTribList(r.itens))
+      .catch(() => {})
+  }, [])
+
+  const saveDefaults = async () => {
+    setDefaultsError(null)
+    setDefaultsSaved(false)
+    setSavingDefaults(true)
+    try {
+      setDefaults(await api.salvarFiscalDefaults(defaults))
+      setDefaultsSaved(true)
+    } catch (e) {
+      setDefaultsError(e instanceof ApiError ? e.message : 'Não foi possível salvar os padrões fiscais.')
+    } finally {
+      setSavingDefaults(false)
+    }
+  }
+
+  const classTribMatches =
+    classTribQuery.trim().length < 2
+      ? []
+      : classTribList
+          .filter(
+            (c) =>
+              c.codigo.includes(classTribQuery.trim()) ||
+              c.descricao.toLowerCase().includes(classTribQuery.trim().toLowerCase())
+          )
+          .slice(0, 30)
+  const classTribSelected = classTribList.find((c) => c.codigo === defaults.cclass_trib_padrao)
 
   const uploadCertificado = async () => {
     if (!certFile || !certSenha) return
@@ -440,10 +519,12 @@ export default function FiscalCadastroSection() {
         </div>
       </div>
 
-      {/* Dados fiscais de emissão -- CFOP de saída padrão/secundários. CST/
-       * CSOSN e alíquotas/valores de ICMS/IPI são por produto (cadastro de
-       * produto) e por item na hora da emissão -- aqui só o que é da
-       * empresa como um todo. */}
+      {/* Dados fiscais de emissão -- CFOP de saída, CST/CSOSN, CEST e
+       * Classificação Tributária (IBS/CBS) padrão da empresa. Produto sem
+       * valor específico herda isso automaticamente (já cadastrados e
+       * novos); pra uma exceção, edita o produto e escolhe outro valor por
+       * busca lá. Alíquotas/valores de ICMS/IPI são calculados pelo
+       * Jubilados por item na hora da emissão, não cadastrados aqui. */}
       <div>
         {sectionTitle('Dados fiscais de emissão')}
         <p className="text-xs text-uf-silver-dim mb-2">
@@ -507,6 +588,99 @@ export default function FiscalCadastroSection() {
           )}
         </div>
         {cfopError && <p className="error-msg mt-1">{cfopError}</p>}
+
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          {form.regime_tributario === 'simples_nacional' ? (
+            <div>
+              <label className="label">CSOSN padrão</label>
+              <select
+                className="input-field"
+                value={defaults.csosn_padrao ?? ''}
+                onChange={(e) => setDefaults((d) => ({ ...d, csosn_padrao: e.target.value || null }))}
+              >
+                <option value="">Selecionar…</option>
+                {CSOSN_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="label">CST padrão</label>
+              <select
+                className="input-field"
+                value={defaults.cst_padrao ?? ''}
+                onChange={(e) => setDefaults((d) => ({ ...d, cst_padrao: e.target.value || null }))}
+              >
+                <option value="">Selecionar…</option>
+                {CST_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="label">CEST padrão</label>
+            <input
+              className="input-field"
+              value={defaults.cest_padrao ?? ''}
+              onChange={(e) => setDefaults((d) => ({ ...d, cest_padrao: e.target.value || null }))}
+              placeholder="Sem tabela nacional só de CEST — digite se souber"
+            />
+          </div>
+          <div className="col-span-2 relative">
+            <label className="label">Classificação Tributária padrão (IBS/CBS)</label>
+            <input
+              className="input-field"
+              value={classTribSelected ? `${classTribSelected.codigo} — ${classTribSelected.descricao}` : classTribQuery}
+              onChange={(e) => {
+                setClassTribQuery(e.target.value)
+                if (defaults.cclass_trib_padrao) setDefaults((d) => ({ ...d, cclass_trib_padrao: null }))
+              }}
+              onFocus={() => {
+                if (classTribSelected) {
+                  setClassTribQuery('')
+                  setDefaults((d) => ({ ...d, cclass_trib_padrao: null }))
+                }
+              }}
+              placeholder="Pesquisar por código ou descrição…"
+            />
+            {classTribMatches.length > 0 && (
+              <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto uf-glass rounded-lg shadow-xl">
+                {classTribMatches.map((c) => (
+                  <li key={c.codigo}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDefaults((d) => ({ ...d, cclass_trib_padrao: c.codigo }))
+                        setClassTribQuery('')
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 flex items-center gap-2"
+                    >
+                      <span className="font-mono text-xs text-uf-silver-dim shrink-0">{c.codigo}</span>
+                      <span className="truncate">{c.descricao}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={saveDefaults}
+          disabled={savingDefaults}
+          className="btn-secondary w-full py-2.5 mt-3 flex items-center justify-center gap-2"
+        >
+          {savingDefaults ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Salvar padrões fiscais
+        </button>
+        {defaultsSaved && <p className="text-xs text-emerald-400 mt-1">Padrões salvos.</p>}
+        {defaultsError && <p className="error-msg mt-1">{defaultsError}</p>}
       </div>
 
       <button

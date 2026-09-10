@@ -1,7 +1,37 @@
 import { useEffect, useState } from 'react'
 import type { ProductFiscalPayload } from '../../types'
-import type { TenantCfop } from '../../lib/api'
+import type { ClassificacaoTributariaItem, TenantCfop } from '../../lib/api'
 import { adminService } from '../../services/adminService'
+
+// Códigos oficiais fixos (Convênio s/n 70/97 Anexo/Ajuste SINIEF 07/05) --
+// estáveis há anos, seguros pra hardcode (diferente de CFOP/CEST, que têm
+// milhares de linhas e exigem tabela oficial importada pra não arriscar
+// inventar código).
+const CST_OPTIONS = [
+  { value: '00', label: '00 — Tributada integralmente' },
+  { value: '10', label: '10 — Tributada com ST' },
+  { value: '20', label: '20 — Com redução de base de cálculo' },
+  { value: '30', label: '30 — Isenta/não tributada com ST' },
+  { value: '40', label: '40 — Isenta' },
+  { value: '41', label: '41 — Não tributada' },
+  { value: '50', label: '50 — Suspensão' },
+  { value: '51', label: '51 — Diferimento' },
+  { value: '60', label: '60 — ICMS cobrado anteriormente por ST' },
+  { value: '70', label: '70 — Redução de base + ST' },
+  { value: '90', label: '90 — Outras' },
+]
+const CSOSN_OPTIONS = [
+  { value: '101', label: '101 — Tributada pelo Simples com crédito' },
+  { value: '102', label: '102 — Tributada pelo Simples sem crédito' },
+  { value: '103', label: '103 — Isenção (faixa de receita bruta)' },
+  { value: '201', label: '201 — Tributada pelo Simples com crédito e ST' },
+  { value: '202', label: '202 — Tributada pelo Simples sem crédito e ST' },
+  { value: '203', label: '203 — Isenção (faixa de receita bruta) e ST' },
+  { value: '300', label: '300 — Imune' },
+  { value: '400', label: '400 — Não tributada pelo Simples' },
+  { value: '500', label: '500 — ICMS cobrado anteriormente por ST/antecipação' },
+  { value: '900', label: '900 — Outros' },
+]
 
 export type FiscalValue = {
   ncm: string
@@ -58,15 +88,32 @@ type Props = {
  * preenchido com valor inventado. */
 export default function FiscalFields({ value, onChange, disabled }: Props) {
   const [cfops, setCfops] = useState<TenantCfop[]>([])
+  const [classTribList, setClassTribList] = useState<ClassificacaoTributariaItem[]>([])
+  const [classTribQuery, setClassTribQuery] = useState('')
 
   useEffect(() => {
     adminService.fiscal.cfops
       .list()
       .then(setCfops)
       .catch(() => {})
+    adminService.fiscal
+      .classificacaoTributaria()
+      .then((r) => setClassTribList(r.itens))
+      .catch(() => {})
   }, [])
 
   const defaultCfop = cfops.find((c) => c.is_default)
+  const classTribSelected = classTribList.find((c) => c.codigo === value.cclass_trib)
+  const classTribMatches =
+    classTribQuery.trim().length < 2
+      ? []
+      : classTribList
+          .filter(
+            (c) =>
+              c.codigo.includes(classTribQuery.trim()) ||
+              c.descricao.toLowerCase().includes(classTribQuery.trim().toLowerCase())
+          )
+          .slice(0, 30)
 
   return (
     <div className="rounded-xl border border-son-silver-dim/20 bg-black/20 p-3 space-y-2" data-testid="fiscal-fields">
@@ -108,24 +155,36 @@ export default function FiscalFields({ value, onChange, disabled }: Props) {
           )}
         </div>
         <div>
-          <label className="label">CST</label>
-          <input
+          <label className="label">CST (regime normal)</label>
+          <select
             className="input-field"
             value={value.cst}
             onChange={(e) => onChange({ cst: e.target.value })}
             disabled={disabled}
-            placeholder="Regime normal"
-          />
+          >
+            <option value="">Usar padrão da empresa</option>
+            {CST_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
-          <label className="label">CSOSN</label>
-          <input
+          <label className="label">CSOSN (Simples Nacional)</label>
+          <select
             className="input-field"
             value={value.csosn}
             onChange={(e) => onChange({ csosn: e.target.value })}
             disabled={disabled}
-            placeholder="Simples Nacional"
-          />
+          >
+            <option value="">Usar padrão da empresa</option>
+            {CSOSN_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="label">CEST</label>
@@ -134,6 +193,7 @@ export default function FiscalFields({ value, onChange, disabled }: Props) {
             value={value.cest}
             onChange={(e) => onChange({ cest: e.target.value })}
             disabled={disabled}
+            placeholder="Vazio usa o padrão da empresa"
           />
         </div>
         <div>
@@ -178,15 +238,43 @@ export default function FiscalFields({ value, onChange, disabled }: Props) {
             disabled={disabled}
           />
         </div>
-        <div className="col-span-2">
+        <div className="col-span-2 relative">
           <label className="label">Classificação Tributária (IBS/CBS)</label>
           <input
             className="input-field"
-            value={value.cclass_trib}
-            onChange={(e) => onChange({ cclass_trib: e.target.value })}
+            value={classTribSelected ? `${classTribSelected.codigo} — ${classTribSelected.descricao}` : classTribQuery}
+            onChange={(e) => {
+              setClassTribQuery(e.target.value)
+              if (value.cclass_trib) onChange({ cclass_trib: '' })
+            }}
+            onFocus={() => {
+              if (classTribSelected) {
+                setClassTribQuery('')
+                onChange({ cclass_trib: '' })
+              }
+            }}
             disabled={disabled}
-            placeholder="Código da tabela oficial"
+            placeholder="Vazio usa o padrão da empresa — pesquise por código ou descrição pra escolher outro"
           />
+          {classTribMatches.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-son-surface border border-white/10 rounded-lg shadow-xl">
+              {classTribMatches.map((c) => (
+                <li key={c.codigo}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange({ cclass_trib: c.codigo })
+                      setClassTribQuery('')
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 flex items-center gap-2"
+                  >
+                    <span className="font-mono text-xs text-son-silver-dim shrink-0">{c.codigo}</span>
+                    <span className="truncate">{c.descricao}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </div>

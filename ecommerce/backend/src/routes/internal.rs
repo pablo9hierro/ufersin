@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use crate::auth::make_token;
 use crate::error::AppError;
+use crate::fiscal::jubilados_client::JubiladosClient;
 use crate::state::AppState;
 
 /// Chamado pela plataforma Rodoletas (ufersin/backend) uma única vez, no
@@ -728,6 +729,97 @@ pub async fn remove_cfop(
         axum::extract::Query(CfopListQuery { tenant_slug: body.tenant_slug }),
     )
     .await
+}
+
+#[derive(Debug, Serialize, Default)]
+pub struct FiscalDefaultsOutput {
+    pub cst_padrao: Option<String>,
+    pub csosn_padrao: Option<String>,
+    pub cest_padrao: Option<String>,
+    pub cclass_trib_padrao: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FiscalDefaultsQuery {
+    pub tenant_slug: String,
+}
+
+/// CST/CSOSN, CEST e Classificação Tributária (IBS/CBS) padrão da empresa --
+/// mesma lógica do catálogo de CFOP (cadastrado uma vez em Meu Plano ->
+/// Integrações, produto sem valor específico herda isso na hora da
+/// emissão -- ver `routes/fiscal.rs::tenant_fiscal_defaults`).
+pub async fn get_fiscal_defaults(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<FiscalDefaultsQuery>,
+) -> Result<Json<FiscalDefaultsOutput>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &q.tenant_slug).await?;
+    let row: Option<(Option<String>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT cst_padrao, csosn_padrao, cest_padrao, cclass_trib_padrao \
+         FROM tenant_fiscal_settings WHERE tenant_id = $1",
+    )
+    .bind(&tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (cst_padrao, csosn_padrao, cest_padrao, cclass_trib_padrao) = row.unwrap_or_default();
+    Ok(Json(FiscalDefaultsOutput { cst_padrao, csosn_padrao, cest_padrao, cclass_trib_padrao }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetFiscalDefaultsInput {
+    pub tenant_slug: String,
+    #[serde(default)]
+    pub cst_padrao: Option<String>,
+    #[serde(default)]
+    pub csosn_padrao: Option<String>,
+    #[serde(default)]
+    pub cest_padrao: Option<String>,
+    #[serde(default)]
+    pub cclass_trib_padrao: Option<String>,
+}
+
+pub async fn set_fiscal_defaults(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<SetFiscalDefaultsInput>,
+) -> Result<Json<FiscalDefaultsOutput>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &body.tenant_slug).await?;
+    sqlx::query(
+        "INSERT INTO tenant_fiscal_settings (tenant_id, cst_padrao, csosn_padrao, cest_padrao, cclass_trib_padrao) \
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (tenant_id) DO UPDATE SET \
+           cst_padrao = EXCLUDED.cst_padrao, csosn_padrao = EXCLUDED.csosn_padrao, \
+           cest_padrao = EXCLUDED.cest_padrao, cclass_trib_padrao = EXCLUDED.cclass_trib_padrao, \
+           updated_at = now()::text",
+    )
+    .bind(&tenant_id)
+    .bind(&body.cst_padrao)
+    .bind(&body.csosn_padrao)
+    .bind(&body.cest_padrao)
+    .bind(&body.cclass_trib_padrao)
+    .execute(&state.pool)
+    .await?;
+    get_fiscal_defaults(State(state), headers, axum::extract::Query(FiscalDefaultsQuery { tenant_slug: body.tenant_slug }))
+        .await
+}
+
+/// Passthrough da tabela oficial de Classificação Tributária (IBS/CBS) que o
+/// Jubilados já busca/cacheia do Portal do governo -- mesma fonte que
+/// `routes/fiscal.rs::classificacao_tributaria` expõe pro painel da loja, só
+/// que acessível pela plataforma via chave interna (sem tenant: é uma
+/// tabela oficial única, não por-loja).
+pub async fn classificacao_tributaria(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    if state.jubilados_api_url.is_empty() || state.jubilados_internal_key.is_empty() {
+        return Err(AppError::Internal("módulo fiscal não configurado neste ambiente".to_string()));
+    }
+    let c = JubiladosClient::new(state.http.clone(), state.jubilados_api_url.to_string(), state.jubilados_internal_key.to_string());
+    Ok(Json(c.listar_classificacao_tributaria().await?))
 }
 
 pub async fn health() -> StatusCode {

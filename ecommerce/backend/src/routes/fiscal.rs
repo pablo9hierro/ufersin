@@ -58,23 +58,59 @@ pub struct FiscalSettingsDto {
     pub cfop_padrao_saida: Option<String>,
     pub auto_emitir: bool,
     pub enabled: bool,
+    pub cst_padrao: Option<String>,
+    pub csosn_padrao: Option<String>,
+    pub cest_padrao: Option<String>,
+    pub cclass_trib_padrao: Option<String>,
 }
+
+type SettingsRow = (
+    Option<Uuid>,
+    String,
+    Option<String>,
+    bool,
+    bool,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
 
 pub async fn get_settings(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
 ) -> Result<Json<FiscalSettingsDto>, AppError> {
     require_beta(&state.pool, &claims.tenant_id).await?;
-    let row: Option<(Option<Uuid>, String, Option<String>, bool, bool)> = sqlx::query_as(
-        "SELECT jubilados_empresa_id, ambiente, cfop_padrao_saida, auto_emitir, enabled \
+    let row: Option<SettingsRow> = sqlx::query_as(
+        "SELECT jubilados_empresa_id, ambiente, cfop_padrao_saida, auto_emitir, enabled, \
+                cst_padrao, csosn_padrao, cest_padrao, cclass_trib_padrao \
          FROM tenant_fiscal_settings WHERE tenant_id = $1",
     )
     .bind(&claims.tenant_id)
     .fetch_optional(&state.pool)
     .await?;
-    let (jubilados_empresa_id, ambiente, cfop_padrao_saida, auto_emitir, enabled) =
-        row.unwrap_or((None, "homologacao".to_string(), None, false, false));
-    Ok(Json(FiscalSettingsDto { jubilados_empresa_id, ambiente, cfop_padrao_saida, auto_emitir, enabled }))
+    let (
+        jubilados_empresa_id,
+        ambiente,
+        cfop_padrao_saida,
+        auto_emitir,
+        enabled,
+        cst_padrao,
+        csosn_padrao,
+        cest_padrao,
+        cclass_trib_padrao,
+    ) = row.unwrap_or((None, "homologacao".to_string(), None, false, false, None, None, None, None));
+    Ok(Json(FiscalSettingsDto {
+        jubilados_empresa_id,
+        ambiente,
+        cfop_padrao_saida,
+        auto_emitir,
+        enabled,
+        cst_padrao,
+        csosn_padrao,
+        cest_padrao,
+        cclass_trib_padrao,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,6 +118,14 @@ pub struct UpdateFiscalSettingsInput {
     pub ambiente: String,
     pub cfop_padrao_saida: Option<String>,
     pub auto_emitir: bool,
+    #[serde(default)]
+    pub cst_padrao: Option<String>,
+    #[serde(default)]
+    pub csosn_padrao: Option<String>,
+    #[serde(default)]
+    pub cest_padrao: Option<String>,
+    #[serde(default)]
+    pub cclass_trib_padrao: Option<String>,
 }
 
 /// Chamado normalmente pela ponte `/internal/sync-fiscal-config` (a
@@ -98,16 +142,23 @@ pub async fn update_settings(
         return Err(AppError::BadRequest("ambiente deve ser 'homologacao' ou 'producao'".to_string()));
     }
     sqlx::query(
-        "INSERT INTO tenant_fiscal_settings (tenant_id, ambiente, cfop_padrao_saida, auto_emitir) \
-         VALUES ($1, $2, $3, $4) \
+        "INSERT INTO tenant_fiscal_settings \
+           (tenant_id, ambiente, cfop_padrao_saida, auto_emitir, cst_padrao, csosn_padrao, cest_padrao, cclass_trib_padrao) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
          ON CONFLICT (tenant_id) DO UPDATE SET \
            ambiente = EXCLUDED.ambiente, cfop_padrao_saida = EXCLUDED.cfop_padrao_saida, \
-           auto_emitir = EXCLUDED.auto_emitir, updated_at = now()::text",
+           auto_emitir = EXCLUDED.auto_emitir, cst_padrao = EXCLUDED.cst_padrao, \
+           csosn_padrao = EXCLUDED.csosn_padrao, cest_padrao = EXCLUDED.cest_padrao, \
+           cclass_trib_padrao = EXCLUDED.cclass_trib_padrao, updated_at = now()::text",
     )
     .bind(&claims.tenant_id)
     .bind(&body.ambiente)
     .bind(&body.cfop_padrao_saida)
     .bind(body.auto_emitir)
+    .bind(&body.cst_padrao)
+    .bind(&body.csosn_padrao)
+    .bind(&body.cest_padrao)
+    .bind(&body.cclass_trib_padrao)
     .execute(&state.pool)
     .await?;
     get_settings(State(state), AdminUser(claims)).await
@@ -202,12 +253,40 @@ async fn effective_cfop(
     Ok(default.map(|(c,)| c))
 }
 
+fn non_empty(v: Option<String>) -> Option<String> {
+    v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// CST/CSOSN, CEST e Classificação Tributária (IBS/CBS) padrão da empresa --
+/// cadastrados uma vez em Meu Plano -> Integrações, usados quando o produto
+/// não tem valor específico (mesma lógica de `effective_cfop`, buscado uma
+/// vez por pedido em vez de por item pra não fazer N+1 na emissão).
+struct FiscalDefaults {
+    cst: Option<String>,
+    csosn: Option<String>,
+    cest: Option<String>,
+    cclass_trib: Option<String>,
+}
+
+async fn tenant_fiscal_defaults(pool: &sqlx::PgPool, tenant_id: &str) -> Result<FiscalDefaults, AppError> {
+    let row: Option<(Option<String>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT cst_padrao, csosn_padrao, cest_padrao, cclass_trib_padrao \
+         FROM tenant_fiscal_settings WHERE tenant_id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    let (cst, csosn, cest, cclass_trib) = row.unwrap_or((None, None, None, None));
+    Ok(FiscalDefaults { cst, csosn, cest, cclass_trib })
+}
+
 async fn build_fiscal_items(
     pool: &sqlx::PgPool,
     tenant_id: &str,
     order_id: &str,
 ) -> Result<Vec<FiscalItem>, AppError> {
     let items = orders_common::fetch_items(pool, tenant_id, order_id).await?;
+    let defaults = tenant_fiscal_defaults(pool, tenant_id).await?;
     let mut fiscal_items = Vec::with_capacity(items.len());
     for item in items {
         let row: Option<(
@@ -264,13 +343,13 @@ async fn build_fiscal_items(
             product_name: item.product_name,
             ncm: row.ncm,
             cfop,
-            cst: row.cst,
-            csosn: row.csosn,
-            cest: row.cest,
+            cst: non_empty(row.cst).or_else(|| defaults.cst.clone()),
+            csosn: non_empty(row.csosn).or_else(|| defaults.csosn.clone()),
+            cest: non_empty(row.cest).or_else(|| defaults.cest.clone()),
             origem: row.origem,
             unidade_fiscal: row.unidade_fiscal,
             ean: row.ean,
-            cclass_trib: row.cclass_trib,
+            cclass_trib: non_empty(row.cclass_trib).or_else(|| defaults.cclass_trib.clone()),
             quantity: item.quantity,
             unit_price: item.unit_price,
         });

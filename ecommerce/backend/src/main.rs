@@ -1066,6 +1066,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/internal/cfops/default", post(routes::internal::set_default_cfop))
         .route("/internal/cfops/remove", post(routes::internal::remove_cfop))
         .route(
+            "/internal/fiscal-defaults",
+            get(routes::internal::get_fiscal_defaults).post(routes::internal::set_fiscal_defaults),
+        )
+        .route("/internal/classificacao-tributaria", get(routes::internal::classificacao_tributaria))
+        .route(
             "/internal/mint-admin-token",
             post(routes::internal::mint_admin_token),
         )

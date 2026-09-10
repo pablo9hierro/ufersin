@@ -323,6 +323,20 @@ export interface CfopOption {
   contexto: string
   is_default: boolean
 }
+export interface FiscalDefaults {
+  cst_padrao: string | null
+  csosn_padrao: string | null
+  cest_padrao: string | null
+  cclass_trib_padrao: string | null
+}
+/** Só os campos usados na UI -- o Jubilados devolve bem mais colunas
+ * (reduções de IBS/CBS, tipo de alíquota etc.) que não renderizamos aqui. */
+export interface ClassificacaoTributariaItem {
+  codigo: string
+  cst: string
+  cstDescricao: string
+  descricao: string
+}
 export interface DeliveryStatus {
   connected: boolean
   connected_at: string | null
@@ -678,6 +692,11 @@ export const api = {
     remove: (codigo: string) =>
       request<CfopOption[]>('/api/onboarding/cfops/remove', { method: 'POST', body: JSON.stringify({ codigo }) }),
   },
+  getFiscalDefaults: () => request<FiscalDefaults>('/api/onboarding/fiscal-defaults'),
+  salvarFiscalDefaults: (input: FiscalDefaults) =>
+    request<FiscalDefaults>('/api/onboarding/fiscal-defaults', { method: 'POST', body: JSON.stringify(input) }),
+  classificacaoTributaria: () =>
+    request<{ itens: ClassificacaoTributariaItem[] }>('/api/onboarding/classificacao-tributaria'),
   fiscalStates: () => request<FiscalStateOption[]>('/api/fiscal/states'),
   fiscalCities: (uf: string) => request<FiscalCityOption[]>(`/api/fiscal/states/${uf}/cities`),
   uploadCertificadoFiscal: (file: File, senha: string) => {

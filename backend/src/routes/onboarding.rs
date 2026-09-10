@@ -2049,6 +2049,93 @@ pub async fn remove_cfop(
     Ok(Json(cfop_mutation(&state, &slug, "/internal/cfops/remove", &body.codigo).await?))
 }
 
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct FiscalDefaultsOutput {
+    pub cst_padrao: Option<String>,
+    pub csosn_padrao: Option<String>,
+    pub cest_padrao: Option<String>,
+    pub cclass_trib_padrao: Option<String>,
+}
+
+/// CST/CSOSN, CEST e Classificação Tributária (IBS/CBS) padrão da empresa --
+/// mesma lógica do catálogo de CFOP acima: cadastrado uma vez aqui, produto
+/// sem valor específico herda isso na hora da emissão.
+pub async fn get_fiscal_defaults(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<FiscalDefaultsOutput>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    let url = ecommerce_internal_url(&state, "/internal/fiscal-defaults")?;
+    let resp = state
+        .http
+        .get(&url)
+        .query(&[("tenant_slug", &slug)])
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-defaults unreachable: {e}")))?;
+    let parsed: FiscalDefaultsOutput = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-defaults parse failed: {e}")))?;
+    Ok(Json(parsed))
+}
+
+pub async fn set_fiscal_defaults(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<FiscalDefaultsOutput>,
+) -> Result<Json<FiscalDefaultsOutput>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    let url = ecommerce_internal_url(&state, "/internal/fiscal-defaults")?;
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .json(&serde_json::json!({
+            "tenant_slug": slug,
+            "cst_padrao": body.cst_padrao,
+            "csosn_padrao": body.csosn_padrao,
+            "cest_padrao": body.cest_padrao,
+            "cclass_trib_padrao": body.cclass_trib_padrao,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-defaults save unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::BadRequest(format!("{status}: {text}")));
+    }
+    let parsed: FiscalDefaultsOutput = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-defaults save parse failed: {e}")))?;
+    Ok(Json(parsed))
+}
+
+/// Passthrough da tabela oficial de Classificação Tributária (IBS/CBS) --
+/// mesma fonte real que o painel da loja usa (Portal do governo, via
+/// Jubilados), só pra oferecer busca no cadastro de padrão em Integrações.
+pub async fn classificacao_tributaria(
+    State(state): State<AppState>,
+    AuthSubscriber(_claims): AuthSubscriber,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let url = ecommerce_internal_url(&state, "/internal/classificacao-tributaria")?;
+    let resp = state
+        .http
+        .get(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("classificacao-tributaria unreachable: {e}")))?;
+    let parsed: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("classificacao-tributaria parse failed: {e}")))?;
+    Ok(Json(parsed))
+}
+
 async fn sync_fiscal_config(state: &AppState, slug: &str, empresa_id: &str, ambiente: &str) -> Result<(), AppError> {
     if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
         return Ok(());

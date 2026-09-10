@@ -127,6 +127,14 @@ export interface CfopOption {
 export interface TenantCfop extends CfopOption {
   is_default: boolean
 }
+/** Só os campos usados na UI -- o Jubilados devolve bem mais colunas
+ * (reduções de IBS/CBS, tipo de alíquota etc.) que não renderizamos aqui. */
+export interface ClassificacaoTributariaItem {
+  codigo: string
+  cst: string
+  cstDescricao: string
+  descricao: string
+}
 export interface FiscalDocumentListItem {
   id: string
   order_id: string
@@ -1300,10 +1308,14 @@ const remoteApi = {
           method: 'PUT',
           body: JSON.stringify(payload),
         }),
-      // Passthrough cru da tabela oficial do Jubilados -- formato exato
-      // ainda não confirmado (endpoint real do Jubilados, não algo que
-      // definimos aqui), então não travamos num shape específico.
-      classificacaoTributaria: () => railwayAdmin<unknown>('/api/admin/fiscal/classificacao-tributaria'),
+      // Passthrough da tabela oficial do Jubilados (Portal de Classificação
+      // Tributária, IBS/CBS) -- shape confirmado lendo ProdutoController.cs
+      // do Jubilados; só tipamos os campos usados na UI, o resto (reduções
+      // de IBS/CBS, tipo de alíquota etc.) passa direto sem tipagem.
+      classificacaoTributaria: () =>
+        railwayAdmin<{ fonte: string; total: number; itens: ClassificacaoTributariaItem[] }>(
+          '/api/admin/fiscal/classificacao-tributaria'
+        ),
       cfops: {
         list: () => railwayAdmin<TenantCfop[]>('/api/admin/fiscal/cfops'),
         search: (q: string) =>
