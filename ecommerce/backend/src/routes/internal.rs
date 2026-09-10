@@ -444,6 +444,128 @@ pub async fn sync_fiscal_config(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SyncDeliveryCredentialsInput {
+    pub tenant_slug: String,
+    /// "uber_direct" (único provider hoje) -- validado contra `ProviderCode`.
+    pub provider: String,
+    /// client_id/client_secret/customer_id/webhook_signing_key -- mesmo
+    /// formato livre de `SaveCredentialsInput` (routes/delivery.rs), nunca
+    /// devolvido de volta em texto puro.
+    pub credentials: serde_json::Value,
+    #[serde(default)]
+    pub pickup_city: Option<String>,
+    #[serde(default)]
+    pub pickup_state: Option<String>,
+}
+
+/// Resolutoo (ufersin/backend) chama quando o lojista conecta o Uber
+/// Direct em Meu Plano → Integrações -- o navegador nunca fala direto com
+/// este backend nem manda a credencial pro lado errado; a plataforma só
+/// repassa. Mesmo destino de dado que `routes/delivery.rs::save_credentials`
+/// grava (nenhuma tabela nova), só que autenticado por chave interna em
+/// vez de AdminUser (a plataforma não tem — e não deveria ter — o JWT de
+/// admin da loja).
+pub async fn sync_delivery_credentials(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SyncDeliveryCredentialsInput>,
+) -> Result<StatusCode, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = input.tenant_slug.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest("tenant_slug obrigatório".to_string()));
+    }
+    let Some(code) = crate::delivery::ProviderCode::parse(&input.provider) else {
+        return Err(AppError::BadRequest(format!("provider inválido: {}", input.provider)));
+    };
+    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((tenant_id,)) = row else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    sqlx::query(
+        "INSERT INTO delivery_provider_credentials (id, tenant_id, provider, credentials, status, connected_at) \
+         VALUES ($1, $2, $3, $4, 'conectado', now()::text) \
+         ON CONFLICT (tenant_id, provider) DO UPDATE SET \
+           credentials = EXCLUDED.credentials, status = 'conectado', connected_at = now()::text, updated_at = now()::text",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&tenant_id)
+    .bind(code.as_str())
+    .bind(&input.credentials)
+    .execute(&state.pool)
+    .await?;
+
+    // Conectar já deixa pronto pra despachar sozinho -- o lojista pode
+    // trocar pra manual depois na tela de entregas terceirizadas do
+    // próprio painel da loja, se preferir.
+    sqlx::query(
+        "INSERT INTO tenant_delivery_settings (tenant_id, mode, primary_provider, pickup_city, pickup_state) \
+         VALUES ($1, 'automatico', $2, $3, $4) \
+         ON CONFLICT (tenant_id) DO UPDATE SET \
+           primary_provider = EXCLUDED.primary_provider, \
+           pickup_city = COALESCE(EXCLUDED.pickup_city, tenant_delivery_settings.pickup_city), \
+           pickup_state = COALESCE(EXCLUDED.pickup_state, tenant_delivery_settings.pickup_state), \
+           updated_at = now()::text",
+    )
+    .bind(&tenant_id)
+    .bind(code.as_str())
+    .bind(&input.pickup_city)
+    .bind(&input.pickup_state)
+    .execute(&state.pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO feature_flags (id, tenant_id, feature_code, enabled) \
+         VALUES ($1, $2, 'entrega_terceirizada', true) \
+         ON CONFLICT (tenant_id, feature_code) DO UPDATE SET enabled = true",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&tenant_id)
+    .execute(&state.pool)
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeliveryStatusQuery {
+    pub tenant_slug: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeliveryStatusOutput {
+    pub connected: bool,
+    pub connected_at: Option<String>,
+}
+
+/// Estado atual (conectado ou não) -- pra Meu Plano → Integrações saber se
+/// mostra "Uber Direct conectado" ou o formulário de credenciais.
+pub async fn delivery_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<DeliveryStatusQuery>,
+) -> Result<Json<DeliveryStatusOutput>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = q.tenant_slug.trim().to_lowercase();
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT dpc.status, dpc.connected_at FROM delivery_provider_credentials dpc \
+         JOIN tenants t ON t.id = dpc.tenant_id \
+         WHERE t.slug = $1 AND dpc.provider = 'uber_direct'",
+    )
+    .bind(&slug)
+    .fetch_optional(&state.pool)
+    .await?;
+    match row {
+        Some((status, connected_at)) => Ok(Json(DeliveryStatusOutput { connected: status == "conectado", connected_at })),
+        None => Ok(Json(DeliveryStatusOutput { connected: false, connected_at: None })),
+    }
+}
+
 pub async fn health() -> StatusCode {
     StatusCode::OK
 }

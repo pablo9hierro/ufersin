@@ -1057,6 +1057,11 @@ async fn main() -> anyhow::Result<()> {
             post(routes::internal::sync_fiscal_config),
         )
         .route(
+            "/internal/sync-delivery-credentials",
+            post(routes::internal::sync_delivery_credentials),
+        )
+        .route("/internal/delivery-status", get(routes::internal::delivery_status))
+        .route(
             "/internal/mint-admin-token",
             post(routes::internal::mint_admin_token),
         )

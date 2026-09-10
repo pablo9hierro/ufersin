@@ -48,8 +48,27 @@ export default function FiscalCadastroSection() {
   const [certError, setCertError] = useState<string | null>(null)
   const [certStatus, setCertStatus] = useState<CertificadoStatus | null>(null)
 
+  const [cepLooking, setCepLooking] = useState(false)
+  const [cepError, setCepError] = useState<string | null>(null)
+
   useEffect(() => {
     api.fiscalStates().then(setStates).catch(() => {})
+  }, [])
+
+  // Carrega o que já foi salvo antes -- sem isso, reabrir a tela sempre
+  // parecia "em branco" mesmo pra quem já tinha cadastrado a empresa, e a
+  // seção de certificado (só faz sentido depois que a empresa existe no
+  // Jubilados) nunca aparecia de novo depois de um F5.
+  useEffect(() => {
+    api
+      .getFiscal()
+      .then((existing) => {
+        if (!existing) return
+        const { jubilados_empresa_id, ...config } = existing
+        setForm(config)
+        setSavedId(jubilados_empresa_id)
+      })
+      .catch(() => {})
   }, [])
 
   // Município depende da UF -- carrega só depois de escolher a UF (nunca
@@ -86,6 +105,49 @@ export default function FiscalCadastroSection() {
 
   const set = <K extends keyof FiscalConfigInput>(k: K, v: FiscalConfigInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }))
+
+  // Busca o CEP (ViaCEP, Correios) e preenche rua/bairro/UF/município
+  // sozinho -- o `ibge` que o ViaCEP devolve já é o código oficial, então
+  // nem precisa esperar o dropdown de município carregar pra achar a
+  // combinação certa.
+  useEffect(() => {
+    const digits = form.cep.replace(/\D/g, '')
+    if (digits.length !== 8) {
+      setCepError(null)
+      return
+    }
+    let cancelled = false
+    setCepLooking(true)
+    setCepError(null)
+    fetch(`https://viacep.com.br/ws/${digits}/json/`)
+      .then((r) => r.json())
+      .then((data: { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string; ibge?: string; complemento?: string }) => {
+        if (cancelled) return
+        if (data.erro) {
+          setCepError('CEP não encontrado.')
+          return
+        }
+        setForm((f) => ({
+          ...f,
+          logradouro: data.logradouro || f.logradouro,
+          bairro: data.bairro || f.bairro,
+          complemento: data.complemento || f.complemento,
+          uf: data.uf || f.uf,
+          municipio: data.localidade || f.municipio,
+          municipio_codigo_ibge: data.ibge || f.municipio_codigo_ibge,
+        }))
+      })
+      .catch(() => {
+        if (!cancelled) setCepError('Não foi possível consultar o CEP agora.')
+      })
+      .finally(() => {
+        if (!cancelled) setCepLooking(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.cep])
 
   const uploadCertificado = async () => {
     if (!certFile || !certSenha) return
@@ -155,6 +217,19 @@ export default function FiscalCadastroSection() {
             onChange={(e) => set('nome_fantasia', e.target.value)}
           />
         </div>
+        <div>
+          <label className="label flex items-center gap-1.5">
+            CEP * {cepLooking && <Loader2 className="w-3 h-3 animate-spin" />}
+          </label>
+          <input
+            className="input-field"
+            value={form.cep}
+            onChange={(e) => set('cep', e.target.value)}
+            placeholder="Preenche rua/bairro/UF/município sozinho"
+          />
+          {cepError && <p className="error-msg mt-1">{cepError}</p>}
+        </div>
+        <div />
         <div className="col-span-2">
           <label className="label">Logradouro *</label>
           <input className="input-field" value={form.logradouro} onChange={(e) => set('logradouro', e.target.value)} />
@@ -206,10 +281,6 @@ export default function FiscalCadastroSection() {
             ))}
           </select>
           {citiesError && <p className="error-msg mt-1">{citiesError}</p>}
-        </div>
-        <div>
-          <label className="label">CEP *</label>
-          <input className="input-field" value={form.cep} onChange={(e) => set('cep', e.target.value)} />
         </div>
         <div>
           <label className="label">Regime tributário *</label>

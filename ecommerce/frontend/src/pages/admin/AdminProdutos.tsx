@@ -17,6 +17,7 @@ import {
 } from '../../lib/productHelpers'
 import { countIncompleteNfeDrafts } from '../../lib/nfeImportDrafts'
 import {
+  catalogUnitToFiscal,
   mergeUnitIntoDescription,
   parseUnitFromDescription,
   stripUnitFromDescription,
@@ -141,7 +142,9 @@ export default function AdminProdutos() {
       csosn: p.csosn ?? '',
       cest: p.cest ?? '',
       origem: p.origem ?? '0',
-      unidade_fiscal: p.unidade_fiscal ?? '',
+      // Sem dado fiscal salvo ainda, aproveita a unidade já escolhida no
+      // cadastro geral (acima) em vez de pedir a mesma coisa de novo.
+      unidade_fiscal: p.unidade_fiscal ?? catalogUnitToFiscal(unitBits.unit),
       ean: p.ean ?? '',
       cclass_trib: p.cclass_trib ?? '',
     })

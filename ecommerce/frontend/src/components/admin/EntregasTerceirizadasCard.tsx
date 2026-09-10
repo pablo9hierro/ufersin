@@ -18,10 +18,6 @@ export default function EntregasTerceirizadasCard({ className = 'p-4 mb-6' }: { 
   const [savingSettings, setSavingSettings] = useState(false)
   const [savedSettings, setSavedSettings] = useState(false)
 
-  const [clientId, setClientId] = useState('')
-  const [clientSecret, setClientSecret] = useState('')
-  const [customerId, setCustomerId] = useState('')
-  const [savingCreds, setSavingCreds] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<'ok' | 'error' | null>(null)
 
@@ -72,27 +68,6 @@ export default function EntregasTerceirizadasCard({ className = 'p-4 mb-6' }: { 
     }
   }
 
-  const saveCredentials = async () => {
-    if (!clientId || !clientSecret || !customerId) return
-    setError(null)
-    setSavingCreds(true)
-    setTestResult(null)
-    try {
-      await adminService.delivery.saveCredentials('uber_direct', {
-        client_id: clientId,
-        client_secret: clientSecret,
-        customer_id: customerId,
-      })
-      setClientId('')
-      setClientSecret('')
-      setCustomerId('')
-      await load()
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Não foi possível salvar as credenciais.')
-    } finally {
-      setSavingCreds(false)
-    }
-  }
 
   const testConnection = async () => {
     setError(null)
@@ -126,33 +101,11 @@ export default function EntregasTerceirizadasCard({ className = 'p-4 mb-6' }: { 
               Uber Direct — {uberConnected ? <span className="text-emerald-400">conectado</span> : 'desconectado'}
             </p>
             {!uberConnected && (
-              <div className="flex flex-wrap items-end gap-3 mb-2">
-                <div>
-                  <label className="label">Client ID</label>
-                  <input className="input-field w-48 py-2 text-sm" value={clientId} onChange={(e) => setClientId(e.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Client Secret</label>
-                  <input
-                    className="input-field w-48 py-2 text-sm"
-                    type="password"
-                    value={clientSecret}
-                    onChange={(e) => setClientSecret(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="label">Customer ID</label>
-                  <input className="input-field w-48 py-2 text-sm" value={customerId} onChange={(e) => setCustomerId(e.target.value)} />
-                </div>
-                <button
-                  onClick={saveCredentials}
-                  disabled={savingCreds || !clientId || !clientSecret || !customerId}
-                  className="btn-secondary text-sm py-2 px-4"
-                >
-                  {savingCreds ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Conectar
-                </button>
-              </div>
+              <p className="text-xs text-son-silver-dim bg-black/20 border border-white/5 rounded-xl p-3 mb-2">
+                A conexão com o Uber Direct (Client ID/Secret/Customer ID) é feita em{' '}
+                <b>Meu Plano → Integrações</b>, no painel de assinatura da Resolutoo — não aqui. Depois de conectar
+                lá, ela aparece como "conectado" nesta tela.
+              </p>
             )}
             {uberConnected && (
               <button onClick={testConnection} disabled={testing} className="btn-secondary text-sm py-2 px-4">

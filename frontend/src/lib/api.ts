@@ -317,6 +317,17 @@ export interface ContractCatalogItem {
   pandadoc_ready: boolean
 }
 
+export interface DeliveryStatus {
+  connected: boolean
+  connected_at: string | null
+}
+export interface UberDirectInput {
+  client_id: string
+  client_secret: string
+  customer_id: string
+  pickup_city?: string
+  pickup_state?: string
+}
 export interface FiscalConfigInput {
   cnpj: string
   razao_social: string
@@ -646,6 +657,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  getFiscal: () =>
+    request<(FiscalConfigInput & { jubilados_empresa_id: string }) | null>('/api/onboarding/fiscal'),
+  getDeliveryStatus: () => request<DeliveryStatus>('/api/onboarding/delivery'),
+  conectarUberDirect: (input: UberDirectInput) =>
+    request<DeliveryStatus>('/api/onboarding/delivery', { method: 'POST', body: JSON.stringify(input) }),
   fiscalStates: () => request<FiscalStateOption[]>('/api/fiscal/states'),
   fiscalCities: (uf: string) => request<FiscalCityOption[]>(`/api/fiscal/states/${uf}/cities`),
   uploadCertificadoFiscal: (file: File, senha: string) => {

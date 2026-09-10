@@ -34,6 +34,7 @@ import { needsOnboardingLock } from '../lib/postPayRedirect'
 import AddressField from '../components/AddressField'
 import EntregaTerceirizadaModoField from '../components/EntregaTerceirizadaModoField'
 import FiscalCadastroSection from '../components/FiscalCadastroSection'
+import UberDirectSection from '../components/UberDirectSection'
 import PlanCardsGrid, { BillingCycleToggle } from '../components/PlanCardsGrid'
 import StorefrontCmsPreview, { type CartFabStyle } from '../components/StorefrontCmsPreview'
 import { isStorefrontStyle, type StorefrontStyle } from '../lib/storefrontStyles'
@@ -803,7 +804,7 @@ export default function MeuPlano() {
   const TABS: { id: Tab; label: string; path: string }[] = [
     { id: 'plano', label: 'Meu plano atual', path: TAB_PATH.plano },
     { id: 'layout', label: 'Layout', path: TAB_PATH.layout },
-    { id: 'financeiro', label: 'Financeiro', path: TAB_PATH.financeiro },
+    { id: 'financeiro', label: 'Integrações', path: TAB_PATH.financeiro },
     { id: 'redes', label: 'Redes sociais', path: TAB_PATH.redes },
     ...(isAssistantIaBetaTenant(me.slug, me.vertical) ? [{ id: 'assistente-ia' as const, label: 'Assistente IA', path: TAB_PATH['assistente-ia'] }] : []),
   ]
@@ -1619,6 +1620,12 @@ export default function MeuPlano() {
             <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{tabLocked}</p>
           )}
           {tab === 'financeiro' && hasActiveSub && (
+            <div className="mb-3">
+              <h2 className="text-lg font-bold text-uf-silver">Pagamento</h2>
+              <p className="text-xs text-uf-silver-dim">Receba pelos pedidos da loja.</p>
+            </div>
+          )}
+          {tab === 'financeiro' && hasActiveSub && (
             <div className="uf-glass rounded-2xl p-6 space-y-4">
               <p className="text-xs text-uf-silver-dim">
                 {content['meu_plano.financeiro_hint'] ??
@@ -1663,7 +1670,21 @@ export default function MeuPlano() {
               )}
             </div>
           )}
+          {tab === 'financeiro' && hasActiveSub && (
+            <div className="mt-8 mb-3">
+              <h2 className="text-lg font-bold text-uf-silver">Fiscal</h2>
+              <p className="text-xs text-uf-silver-dim">Emissão de NF-e/NFC-e nas vendas.</p>
+            </div>
+          )}
           {tab === 'financeiro' && hasActiveSub && <FiscalCadastroSection />}
+
+          {tab === 'financeiro' && hasActiveSub && (
+            <div className="mt-8 mb-3">
+              <h2 className="text-lg font-bold text-uf-silver">Entregas</h2>
+              <p className="text-xs text-uf-silver-dim">Uber Direct nativo — sem precisar ligar pro motoboy.</p>
+            </div>
+          )}
+          {tab === 'financeiro' && hasActiveSub && <UberDirectSection />}
 
           {tab === 'redes' && !hasActiveSub && (
             <p className="text-sm text-uf-silver-dim uf-glass rounded-2xl p-5">{tabLocked}</p>

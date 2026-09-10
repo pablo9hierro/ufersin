@@ -1,6 +1,25 @@
 /** Catalog / revenda unit used in product forms (XML + manual). */
 export type CatalogUnit = 'un' | 'kg' | 'mt' | 'pacote' | ''
 
+/** Unidade comercial da NF-e não tem tabela oficial fechada (campo livre,
+ * até 6 caracteres) -- mapeia a unidade já escolhida no cadastro geral do
+ * produto pra evitar pedir a MESMA informação duas vezes no cadastro
+ * fiscal (o lojista já disse "kg" lá em cima, não devia digitar de novo). */
+export function catalogUnitToFiscal(unit: CatalogUnit): string {
+  switch (unit) {
+    case 'un':
+      return 'UN'
+    case 'kg':
+      return 'KG'
+    case 'mt':
+      return 'M'
+    case 'pacote':
+      return 'PC'
+    default:
+      return ''
+  }
+}
+
 export type PackageContentUnit = 'un' | 'kg' | 'mt'
 
 const PACKAGE_LINE_RE = /^Pacote:\s*([\d.,]+)\s+(un|kg|mt)\b/im

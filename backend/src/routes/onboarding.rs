@@ -1367,7 +1367,7 @@ pub async fn list_cities_by_state(
     Ok(Json(cities))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct FiscalConfigInput {
     pub cnpj: String,
     pub razao_social: String,
@@ -1399,6 +1399,100 @@ pub struct FiscalConfigInput {
 #[derive(Debug, Serialize)]
 pub struct FiscalConfigOutput {
     pub jubilados_empresa_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FiscalConfigWithStatus {
+    #[serde(flatten)]
+    pub config: FiscalConfigInput,
+    pub jubilados_empresa_id: String,
+}
+
+/// Estado atual salvo (se houver) -- sem isso, reabrir a tela de fiscal
+/// sempre parecia "em branco" mesmo pra quem já tinha cadastrado a empresa
+/// antes, e a seção de certificado (que só faz sentido depois da empresa
+/// existir no Jubilados) nunca aparecia de novo depois de um F5.
+pub async fn get_fiscal_config(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<Option<FiscalConfigWithStatus>>, AppError> {
+    let row: Option<(
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<i32>,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT fiscal_cnpj, fiscal_razao_social, fiscal_nome_fantasia, fiscal_inscricao_estadual, \
+                fiscal_logradouro, fiscal_numero, fiscal_complemento, fiscal_bairro, fiscal_municipio, \
+                fiscal_municipio_codigo_ibge, fiscal_uf, fiscal_cep, fiscal_regime_tributario, fiscal_crt, \
+                fiscal_ambiente, jubilados_empresa_id::text \
+         FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some((
+        cnpj,
+        razao_social,
+        nome_fantasia,
+        inscricao_estadual,
+        logradouro,
+        numero,
+        complemento,
+        bairro,
+        municipio,
+        municipio_codigo_ibge,
+        uf,
+        cep,
+        regime_tributario,
+        crt,
+        ambiente,
+        jubilados_empresa_id,
+    )) = row
+    else {
+        return Ok(Json(None));
+    };
+    // Sem CNPJ salvo ainda = nunca configurou -- devolve None pro front
+    // saber que é a primeira vez (nunca mostra formulário "quase certo"
+    // com metade dos campos vazios sem o usuário perceber).
+    let Some(cnpj) = cnpj.filter(|s| !s.trim().is_empty()) else {
+        return Ok(Json(None));
+    };
+    let Some(jubilados_empresa_id) = jubilados_empresa_id else {
+        return Ok(Json(None));
+    };
+    Ok(Json(Some(FiscalConfigWithStatus {
+        config: FiscalConfigInput {
+            cnpj,
+            razao_social: razao_social.unwrap_or_default(),
+            nome_fantasia,
+            inscricao_estadual,
+            logradouro: logradouro.unwrap_or_default(),
+            numero: numero.unwrap_or_default(),
+            complemento,
+            bairro: bairro.unwrap_or_default(),
+            municipio: municipio.unwrap_or_default(),
+            municipio_codigo_ibge: municipio_codigo_ibge.unwrap_or_default(),
+            uf: uf.unwrap_or_default(),
+            cep: cep.unwrap_or_default(),
+            regime_tributario: regime_tributario.unwrap_or_else(|| "simples_nacional".to_string()),
+            crt: crt.unwrap_or(1),
+            ambiente: ambiente.unwrap_or_else(|| "homologacao".to_string()),
+        },
+        jubilados_empresa_id,
+    })))
 }
 
 pub async fn salvar_fiscal_config(
@@ -1709,6 +1803,118 @@ pub async fn upload_certificado(
 /// Espelho de `sync_delivery_preference` — reflete o `jubilados_empresa_id`
 /// resolvido acima em `tenant_fiscal_settings` no ecommerce-api, ligando
 /// junto a feature `emissao_fiscal`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeliveryStatusOutput {
+    pub connected: bool,
+    pub connected_at: Option<String>,
+}
+
+/// Meu Plano → Integrações consulta isso pra saber se mostra "Uber Direct
+/// conectado" ou o formulário de credenciais -- a plataforma nunca guarda
+/// o client_secret, só pergunta pro motor de loja (dono de verdade do dado).
+pub async fn get_delivery_status(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<DeliveryStatusOutput>, AppError> {
+    let slug: Option<(Option<String>,)> = sqlx::query_as("SELECT slug FROM subscribers WHERE id = $1")
+        .bind(&claims.sub)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some(slug) = slug.and_then(|(s,)| s).filter(|s| !s.trim().is_empty()) else {
+        return Ok(Json(DeliveryStatusOutput { connected: false, connected_at: None }));
+    };
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Ok(Json(DeliveryStatusOutput { connected: false, connected_at: None }));
+    }
+    let url = format!(
+        "{}/internal/delivery-status?tenant_slug={}",
+        state.ecommerce_internal_url.trim_end_matches('/'),
+        urlencoding::encode(&slug)
+    );
+    let resp = state
+        .http
+        .get(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("delivery-status unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        return Ok(Json(DeliveryStatusOutput { connected: false, connected_at: None }));
+    }
+    let parsed: DeliveryStatusOutput = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("delivery-status parse failed: {e}")))?;
+    Ok(Json(parsed))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UberDirectInput {
+    pub client_id: String,
+    pub client_secret: String,
+    pub customer_id: String,
+    #[serde(default)]
+    pub pickup_city: Option<String>,
+    #[serde(default)]
+    pub pickup_state: Option<String>,
+}
+
+/// Repassa as credenciais que o lojista colou (do dashboard dele em
+/// direct.uber.com → Management → Developer) pro motor de loja -- a
+/// plataforma nunca persiste isso, só encaminha uma vez.
+pub async fn conectar_uber_direct(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<UberDirectInput>,
+) -> Result<Json<DeliveryStatusOutput>, AppError> {
+    if body.client_id.trim().is_empty() || body.client_secret.trim().is_empty() || body.customer_id.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "Client ID, Client Secret e Customer ID são obrigatórios".to_string(),
+        ));
+    }
+    let slug: Option<(Option<String>,)> = sqlx::query_as("SELECT slug FROM subscribers WHERE id = $1")
+        .bind(&claims.sub)
+        .fetch_optional(&state.pool)
+        .await?;
+    let slug = slug
+        .and_then(|(s,)| s)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| AppError::BadRequest("conclua o cadastro da loja em /onboarding antes de conectar entregas".to_string()))?;
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Err(AppError::Internal(
+            "integração de entregas não configurada neste ambiente".to_string(),
+        ));
+    }
+    let url = format!(
+        "{}/internal/sync-delivery-credentials",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .json(&serde_json::json!({
+            "tenant_slug": slug,
+            "provider": "uber_direct",
+            "credentials": {
+                "client_id": body.client_id,
+                "client_secret": body.client_secret,
+                "customer_id": body.customer_id,
+            },
+            "pickup_city": body.pickup_city,
+            "pickup_state": body.pickup_state,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("sync-delivery-credentials unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::BadRequest(format!("não foi possível conectar o Uber Direct: {status} {text}")));
+    }
+    Ok(Json(DeliveryStatusOutput { connected: true, connected_at: Some(chrono::Utc::now().to_rfc3339()) }))
+}
+
 async fn sync_fiscal_config(state: &AppState, slug: &str, empresa_id: &str, ambiente: &str) -> Result<(), AppError> {
     if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
         return Ok(());
