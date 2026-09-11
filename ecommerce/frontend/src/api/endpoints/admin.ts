@@ -244,6 +244,16 @@ export const adminEndpoint = {
     get: async (orderId: string) => api.admin.fiscal.get(orderId),
     listDocuments: async () => api.admin.fiscal.listDocuments(),
     cancel: async (orderId: string) => api.admin.fiscal.cancel(orderId),
+    inutilizar: async (payload: { serie: string; numero_inicial: number; numero_final: number; justificativa: string }) =>
+      api.admin.fiscal.inutilizar(payload),
+    enviarCce: async (payload: { nota_fiscal_id: string; correcao_texto: string }) => api.admin.fiscal.enviarCce(payload),
+    manifestar: async (payload: { nota_fiscal_id: string; tipo_manifestacao: string; justificativa?: string }) =>
+      api.admin.fiscal.manifestar(payload),
+    consultarEntrada: async () => api.admin.fiscal.consultarEntrada(),
+    cancelarNota: async (notaFiscalId: string) => api.admin.fiscal.cancelarNota(notaFiscalId),
+    listarNotas: async (params?: { tipo?: string; status?: string }) => api.admin.fiscal.listarNotas(params),
+    danfeUrl: (notaFiscalId: string) => api.admin.fiscal.danfeUrl(notaFiscalId),
+    xmlUrl: (notaFiscalId: string) => api.admin.fiscal.xmlUrl(notaFiscalId),
   },
   point: {
     listStores: async () => api.admin.point.listStores(),

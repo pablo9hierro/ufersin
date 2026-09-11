@@ -135,6 +135,31 @@ export interface ClassificacaoTributariaItem {
   cstDescricao: string
   descricao: string
 }
+/** Item da "nuvem fiscal" -- entrada (a empresa é destinatária) ou saída
+ * (a empresa emitiu). Shape confirmado lendo NuvemFiscalItemDto do
+ * Jubilados; `Manifestada` só faz sentido pra entrada. */
+export interface NuvemFiscalItem {
+  id: string
+  empresaId: string
+  tipo: 'Entrada' | 'Saída'
+  chaveAcesso: string
+  numero: number
+  serie: string
+  naturezaOperacao: string
+  status: string
+  valorTotal: number
+  emitidaEm: string
+  protocolo: string | null
+  cStat: string | null
+  manifestada: boolean
+}
+export interface NuvemFiscalResult {
+  sucesso: boolean
+  cnpj: string
+  razaoSocial: string
+  total: number
+  notas: NuvemFiscalItem[]
+}
 export interface FiscalDocumentListItem {
   id: string
   order_id: string
@@ -1335,6 +1360,49 @@ const remoteApi = {
       listDocuments: () => railwayAdmin<FiscalDocumentListItem[]>('/api/admin/fiscal/documents'),
       cancel: (orderId: string) =>
         railwayAdmin<{ ok: boolean }>(`/api/admin/orders/${orderId}/fiscal/cancelar`, { method: 'POST' }),
+      inutilizar: (payload: { serie: string; numero_inicial: number; numero_final: number; justificativa: string }) =>
+        railwayAdmin<{ ok: boolean; protocolo: string | null }>('/api/admin/fiscal/inutilizar', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }),
+      enviarCce: (payload: { nota_fiscal_id: string; correcao_texto: string }) =>
+        railwayAdmin<{ ok: boolean; protocolo: string | null }>('/api/admin/fiscal/cce', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }),
+      manifestar: (payload: { nota_fiscal_id: string; tipo_manifestacao: string; justificativa?: string }) =>
+        railwayAdmin<{ ok: boolean }>('/api/admin/fiscal/manifestar', { method: 'POST', body: JSON.stringify(payload) }),
+      consultarEntrada: () => railwayAdmin<unknown>('/api/admin/fiscal/entrada/consultar', { method: 'POST' }),
+      cancelarNota: (notaFiscalId: string) =>
+        railwayAdmin<{ ok: boolean }>(`/api/admin/fiscal/notas/${notaFiscalId}/cancelar`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        }),
+      listarNotas: (params?: { tipo?: string; status?: string }) => {
+        const qs = new URLSearchParams()
+        if (params?.tipo) qs.set('tipo', params.tipo)
+        if (params?.status) qs.set('status', params.status)
+        const suffix = qs.toString() ? `?${qs.toString()}` : ''
+        return railwayAdmin<NuvemFiscalResult>(`/api/admin/fiscal/notas${suffix}`)
+      },
+      // DANFE/XML exigem o JWT de admin (o Jubilados nunca fala direto com
+      // o navegador) -- por isso não são links <a href> simples, precisam
+      // de fetch autenticado + blob. Devolve a URL de objeto pra abrir/
+      // baixar; quem chama é responsável por revogar depois (URL.revokeObjectURL).
+      danfeUrl: async (notaFiscalId: string): Promise<string> => {
+        const res = await fetch(`${API_BASE}/api/admin/fiscal/notas/${notaFiscalId}/danfe`, {
+          headers: { Authorization: `Bearer ${adminToken() ?? ''}` },
+        })
+        if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => 'erro ao baixar DANFE'))
+        return URL.createObjectURL(await res.blob())
+      },
+      xmlUrl: async (notaFiscalId: string): Promise<string> => {
+        const res = await fetch(`${API_BASE}/api/admin/fiscal/notas/${notaFiscalId}/xml`, {
+          headers: { Authorization: `Bearer ${adminToken() ?? ''}` },
+        })
+        if (!res.ok) throw new ApiError(res.status, await res.text().catch(() => 'erro ao baixar XML'))
+        return URL.createObjectURL(await res.blob())
+      },
     },
     point: {
       listStores: () => railwayAdmin<PointStore[]>('/api/admin/point/stores'),

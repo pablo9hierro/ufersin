@@ -582,6 +582,43 @@ pub async fn cancelar(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CancelarNotaInput {
+    #[serde(default)]
+    pub justificativa: Option<String>,
+}
+
+/// Anular nota de saída direto pelo id do Jubilados -- usado pela tela
+/// "Consultar nuvem fiscal", que lista notas sem necessariamente saber o
+/// order_id local (pode ter nota importada/legada sem pedido vinculado).
+/// Mesma ação de `cancelar` acima, só que sem depender de order_id.
+pub async fn cancelar_por_nota(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(nota_fiscal_id): Path<Uuid>,
+    Json(body): Json<CancelarNotaInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let empresa_id = tenant_empresa_id(&state.pool, &claims.tenant_id).await?;
+    let justificativa = body
+        .justificativa
+        .filter(|s| s.trim().len() >= 15)
+        .unwrap_or_else(|| "Cancelamento solicitado pelo lojista via Resolutoo".to_string());
+
+    let c = client(&state)?;
+    c.cancelar(empresa_id, nota_fiscal_id, &justificativa).await?;
+
+    sqlx::query(
+        "UPDATE fiscal_documents SET status = 'cancelada', updated_at = now()::text \
+         WHERE tenant_id = $1 AND jubilados_nota_id = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(nota_fiscal_id)
+    .execute(&state.pool)
+    .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 /// Chamado por `webhooks.rs::handle_mercadopago` quando o modo é
 /// automático. Fire-and-forget -- erros aqui nunca bloqueiam nem revertem
 /// a confirmação de pagamento (mesmo espírito do WhatsApp/baixa de
@@ -837,4 +874,156 @@ pub async fn remove_cfop(
         .execute(&state.pool)
         .await?;
     list_cfops(State(state), AdminUser(claims)).await
+}
+
+async fn tenant_empresa_id(pool: &sqlx::PgPool, tenant_id: &str) -> Result<Uuid, AppError> {
+    let row: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT jubilados_empresa_id FROM tenant_fiscal_settings WHERE tenant_id = $1 AND jubilados_empresa_id IS NOT NULL",
+    )
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    row.map(|(id,)| id)
+        .ok_or_else(|| AppError::BadRequest("configure os dados fiscais da loja em Meu Plano → Integrações antes".to_string()))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InutilizarInput {
+    pub serie: String,
+    pub numero_inicial: i32,
+    pub numero_final: i32,
+    pub justificativa: String,
+}
+
+/// Inutiliza uma faixa de numeração NUNCA emitida (pulo de número por
+/// falha de sistema, por exemplo) -- diferente de cancelar uma nota já
+/// autorizada, que é `/api/admin/fiscal/pedidos/{order_id}/cancelar`.
+pub async fn inutilizar(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(body): Json<InutilizarInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    if body.justificativa.trim().len() < 15 {
+        return Err(AppError::BadRequest("justificativa deve ter ao menos 15 caracteres".to_string()));
+    }
+    let empresa_id = tenant_empresa_id(&state.pool, &claims.tenant_id).await?;
+    let c = client(&state)?;
+    let result = c
+        .inutilizar(empresa_id, &body.serie, body.numero_inicial, body.numero_final, &body.justificativa)
+        .await?;
+    Ok(Json(serde_json::json!({ "ok": true, "protocolo": result.protocolo })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CceInput {
+    pub nota_fiscal_id: Uuid,
+    pub correcao_texto: String,
+}
+
+pub async fn enviar_cce(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(body): Json<CceInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    if body.correcao_texto.trim().len() < 15 {
+        return Err(AppError::BadRequest("texto de correção deve ter ao menos 15 caracteres".to_string()));
+    }
+    let empresa_id = tenant_empresa_id(&state.pool, &claims.tenant_id).await?;
+    let c = client(&state)?;
+    let result = c.enviar_cce(empresa_id, body.nota_fiscal_id, &body.correcao_texto).await?;
+    Ok(Json(serde_json::json!({ "ok": true, "protocolo": result.protocolo })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ManifestarInput {
+    pub nota_fiscal_id: Uuid,
+    /// "CienciaOperacao" | "ConfirmacaoOperacao" | "Desconhecimento" | "OperacaoNaoRealizada"
+    pub tipo_manifestacao: String,
+    #[serde(default)]
+    pub justificativa: Option<String>,
+}
+
+pub async fn manifestar(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Json(body): Json<ManifestarInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    if !matches!(
+        body.tipo_manifestacao.as_str(),
+        "CienciaOperacao" | "ConfirmacaoOperacao" | "Desconhecimento" | "OperacaoNaoRealizada"
+    ) {
+        return Err(AppError::BadRequest("tipo_manifestacao inválido".to_string()));
+    }
+    let empresa_id = tenant_empresa_id(&state.pool, &claims.tenant_id).await?;
+    let c = client(&state)?;
+    c.manifestar(empresa_id, body.nota_fiscal_id, &body.tipo_manifestacao, body.justificativa.as_deref())
+        .await?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+/// Busca na SEFAZ (via Jubilados) por novas notas de ENTRADA -- roda antes
+/// de listar pra sincronizar o que ainda não existe no banco do Jubilados.
+pub async fn consultar_entrada(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let empresa_id = tenant_empresa_id(&state.pool, &claims.tenant_id).await?;
+    let c = client(&state)?;
+    Ok(Json(c.consultar_entrada(empresa_id).await?))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListarNotasQuery {
+    #[serde(default)]
+    pub tipo: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+/// Nuvem fiscal -- lista entrada e saída da empresa, filtro opcional por
+/// tipo/status. Fonte pra tela "Consultar nuvem fiscal".
+pub async fn listar_notas(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    axum::extract::Query(q): axum::extract::Query<ListarNotasQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let empresa_id = tenant_empresa_id(&state.pool, &claims.tenant_id).await?;
+    let c = client(&state)?;
+    Ok(Json(c.listar_notas(empresa_id, q.tipo.as_deref(), q.status.as_deref()).await?))
+}
+
+/// Proxy autenticado do PDF da DANFE -- o navegador não pode falar direto
+/// com o Jubilados (exige a chave interna, que nunca chega ao front).
+pub async fn baixar_danfe(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(nota_fiscal_id): Path<Uuid>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let c = client(&state)?;
+    let bytes = c.baixar_danfe(nota_fiscal_id).await?;
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "application/pdf")],
+        bytes,
+    ))
+}
+
+/// Proxy autenticado do XML autorizado -- mesmo motivo do proxy de DANFE.
+pub async fn baixar_xml(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(nota_fiscal_id): Path<Uuid>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    require_beta(&state.pool, &claims.tenant_id).await?;
+    let c = client(&state)?;
+    let bytes = c.baixar_xml(nota_fiscal_id).await?;
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "application/xml")],
+        bytes,
+    ))
 }

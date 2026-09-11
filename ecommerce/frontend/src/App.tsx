@@ -43,6 +43,11 @@ const AdminMotoboys = lazyWithReload(() => import('./pages/admin/AdminMotoboys')
 const AdminFrete = lazyWithReload(() => import('./pages/admin/AdminFrete'))
 const AdminEntregasTerceirizadas = lazyWithReload(() => import('./pages/admin/AdminEntregasTerceirizadas'))
 const AdminFiscal = lazyWithReload(() => import('./pages/admin/AdminFiscal'))
+const AdminFiscalEmitir = lazyWithReload(() => import('./pages/admin/AdminFiscalEmitir'))
+const AdminFiscalInutilizar = lazyWithReload(() => import('./pages/admin/AdminFiscalInutilizar'))
+const AdminFiscalCce = lazyWithReload(() => import('./pages/admin/AdminFiscalCce'))
+const AdminFiscalManifestacao = lazyWithReload(() => import('./pages/admin/AdminFiscalManifestacao'))
+const AdminFiscalNuvem = lazyWithReload(() => import('./pages/admin/AdminFiscalNuvem'))
 const AdminMercadoPagoPoint = lazyWithReload(() => import('./pages/admin/AdminMercadoPagoPoint'))
 const AdminFinanceiro = lazyWithReload(() => import('./pages/admin/AdminFinanceiro'))
 const AdminSenha = lazyWithReload(() => import('./pages/admin/AdminSenha'))
@@ -386,7 +391,12 @@ export default function App() {
             <Route path="estoque/xml" element={<AdminEstoqueXml />} />
             <Route path="frete" element={<AdminFrete />} />
             <Route path="entregas-terceirizadas" element={<AdminEntregasTerceirizadas />} />
-            <Route path="fiscal" element={<AdminFiscal />} />
+            <Route path="fiscal" element={<Navigate to="/admin/fiscal/emitir" replace />} />
+            <Route path="fiscal/emitir" element={<AdminFiscalEmitir />} />
+            <Route path="fiscal/inutilizar" element={<AdminFiscalInutilizar />} />
+            <Route path="fiscal/cce" element={<AdminFiscalCce />} />
+            <Route path="fiscal/manifestacao" element={<AdminFiscalManifestacao />} />
+            <Route path="fiscal/nuvem" element={<AdminFiscalNuvem />} />
             <Route path="mercadopago-point" element={<AdminMercadoPagoPoint />} />
             <Route path="motoboys" element={<AdminMotoboys />} />
             <Route path="crm" element={<AdminCrm />} />

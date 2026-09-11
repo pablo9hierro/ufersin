@@ -740,6 +740,14 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/orders/{id}/fiscal/cancelar",
             post(routes::fiscal::cancelar),
         )
+        .route("/api/admin/fiscal/inutilizar", post(routes::fiscal::inutilizar))
+        .route("/api/admin/fiscal/cce", post(routes::fiscal::enviar_cce))
+        .route("/api/admin/fiscal/manifestar", post(routes::fiscal::manifestar))
+        .route("/api/admin/fiscal/entrada/consultar", post(routes::fiscal::consultar_entrada))
+        .route("/api/admin/fiscal/notas", get(routes::fiscal::listar_notas))
+        .route("/api/admin/fiscal/notas/{id}/danfe", get(routes::fiscal::baixar_danfe))
+        .route("/api/admin/fiscal/notas/{id}/xml", get(routes::fiscal::baixar_xml))
+        .route("/api/admin/fiscal/notas/{id}/cancelar", post(routes::fiscal::cancelar_por_nota))
         .route(
             "/api/admin/point/stores",
             get(routes::point::list_stores).post(routes::point::sync_store),

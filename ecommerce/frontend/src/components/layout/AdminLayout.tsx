@@ -1,14 +1,18 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
+  Ban,
   Boxes,
   Calendar,
   ChefHat,
   ChevronDown,
   ClipboardList,
+  Cloud,
+  FileEdit,
   FileText,
   Loader2,
   LogOut,
+  MailCheck,
   MapPinned,
   Megaphone,
   MessageSquareText,
@@ -72,7 +76,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/estoque', label: 'Estoque', icon: Boxes, requiredPlan: 'essential' },
   { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'essential', hideAtOrAbove: 'management' },
   { href: '/admin/entregas-terceirizadas', label: 'Entregas terceirizadas', icon: Send, requiredPlan: 'essential' },
-  { href: '/admin/fiscal', label: 'Fiscal', icon: FileText, requiredPlan: 'essential' },
+  { href: '/admin/fiscal/emitir', label: 'Emitir', icon: FileText, requiredPlan: 'essential' },
+  { href: '/admin/fiscal/inutilizar', label: 'Inutilizar/Anular', icon: Ban, requiredPlan: 'essential' },
+  { href: '/admin/fiscal/cce', label: 'Correção fiscal (CCe)', icon: FileEdit, requiredPlan: 'essential' },
+  { href: '/admin/fiscal/manifestacao', label: 'Manifestação fiscal', icon: MailCheck, requiredPlan: 'essential' },
+  { href: '/admin/fiscal/nuvem', label: 'Consultar nuvem fiscal', icon: Cloud, requiredPlan: 'essential' },
   { href: '/admin/mercadopago-point', label: 'Mercado Pago Point', icon: Store, requiredPlan: 'essential' },
   { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
   { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar, requiredPlan: 'essential' },
@@ -99,10 +107,14 @@ const NAV_GROUPS: Record<string, { id: string; label: string }> = {
   '/admin/estoque': { id: 'cadastros', label: 'Cadastros' },
   '/admin/frete': { id: 'cadastros', label: 'Cadastros' },
   '/admin/entregas-terceirizadas': { id: 'cadastros', label: 'Cadastros' },
-  '/admin/fiscal': { id: 'cadastros', label: 'Cadastros' },
   '/admin/mercadopago-point': { id: 'cadastros', label: 'Cadastros' },
   '/admin/template': { id: 'cadastros', label: 'Cadastros' },
   '/admin/motoboys': { id: 'cadastros', label: 'Cadastros' },
+  '/admin/fiscal/emitir': { id: 'fiscal', label: 'Fiscal' },
+  '/admin/fiscal/inutilizar': { id: 'fiscal', label: 'Fiscal' },
+  '/admin/fiscal/cce': { id: 'fiscal', label: 'Fiscal' },
+  '/admin/fiscal/manifestacao': { id: 'fiscal', label: 'Fiscal' },
+  '/admin/fiscal/nuvem': { id: 'fiscal', label: 'Fiscal' },
 }
 /** Avoid re-running the full WA gate after every tenantConfig object refresh. */
 const GATE_SESSION_TTL_MS = 60_000
@@ -578,7 +590,7 @@ export default function AdminLayout() {
     // Entregas terceirizadas: feature beta, só aparece se o backend liberou
     // (feature_flags) — nunca por plano/slug hardcoded aqui.
     if (i.href === '/admin/entregas-terceirizadas' && !deliveryEnabled) return false
-    if (i.href === '/admin/fiscal' && !fiscalEnabled) return false
+    if (i.href.startsWith('/admin/fiscal/') && !fiscalEnabled) return false
     if (i.href === '/admin/mercadopago-point' && !pointEnabled) return false
     // Funcionários (motoboy/vendedor/cozinha): management+ sempre libera;
     // essential libera só se o lojista marcou precisar de algum desses em

@@ -267,6 +267,259 @@ impl JubiladosClient {
         }
         Ok(())
     }
+
+    /// Inutiliza uma faixa de numeração na SEFAZ (números pulados/nunca
+    /// usados) -- diferente de `cancelar`, que é pra nota já emitida.
+    pub async fn inutilizar(
+        &self,
+        empresa_id: Uuid,
+        serie: &str,
+        numero_inicial: i32,
+        numero_final: i32,
+        justificativa: &str,
+    ) -> Result<InutilizarResult, AppError> {
+        let body = InutilizarRequest {
+            empresa_id,
+            serie: serie.to_string(),
+            numero_inicial,
+            numero_final,
+            justificativa: justificativa.to_string(),
+        };
+        let resp = self
+            .http
+            .post(self.url("/api/nfe/inutilizar"))
+            .header("X-Internal-Key", &self.internal_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados inutilizar request failed: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(Self::error_from_response(resp).await);
+        }
+        let parsed: InutilizarResultResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados inutilizar parse failed: {e}")))?;
+        if !parsed.sucesso {
+            return Err(AppError::BadRequest(format!("SEFAZ recusou a inutilização: {}", parsed.x_motivo)));
+        }
+        Ok(InutilizarResult { protocolo: parsed.protocolo })
+    }
+
+    /// Envia Carta de Correção Eletrônica (CCe) pra uma nota já autorizada.
+    pub async fn enviar_cce(
+        &self,
+        empresa_id: Uuid,
+        nota_fiscal_id: Uuid,
+        correcao_texto: &str,
+    ) -> Result<CceResult, AppError> {
+        let body = CceRequest { empresa_id, nota_fiscal_id, correcao_texto: correcao_texto.to_string() };
+        let resp = self
+            .http
+            .post(self.url("/api/nfe/cce"))
+            .header("X-Internal-Key", &self.internal_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados cce request failed: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(Self::error_from_response(resp).await);
+        }
+        let parsed: CceResultResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados cce parse failed: {e}")))?;
+        if !parsed.sucesso {
+            return Err(AppError::BadRequest(format!("SEFAZ recusou a CCe: {}", parsed.x_motivo)));
+        }
+        Ok(CceResult { protocolo: parsed.protocolo })
+    }
+
+    /// Manifesta o destinatário sobre uma nota de ENTRADA (ciência,
+    /// confirmação, desconhecimento, operação não realizada).
+    pub async fn manifestar(
+        &self,
+        empresa_id: Uuid,
+        nota_fiscal_id: Uuid,
+        tipo_manifestacao: &str,
+        justificativa: Option<&str>,
+    ) -> Result<(), AppError> {
+        let body = ManifestarRequest {
+            empresa_id,
+            nota_fiscal_id,
+            tipo_manifestacao: tipo_manifestacao.to_string(),
+            justificativa: justificativa.map(|s| s.to_string()),
+        };
+        let resp = self
+            .http
+            .post(self.url("/api/nfe/manifestar"))
+            .header("X-Internal-Key", &self.internal_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados manifestar request failed: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(Self::error_from_response(resp).await);
+        }
+        let parsed: ManifestacaoResultResponse = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados manifestar parse failed: {e}")))?;
+        if !parsed.sucesso {
+            return Err(AppError::BadRequest(format!("SEFAZ recusou a manifestação: {}", parsed.x_motivo)));
+        }
+        Ok(())
+    }
+
+    /// Consulta a SEFAZ por novas notas de ENTRADA (onde a empresa é
+    /// destinatária) -- precisa rodar antes de `listar_notas` mostrar
+    /// entradas novas, já que elas não passam pelo fluxo de emissão daqui.
+    pub async fn consultar_entrada(&self, empresa_id: Uuid) -> Result<serde_json::Value, AppError> {
+        let resp = self
+            .http
+            .get(self.url(&format!("/api/nfe/entrada?empresaId={empresa_id}")))
+            .header("X-Internal-Key", &self.internal_key)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados consultar entrada request failed: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(Self::error_from_response(resp).await);
+        }
+        resp.json()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados consultar entrada parse failed: {e}")))
+    }
+
+    /// Lista notas (entrada e saída) já conhecidas do Jubilados pra essa
+    /// empresa -- fonte da tela "Consultar nuvem fiscal".
+    pub async fn listar_notas(
+        &self,
+        empresa_id: Uuid,
+        tipo: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<serde_json::Value, AppError> {
+        // tipo/status vêm de um enum fixo do nosso lado (nunca texto livre
+        // do usuário) -- sem caracteres especiais, não precisa URL-encode.
+        let mut url = format!("/api/nfe/listar?empresaId={empresa_id}");
+        if let Some(t) = tipo {
+            url.push_str(&format!("&tipo={t}"));
+        }
+        if let Some(s) = status {
+            url.push_str(&format!("&status={s}"));
+        }
+        let resp = self
+            .http
+            .get(self.url(&url))
+            .header("X-Internal-Key", &self.internal_key)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados listar notas request failed: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(Self::error_from_response(resp).await);
+        }
+        resp.json()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados listar notas parse failed: {e}")))
+    }
+
+    /// Baixa o PDF da DANFE de uma nota (bytes crus -- o backend do
+    /// Resolutoo faz o proxy pro navegador, que não pode falar com o
+    /// Jubilados direto, ele exige a chave interna).
+    pub async fn baixar_danfe(&self, nota_fiscal_id: Uuid) -> Result<Vec<u8>, AppError> {
+        let resp = self
+            .http
+            .get(self.url(&format!("/api/nfe/{nota_fiscal_id}/danfe")))
+            .header("X-Internal-Key", &self.internal_key)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados danfe request failed: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(Self::error_from_response(resp).await);
+        }
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .map_err(|e| AppError::Internal(format!("jubilados danfe read failed: {e}")))
+    }
+
+    /// Baixa o XML autorizado de uma nota (bytes crus, mesmo motivo do proxy
+    /// de DANFE acima).
+    pub async fn baixar_xml(&self, nota_fiscal_id: Uuid) -> Result<Vec<u8>, AppError> {
+        let resp = self
+            .http
+            .get(self.url(&format!("/api/nfe/{nota_fiscal_id}/xml")))
+            .header("X-Internal-Key", &self.internal_key)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("jubilados xml request failed: {e}")))?;
+        if !resp.status().is_success() {
+            return Err(Self::error_from_response(resp).await);
+        }
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .map_err(|e| AppError::Internal(format!("jubilados xml read failed: {e}")))
+    }
+}
+
+pub struct InutilizarResult {
+    pub protocolo: Option<String>,
+}
+pub struct CceResult {
+    pub protocolo: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InutilizarRequest {
+    empresa_id: Uuid,
+    serie: String,
+    numero_inicial: i32,
+    numero_final: i32,
+    justificativa: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InutilizarResultResponse {
+    sucesso: bool,
+    #[serde(rename = "xMotivo")]
+    x_motivo: String,
+    protocolo: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CceRequest {
+    empresa_id: Uuid,
+    nota_fiscal_id: Uuid,
+    correcao_texto: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CceResultResponse {
+    sucesso: bool,
+    #[serde(rename = "xMotivo")]
+    x_motivo: String,
+    protocolo: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestarRequest {
+    empresa_id: Uuid,
+    nota_fiscal_id: Uuid,
+    tipo_manifestacao: String,
+    justificativa: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManifestacaoResultResponse {
+    sucesso: bool,
+    #[serde(rename = "xMotivo")]
+    x_motivo: String,
 }
 
 pub struct EmitirResult {

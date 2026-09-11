@@ -3047,6 +3047,30 @@ export const localApi = {
       cancel: async () => {
         throw new ApiError(403, 'recurso não está disponível no modo demonstração')
       },
+      inutilizar: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      enviarCce: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      manifestar: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      consultarEntrada: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      cancelarNota: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      listarNotas: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      danfeUrl: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
+      xmlUrl: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
     },
     point: {
       listStores: async () => { throw new ApiError(403, 'recurso não está disponível no modo demonstração') },
