@@ -419,7 +419,7 @@ pub async fn emitir(
     let inserted: Option<(String,)> = sqlx::query_as(
         "INSERT INTO fiscal_documents (id, tenant_id, order_id, modelo, status) \
          VALUES ($1, $2, $3, $4, 'processando') \
-         ON CONFLICT (order_id) WHERE status NOT IN ('rejeitada', 'cancelada') DO NOTHING \
+         ON CONFLICT (order_id) WHERE status NOT IN ('rejeitada', 'cancelada', 'erro') DO NOTHING \
          RETURNING id",
     )
     .bind(&doc_id)
@@ -674,7 +674,7 @@ pub async fn maybe_auto_emit(pool: &sqlx::PgPool, http: &reqwest::Client, jubila
     let inserted: Option<(String,)> = sqlx::query_as(
         "INSERT INTO fiscal_documents (id, tenant_id, order_id, modelo, status) \
          VALUES ($1, $2, $3, $4, 'processando') \
-         ON CONFLICT (order_id) WHERE status NOT IN ('rejeitada', 'cancelada') DO NOTHING \
+         ON CONFLICT (order_id) WHERE status NOT IN ('rejeitada', 'cancelada', 'erro') DO NOTHING \
          RETURNING id",
     )
     .bind(&doc_id)

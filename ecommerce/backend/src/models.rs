@@ -42,6 +42,19 @@ pub struct ProductRow {
     /// qualquer outro tenant. Ver módulo eletrônicos (VR Tech).
     pub phone_brand: Option<String>,
     pub phone_model: Option<String>,
+    // Dados fiscais (NF-e/NFC-e, migration 0050) -- faltavam aqui, então
+    // `p.*` trazia do banco mas o `From<ProductRow> for ProductDto` nunca
+    // repassava pro JSON: o produto salvava certo, só a tela de edição
+    // reabria sempre em branco (achado real em teste de ponta a ponta).
+    pub ncm: Option<String>,
+    pub cfop: Option<String>,
+    pub cst: Option<String>,
+    pub csosn: Option<String>,
+    pub cest: Option<String>,
+    pub origem: Option<String>,
+    pub unidade_fiscal: Option<String>,
+    pub ean: Option<String>,
+    pub cclass_trib: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,6 +75,15 @@ pub struct ProductDto {
     pub tags: Vec<String>,
     pub phone_brand: Option<String>,
     pub phone_model: Option<String>,
+    pub ncm: Option<String>,
+    pub cfop: Option<String>,
+    pub cst: Option<String>,
+    pub csosn: Option<String>,
+    pub cest: Option<String>,
+    pub origem: Option<String>,
+    pub unidade_fiscal: Option<String>,
+    pub ean: Option<String>,
+    pub cclass_trib: Option<String>,
 }
 
 impl From<ProductRow> for ProductDto {
@@ -83,6 +105,15 @@ impl From<ProductRow> for ProductDto {
             tags: r.tags,
             phone_brand: r.phone_brand,
             phone_model: r.phone_model,
+            ncm: r.ncm,
+            cfop: r.cfop,
+            cst: r.cst,
+            csosn: r.csosn,
+            cest: r.cest,
+            origem: r.origem,
+            unidade_fiscal: r.unidade_fiscal,
+            ean: r.ean,
+            cclass_trib: r.cclass_trib,
         }
     }
 }
