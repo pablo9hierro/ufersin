@@ -32,5 +32,10 @@ utoipa-swagger-ui = { version = "9", features = ["axum"] }
 # Validação de certificado digital A1 (.pfx/.p12) -- abre com a senha
 # informada e lê a validade antes de repassar ao Jubilados. Nunca
 # persistimos o certificado localmente (ver routes/onboarding.rs).
-p12 = "0.6"
-x509-parser = "0.16"
+# Usa `openssl` (bindings reais pra libssl, vendored pra não depender de
+# OpenSSL do sistema no container) em vez da crate `p12`: `p12` só
+# decodifica o esquema legado do PKCS#12 (RC2/3DES) e rejeitava como
+# "senha incorreta" certificados exportados por ferramentas atuais
+# (OpenSSL 3.x), que usam PBES2/AES-256-CBC -- confirmado testando o
+# mesmo arquivo com o binário `openssl` local, que abre normalmente.
+openssl = { version = "0.10", features = ["vendored"] }

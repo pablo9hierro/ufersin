@@ -1810,26 +1810,30 @@ pub async fn upload_certificado(
 
     // Abre o PKCS#12 com a senha informada -- rejeita aqui mesmo (nunca
     // manda pro Jubilados) se a senha estiver errada ou o arquivo não for
-    // um certificado válido.
-    let pfx = p12::PFX::parse(&file_bytes)
+    // um certificado válido. Usa `openssl` (libssl de verdade) em vez da
+    // crate `p12`, que não decodifica o PBES2/AES-256-CBC usado por
+    // certificados exportados com ferramentas atuais.
+    let pkcs12 = openssl::pkcs12::Pkcs12::from_der(&file_bytes)
         .map_err(|_| AppError::BadRequest("arquivo não é um certificado .pfx/.p12 válido".to_string()))?;
-    let certs = pfx
-        .cert_bags(&senha)
+    let parsed = pkcs12
+        .parse2(&senha)
         .map_err(|_| AppError::BadRequest("senha do certificado incorreta".to_string()))?;
-    let cert_der = certs
-        .first()
+    let cert = parsed
+        .cert
         .ok_or_else(|| AppError::BadRequest("certificado não contém nenhum certificado X.509".to_string()))?;
 
-    let (_, x509) = x509_parser::parse_x509_certificate(cert_der)
-        .map_err(|_| AppError::BadRequest("não foi possível ler os dados do certificado".to_string()))?;
-    let titular = x509
-        .subject()
-        .iter_common_name()
+    let titular = cert
+        .subject_name()
+        .entries_by_nid(openssl::nid::Nid::COMMONNAME)
         .next()
-        .and_then(|cn| cn.as_str().ok())
-        .map(str::to_string);
-    let validade_asn1 = x509.validity().not_after;
-    let validade = chrono::DateTime::from_timestamp(validade_asn1.timestamp(), 0);
+        .and_then(|e| e.data().as_utf8().ok())
+        .map(|s| s.to_string());
+    // Asn1Time não converte direto pra chrono -- formata e reparsa (padrão
+    // usual com a crate openssl, que não expõe isso de outro jeito).
+    let not_after_str = cert.not_after().to_string();
+    let validade = chrono::NaiveDateTime::parse_from_str(&not_after_str, "%b %e %H:%M:%S %Y GMT")
+        .ok()
+        .map(|dt| dt.and_utc());
     let dias_restantes = validade.map(|v| (v - chrono::Utc::now()).num_days());
     if dias_restantes.is_some_and(|d| d < 0) {
         return Err(AppError::BadRequest("certificado vencido — envie um certificado válido".to_string()));
