@@ -17,6 +17,17 @@
 -- falso já existe hoje em qualquer emissão) -- o bloqueio forte de
 -- verdade é a validação de FORMATO na resolução fiscal (ecommerce/backend
 -- src/fiscal/validation.rs), que roda de novo no momento da emissão.
+--
+-- CORREÇÃO CRÍTICA (achada via teste real em produção depois do primeiro
+-- deploy desta função): a versão original desta migration copiou
+-- `resolutoo_create_order_tenant_fix.sql` usando schema `sunset.*`, mas
+-- esse arquivo já estava desatualizado -- o schema real do motor de
+-- e-commerce foi renomeado de `sunset` pra `loja` em algum ponto (ver
+-- comentário em `resolutoo_customer_register_birthdate_optional.sql`,
+-- confirmado ao vivo chamando `resolutoo.customer_register`, que já usa
+-- `loja.tenants` e funciona). Isso quebrava 100% dos pedidos da vitrine
+-- com o erro `column "vende_mais_18" does not exist`. Todas as referências
+-- de schema abaixo foram corrigidas de `sunset.*` pra `loja.*`.
 
 DROP FUNCTION IF EXISTS resolutoo.create_order(
   text, text, text, text, text, text, jsonb, double precision, double precision, text, text, text, text, text
@@ -46,10 +57,10 @@ CREATE OR REPLACE FUNCTION resolutoo.create_order(
   p_destinatario_cep text DEFAULT NULL,
   p_destinatario_endereco text DEFAULT NULL
 )
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = resolutoo, sunset, public, extensions AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = resolutoo, loja, public, extensions AS $$
 DECLARE
   v_item               jsonb;
-  v_product            sunset.products%ROWTYPE;
+  v_product            loja.products%ROWTYPE;
   v_quantity           bigint;
   v_subtotal           double precision := 0;
   v_shipping           double precision := 0;
@@ -58,7 +69,7 @@ DECLARE
   v_customer_id        text;
   v_order_id           text := gen_random_uuid()::text;
   v_item_id            text;
-  v_settings           sunset.shipping_settings%ROWTYPE;
+  v_settings           loja.shipping_settings%ROWTYPE;
   v_km                 double precision;
   v_birthdate          date;
   v_promotion          resolutoo.promotions%ROWTYPE;
@@ -102,7 +113,7 @@ BEGIN
     END IF;
   END IF;
 
-  SELECT id, vende_mais_18 INTO v_tenant_id, v_requires_18 FROM sunset.tenants WHERE slug = p_tenant_slug;
+  SELECT id, vende_mais_18 INTO v_tenant_id, v_requires_18 FROM loja.tenants WHERE slug = p_tenant_slug;
   IF v_tenant_id IS NULL THEN
     RAISE EXCEPTION 'store not found';
   END IF;
@@ -192,7 +203,7 @@ BEGIN
       RAISE EXCEPTION 'item quantity must be positive';
     END IF;
 
-    SELECT * INTO v_product FROM sunset.products
+    SELECT * INTO v_product FROM loja.products
       WHERE id = (v_item->>'product_id') AND tenant_id = v_tenant_id FOR UPDATE;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'product % not found', v_item->>'product_id';
@@ -238,7 +249,7 @@ BEGIN
   END LOOP;
 
   IF p_delivery_type = 'entrega' THEN
-    SELECT * INTO v_settings FROM sunset.shipping_settings WHERE tenant_id = v_tenant_id;
+    SELECT * INTO v_settings FROM loja.shipping_settings WHERE tenant_id = v_tenant_id;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'shipping is not configured for this store';
     END IF;
@@ -300,18 +311,18 @@ BEGIN
     RAISE EXCEPTION 'vendas a partir de R$ 500,00 exigem identificacao do comprador (CPF/CNPJ)';
   END IF;
 
-  SELECT id INTO v_customer_id FROM sunset.customers WHERE whatsapp = p_customer_whatsapp AND tenant_id = v_tenant_id;
+  SELECT id INTO v_customer_id FROM loja.customers WHERE whatsapp = p_customer_whatsapp AND tenant_id = v_tenant_id;
   IF v_customer_id IS NULL THEN
     v_customer_id := gen_random_uuid()::text;
-    INSERT INTO sunset.customers (id, name, whatsapp, tenant_id) VALUES (v_customer_id, p_customer_name, p_customer_whatsapp, v_tenant_id);
+    INSERT INTO loja.customers (id, name, whatsapp, tenant_id) VALUES (v_customer_id, p_customer_name, p_customer_whatsapp, v_tenant_id);
   ELSE
-    UPDATE sunset.customers SET name = p_customer_name WHERE id = v_customer_id;
+    UPDATE loja.customers SET name = p_customer_name WHERE id = v_customer_id;
   END IF;
 
   UPDATE resolutoo.customers SET name = p_customer_name, birthdate = COALESCE(p_customer_birthdate, birthdate)
     WHERE whatsapp = p_customer_whatsapp AND tenant_id = v_tenant_id;
 
-  INSERT INTO sunset.orders (
+  INSERT INTO loja.orders (
     id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type,
     neighborhood, address, reference_point, payment_method, payment_status, status,
     shipping_price, total, customer_lat, customer_lng,
@@ -329,11 +340,11 @@ BEGIN
   );
 
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items) LOOP
-    SELECT * INTO v_product FROM sunset.products WHERE id = (v_item->>'product_id') AND tenant_id = v_tenant_id;
+    SELECT * INTO v_product FROM loja.products WHERE id = (v_item->>'product_id') AND tenant_id = v_tenant_id;
     v_quantity := (v_item->>'quantity')::bigint;
     v_item_id := gen_random_uuid()::text;
 
-    INSERT INTO sunset.order_items (id, tenant_id, order_id, product_id, product_name, unit_price, quantity)
+    INSERT INTO loja.order_items (id, tenant_id, order_id, product_id, product_name, unit_price, quantity)
       VALUES (v_item_id, v_tenant_id, v_order_id, v_product.id, v_product.name, v_product.price, v_quantity);
   END LOOP;
 
