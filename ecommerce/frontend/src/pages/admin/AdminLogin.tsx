@@ -29,7 +29,7 @@ import {
 //
 // Demo pública NUNCA deve cair aqui — /demo-entrar já autentica com mock.
 export default function AdminLogin() {
-  const { token, login } = useAdminAuth()
+  const { token, tenantSlug, login } = useAdminAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
@@ -77,8 +77,14 @@ export default function AdminLogin() {
   // recém-logado). Nunca sai desta tela antes do submit, nem pro app
   // externo vrtech-jp.vercel.app (descontinuado).
 
-  // Demo ativa nesta aba: pular o formulário (nunca pedir senha / autofill).
-  if (isDemoModeActive()) {
+  // Demo ativa nesta aba: pular o formulário (nunca pedir senha / autofill) --
+  // MAS só quando não há sessão real já conhecida (BUG CRÍTICO corrigido: um
+  // flag de demo perdido de uma visita anterior nesta mesma aba bloqueava o
+  // próprio formulário de login real de um lojista de verdade, mesmo com um
+  // token real válido em localStorage). Mesma regra de AdminLayout.tsx.
+  const isSeededPreviewTenant = tenantSlug === 'demo-ecommerce' || tenantSlug === 'demo-eletronica'
+  const hasRealTenantSession = !!token && !!tenantSlug && !isSeededPreviewTenant
+  if (isDemoModeActive() && !hasRealTenantSession) {
     const staff = getDemoStaffSession()
     if (staff?.role === 'admin') return <Navigate to="/admin/pedidos" replace />
     return <Navigate to="/" replace />

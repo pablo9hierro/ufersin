@@ -149,17 +149,8 @@ export default function AdminLayout() {
   const { token, name, tenantSlug, logout } = useAdminAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const demo = isDemoModeActive()
+  const rawDemo = isDemoModeActive()
   const demoStaff = getDemoStaffSession()
-  const demoAdmin = demo && demoStaff?.role === 'admin'
-  // Mock demo (activateDemoMode) tem que SEMPRE vencer um `token` real que
-  // porventura esteja parado no localStorage global (resolutoo_loja_admin_auth,
-  // compartilhado pela origem inteira -- ex: sobra do preview 1:1 da landing,
-  // que loga de verdade contra demo-ecommerce). Sem isso, abrir /demo depois
-  // de ter usado o preview herdava o tenant/token real errado (BUG real
-  // visto ao vivo: demo de eletrônica renderizando dado de demo-ecommerce).
-  const effectiveToken = demoAdmin ? demoStaff!.token : token
-  const effectiveName = demoAdmin ? demoStaff!.name : name
   // Preview 1:1 da landing (SystemsShowcase.tsx): loga com JWT real contra
   // demo-ecommerce/demo-eletronica, tenants seedados que nunca têm assinatura
   // ativa na plataforma (não são lojista de verdade) -- sem isso, os gates de
@@ -167,6 +158,21 @@ export default function AdminLayout() {
   // preview pro /admin/login. Só afeta esses dois slugs fixos, nunca um
   // tenant real.
   const isSeededPreviewTenant = tenantSlug === 'demo-ecommerce' || tenantSlug === 'demo-eletronica'
+  // BUG CRÍTICO REAL corrigido aqui (achado em produção): `isDemoModeActive()`
+  // é um flag de sessionStorage da ABA INTEIRA, nunca amarrado a um tenant --
+  // visitar /demo uma vez e depois abrir o painel de uma loja REAL na MESMA
+  // aba sequestrava a sessão real pro modo demo/leitura (o token real já
+  // válido em localStorage era ignorado). `tenantSlug` só é preenchido por um
+  // login de verdade (AdminLogin.tsx::handleSubmit), então "temos um token +
+  // tenantSlug reais e não é um dos dois slugs seedados" é prova concreta de
+  // sessão real -- nesse caso o flag de demo NUNCA pode vencer. Preserva o
+  // preview da landing (tenantSlug lá É um dos slugs seedados, então
+  // `hasRealTenantSession` fica false e o demo continua vencendo, como antes).
+  const hasRealTenantSession = !!token && !!tenantSlug && !isSeededPreviewTenant
+  const demo = rawDemo && !hasRealTenantSession
+  const demoAdmin = demo && demoStaff?.role === 'admin'
+  const effectiveToken = demoAdmin ? demoStaff!.token : token
+  const effectiveName = demoAdmin ? demoStaff!.name : name
   const skipOperationalGates = demo || isSeededPreviewTenant
   // BUG-015: token de um tenant ficava "válido" ao navegar/clicar pra
   // outro tenant sem logout explícito, porque a sessão de admin é um único
