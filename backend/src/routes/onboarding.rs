@@ -1689,6 +1689,65 @@ pub struct CertificadoStatus {
     pub dias_restantes: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct EmpresaCertificadoInfo {
+    #[serde(rename = "certificadoValidade")]
+    certificado_validade: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(rename = "certificadoSalvo")]
+    certificado_salvo: bool,
+}
+
+/// Consulta se a empresa já tem certificado salvo no Jubilados sem precisar
+/// reenviar nada -- cobre o caso de linkar uma empresa já existente (mesmo
+/// CNPJ, ver `upsert_jubilados_empresa`) que já tinha certificado
+/// configurado antes. `GET /api/empresa/{id}` do Jubilados nunca devolve o
+/// certificado/senha em si, só um booleano (`certificadoSalvo`) -- seguro
+/// expor aqui.
+pub async fn get_certificado_status(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<Option<CertificadoStatus>>, AppError> {
+    let row: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT jubilados_empresa_id::text FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some(empresa_id) = row.and_then(|(id,)| id) else {
+        return Ok(Json(None));
+    };
+    if state.jubilados_api_url.is_empty() || state.jubilados_internal_key.is_empty() {
+        return Err(AppError::Internal("módulo fiscal não configurado neste ambiente".to_string()));
+    }
+    let base = state.jubilados_api_url.trim_end_matches('/');
+    let resp = state
+        .http
+        .get(format!("{base}/api/empresa/{empresa_id}"))
+        .header("x-internal-key", state.jubilados_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("jubilados empresa request failed: {e}")))?;
+    if !resp.status().is_success() {
+        return Ok(Json(None));
+    }
+    let parsed: EmpresaCertificadoInfo = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("jubilados empresa parse failed: {e}")))?;
+    if !parsed.certificado_salvo {
+        return Ok(Json(None));
+    }
+    let dias_restantes = parsed
+        .certificado_validade
+        .map(|v| (v - chrono::Utc::now()).num_days());
+    Ok(Json(Some(CertificadoStatus {
+        valido: true,
+        titular: None,
+        validade: parsed.certificado_validade,
+        dias_restantes,
+    })))
+}
+
 /// Upload do certificado digital A1 (.pfx/.p12). NUNCA persiste o
 /// certificado nem a senha no nosso banco -- abre localmente só pra
 /// validar (senha certa? ainda válido?), extrai titular/validade, e

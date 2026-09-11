@@ -705,6 +705,7 @@ export const api = {
     form.append('senha', senha)
     return request<CertificadoStatus>('/api/onboarding/fiscal/certificado', { method: 'POST', body: form })
   },
+  getCertificadoStatus: () => request<CertificadoStatus | null>('/api/onboarding/fiscal/certificado/status'),
   mercadoPagoOAuthStart: () =>
     request<{ authorize_url: string }>('/api/mercadopago/oauth/start', { method: 'POST' }),
   mercadoPagoOAuthDisconnect: () =>

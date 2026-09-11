@@ -107,6 +107,15 @@ export default function FiscalCadastroSection() {
     api.fiscalStates().then(setStates).catch(() => {})
   }, [])
 
+  // Consulta se a empresa (nova ou já existente no Jubilados, linkada pelo
+  // mesmo CNPJ) já tem certificado salvo -- cobre o caso de reaproveitar
+  // uma empresa que já tinha certificado configurado antes, sem precisar
+  // reenviar o arquivo pra "aparecer" como válido aqui.
+  useEffect(() => {
+    if (!savedId) return
+    api.getCertificadoStatus().then(setCertStatus).catch(() => {})
+  }, [savedId])
+
   // Carrega o que já foi salvo antes -- sem isso, reabrir a tela sempre
   // parecia "em branco" mesmo pra quem já tinha cadastrado a empresa, e a
   // seção de certificado (só faz sentido depois que a empresa existe no

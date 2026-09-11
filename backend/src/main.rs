@@ -243,6 +243,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/fiscal/states", get(routes::onboarding::list_states))
         .route("/api/fiscal/states/{uf}/cities", get(routes::onboarding::list_cities_by_state))
         .route("/api/onboarding/fiscal/certificado", post(routes::onboarding::upload_certificado))
+        .route("/api/onboarding/fiscal/certificado/status", get(routes::onboarding::get_certificado_status))
         .route(
             "/api/onboarding/delivery",
             get(routes::onboarding::get_delivery_status).post(routes::onboarding::conectar_uber_direct),
