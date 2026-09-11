@@ -1728,7 +1728,9 @@ pub async fn get_certificado_status(
         .await
         .map_err(|e| AppError::Internal(format!("jubilados empresa request failed: {e}")))?;
     if !resp.status().is_success() {
-        return Ok(Json(None));
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!("jubilados empresa {empresa_id} respondeu {status}: {text}")));
     }
     let parsed: EmpresaCertificadoInfo = resp
         .json()
