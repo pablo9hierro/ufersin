@@ -304,7 +304,7 @@ fn default_plan_vertical() -> String {
 /// eletrônica cair na escada de upgrade do ecommerce e vice-versa).
 fn plan_code_allowed(code: &str, vertical: &str) -> bool {
     match vertical {
-        "ecommerce" => matches!(code, "essential" | "management" | "premium"),
+        "ecommerce" => matches!(code, "starter" | "essential" | "management" | "premium"),
         "eletronicos" => matches!(code, "eletronica"),
         _ => false,
     }

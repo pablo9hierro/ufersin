@@ -80,7 +80,7 @@ pub async fn provision_tenant(
 ) -> Result<Json<ProvisionTenantOutput>, AppError> {
     InternalAuth::check(&headers, &state)?;
 
-    if !matches!(input.plan_code.as_str(), "essential" | "management" | "premium" | "eletronica") {
+    if !matches!(input.plan_code.as_str(), "essential" | "management" | "premium" | "eletronica" | "starter") {
         return Err(AppError::BadRequest("plan_code inválido".to_string()));
     }
     if !matches!(input.vertical.as_str(), "ecommerce" | "eletronicos") {
@@ -966,12 +966,12 @@ pub async fn set_tenant_status(
         ));
     }
     let plan_id = match input.plan_code.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        Some(code) if matches!(code, "essential" | "management" | "premium" | "eletronica") => {
+        Some(code) if matches!(code, "essential" | "management" | "premium" | "eletronica" | "starter") => {
             Some(format!("plan_{code}"))
         }
         Some(_) => {
             return Err(AppError::BadRequest(
-                "plan_code deve ser essential, management, premium ou eletronica".to_string(),
+                "plan_code deve ser starter, essential, management, premium ou eletronica".to_string(),
             ))
         }
         None => None,

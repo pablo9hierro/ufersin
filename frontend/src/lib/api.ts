@@ -58,7 +58,7 @@ export type Vertical = 'ecommerce' | 'eletronicos'
 /** Códigos de plano. `eletronica` é o único do ramo de assistência técnica;
  * os outros três formam a escada do ecommerce (ver `plan_code_allowed` no
  * backend, que impede um código pertencer aos dois ramos). */
-export type PlanoCode = 'essential' | 'management' | 'premium' | 'eletronica'
+export type PlanoCode = 'starter' | 'essential' | 'management' | 'premium' | 'eletronica'
 export type MetodoPagamento = 'pix' | 'cartao' | 'cartao_parcelado'
 export type BillingCycle = 'mensal' | 'semestral'
 

@@ -22,6 +22,19 @@ export const SEMESTRAL_DISCOUNT = 0.05
 /** Offline / fallback quando a API de planos não responde. */
 export const FALLBACK_PLANS: PlanInfo[] = [
   {
+    code: 'starter',
+    name: 'Starter',
+    price: 29.9,
+    tagline: 'Pra testar a loja online sem compromisso',
+    features: [
+      'Catálogo de produto e serviço',
+      'Checkout',
+      'Pix e Mercado Pago Point',
+      'Pedidos',
+    ],
+    vertical: 'ecommerce',
+  },
+  {
     code: 'essential',
     name: 'Essential',
     price: 60,
@@ -89,8 +102,9 @@ export const FALLBACK_PLANS: PlanInfo[] = [
 /** @deprecated prefer `getPlans()` após `fetchPlans()` */
 export const PLANS = FALLBACK_PLANS
 
-export const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
+export const PLAN_ORDER: PlanoCode[] = ['starter', 'essential', 'management', 'premium']
 export const PLAN_NAMES: Record<PlanoCode, string> = {
+  starter: 'Starter',
   essential: 'Essential',
   management: 'Management',
   premium: 'Premium',

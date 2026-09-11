@@ -1,18 +1,23 @@
 import { planoAtLeast, type PlanoCode } from './demoMode'
 
-/** Mirrors AdminLayout nav gating — which screens each plan unlocks. */
+/** Mirrors AdminLayout nav gating — which screens each plan unlocks.
+ * Starter é o novo piso (abaixo de Essential): as telas operacionais
+ * básicas (pedidos/PDV/produtos/frete/conta) valem pra loja funcionar em
+ * qualquer plano pago, então passam a exigir 'starter' em vez de
+ * 'essential' -- só WhatsApp automático (feature real, no backend) fica
+ * de fora do Starter, nunca uma tela inteira do admin. */
 export const ADMIN_NAV_PLAN: Record<string, PlanoCode> = {
-  '/admin/pedidos': 'essential',
-  '/admin/pdv': 'essential',
-  '/admin/produtos': 'essential',
-  '/admin/produtos/xml': 'essential',
-  '/admin/frete': 'essential',
+  '/admin/pedidos': 'starter',
+  '/admin/pdv': 'starter',
+  '/admin/produtos': 'starter',
+  '/admin/produtos/xml': 'starter',
+  '/admin/frete': 'starter',
   '/admin/motoboys': 'management',
   '/admin/crm': 'premium',
   '/admin/promocoes': 'management',
-  '/admin/layout-cliente': 'essential',
-  '/admin/relatorios': 'essential',
-  '/admin/conta': 'essential',
+  '/admin/layout-cliente': 'starter',
+  '/admin/relatorios': 'starter',
+  '/admin/conta': 'starter',
 }
 
 /** Routes shown only below this plan (e.g. Frete on Essential; Funcionários owns frete from Management). */

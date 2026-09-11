@@ -5,7 +5,7 @@ import type { PlanoCode } from '../lib/api'
 import { PLAN_NAMES } from '../lib/plans'
 import { demoExperienceUrl, type DemoRole } from '../lib/ecommerceUrl'
 
-const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
+const PLAN_ORDER: PlanoCode[] = ['starter', 'essential', 'management', 'premium']
 
 interface AreaDef {
   key: DemoRole

@@ -1,6 +1,6 @@
 import { getCachedTenantConfig, resolveTenantSlug, resetTenantConfigCache } from './tenantConfig'
 
-export type PlanoCode = 'essential' | 'management' | 'premium'
+export type PlanoCode = 'starter' | 'essential' | 'management' | 'premium'
 
 export type DemoStaffRole = 'admin' | 'motoboy' | 'vendedor'
 
@@ -91,11 +91,14 @@ export function getDemoStaffSession(): DemoStaffSession | null {
 
 export function getDemoPlano(): PlanoCode | null {
   const p = typeof window !== 'undefined' ? sessionStorage.getItem(PLANO_KEY) : null
-  return p === 'essential' || p === 'management' || p === 'premium' ? p : null
+  return p === 'starter' || p === 'essential' || p === 'management' || p === 'premium' ? p : null
 }
 
-/** Ordem crescente de plano — usada pra "este plano já libera aquele recurso?". */
-const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
+/** Ordem crescente de plano — usada pra "este plano já libera aquele recurso?".
+ * Starter é o novo degrau de entrada, abaixo de Essential (mesma operação
+ * básica de loja, só sem notificação automática de WhatsApp — ver
+ * ecommerce/backend/migrations/0062_starter_plan.sql). */
+const PLAN_ORDER: PlanoCode[] = ['starter', 'essential', 'management', 'premium']
 
 /** `atual` inclui o recurso exigido por `required`? */
 export function planoAtLeast(atual: PlanoCode | null | undefined, required: PlanoCode): boolean {
@@ -113,22 +116,23 @@ export function planoIncludes(recurso: PlanoCode): boolean {
 /** Plano efetivo da vitrine: demo session OU tenantConfig.plano. */
 export function storefrontPlano(tenantPlano?: PlanoCode | null): PlanoCode {
   if (isDemoModeActive()) return getDemoPlano() ?? 'essential'
-  return tenantPlano === 'management' || tenantPlano === 'premium' || tenantPlano === 'essential'
+  return tenantPlano === 'management' || tenantPlano === 'premium' || tenantPlano === 'essential' || tenantPlano === 'starter'
     ? tenantPlano
     : 'essential'
 }
 
-/** Management/Premium: carrossel de banners de promoção. Essential: não. */
+/** Management/Premium: carrossel de banners de promoção. Starter/Essential: não. */
 export function hasPromoBanners(tenantPlano?: PlanoCode | null): boolean {
   return planoAtLeast(storefrontPlano(tenantPlano), 'management')
 }
 
-/** Essential: card de imagem do hero (landing_hero_image_url), sem promo admin. */
+/** Starter/Essential: card de imagem do hero (landing_hero_image_url), sem
+ * promo admin -- mesma vitrine simplificada pros dois planos de entrada. */
 export function isEssentialStorefront(tenantPlano?: PlanoCode | null): boolean {
-  return storefrontPlano(tenantPlano) === 'essential'
+  return !hasPromoBanners(tenantPlano)
 }
 
-/** Cupons (checkout + /cliente/cupons): Management/Premium. Essential não gera cupons. */
+/** Cupons (checkout + /cliente/cupons): Management/Premium. Starter/Essential não geram cupons. */
 export function storefrontAllowsCoupons(tenantPlano?: PlanoCode | null): boolean {
   return !isEssentialStorefront(tenantPlano)
 }

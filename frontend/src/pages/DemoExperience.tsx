@@ -2,7 +2,7 @@ import { Navigate, useLocation, useParams, useSearchParams } from 'react-router-
 import type { PlanoCode } from '../lib/api'
 import { demoEntrarUrl, type DemoRole } from '../lib/ecommerceUrl'
 
-const PLAN_ORDER: PlanoCode[] = ['essential', 'management', 'premium']
+const PLAN_ORDER: PlanoCode[] = ['starter', 'essential', 'management', 'premium']
 const ROLES: DemoRole[] = ['vitrine', 'admin', 'vendedor', 'motoboy']
 
 function roleFromPath(pathname: string): DemoRole | null {

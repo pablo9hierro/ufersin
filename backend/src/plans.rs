@@ -74,9 +74,10 @@ pub async fn monthly_price(pool: &PgPool, code: &str) -> Result<f64, AppError> {
 
 pub fn plan_rank(code: &str) -> i32 {
     match code {
-        "essential" => 1,
-        "management" => 2,
-        "premium" => 3,
+        "starter" => 1,
+        "essential" => 2,
+        "management" => 3,
+        "premium" => 4,
         _ => 0,
     }
 }
