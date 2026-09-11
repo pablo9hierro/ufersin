@@ -199,6 +199,42 @@ pub struct UpdateProductFiscalInput {
     pub fiscal_profile_id: Option<String>,
 }
 
+/// CFOP de override só pode ser o padrão do perfil ou um dos
+/// `allowed_cfops` daquele perfil (seção 5 do pedido de reorganização
+/// fiscal) -- produto sem perfil vinculado continua só com validação de
+/// formato (`fiscal_profiles::validate_format`, já rodada no CFOP em si
+/// via `valid_cfop_format` antes desta função, ver checagem abaixo).
+async fn validate_cfop_against_profile(
+    pool: &sqlx::PgPool,
+    tenant_id: &str,
+    fiscal_profile_id: Option<&str>,
+    cfop: Option<&str>,
+) -> Result<(), AppError> {
+    let Some(cfop) = cfop.map(str::trim).filter(|s| !s.is_empty()) else { return Ok(()) };
+    if !crate::fiscal::validation::valid_cfop_format(cfop) {
+        return Err(AppError::BadRequest("CFOP deve ter 4 dígitos".to_string()));
+    }
+    let Some(profile_id) = fiscal_profile_id else { return Ok(()) };
+    let Some((default_cfop, allowed_cfops)) =
+        crate::routes::fiscal_profiles::profile_cfop_options(pool, tenant_id, profile_id).await?
+    else {
+        return Err(AppError::BadRequest("perfil fiscal não encontrado".to_string()));
+    };
+    if !cfop_permitido_no_perfil(default_cfop.as_deref(), &allowed_cfops, cfop) {
+        return Err(AppError::BadRequest(format!(
+            "CFOP {cfop} não está habilitado no perfil fiscal selecionado -- use o padrão do perfil ou adicione esse CFOP na lista de alternativos do perfil antes"
+        )));
+    }
+    Ok(())
+}
+
+/// Regra pura (sem DB) por trás de `validate_cfop_against_profile` --
+/// extraída pra ser testável de forma síncrona, mesmo padrão do resto do
+/// módulo fiscal (`fiscal::resolution`/`fiscal::validation`).
+fn cfop_permitido_no_perfil(default_cfop: Option<&str>, allowed_cfops: &[String], cfop: &str) -> bool {
+    default_cfop == Some(cfop) || allowed_cfops.iter().any(|c| c == cfop)
+}
+
 pub async fn update_product_fiscal(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
@@ -206,6 +242,8 @@ pub async fn update_product_fiscal(
     Json(body): Json<UpdateProductFiscalInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_beta(&state.pool, &claims.tenant_id).await?;
+    validate_cfop_against_profile(&state.pool, &claims.tenant_id, body.fiscal_profile_id.as_deref(), body.cfop.as_deref())
+        .await?;
     let updated = sqlx::query(
         "UPDATE products SET ncm = $3, cfop = $4, cst = $5, csosn = $6, cest = $7, origem = $8, \
            unidade_fiscal = $9, ean = $10, cclass_trib = $11, fiscal_profile_id = $12 \
@@ -410,6 +448,33 @@ mod resolve_order_profile_tests {
         let perfis = vec![perfil("p1", "Venda interna", true)];
         let escolhido = resolve_order_profile("automatico", None, None, &ctx(), &perfis).unwrap();
         assert_eq!(escolhido.id, "p1");
+    }
+}
+
+#[cfg(test)]
+mod cfop_permitido_no_perfil_tests {
+    use super::*;
+
+    #[test]
+    fn cfop_igual_ao_padrao_do_perfil_e_permitido() {
+        assert!(cfop_permitido_no_perfil(Some("5102"), &[], "5102"));
+    }
+
+    #[test]
+    fn cfop_override_dentro_da_lista_do_perfil_aceita() {
+        let allowed = vec!["5949".to_string(), "5405".to_string()];
+        assert!(cfop_permitido_no_perfil(Some("5102"), &allowed, "5949"));
+    }
+
+    #[test]
+    fn cfop_override_fora_da_lista_do_perfil_bloqueia() {
+        let allowed = vec!["5949".to_string()];
+        assert!(!cfop_permitido_no_perfil(Some("5102"), &allowed, "6102"));
+    }
+
+    #[test]
+    fn perfil_sem_cfop_padrao_e_sem_lista_bloqueia_qualquer_cfop() {
+        assert!(!cfop_permitido_no_perfil(None, &[], "5102"));
     }
 }
 

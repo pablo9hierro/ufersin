@@ -29,12 +29,16 @@ pub struct FiscalProfileDto {
     pub csosn: Option<String>,
     pub cclass_trib: Option<String>,
     pub is_default: bool,
+    /// CFOPs adicionais habilitados pra override no produto, alem do
+    /// `cfop` padrao acima (secao 5 do pedido de reorganizacao fiscal) --
+    /// nunca um catalogo pesquisavel, so os que o proprio lojista digitou.
+    pub allowed_cfops: Vec<String>,
 }
 
-type ProfileRow = (String, String, Option<String>, Option<String>, Option<String>, Option<String>, bool);
+type ProfileRow = (String, String, Option<String>, Option<String>, Option<String>, Option<String>, bool, Vec<String>);
 
-fn to_dto((id, nome, cfop, cst, csosn, cclass_trib, is_default): ProfileRow) -> FiscalProfileDto {
-    FiscalProfileDto { id, nome, cfop, cst, csosn, cclass_trib, is_default }
+fn to_dto((id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops): ProfileRow) -> FiscalProfileDto {
+    FiscalProfileDto { id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops }
 }
 
 pub async fn list_profiles(
@@ -43,13 +47,30 @@ pub async fn list_profiles(
 ) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
     require_beta(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<ProfileRow> = sqlx::query_as(
-        "SELECT id, nome, cfop, cst, csosn, cclass_trib, is_default FROM fiscal_profiles \
+        "SELECT id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops FROM fiscal_profiles \
          WHERE tenant_id = $1 ORDER BY is_default DESC, nome",
     )
     .bind(&claims.tenant_id)
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(rows.into_iter().map(to_dto).collect()))
+}
+
+/// Perfil completo (cfop + allowed_cfops) pra validar override de CFOP no
+/// produto -- usado por `fiscal.rs::update_product_fiscal`.
+pub async fn profile_cfop_options(
+    pool: &sqlx::PgPool,
+    tenant_id: &str,
+    profile_id: &str,
+) -> Result<Option<(Option<String>, Vec<String>)>, AppError> {
+    let row: Option<(Option<String>, Vec<String>)> = sqlx::query_as(
+        "SELECT cfop, allowed_cfops FROM fiscal_profiles WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(profile_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +84,8 @@ pub struct UpsertProfileInput {
     pub csosn: Option<String>,
     #[serde(default)]
     pub cclass_trib: Option<String>,
+    #[serde(default)]
+    pub allowed_cfops: Vec<String>,
 }
 
 fn non_empty(v: &Option<String>) -> Option<String> {
@@ -89,7 +112,18 @@ fn validate_format(body: &UpsertProfileInput) -> Result<(), AppError> {
             return Err(AppError::BadRequest("CSOSN deve ter 3 dígitos".to_string()));
         }
     }
+    for v in &body.allowed_cfops {
+        if !valid_cfop_format(v) {
+            return Err(AppError::BadRequest(format!("CFOP alternativo \"{v}\" deve ter 4 dígitos")));
+        }
+    }
     Ok(())
+}
+
+fn clean_allowed_cfops(raw: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = raw.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    out.dedup();
+    out
 }
 
 pub async fn create_profile(
@@ -108,8 +142,8 @@ pub async fn create_profile(
             .fetch_optional(&state.pool)
             .await?;
     sqlx::query(
-        "INSERT INTO fiscal_profiles (id, tenant_id, nome, cfop, cst, csosn, cclass_trib, is_default) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "INSERT INTO fiscal_profiles (id, tenant_id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(&claims.tenant_id)
@@ -119,6 +153,7 @@ pub async fn create_profile(
     .bind(non_empty(&body.csosn))
     .bind(non_empty(&body.cclass_trib))
     .bind(has_default.is_none())
+    .bind(clean_allowed_cfops(&body.allowed_cfops))
     .execute(&state.pool)
     .await?;
     list_profiles(State(state), AdminUser(claims)).await
@@ -137,7 +172,7 @@ pub async fn update_profile(
     validate_format(&body)?;
     let updated = sqlx::query(
         "UPDATE fiscal_profiles SET nome = $3, cfop = $4, cst = $5, csosn = $6, cclass_trib = $7, \
-           updated_at = now()::text WHERE tenant_id = $1 AND id = $2",
+           allowed_cfops = $8, updated_at = now()::text WHERE tenant_id = $1 AND id = $2",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -146,6 +181,7 @@ pub async fn update_profile(
     .bind(non_empty(&body.cst))
     .bind(non_empty(&body.csosn))
     .bind(non_empty(&body.cclass_trib))
+    .bind(clean_allowed_cfops(&body.allowed_cfops))
     .execute(&state.pool)
     .await?;
     if updated.rows_affected() == 0 {

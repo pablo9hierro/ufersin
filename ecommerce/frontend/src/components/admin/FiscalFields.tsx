@@ -196,16 +196,31 @@ export default function FiscalFields({ value, onChange, disabled }: Props) {
                   ? `${defaultCfop.codigo} — padrão da empresa`
                   : 'Sem CFOP no perfil nem padrão da empresa'}
             </option>
-            {cfops.map((c) => (
-              <option key={c.codigo} value={c.codigo}>
-                {c.codigo} — {c.descricao}
-              </option>
-            ))}
+            {selectedProfile
+              ? selectedProfile.allowed_cfops.map((codigo) => (
+                  <option key={codigo} value={codigo}>
+                    {codigo} — alternativo do perfil "{selectedProfile.nome}"
+                  </option>
+                ))
+              : cfops.map((c) => (
+                  <option key={c.codigo} value={c.codigo}>
+                    {c.codigo} — {c.descricao}
+                  </option>
+                ))}
           </select>
-          {cfops.length === 0 && (
-            <p className="text-[10px] text-son-silver-dim mt-1">
-              Cadastre CFOPs em Fiscal → Configuração pra poder escolher aqui.
-            </p>
+          {selectedProfile ? (
+            selectedProfile.allowed_cfops.length === 0 && (
+              <p className="text-[10px] text-son-silver-dim mt-1">
+                Este perfil só tem o CFOP padrão. Adicione alternativos em Fiscal → Perfis fiscais se precisar de
+                override neste produto.
+              </p>
+            )
+          ) : (
+            cfops.length === 0 && (
+              <p className="text-[10px] text-son-silver-dim mt-1">
+                Cadastre CFOPs em Fiscal → Configuração pra poder escolher aqui.
+              </p>
+            )
           )}
         </div>
         <div>

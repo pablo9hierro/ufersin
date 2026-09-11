@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Layers, Loader2, Plus, Save, Star, Trash2 } from 'lucide-react'
+import { Layers, Loader2, Plus, Save, Star, Trash2, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
@@ -12,11 +12,40 @@ import { isValidCfopFormat } from '../../lib/fiscalValidation'
 const TEMPLATES = [
   { label: 'Venda interna (mesmo estado)', nome: 'Venda interna' },
   { label: 'Venda interestadual', nome: 'Venda interestadual' },
+  { label: 'Venda para consumidor CPF', nome: 'Venda consumidor CPF' },
+  { label: 'Venda para pessoa jurídica/CNPJ', nome: 'Venda CNPJ' },
   { label: 'Prestação de serviço', nome: 'Serviço' },
 ] as const
 
-type FormState = { nome: string; cfop: string; cst: string; csosn: string; cclass_trib: string }
-const emptyForm: FormState = { nome: '', cfop: '', cst: '', csosn: '', cclass_trib: '' }
+type FormState = { nome: string; cfop: string; cst: string; csosn: string; cclass_trib: string; allowed_cfops: string[] }
+const emptyForm: FormState = { nome: '', cfop: '', cst: '', csosn: '', cclass_trib: '', allowed_cfops: [] }
+
+/** Input compacto pra adicionar um CFOP alternativo à lista do perfil --
+ * valida formato antes de deixar adicionar, nunca duplica. */
+function AddAllowedCfop({ existing, onAdd }: { existing: string[]; onAdd: (cfop: string) => void }) {
+  const [value, setValue] = useState('')
+  const invalido = !!value.trim() && !isValidCfopFormat(value)
+  const add = () => {
+    const v = value.trim()
+    if (!v || !isValidCfopFormat(v) || existing.includes(v)) return
+    onAdd(v)
+    setValue('')
+  }
+  return (
+    <div className="flex gap-2">
+      <input
+        className={`input-field flex-1 ${invalido ? 'border-red-500' : ''}`}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), add())}
+        placeholder="ex: 5949"
+      />
+      <button type="button" onClick={add} disabled={!value.trim() || invalido} className="btn-secondary px-3">
+        <Plus className="w-4 h-4" />
+      </button>
+    </div>
+  )
+}
 
 /** Perfis fiscais (seção 2/6 do pedido de resolução fiscal): o produto
  * herda de um perfil em vez de ter CFOP/CST/CSOSN fixos -- a venda escolhe
@@ -53,7 +82,14 @@ export default function AdminFiscalPerfis() {
   }
 
   const startEdit = (p: FiscalProfile) => {
-    setForm({ nome: p.nome, cfop: p.cfop ?? '', cst: p.cst ?? '', csosn: p.csosn ?? '', cclass_trib: p.cclass_trib ?? '' })
+    setForm({
+      nome: p.nome,
+      cfop: p.cfop ?? '',
+      cst: p.cst ?? '',
+      csosn: p.csosn ?? '',
+      cclass_trib: p.cclass_trib ?? '',
+      allowed_cfops: p.allowed_cfops,
+    })
     setEditingId(p.id)
   }
 
@@ -75,6 +111,7 @@ export default function AdminFiscalPerfis() {
       cst: form.cst.trim() || null,
       csosn: form.csosn.trim() || null,
       cclass_trib: form.cclass_trib.trim() || null,
+      allowed_cfops: form.allowed_cfops,
     }
     try {
       const list =
@@ -181,6 +218,31 @@ export default function AdminFiscalPerfis() {
               </select>
             </div>
           </div>
+          <div>
+            <label className="label">CFOPs alternativos habilitados neste perfil</label>
+            <p className="text-[11px] text-son-silver-dim mb-1.5">
+              Além do CFOP padrão acima, o produto vinculado a este perfil só pode sobrescrever o CFOP com um destes
+              — nunca um código arbitrário. Deixe vazio se este perfil só deve usar o padrão.
+            </p>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {form.allowed_cfops.map((cfop) => (
+                <span key={cfop} className="inline-flex items-center gap-1 text-xs bg-white/10 rounded-full pl-2.5 pr-1 py-1">
+                  {cfop}
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, allowed_cfops: f.allowed_cfops.filter((c) => c !== cfop) }))}
+                    className="p-0.5 rounded-full hover:bg-white/10"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <AddAllowedCfop
+              existing={form.allowed_cfops}
+              onAdd={(cfop) => setForm((f) => ({ ...f, allowed_cfops: [...f.allowed_cfops, cfop] }))}
+            />
+          </div>
           <p className="text-xs text-son-silver-dim">
             Preencha CST OU CSOSN (conforme o regime tributário da loja) — nunca os dois. Códigos vêm do seu
             contador; digite o código exato, sem inventar.
@@ -238,7 +300,7 @@ export default function AdminFiscalPerfis() {
               </div>
             </div>
             <div className="text-xs text-son-silver-dim space-y-0.5">
-              <div>CFOP: {p.cfop ?? '—'}</div>
+              <div>CFOP: {p.cfop ?? '—'}{p.allowed_cfops.length > 0 && ` (+${p.allowed_cfops.length} alternativo${p.allowed_cfops.length > 1 ? 's' : ''})`}</div>
               <div>CST/CSOSN: {p.cst ?? p.csosn ?? '—'}</div>
               <div>IBS/CBS: {p.cclass_trib ?? '—'}</div>
             </div>

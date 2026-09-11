@@ -138,6 +138,18 @@ export interface FiscalProfile {
   csosn: string | null
   cclass_trib: string | null
   is_default: boolean
+  /** CFOPs adicionais habilitados pra override no produto, além do `cfop`
+   * padrão acima -- nunca um catálogo pesquisável, só os que o lojista
+   * digitou pra este perfil. */
+  allowed_cfops: string[]
+}
+export interface FiscalProfileUpsertPayload {
+  nome: string
+  cfop?: string | null
+  cst?: string | null
+  csosn?: string | null
+  cclass_trib?: string | null
+  allowed_cfops?: string[]
 }
 /** Só os campos usados na UI -- o Jubilados devolve bem mais colunas
  * (reduções de IBS/CBS, tipo de alíquota etc.) que não renderizamos aqui. */
@@ -1368,12 +1380,9 @@ const remoteApi = {
       },
       profiles: {
         list: () => railwayAdmin<FiscalProfile[]>('/api/admin/fiscal/profiles'),
-        create: (payload: { nome: string; cfop?: string | null; cst?: string | null; csosn?: string | null; cclass_trib?: string | null }) =>
+        create: (payload: FiscalProfileUpsertPayload) =>
           railwayAdmin<FiscalProfile[]>('/api/admin/fiscal/profiles', { method: 'POST', body: JSON.stringify(payload) }),
-        update: (
-          id: string,
-          payload: { nome: string; cfop?: string | null; cst?: string | null; csosn?: string | null; cclass_trib?: string | null },
-        ) =>
+        update: (id: string, payload: FiscalProfileUpsertPayload) =>
           railwayAdmin<FiscalProfile[]>(`/api/admin/fiscal/profiles/${encodeURIComponent(id)}`, {
             method: 'PUT',
             body: JSON.stringify(payload),
