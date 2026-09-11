@@ -45,6 +45,7 @@ pub async fn list_services(
     PdvUser(claims): PdvUser,
 ) -> Result<Json<Vec<PublicServiceDto>>, AppError> {
     features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Servicos).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<(String, String, String, Option<String>, f64, Option<f64>, Option<String>, Option<String>, Vec<String>)> = sqlx::query_as(
         "SELECT s.id, s.name, s.description, c.name, s.price, s.manual_quantity, s.model_name, s.repair_type, s.tags \

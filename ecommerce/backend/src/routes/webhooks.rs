@@ -504,6 +504,12 @@ fn forward_presence_to_assistant_ia(state: &AppState, tenant_id: &str, data: &Va
     let tenant_id = tenant_id.to_string();
     tokio::spawn(async move {
         let Ok(assistant_ia_url) = std::env::var("ASSISTANT_IA_URL") else { return };
+        if !crate::features::has_feature(&state.pool, &tenant_id, crate::features::Feature::AssistenteIa)
+            .await
+            .unwrap_or(false)
+        {
+            return;
+        }
         let Ok(Some((slug,))) = sqlx::query_as::<_, (String,)>("SELECT slug FROM tenants WHERE id = $1")
             .bind(&tenant_id)
             .fetch_optional(&state.pool)
@@ -601,6 +607,20 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
     let instance = instance.to_string();
     let text = text.map(str::to_string);
     tokio::spawn(async move {
+        // Plano Starter não tem Assistente de IA (só notificação de status
+        // por WhatsApp, feature diferente) -- checa aqui, não no chamador,
+        // porque é a única ponta que já roda async e tem acesso ao pool.
+        match crate::features::has_feature(&state.pool, &tenant_id, crate::features::Feature::AssistenteIa).await {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::info!("assistant-ia forward: tenant {tenant_id} sem feature assistente_ia, ignorando");
+                return;
+            }
+            Err(e) => {
+                tracing::warn!("assistant-ia forward: falha ao checar feature (ignorado, não encaminha): {e:?}");
+                return;
+            }
+        }
         let mut audio: Option<(String, String)> = None;
         if let Some(key) = audio_key {
             match crate::whatsapp::get_base64_media(&state, &instance, &key).await {

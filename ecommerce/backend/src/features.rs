@@ -32,6 +32,14 @@ pub enum Feature {
     EntregaTerceirizada,
     EmissaoFiscal,
     MercadoPagoPoint,
+    /// Encaminhar mensagem de WhatsApp recebida pro serviço externo de
+    /// Assistente IA (a-vrtek-gente) -- distinto de `Whatsapp` (que gate
+    /// só o ENVIO de notificação de status, sempre disponível). Plano
+    /// Starter não tem isso; Essential+ tem.
+    AssistenteIa,
+    /// Catálogo de serviços (venda de serviço, não produto) -- distinto
+    /// de `Catalogo`. Plano Starter é só produto; Essential+ tem serviço.
+    Servicos,
 }
 
 impl Feature {
@@ -55,6 +63,8 @@ impl Feature {
             Feature::EntregaTerceirizada => "entrega_terceirizada",
             Feature::EmissaoFiscal => "emissao_fiscal",
             Feature::MercadoPagoPoint => "mercadopago_point",
+            Feature::AssistenteIa => "assistente_ia",
+            Feature::Servicos => "servicos",
         }
     }
 }

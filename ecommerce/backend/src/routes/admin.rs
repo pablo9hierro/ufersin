@@ -543,6 +543,7 @@ pub async fn list_services(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
 ) -> Result<Json<Vec<crate::models::ServiceDto>>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Servicos).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<crate::models::ServiceRow> = sqlx::query_as(
         "SELECT id, name, description, category_id, price, active, low_stock_threshold, manual_quantity, model_name, repair_type \
@@ -616,6 +617,7 @@ pub async fn create_service(
     Json(input): Json<crate::models::ServiceInput>,
 ) -> Result<Json<crate::models::ServiceDto>, AppError> {
     features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Servicos).await?;
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("name is required".to_string()));
     }
@@ -666,6 +668,7 @@ pub async fn update_service(
     Path(id): Path<String>,
     Json(input): Json<crate::models::ServiceInput>,
 ) -> Result<Json<crate::models::ServiceDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Servicos).await?;
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("name is required".to_string()));
     }
@@ -716,6 +719,7 @@ pub async fn delete_service(
     AdminUser(claims): AdminUser,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Servicos).await?;
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     let result = sqlx::query("DELETE FROM services WHERE tenant_id = $1 AND id = $2")
         .bind(&claims.tenant_id)
