@@ -27,6 +27,21 @@ export const pdvEndpoint = {
     discount_value?: number
     /** Só pra payment_method='cartao': omitido/'nfc' = nasce pago (de sempre); 'link'/'transparente' = nasce pendente. */
     card_payment_mode?: 'nfc' | 'link' | 'transparente'
+    card_type?: string
+    card_installments?: number
+    // Contexto fiscal opcional (seção 6/7 do pedido de perfis fiscais) --
+    // omitido preserva 100% o fluxo atual do PDV (sem CPF, sem nota).
+    fiscal?: {
+      emitir_nota_fiscal: boolean
+      destinatario_documento_tipo?: 'cpf' | 'cnpj'
+      destinatario_documento?: string
+      destinatario_nome?: string
+      destinatario_uf?: string
+      destinatario_cep?: string
+      destinatario_endereco?: string
+      fiscal_profile_mode?: 'automatico' | 'manual'
+      fiscal_profile_id?: string
+    }
   }) => validate(OrderSchema, await api.pdv.createSale(payload), 'pdv.createSale'),
   notifySale: async (orderId: string) => api.pdv.notifySale(orderId),
   notifyPixCharge: async (orderId: string) => api.pdv.notifyPixCharge(orderId),

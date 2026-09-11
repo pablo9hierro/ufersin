@@ -321,6 +321,23 @@ pub fn build() -> OpenApi {
         ("/api/admin/fiscal/cfops/{codigo}", Delete, "Remover um CFOP do catalogo do tenant", "Fiscal", true, false),
         ("/api/admin/fiscal/cfops/{codigo}/default", Put, "Definir qual CFOP cadastrado e o padrao", "Fiscal", true, false),
         ("/api/admin/fiscal/documents", Get, "Listar notas fiscais emitidas (com links de XML/DANFE do Jubilados)", "Fiscal", true, false),
+        ("/api/admin/fiscal/inutilizar", Post, "Inutilizar faixa de numeracao nunca emitida na SEFAZ", "Fiscal", true, true),
+        ("/api/admin/fiscal/cce", Post, "Enviar Carta de Correcao (CCe) de uma nota autorizada", "Fiscal", true, true),
+        ("/api/admin/fiscal/manifestar", Post, "Manifestar-se sobre nota de entrada (ciencia/confirmacao/desconhecimento/nao realizada)", "Fiscal", true, true),
+        ("/api/admin/fiscal/entrada/consultar", Post, "Consultar SEFAZ por novas notas de entrada (sincroniza com o Jubilados)", "Fiscal", true, false),
+        ("/api/admin/fiscal/notas", Get, "Nuvem fiscal: listar notas de entrada e saida (filtro por tipo/status)", "Fiscal", true, false),
+        ("/api/admin/fiscal/notas/{id}/danfe", Get, "Baixar PDF da DANFE (proxy autenticado do Jubilados)", "Fiscal", true, false),
+        ("/api/admin/fiscal/notas/{id}/xml", Get, "Baixar XML autorizado (proxy autenticado do Jubilados)", "Fiscal", true, false),
+        ("/api/admin/fiscal/notas/{id}/cancelar", Post, "Anular nota de saida pelo id do Jubilados (nuvem fiscal)", "Fiscal", true, true),
+        // Perfis fiscais -- produto herda de um perfil (CFOP/CST/CSOSN/
+        // Classificacao Tributaria) em vez de ter isso fixo; a venda escolhe
+        // qual perfil vale (automatico por UF de destino, ou manual no PDV).
+        // Ver src/fiscal/resolution.rs e src/routes/fiscal_profiles.rs.
+        ("/api/admin/fiscal/profiles", Get, "Listar perfis fiscais do tenant", "Fiscal", true, false),
+        ("/api/admin/fiscal/profiles", Post, "Criar perfil fiscal", "Fiscal", true, true),
+        ("/api/admin/fiscal/profiles/{id}", Put, "Atualizar perfil fiscal", "Fiscal", true, true),
+        ("/api/admin/fiscal/profiles/{id}", Delete, "Excluir perfil fiscal (produtos vinculados ficam sem perfil)", "Fiscal", true, false),
+        ("/api/admin/fiscal/profiles/{id}/default", Put, "Definir qual perfil fiscal e o padrao do tenant", "Fiscal", true, false),
         // Mercado Pago Point/POS -- reaproveita o token OAuth ja sincronizado
         // em tenants.plataforma_credenciais (mesmo de Pix/Cartao).
         ("/api/admin/point/stores", Get, "Listar lojas fisicas (Store) da conta Mercado Pago do tenant", "Mercado Pago Point", true, false),

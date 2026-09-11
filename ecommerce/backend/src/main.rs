@@ -727,6 +727,18 @@ async fn main() -> anyhow::Result<()> {
             put(routes::fiscal::set_default_cfop),
         )
         .route(
+            "/api/admin/fiscal/profiles",
+            get(routes::fiscal_profiles::list_profiles).post(routes::fiscal_profiles::create_profile),
+        )
+        .route(
+            "/api/admin/fiscal/profiles/{id}",
+            put(routes::fiscal_profiles::update_profile).delete(routes::fiscal_profiles::delete_profile),
+        )
+        .route(
+            "/api/admin/fiscal/profiles/{id}/default",
+            put(routes::fiscal_profiles::set_default_profile),
+        )
+        .route(
             "/api/admin/products/{id}/fiscal",
             put(routes::fiscal::update_product_fiscal),
         )

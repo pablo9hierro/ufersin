@@ -380,6 +380,7 @@ function ProdutosTab({ categories }: { categories: Category[] }) {
       unidade_fiscal: product.unidade_fiscal ?? '',
       ean: product.ean ?? '',
       cclass_trib: product.cclass_trib ?? '',
+      fiscal_profile_id: product.fiscal_profile_id ?? '',
     })
   }
 

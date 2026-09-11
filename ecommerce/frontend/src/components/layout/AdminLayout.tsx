@@ -10,6 +10,7 @@ import {
   Cloud,
   FileEdit,
   FileText,
+  Layers,
   Loader2,
   LogOut,
   MailCheck,
@@ -81,6 +82,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/fiscal/cce', label: 'Correção fiscal (CCe)', icon: FileEdit, requiredPlan: 'essential' },
   { href: '/admin/fiscal/manifestacao', label: 'Manifestação fiscal', icon: MailCheck, requiredPlan: 'essential' },
   { href: '/admin/fiscal/nuvem', label: 'Consultar nuvem fiscal', icon: Cloud, requiredPlan: 'essential' },
+  { href: '/admin/fiscal/perfis', label: 'Perfis fiscais', icon: Layers, requiredPlan: 'essential' },
   { href: '/admin/mercadopago-point', label: 'Mercado Pago Point', icon: Store, requiredPlan: 'essential' },
   { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
   { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar, requiredPlan: 'essential' },
@@ -115,6 +117,7 @@ const NAV_GROUPS: Record<string, { id: string; label: string }> = {
   '/admin/fiscal/cce': { id: 'fiscal', label: 'Fiscal' },
   '/admin/fiscal/manifestacao': { id: 'fiscal', label: 'Fiscal' },
   '/admin/fiscal/nuvem': { id: 'fiscal', label: 'Fiscal' },
+  '/admin/fiscal/perfis': { id: 'fiscal', label: 'Fiscal' },
 }
 /** Avoid re-running the full WA gate after every tenantConfig object refresh. */
 const GATE_SESSION_TTL_MS = 60_000

@@ -144,6 +144,7 @@ export default function AdminProdutos() {
       unidade_fiscal: p.unidade_fiscal ?? catalogUnitToFiscal(unitBits.unit),
       ean: p.ean ?? '',
       cclass_trib: p.cclass_trib ?? '',
+      fiscal_profile_id: p.fiscal_profile_id ?? '',
     })
     setFiscalError(null)
     setShowForm(true)

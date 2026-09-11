@@ -17,6 +17,16 @@ export interface CreateOrderPayload {
   items: { product_id: string; quantity: number }[]
   coupon_code?: string
   promotion_id?: string
+  // Contexto fiscal opcional -- "Emitir nota fiscal? Sim/Não" no checkout
+  // (default Não). Omitido preserva 100% o fluxo atual.
+  emitir_nota_fiscal?: boolean
+  destinatario_documento_tipo?: 'cpf' | 'cnpj'
+  destinatario_documento?: string
+  destinatario_nome?: string
+  destinatario_uf?: string
+  destinatario_municipio_ibge?: string
+  destinatario_cep?: string
+  destinatario_endereco?: string
 }
 
 // Módulo Pedidos — único ponto do app autorizado a chamar `api.orders.*`,

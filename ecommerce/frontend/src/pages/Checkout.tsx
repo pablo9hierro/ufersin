@@ -25,6 +25,8 @@ import { closedStoreMessage, getStoreOpenState } from '../lib/storeHours'
 import CashAmountInput from '../components/CashAmountInput'
 import { cashCoversTotal } from '../lib/cashMask'
 import { platformPoliticaUrl } from '../lib/platformUrl'
+import { IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE, isValidDocumento, UF_OPTIONS } from '../lib/fiscalValidation'
+import DocumentoInput from '../components/ui/DocumentoInput'
 
 const RODOLETAS_API_URL = import.meta.env.VITE_RODOLETAS_API_URL || 'http://localhost:8081'
 
@@ -67,6 +69,16 @@ export default function Checkout() {
   const [error, setError] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [shippingEstimate, setShippingEstimate] = useState<ShippingEstimate | null>(null)
+
+  // Nota fiscal opt-in (seção 6 do pedido de perfis fiscais) -- default
+  // "Não" preserva 100% o fluxo atual de checkout sem CPF/CNPJ.
+  const [emitirNota, setEmitirNota] = useState(false)
+  const [docTipo, setDocTipo] = useState<'cpf' | 'cnpj'>('cpf')
+  const [docValor, setDocValor] = useState('')
+  const [docNome, setDocNome] = useState('')
+  const [docUf, setDocUf] = useState('')
+  const [docCep, setDocCep] = useState('')
+  const [docEndereco, setDocEndereco] = useState('')
   // Finalizar exige login — sem sessão, abre o toggle de entrar/criar
   // conta em vez de seguir com o pedido; ao logar/cadastrar com sucesso,
   // tenta finalizar de novo sozinho.
@@ -301,6 +313,11 @@ export default function Checkout() {
   const discountAmount = Math.min(Math.max(promotionProductDiscount + couponProductDiscount + catalogPromoProductDiscount, 0), subtotal)
   const shippingDiscount = Math.min(Math.max(promotionShippingDiscount + couponShippingDiscount, 0), shippingPrice)
   const total = subtotal - discountAmount + shippingPrice - shippingDiscount
+  // Acima do limiar, identificar o comprador deixa de ser opcional --
+  // "Emitir nota fiscal?" fica travado em "Sim" e o form correspondente
+  // é obrigatório, mesma regra aplicada no backend/RPC do checkout.
+  const identificacaoObrigatoria = total >= IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE
+  const notaAtiva = emitirNota || identificacaoObrigatoria
 
   const applyCoupon = async (codeOverride?: string) => {
     const code = codeOverride ?? couponInput
@@ -393,6 +410,20 @@ export default function Checkout() {
       setError('Informe um valor em dinheiro maior ou igual ao total do pedido.')
       return
     }
+    if (notaAtiva) {
+      if (!isValidDocumento(docTipo, docValor)) {
+        setError(
+          identificacaoObrigatoria
+            ? `Compras a partir de R$ ${IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE},00 exigem identificação do comprador — informe um ${docTipo.toUpperCase()} válido.`
+            : `Informe um ${docTipo.toUpperCase()} válido pra emitir nota fiscal.`
+        )
+        return
+      }
+      if (!docUf) {
+        setError('Selecione a UF do destinatário da nota fiscal.')
+        return
+      }
+    }
     setSubmitting(true)
     try {
       const slug = resolveTenantSlug() || tenantConfig?.slug
@@ -431,6 +462,13 @@ export default function Checkout() {
         items: lines.map((l) => ({ product_id: l.product.id, quantity: l.item.quantity })),
         coupon_code: appliedCoupon?.code,
         promotion_id: promotion?.id,
+        emitir_nota_fiscal: notaAtiva,
+        destinatario_documento_tipo: notaAtiva ? docTipo : undefined,
+        destinatario_documento: notaAtiva ? docValor : undefined,
+        destinatario_nome: notaAtiva ? (docNome.trim() || customer.name.trim()) : undefined,
+        destinatario_uf: notaAtiva ? docUf : undefined,
+        destinatario_cep: notaAtiva ? docCep || undefined : undefined,
+        destinatario_endereco: notaAtiva ? docEndereco || undefined : undefined,
       })
       // Checkout de campanha nunca mexeu no carrinho normal — só limpa o
       // carrinho quando o pedido realmente veio dele.
@@ -888,6 +926,69 @@ export default function Checkout() {
               <span className="font-bold text-white">Total</span>
               <span className="sunset-text font-black text-lg">{currency(total)}</span>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-3">
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="text-sm font-semibold text-white">Emitir nota fiscal?</span>
+              {identificacaoObrigatoria ? (
+                <span className="text-[11px] px-2 py-1 rounded-full bg-son-pink/20 text-son-pink font-semibold">
+                  Obrigatório acima de R$ {IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE},00
+                </span>
+              ) : (
+                <span className="flex rounded-full bg-white/10 p-0.5 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setEmitirNota(false)}
+                    className={`px-3 py-1 rounded-full transition ${!emitirNota ? 'bg-son-pink text-white' : 'text-son-silver-dim'}`}
+                  >
+                    Não
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEmitirNota(true)}
+                    className={`px-3 py-1 rounded-full transition ${emitirNota ? 'bg-son-pink text-white' : 'text-son-silver-dim'}`}
+                  >
+                    Sim
+                  </button>
+                </span>
+              )}
+            </label>
+            {notaAtiva && (
+              <div className="space-y-2 pt-1 border-t border-white/10">
+                <DocumentoInput tipo={docTipo} onTipoChange={setDocTipo} valor={docValor} onValorChange={setDocValor} />
+                <input
+                  value={docNome}
+                  onChange={(e) => setDocNome(e.target.value)}
+                  placeholder="Nome/Razão social pra nota (opcional, usa o nome acima se vazio)"
+                  className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-son-silver-dim"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={docUf}
+                    onChange={(e) => setDocUf(e.target.value)}
+                    className="rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-sm text-white"
+                  >
+                    <option value="" className="text-black">UF</option>
+                    {UF_OPTIONS.map((uf) => (
+                      <option key={uf} value={uf} className="text-black">{uf}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={docCep}
+                    onChange={(e) => setDocCep(e.target.value)}
+                    placeholder="CEP (opcional)"
+                    className="rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-son-silver-dim"
+                  />
+                </div>
+                <input
+                  value={docEndereco}
+                  onChange={(e) => setDocEndereco(e.target.value)}
+                  placeholder="Endereço completo pra nota (opcional)"
+                  className="w-full rounded-lg bg-white/10 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-son-silver-dim"
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-2 pt-1">

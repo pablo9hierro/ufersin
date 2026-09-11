@@ -127,6 +127,18 @@ export interface CfopOption {
 export interface TenantCfop extends CfopOption {
   is_default: boolean
 }
+/** Perfil fiscal (migration 0056 do ecommerce/backend) -- o produto herda
+ * de um destes em vez de ter um único CFOP/CST/CSOSN fixo; a venda escolhe
+ * qual perfil vale (automático por UF de destino, ou manual). */
+export interface FiscalProfile {
+  id: string
+  nome: string
+  cfop: string | null
+  cst: string | null
+  csosn: string | null
+  cclass_trib: string | null
+  is_default: boolean
+}
 /** Só os campos usados na UI -- o Jubilados devolve bem mais colunas
  * (reduções de IBS/CBS, tipo de alíquota etc.) que não renderizamos aqui. */
 export interface ClassificacaoTributariaItem {
@@ -1353,6 +1365,23 @@ const remoteApi = {
           railwayAdmin<TenantCfop[]>(`/api/admin/fiscal/cfops/${encodeURIComponent(codigo)}/default`, {
             method: 'PUT',
           }),
+      },
+      profiles: {
+        list: () => railwayAdmin<FiscalProfile[]>('/api/admin/fiscal/profiles'),
+        create: (payload: { nome: string; cfop?: string | null; cst?: string | null; csosn?: string | null; cclass_trib?: string | null }) =>
+          railwayAdmin<FiscalProfile[]>('/api/admin/fiscal/profiles', { method: 'POST', body: JSON.stringify(payload) }),
+        update: (
+          id: string,
+          payload: { nome: string; cfop?: string | null; cst?: string | null; csosn?: string | null; cclass_trib?: string | null },
+        ) =>
+          railwayAdmin<FiscalProfile[]>(`/api/admin/fiscal/profiles/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          }),
+        remove: (id: string) =>
+          railwayAdmin<FiscalProfile[]>(`/api/admin/fiscal/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+        setDefault: (id: string) =>
+          railwayAdmin<FiscalProfile[]>(`/api/admin/fiscal/profiles/${encodeURIComponent(id)}/default`, { method: 'PUT' }),
       },
       emitir: (orderId: string) =>
         railwayAdmin<FiscalDocument>(`/api/admin/orders/${orderId}/fiscal/emitir`, { method: 'POST' }),

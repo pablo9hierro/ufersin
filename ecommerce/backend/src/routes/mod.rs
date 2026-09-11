@@ -6,6 +6,7 @@ pub mod demo;
 pub mod eletronicos;
 pub mod eletronicos_delivery;
 pub mod fiscal;
+pub mod fiscal_profiles;
 pub mod internal;
 pub mod motoboy;
 pub mod point;

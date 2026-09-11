@@ -55,6 +55,11 @@ pub struct ProductRow {
     pub unidade_fiscal: Option<String>,
     pub ean: Option<String>,
     pub cclass_trib: Option<String>,
+    /// Perfil fiscal do qual o produto herda (migration 0057) -- mesmo
+    /// cuidado do comentário acima: sem declarar aqui, sqlx::FromRow
+    /// ignora a coluna e a tela de edição nunca mostraria o perfil já
+    /// linkado.
+    pub fiscal_profile_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -84,6 +89,7 @@ pub struct ProductDto {
     pub unidade_fiscal: Option<String>,
     pub ean: Option<String>,
     pub cclass_trib: Option<String>,
+    pub fiscal_profile_id: Option<String>,
 }
 
 impl From<ProductRow> for ProductDto {
@@ -114,6 +120,7 @@ impl From<ProductRow> for ProductDto {
             unidade_fiscal: r.unidade_fiscal,
             ean: r.ean,
             cclass_trib: r.cclass_trib,
+            fiscal_profile_id: r.fiscal_profile_id,
         }
     }
 }
@@ -503,6 +510,20 @@ pub struct OrderRow {
     pub card_payment_charge_id: Option<String>,
     pub card_type: Option<String>,
     pub card_installments: Option<i64>,
+    // Contexto fiscal da venda (migration 0058) -- mesmo cuidado do
+    // comentário acima: sem declarar aqui, sqlx::FromRow ignora essas
+    // colunas silenciosamente e a resolução fiscal nunca veria o
+    // destinatário/perfil escolhido na venda.
+    pub emitir_nota_fiscal: bool,
+    pub destinatario_documento_tipo: Option<String>,
+    pub destinatario_documento: Option<String>,
+    pub destinatario_nome: Option<String>,
+    pub destinatario_uf: Option<String>,
+    pub destinatario_municipio_ibge: Option<String>,
+    pub destinatario_cep: Option<String>,
+    pub destinatario_endereco: Option<String>,
+    pub fiscal_profile_id: Option<String>,
+    pub fiscal_profile_mode: String,
 }
 
 #[derive(Debug, sqlx::FromRow, Serialize, Clone)]
@@ -652,6 +673,37 @@ pub struct PdvSaleInput {
     /// Só relevante quando `card_type = "credito"`.
     #[serde(default)]
     pub card_installments: Option<i64>,
+    /// Contexto fiscal opcional da venda (seção 6/7 do pedido de perfis
+    /// fiscais) -- `None` preserva 100% o fluxo atual do PDV (sem CPF, sem
+    /// nota). Só populado quando o lojista marca "Emitir nota fiscal? Sim".
+    #[serde(default)]
+    pub fiscal: Option<PdvFiscalInput>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct PdvFiscalInput {
+    #[serde(default)]
+    pub emitir_nota_fiscal: bool,
+    /// "cpf" | "cnpj"
+    #[serde(default)]
+    pub destinatario_documento_tipo: Option<String>,
+    #[serde(default)]
+    pub destinatario_documento: Option<String>,
+    #[serde(default)]
+    pub destinatario_nome: Option<String>,
+    #[serde(default)]
+    pub destinatario_uf: Option<String>,
+    #[serde(default)]
+    pub destinatario_municipio_ibge: Option<String>,
+    #[serde(default)]
+    pub destinatario_cep: Option<String>,
+    #[serde(default)]
+    pub destinatario_endereco: Option<String>,
+    /// "automatico" (default) | "manual"
+    #[serde(default)]
+    pub fiscal_profile_mode: Option<String>,
+    #[serde(default)]
+    pub fiscal_profile_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

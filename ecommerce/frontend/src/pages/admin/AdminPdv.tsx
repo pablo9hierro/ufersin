@@ -25,6 +25,9 @@ import { adminService } from '../../services/adminService'
 import { pdvService } from '../../services/pdvService'
 import type { Order, PaymentMethod, Product } from '../../types'
 import type { PublicService } from '../../services/serviceService'
+import type { FiscalProfile } from '../../lib/api'
+import { IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE, isValidDocumento } from '../../lib/fiscalValidation'
+import DocumentoInput from '../../components/ui/DocumentoInput'
 import { Wrench } from 'lucide-react'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal, formatCashMask, formatTrocoLabel, computeTroco } from '../../lib/cashMask'
@@ -122,6 +125,14 @@ export default function AdminPdv() {
   // deixa o próprio cliente escolher isso na página da Mercado Pago.
   const [cardType, setCardType] = useState<'' | 'credito' | 'debito'>('')
   const [cardInstallments, setCardInstallments] = useState(1)
+  // Nota fiscal opt-in (seção 6/7 do pedido de perfis fiscais) -- default
+  // "Não" preserva 100% o fluxo atual do PDV, sem CPF/CNPJ nenhum.
+  const [emitirNota, setEmitirNota] = useState(false)
+  const [notaDocTipo, setNotaDocTipo] = useState<'cpf' | 'cnpj'>('cpf')
+  const [notaDocValor, setNotaDocValor] = useState('')
+  const [notaProfileMode, setNotaProfileMode] = useState<'automatico' | 'manual'>('automatico')
+  const [notaProfileId, setNotaProfileId] = useState('')
+  const [fiscalProfiles, setFiscalProfiles] = useState<FiscalProfile[]>([])
   // "Link de cobrança": captura WhatsApp do cliente + deixa escolher 1 ou 2
   // formas (link de pagamento hospedado pela MP e/ou nosso checkout com
   // campo de cartão) antes de mandar — só cria a venda (pendente) quando
@@ -224,6 +235,15 @@ export default function AdminPdv() {
     discountType,
     Number(discountValue) || 0
   )
+  // Acima do limiar, identificar o comprador deixa de ser opcional --
+  // mesma regra aplicada no backend (fiscal/validation.rs).
+  const identificacaoObrigatoria = cartTotal >= IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE
+  const notaAtiva = emitirNota || identificacaoObrigatoria
+
+  useEffect(() => {
+    if (!notaAtiva || fiscalProfiles.length > 0) return
+    adminService.fiscal.profiles.list().then(setFiscalProfiles).catch(() => {})
+  }, [notaAtiva, fiscalProfiles.length])
 
   const addToCart = (item: PdvItem, qty = 1) => {
     const key = cartKey(item.kind, item.id)
@@ -339,6 +359,10 @@ export default function AdminPdv() {
     setDiscountValue('')
     setCardType('')
     setCardInstallments(1)
+    setEmitirNota(false)
+    setNotaDocValor('')
+    setNotaProfileMode('automatico')
+    setNotaProfileId('')
     pdvService.listProducts().then((p) => setProducts(p.filter((x) => x.active !== false)))
     pdvService.listServices().then((s) => setServices(s))
     setTimeout(() => setSuccess(null), 4000)
@@ -357,6 +381,16 @@ export default function AdminPdv() {
     discount_value: discountAmount > 0 ? Number(discountValue) || 0 : undefined,
     card_type: paymentMethod === 'cartao' ? cardType || undefined : undefined,
     card_installments: paymentMethod === 'cartao' && cardType === 'credito' ? cardInstallments : undefined,
+    fiscal: notaAtiva
+      ? {
+          emitir_nota_fiscal: true,
+          destinatario_documento_tipo: notaDocTipo,
+          destinatario_documento: notaDocValor,
+          destinatario_nome: customerName.trim() || undefined,
+          fiscal_profile_mode: notaProfileMode,
+          fiscal_profile_id: notaProfileMode === 'manual' ? notaProfileId || undefined : undefined,
+        }
+      : undefined,
   })
 
   /** Dinheiro / cartão / Pix sem QR: baixa imediata + WhatsApp "obrigado". */
@@ -369,6 +403,14 @@ export default function AdminPdv() {
   const finalizeSale = async () => {
     if (cartLines.length === 0) return
     setFinalizeError(null)
+    if (notaAtiva && !isValidDocumento(notaDocTipo, notaDocValor)) {
+      setFinalizeError(
+        identificacaoObrigatoria
+          ? `Vendas a partir de R$ ${IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE},00 exigem identificação do comprador — informe um ${notaDocTipo.toUpperCase()} válido.`
+          : `Informe um ${notaDocTipo.toUpperCase()} válido pra emitir nota fiscal.`
+      )
+      return
+    }
 
     // Pix + gerar QR (plataforma): cria venda, gera cobrança, mostra QR e
     // manda copia-cola no WhatsApp do comprador se informado.
@@ -824,6 +866,66 @@ export default function AdminPdv() {
                 inputMode="numeric"
               />
             </div>
+          </div>
+
+          <div className="mb-3 rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="text-sm font-semibold">Emitir nota fiscal?</span>
+              {identificacaoObrigatoria ? (
+                <span className="text-[11px] px-2 py-1 rounded-full bg-son-pink/20 text-son-pink font-semibold">
+                  Obrigatório acima de R$ {IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE},00
+                </span>
+              ) : (
+                <span className="flex rounded-full bg-white/10 p-0.5 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setEmitirNota(false)}
+                    className={`px-3 py-1 rounded-full transition ${!emitirNota ? 'bg-son-pink text-white' : 'text-son-silver-dim'}`}
+                  >
+                    Não
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEmitirNota(true)}
+                    className={`px-3 py-1 rounded-full transition ${emitirNota ? 'bg-son-pink text-white' : 'text-son-silver-dim'}`}
+                  >
+                    Sim
+                  </button>
+                </span>
+              )}
+            </label>
+            {notaAtiva && (
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <DocumentoInput tipo={notaDocTipo} onTipoChange={setNotaDocTipo} valor={notaDocValor} onValorChange={setNotaDocValor} />
+                <div>
+                  <label className="label">Perfil fiscal</label>
+                  <div className="flex rounded-lg bg-white/10 p-0.5 text-xs font-semibold w-fit mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setNotaProfileMode('automatico')}
+                      className={`px-3 py-1 rounded-md transition ${notaProfileMode === 'automatico' ? 'bg-son-pink text-white' : 'text-son-silver-dim'}`}
+                    >
+                      Automático
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotaProfileMode('manual')}
+                      className={`px-3 py-1 rounded-md transition ${notaProfileMode === 'manual' ? 'bg-son-pink text-white' : 'text-son-silver-dim'}`}
+                    >
+                      Manual
+                    </button>
+                  </div>
+                  {notaProfileMode === 'manual' && (
+                    <select className="input-field" value={notaProfileId} onChange={(e) => setNotaProfileId(e.target.value)}>
+                      <option value="">Selecione um perfil…</option>
+                      {fiscalProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>{p.nome}{p.is_default ? ' (padrão)' : ''}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mb-3">

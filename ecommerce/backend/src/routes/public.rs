@@ -275,6 +275,14 @@ pub struct AssistantOrderInput {
     /// retirada, sem taxa de entrega.
     #[serde(default)]
     pub shipping_price: Option<f64>,
+    /// Contexto fiscal opcional (seção 6/7 do pedido de perfis fiscais) --
+    /// mesmo contrato do PDV (`PdvFiscalInput`). A Assistente IA (serviço
+    /// externo, `ASSISTANT_IA_URL`) precisa perguntar "quer CPF/CNPJ na
+    /// nota?" durante a conversa e mandar isso aqui -- este backend só
+    /// valida/persiste, não decide quando perguntar (isso é conversa,
+    /// fica no serviço externo da IA, fora deste monorepo).
+    #[serde(default)]
+    pub fiscal: Option<crate::models::PdvFiscalInput>,
 }
 
 fn default_assistant_payment_method() -> String {
@@ -403,12 +411,48 @@ pub async fn create_assistant_order(
     let delivery_type = if shipping_price > 0.0 { "entrega" } else { "balcao" };
     let order_total = total + shipping_price;
 
+    // Regra de negocio explicita (nao e exigencia da SEFAZ): vendas a
+    // partir de R$500 exigem identificacao do comprador (CPF/CNPJ) --
+    // mesma regra do PDV/checkout (fiscal/validation.rs).
+    let identificacao_obrigatoria = order_total >= crate::fiscal::validation::IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE;
+    if identificacao_obrigatoria && input.fiscal.as_ref().map(|f| f.emitir_nota_fiscal) != Some(true) {
+        return Err(AppError::BadRequest(format!(
+            "vendas a partir de R$ {:.2} exigem identificação do comprador (CPF/CNPJ) -- pergunte ao cliente antes de fechar o pedido",
+            crate::fiscal::validation::IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE
+        )));
+    }
+    let fiscal = input.fiscal.as_ref().filter(|f| f.emitir_nota_fiscal);
+    if let Some(f) = fiscal {
+        let doc = f.destinatario_documento.as_deref().unwrap_or("").trim();
+        let valido = match f.destinatario_documento_tipo.as_deref() {
+            Some("cpf") => crate::fiscal::validation::valid_cpf(doc),
+            Some("cnpj") => crate::fiscal::validation::valid_cnpj(doc),
+            _ => false,
+        };
+        if !valido {
+            return Err(AppError::BadRequest(
+                "documento do destinatário (CPF/CNPJ) inválido ou ausente pra emissão de nota fiscal".to_string(),
+            ));
+        }
+    }
+    let fiscal_profile_mode = fiscal
+        .and_then(|f| f.fiscal_profile_mode.as_deref())
+        .filter(|m| *m == "manual")
+        .unwrap_or("automatico");
+    let fiscal_profile_id = fiscal.and_then(|f| f.fiscal_profile_id.clone()).filter(|_| fiscal_profile_mode == "manual");
+
     let order_id = uuid::Uuid::new_v4().to_string();
     sqlx::query(
         "INSERT INTO orders (\
             id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
-            payment_method, payment_status, status, shipping_price, total, discount_amount, sold_by_role\
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendente', 'pendente', $8, $9, 0, 'assistente_ia')",
+            payment_method, payment_status, status, shipping_price, total, discount_amount, sold_by_role, \
+            emitir_nota_fiscal, destinatario_documento_tipo, destinatario_documento, destinatario_nome, \
+            destinatario_uf, destinatario_municipio_ibge, destinatario_cep, destinatario_endereco, \
+            fiscal_profile_id, fiscal_profile_mode\
+         ) VALUES (\
+            $1, $2, $3, $4, $5, $6, $7, 'pendente', 'pendente', $8, $9, 0, 'assistente_ia', \
+            $10, $11, $12, $13, $14, $15, $16, $17, $18, $19\
+         )",
     )
     .bind(&order_id)
     .bind(&store.id)
@@ -419,6 +463,16 @@ pub async fn create_assistant_order(
     .bind(&input.payment_method)
     .bind(shipping_price)
     .bind(order_total)
+    .bind(fiscal.is_some())
+    .bind(fiscal.and_then(|f| f.destinatario_documento_tipo.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_documento.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_nome.clone()).or_else(|| Some(name.to_string())))
+    .bind(fiscal.and_then(|f| f.destinatario_uf.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_municipio_ibge.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_cep.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_endereco.clone()))
+    .bind(&fiscal_profile_id)
+    .bind(fiscal_profile_mode)
     .execute(&mut *tx)
     .await?;
 

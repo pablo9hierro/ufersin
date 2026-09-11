@@ -254,13 +254,50 @@ pub(crate) async fn create_sale_core(
     // já que o cancelamento de admin bloqueia justamente `status =
     // 'concluido'`) antes mesmo do cliente pagar.
     let status = if payment_status == "pago" { "concluido" } else { "pendente" };
+
+    // Contexto fiscal opcional (seção 6/7 do pedido de perfis fiscais) --
+    // `input.fiscal` ausente ou `emitir_nota_fiscal = false` preserva 100%
+    // o comportamento de sempre (nenhuma dessas colunas é preenchida) --
+    // EXCETO acima do valor de identificação obrigatória (regra de
+    // negócio explícita: vendas de R$500+ exigem CPF/CNPJ do comprador).
+    let identificacao_obrigatoria = total >= crate::fiscal::validation::IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE;
+    if identificacao_obrigatoria && input.fiscal.as_ref().map(|f| f.emitir_nota_fiscal) != Some(true) {
+        return Err(AppError::BadRequest(format!(
+            "vendas a partir de R$ {:.2} exigem identificação do comprador (CPF/CNPJ)",
+            crate::fiscal::validation::IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE
+        )));
+    }
+    let fiscal = input.fiscal.as_ref().filter(|f| f.emitir_nota_fiscal);
+    if let Some(f) = fiscal {
+        let doc = f.destinatario_documento.as_deref().unwrap_or("").trim();
+        let valido = match f.destinatario_documento_tipo.as_deref() {
+            Some("cpf") => crate::fiscal::validation::valid_cpf(doc),
+            Some("cnpj") => crate::fiscal::validation::valid_cnpj(doc),
+            _ => false,
+        };
+        if !valido {
+            return Err(AppError::BadRequest(
+                "documento do destinatário (CPF/CNPJ) inválido ou ausente pra emissão de nota fiscal".to_string(),
+            ));
+        }
+    }
+    let fiscal_profile_mode = fiscal
+        .and_then(|f| f.fiscal_profile_mode.as_deref())
+        .filter(|m| *m == "manual")
+        .unwrap_or("automatico");
+    let fiscal_profile_id = fiscal.and_then(|f| f.fiscal_profile_id.clone()).filter(|_| fiscal_profile_mode == "manual");
+
     sqlx::query(
         "INSERT INTO orders (\
             id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
             payment_method, payment_status, status, shipping_price, total, discount_amount, \
-            sold_by_role, sold_by_id, card_payment_mode, card_type, card_installments\
+            sold_by_role, sold_by_id, card_payment_mode, card_type, card_installments, \
+            emitir_nota_fiscal, destinatario_documento_tipo, destinatario_documento, destinatario_nome, \
+            destinatario_uf, destinatario_municipio_ibge, destinatario_cep, destinatario_endereco, \
+            fiscal_profile_id, fiscal_profile_mode\
          ) VALUES (\
-            $1, $2, $3, $4, $5, 'balcao', $6, $7, $15, 0, $8, $9, $10, $11, $12, $13, $14\
+            $1, $2, $3, $4, $5, 'balcao', $6, $7, $15, 0, $8, $9, $10, $11, $12, $13, $14, \
+            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25\
          )",
     )
     .bind(&order_id)
@@ -278,6 +315,16 @@ pub(crate) async fn create_sale_core(
     .bind(card_type)
     .bind(card_installments)
     .bind(status)
+    .bind(fiscal.is_some())
+    .bind(fiscal.and_then(|f| f.destinatario_documento_tipo.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_documento.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_nome.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_uf.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_municipio_ibge.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_cep.clone()))
+    .bind(fiscal.and_then(|f| f.destinatario_endereco.clone()))
+    .bind(&fiscal_profile_id)
+    .bind(fiscal_profile_mode)
     .execute(&mut *tx)
     .await?;
 
@@ -788,6 +835,7 @@ pub async fn pay_comanda(
         card_payment_mode: input.card_payment_mode,
         card_type: input.card_type,
         card_installments: input.card_installments,
+        fiscal: None,
     };
     let dto = create_sale_core(&state, &claims, sale_input).await?;
 

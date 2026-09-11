@@ -129,6 +129,16 @@ export const supabasePublicApi = {
       items: { product_id: string; quantity: number }[]
       coupon_code?: string
       promotion_id?: string
+      // Contexto fiscal opcional -- "Emitir nota fiscal? Sim/Não" no
+      // checkout (default Não). Omitido preserva 100% o fluxo atual.
+      emitir_nota_fiscal?: boolean
+      destinatario_documento_tipo?: 'cpf' | 'cnpj'
+      destinatario_documento?: string
+      destinatario_nome?: string
+      destinatario_uf?: string
+      destinatario_municipio_ibge?: string
+      destinatario_cep?: string
+      destinatario_endereco?: string
     }) => {
       if (payload.delivery_type === 'entrega') {
         const cfg = await getTenantConfig()
@@ -163,6 +173,14 @@ export const supabasePublicApi = {
         p_coupon_code: payload.coupon_code || null,
         p_promotion_id: payload.promotion_id || null,
         p_tenant_slug: resolveTenantSlug(),
+        p_emitir_nota_fiscal: payload.emitir_nota_fiscal ?? false,
+        p_destinatario_documento_tipo: payload.destinatario_documento_tipo ?? null,
+        p_destinatario_documento: payload.destinatario_documento ?? null,
+        p_destinatario_nome: payload.destinatario_nome ?? null,
+        p_destinatario_uf: payload.destinatario_uf ?? null,
+        p_destinatario_municipio_ibge: payload.destinatario_municipio_ibge ?? null,
+        p_destinatario_cep: payload.destinatario_cep ?? null,
+        p_destinatario_endereco: payload.destinatario_endereco ?? null,
       })
       if (error) throw new ApiError(400, error.message)
       return data as Order

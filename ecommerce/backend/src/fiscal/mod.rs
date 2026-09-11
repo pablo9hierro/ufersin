@@ -9,6 +9,8 @@
 //! fala com o Jubilados, só este backend.
 
 pub mod jubilados_client;
+pub mod resolution;
+pub mod validation;
 
 use serde::{Deserialize, Serialize};
 
@@ -65,7 +67,7 @@ impl DocumentKind {
 /// `products` conforme a auditoria (NCM/CFOP/CST/CSOSN/CEST/origem/
 /// unidade_fiscal). `None` em qualquer campo obrigatório bloqueia a
 /// emissão (seção 44 do pedido: nunca preencher com valor inventado).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FiscalItem {
     pub product_id: String,
     pub jubilados_produto_id: Option<uuid::Uuid>,

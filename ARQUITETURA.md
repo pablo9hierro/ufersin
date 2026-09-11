@@ -1,41 +1,59 @@
-# Arquitetura atual — Rodoletas / Ufersin
+# Arquitetura atual — Resolutoo (ex-Rodoletas/Ufersin)
 
 Documento técnico de handoff (escrito pra dar contexto a outra ferramenta/IA
 trabalhando neste repo, ex. Cursor). Reflete o estado real do código nesta
 data — não é aspiracional. Onde alguma coisa está pela metade ou é uma
 decisão consciente de deixar pra depois, isso está marcado explicitamente.
 
-**Nota de versão:** a Auth nativa do Supabase descrita no §6 já está
-implementada (não é mais "próximo passo") — o texto documenta o desenho
-porque explica o *porquê* das decisões, mas o código já reflete isso.
+**Nota de versão (2026-09):** o produto foi rebrandado de "Rodoletas" pra
+**Resolutoo** (domínio `resolutoo.com`) — os nomes internos de pasta
+(`ufersin/`, `backend`, schema `ufersin` num bootstrap SQL antigo) **não
+foram renomeados** e continuam usados como identificador técnico do
+monorepo; não confundir com o nome comercial atual. Este documento também
+tinha uma seção 2b desatualizada (projeto/schema Supabase errados) —
+corrigida nesta revisão a partir do código/SQL real, não de suposição. A
+Auth nativa do Supabase descrita no §6 já está implementada (não é mais
+"próximo passo") — o texto documenta o desenho porque explica o *porquê*
+das decisões, mas o código já reflete isso.
 
 ## 1. O que é isto
 
-**Rodoletas** é o SaaS que vende **Ufersin**: um motor de e-commerce
-multi-tenant (`ecommerce/`) — uma cópia retrofitada do ecommerce single-tenant original
-(`C:\Users\pablo\Documents\juite`, produção real, nunca tocado por este
-projeto) que passou a suportar N lojas isoladas por `tenant_id` em vez de
-uma só.
+**Resolutoo** é o SaaS multi-tenant (nome de código interno do monorepo:
+`ufersin`) que engloba duas coisas:
+
+1. A própria **plataforma** (`backend`/`frontend` na raiz do monorepo) —
+   cadastro, login, cobrança de assinatura, "Meu Plano", onboarding do
+   lojista. Ainda referida como "Rodoletas" em código/variáveis antigas.
+2. O **motor de e-commerce multi-tenant** que cada loja provisionada roda
+   (`ecommerce/`) — uma cópia retrofitada do ecommerce single-tenant
+   original (`C:\Users\pablo\Documents\juite`, produção real, nunca tocado
+   por este projeto) que passou a suportar N lojas isoladas por
+   `tenant_id` em vez de uma só.
 
 São **duas aplicações separadas no mesmo monorepo**, com bancos de dados
 diferentes, faladas por pessoas diferentes:
 
 ```
 ufersin/
-├── backend/     Rust+Axum+SQLx — "Rodoletas": cadastro, login, cobrança,
-│                dashboard do assinante, onboarding. Porta 8081/8080.
+├── backend/     Rust+Axum+SQLx — plataforma (Resolutoo, cód. interno
+│                "Rodoletas"): cadastro, login, cobrança, dashboard do
+│                assinante, onboarding. Porta 8081/8080.
 ├── frontend/    Vite+React+TS — landing, cadastro, dashboard do assinante
 │                (o que o LOJISTA vê antes/durante virar cliente). Porta 5174.
 ├── ecommerce/
 │   ├── backend/   Rust+Axum+SQLx — motor multi-tenant (catálogo, pedidos,
-│   │              admin, motoboy, PDV, financeiro, CRM). Porta 8080.
+│   │              admin, motoboy, PDV, financeiro, CRM, fiscal — ver §9).
+│   │              Porta 8080.
 │   ├── frontend/  Vite+React+TS — vitrine + admin + PDV + app motoboy da
 │   │              LOJA em si (o que o CLIENTE FINAL e o LOJISTA-JÁ-PAGANTE
 │   │              usam no dia a dia). Porta 5173.
-│   └── supabase-ufersin/  bootstrap SQL do schema `ufersin` no Supabase.
+│   ├── supabase/  funções PL/pgSQL REALMENTE publicadas no Supabase
+│   │              (checkout público, auth de cliente, cupons) — ver §2b.
+│   └── supabase-ufersin/  bootstrap SQL de um schema `ufersin` que
+│                não está em uso confirmado em produção — ver §2b.
 ```
 
-Quem NÃO é lojista Rodoletas nunca vê `ufersin/frontend` — só existe pra
+Quem NÃO é lojista Resolutoo nunca vê `ufersin/frontend` — só existe pra
 vender e gerenciar a assinatura. Depois que a loja está provisionada, o
 lojista passa a operar em `ecommerce/frontend/admin` no dia a dia.
 
@@ -43,35 +61,65 @@ lojista passa a operar em `ecommerce/frontend/admin` no dia a dia.
 
 Isto é a fonte de confusão mais comum neste projeto, então fica explícito:
 
-### 2a. Postgres local do `ufersin/backend` (Rodoletas)
-- `docker-compose.yml` em `backend/`, porta **5434**.
+### 2a. Postgres local do `ufersin/backend` (plataforma)
+- `docker-compose.yml` em `backend/`, porta **5434** em dev local
+  (`DATABASE_URL=postgresql://postgres:postgres@localhost:5434/postgres`).
 - Uma única tabela relevante: **`subscribers`** (ver §4) — a conta do
   lojista *como assinante da plataforma* (login, plano, status de
   pagamento, dados do onboarding).
-- Projeto Supabase dedicado (`retmfoorwjwzuevaqlsr`) já está documentado em
-  `.env.example` mas **não está em uso** — decisão consciente de manter
-  local por enquanto (mesmo padrão adotado no motor de e-commerce).
+- Este backend também fala com o Supabase (§6, `SUPABASE_URL=
+  https://migkkrwzykpztrakbfij.supabase.co`) — mas SÓ pra verificar
+  JWT de Auth (JWKS público) e pra alguns proxies/consultas fiscais (§9),
+  nunca guarda `subscribers` lá.
 
-### 2b. Supabase compartilhado (projeto "juite", ref `zncpcsdpdkvjfknmmhpu`)
-Mesmo projeto Supabase compartilhado com schemas de outras lojas.
-Isolamento é feito por **schema**, não por projeto:
-- `sunset` — schema legado externo. Nunca tocado por este repo.
-- `vrtech` — outro produto, também nunca tocado.
-- `ufersin` — schema dedicado pro motor multi-tenant deste projeto
-  (bootstrap em `ecommerce/supabase-ufersin/0000_bootstrap_ufersin_schema.sql`,
-  ~14.7k linhas, réplica cronológica das 71 migrations SQL do Sunset +
-  4 migrations sqlx, tudo renomeado pro schema `ufersin`). É aqui que vivem
-  `products`, `categories`, `orders`, `admins`, `tenants`, `organizations`,
-  `plans`, CRM, cupons, PDV — o motor inteiro.
-- `auth.users` (nativo do Supabase) — **projeto-global, não é
-  schema-scoped**. Hoje não está em uso por nenhum dos três produtos
-  (Sunset usa tabela de sessão própria de propósito, ver
-  `ecommerce/supabase-ufersin/.../sunset_admin_auth.sql`, exatamente pra
-  não vazar identidade entre produtos do mesmo projeto Supabase). Isso é
-  relevante pro próximo passo (§6).
+### 2b. Supabase do motor de e-commerce (projeto "resolutoo", ref `migkkrwzykpztrakbfij`) — corrigido nesta revisão
 
-**Ou seja:** hoje, a conta do *assinante* Rodoletas (`subscribers`, banco
-5434) e a conta do *admin da loja dele* (`ufersin.admins`, Supabase) são
+Confirmado direto pelo `SET search_path` das funções SQL reais em
+`ecommerce/supabase/*.sql` (ex. `resolutoo_create_order_tenant_fix.sql`),
+não por suposição. Isolamento é feito por **schema**, não por projeto:
+
+- **`sunset`** — schema onde o motor multi-tenant de e-commerce
+  (`ecommerce/backend`) efetivamente lê/escreve `products`, `categories`,
+  `orders`, `order_items`, `customers`, `admins`, `tenants`,
+  `shipping_settings` etc. As migrations SQLx em
+  `ecommerce/backend/migrations/*.sql` criam essas tabelas SEM prefixo de
+  schema (`CREATE TABLE admins (...)`, `CREATE TABLE customers (...)`) —
+  o nome do schema vem do `search_path` da role de conexão configurada no
+  Supabase/Railway, não é hardcoded no SQL nem no Rust (`sqlx::query`
+  também nunca qualifica schema). **Não confundir com o Sunset original**
+  (`C:\Users\pablo\Documents\juite`) — é só o nome do schema herdado dele.
+- **`resolutoo`** — schema mais novo, usado por funções RPC PL/pgSQL
+  chamadas direto do navegador (`ecommerce/frontend` via
+  `supabasePublicApi.ts`, `supabase.rpc(...)`) para fluxos que não passam
+  pelo backend Rust: `resolutoo.customers` (conta de LOGIN do cliente
+  final, diferente de `sunset.customers`, que é registro leve de CRM sem
+  senha), `resolutoo.coupons`/`promotions`/`coupon_grants`/
+  `coupon_product_discounts`/`promotion_product_discounts`. Havia
+  originalmente `resolutoo.products`/`orders`/`order_items`/
+  `shipping_settings` também neste schema, mas **nunca tiveram dado real**
+  — o checkout público sempre deveria ter apontado pra `sunset.*` (bug
+  raiz corrigido em `resolutoo_create_order_tenant_fix.sql`, que já
+  redireciona `create_order` pra ler/escrever em `sunset.*` via
+  `p_tenant_slug`); essas tabelas vazias em `resolutoo` ficaram como
+  resíduo, não confiar nelas.
+- **Schema `ufersin`** (citado em versões antigas deste documento,
+  bootstrap em `ecommerce/supabase-ufersin/0000_bootstrap_ufersin_schema.sql`,
+  ~14.7k linhas): o arquivo ainda existe no repo, mas **nenhuma função/
+  query em produção referencia esse schema** (confirmado por busca em
+  `ecommerce/supabase/*.sql`, que é onde ficam as funções realmente
+  publicadas) — aparenta ser um bootstrap alternativo abandonado/
+  superseded pelo par `sunset`+`resolutoo` acima. Verificar direto no
+  Supabase (schemas existentes) antes de assumir que está morto ou de
+  apagar o arquivo.
+- `auth.users` (nativo do Supabase, mesmo projeto `migkkrwzykpztrakbfij`)
+  — **projeto-global, não é schema-scoped**. Usado pela Auth nativa do
+  lojista-assinante da plataforma (§6). O motor de e-commerce (`sunset`)
+  usa tabela de sessão própria pra admin/motoboy/vendedor da loja
+  (`sunset_admin_auth.sql`), de propósito, pra não misturar identidade
+  entre plataforma e motor.
+
+**Ou seja:** hoje, a conta do *assinante* Resolutoo (`subscribers`, banco
+5434) e a conta do *admin da loja dele* (`sunset.admins`, Supabase) são
 **duas linhas em dois bancos diferentes**, sincronizadas manualmente por
 `POST /internal/provision-tenant` no fim do onboarding (copia nome/email/
 hash de senha de uma pra outra, uma vez só, na criação — não há
@@ -81,9 +129,9 @@ sincronização contínua depois disso).
 
 | Quem | Onde mora a conta | Como autentica hoje |
 |---|---|---|
-| Lojista *assinante* (Rodoletas) | `subscribers` (Postgres local 5434) + `auth.users` (Supabase, projeto-global) | **Auth nativo do Supabase** (e-mail+senha com confirmação real por link) — o backend Rust só VERIFICA o JWT que o Supabase emite, contra o JWKS público do projeto (`SUPABASE_URL`, chave assimétrica ES256), nunca autentica ninguém sozinho. Ver §6. |
-| Admin/motoboy/vendedor da loja (motor) | `ufersin.admins`/`motoboys`/etc (Supabase) | Tokens opaquos em tabela `sessions` própria + `crypt()`/bcrypt via pgcrypto (`sunset_admin_auth.sql`) — **não usa `auth.users` do Supabase de propósito** |
-| Cliente final da loja (motor) | `ufersin.customers` (Supabase) | Mesmo padrão de sessão própria, código de recuperação por WhatsApp |
+| Lojista *assinante* (plataforma Resolutoo) | `subscribers` (Postgres local 5434) + `auth.users` (Supabase, projeto-global) | **Auth nativo do Supabase** (e-mail+senha com confirmação real por link) — o backend Rust só VERIFICA o JWT que o Supabase emite, contra o JWKS público do projeto (`SUPABASE_URL`, chave assimétrica ES256), nunca autentica ninguém sozinho. Ver §6. |
+| Admin/motoboy/vendedor da loja (motor) | `sunset.admins`/`motoboys`/etc (Supabase, projeto `migkkrwzykpztrakbfij`) | Tokens opaquos em tabela `sessions` própria + `crypt()`/bcrypt via pgcrypto (`sunset_admin_auth.sql`) — **não usa `auth.users` do Supabase de propósito** |
+| Cliente final da loja (motor) | `sunset.customers` (CRM leve) + `resolutoo.customers` (conta com senha, se o cliente criou login) | Mesmo padrão de sessão própria, código de recuperação por WhatsApp — ver §2b pra distinção entre as duas tabelas de customers |
 
 O admin da loja "herda" e-mail+senha do subscriber na hora do provisionamento
 (`onboarding.rs` manda `admin_password_hash` = o mesmo hash Argon2 já
@@ -91,7 +139,7 @@ calculado pro subscriber) — por isso hoje "mesmo e-mail/senha nos dois
 painéis" funciona, mas é uma cópia de hash na criação, não um SSO de
 verdade (ver limitação documentada em `ecommerce/README-TENANCY.md`).
 
-## 4. `subscribers` — a tabela central da Rodoletas
+## 4. `subscribers` — a tabela central da plataforma
 
 Schema atual (`backend/migrations/0001..0004`), campos principais:
 
@@ -271,11 +319,87 @@ localStorage; o backend verifica a assinatura contra o JWKS do projeto
 - `ecommerce/frontend` (motor de e-commerce em si) **não muda nada** neste
   passo — só recebe, como sempre recebeu, o hash de senha pronto no
   provisionamento.
-- SSO de verdade entre Rodoletas e o painel da loja continua não existindo
-  (mesma limitação de `ecommerce/README-TENANCY.md` §"Limitação
+- SSO de verdade entre a plataforma e o painel da loja continua não
+  existindo (mesma limitação de `ecommerce/README-TENANCY.md` §"Limitação
   conhecida") — esse passo não tenta resolver isso, só moderniza a
-  autenticação do lado Rodoletas.
+  autenticação do lado plataforma.
 - Domínio próprio por loja, sincronização de upgrade/downgrade com o valor
   cobrado no gateway, e envio real de e-mail/SMS fora do fluxo de auth
   (notificações de pedido etc.) continuam como TODO — inalterados por este
   passo.
+
+## 9. Módulo fiscal (NF-e/NFC-e) — Jubilados + Perfis fiscais
+
+Ausente das versões anteriores deste documento; adicionado nesta revisão.
+
+### 9a. Jubilados — o único emissor, fora deste monorepo
+
+Todo o trabalho pesado de emissão fiscal (comunicação com a SEFAZ,
+assinatura/geração de XML, geração de DANFE em PDF, cache da tabela oficial
+de Classificação Tributária/IBS-CBS) é feito por um serviço **.NET externo
+chamado Jubilados** (repo `pablo9hierro/ouvir`, pasta `jubilados/`, **fora
+deste monorepo**). Este monorepo nunca duplica essa lógica — só fala com o
+Jubilados via HTTP (`ecommerce/backend/src/fiscal/jubilados_client.rs`).
+
+Jubilados guarda, no banco dele (Postgres próprio, hoje hospedado no
+Railway como "Postgres-BNGe" — **não é o Supabase do §2b**, são bancos
+físicos diferentes), a tabela `empresas` com CNPJ, razão social e o
+certificado digital A1 (base64 + senha), usado pra assinar as notas.
+
+### 9b. Cadastro do certificado e dados da empresa (plataforma)
+
+O upload do certificado e o cadastro fiscal da empresa (CNPJ, endereço,
+regime tributário) acontecem em **Meu Plano → Integrações**, do lado da
+plataforma (`ufersin/backend/src/routes/onboarding.rs`). O backend:
+- Abre o `.pfx`/`.p12` com a crate `openssl` (não `p12` — ver comentário em
+  `ufersin/backend/Cargo.toml`, que só decodifica o esquema legado
+  RC2/3DES e rejeita certificados modernos PBES2/AES-256-CBC como "senha
+  incorreta") só pra validar senha/extrair validade e titular.
+- Nunca persiste o certificado localmente — repassa direto pro Jubilados
+  (`POST/PUT /api/empresa`) e descarta.
+- `GET /api/onboarding/fiscal/certificado/status` consulta o Jubilados
+  (`GET /api/empresa/{id}`) só pra saber se há certificado válido salvo,
+  sem nunca expor o certificado em si.
+- Depois de salvar, chama `POST /internal/sync-fiscal-config` no
+  `ecommerce/backend`, que grava `jubilados_empresa_id`/`ambiente`/
+  `uf_origem` etc. em `tenant_fiscal_settings` (schema `sunset`, §2b) —
+  é esse registro que o motor de e-commerce usa pra saber pra quem/como
+  emitir, sem nunca falar com o banco do Jubilados diretamente.
+
+### 9c. Perfis fiscais e resolução por venda (`ecommerce/backend`)
+
+Adicionado pra resolver um problema de modelagem: um único CFOP/CST/CSOSN
+fixo por produto não reflete a realidade (venda interna PB→PB é diferente
+de PB→PE; cliente CPF é diferente de CNPJ) — forçar editar o produto a
+cada venda diferente é o que se queria evitar.
+
+Camadas (`src/fiscal/resolution.rs`):
+
+```
+Config fiscal da empresa (tenant_fiscal_settings)
+  → Perfis fiscais (fiscal_profiles) — nome livre, CFOP/CST/CSOSN/
+    Classificação Tributária cadastrados pelo lojista em
+    Fiscal → Perfis fiscais (admin da loja, NÃO na plataforma)
+  → Dados fiscais do produto (products.cfop/cst/csosn/cclass_trib) —
+    OVERRIDES opcionais sobre o perfil vinculado (products.fiscal_profile_id)
+  → Contexto da venda (orders.emitir_nota_fiscal, destinatario_documento_*,
+    destinatario_uf, fiscal_profile_id/mode) — capturado no PDV e no
+    checkout público via toggle opt-in "Emitir nota fiscal?", nunca
+    obrigatório (preserva o fluxo sem CPF de sempre)
+  → resolution::resolve() — combina os três (override > perfil > erro
+    claro se faltar campo obrigatório, nunca inventa/usa placeholder) →
+    valores efetivos
+  → fiscal_documents.resolved_snapshot — grava o resultado efetivo no
+    momento da emissão; editar um perfil depois NUNCA muda retroativamente
+    uma nota já emitida
+  → JubiladosClient::emitir() — só agora fala com o Jubilados
+```
+
+CFOP/NCM/CST/CSOSN/CEST continuam validados só por **formato**
+(`src/fiscal/validation.rs`, regex/dígito verificador) — nunca por
+catálogo fechado que a IA ou o sistema inventa; o contador é a fonte da
+verdade. UF/município continuam dropdown (dado geográfico estável).
+
+CRUD de perfis fiscais é exclusivo do admin da loja
+(`/api/admin/fiscal/profiles`, `AdminFiscalPerfis.tsx`) — decisão
+consciente de não replicar na plataforma.

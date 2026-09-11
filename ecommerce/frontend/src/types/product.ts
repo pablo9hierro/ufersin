@@ -41,6 +41,9 @@ export const ProductSchema = z.object({
   unidade_fiscal: z.string().nullable().optional(),
   ean: z.string().nullable().optional(),
   cclass_trib: z.string().nullable().optional(),
+  // Perfil fiscal do qual o produto herda (migration 0057) -- os campos
+  // acima passam a ser overrides opcionais sobre ele.
+  fiscal_profile_id: z.string().nullable().optional(),
 })
 export type Product = z.infer<typeof ProductSchema>
 
@@ -55,6 +58,7 @@ export type ProductFiscalPayload = {
   unidade_fiscal?: string | null
   ean?: string | null
   cclass_trib?: string | null
+  fiscal_profile_id?: string | null
 }
 
 // ---------- ERP Formulação (insumos / ficha técnica) ----------

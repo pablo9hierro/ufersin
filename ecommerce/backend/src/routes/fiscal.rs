@@ -13,7 +13,12 @@ use uuid::Uuid;
 use crate::auth::AdminUser;
 use crate::error::AppError;
 use crate::features::{self, Feature};
-use crate::fiscal::{self, jubilados_client::{FreightInfo, JubiladosClient}, DocumentKind, FiscalItem};
+use crate::fiscal::{
+    self,
+    jubilados_client::{FreightInfo, JubiladosClient},
+    resolution::{self, FiscalProfile, OperationContext, ProductFiscalOverrides},
+    DocumentKind, FiscalItem,
+};
 use crate::orders_common;
 use crate::state::AppState;
 use crate::tenant;
@@ -187,6 +192,11 @@ pub struct UpdateProductFiscalInput {
     pub unidade_fiscal: Option<String>,
     pub ean: Option<String>,
     pub cclass_trib: Option<String>,
+    /// Perfil fiscal do qual o produto herda (migration 0057) -- `cfop`/
+    /// `cst`/`csosn`/`cclass_trib` acima continuam sendo OVERRIDES opcionais
+    /// sobre ele, nunca o valor final direto (ver fiscal::resolution).
+    #[serde(default)]
+    pub fiscal_profile_id: Option<String>,
 }
 
 pub async fn update_product_fiscal(
@@ -198,7 +208,7 @@ pub async fn update_product_fiscal(
     require_beta(&state.pool, &claims.tenant_id).await?;
     let updated = sqlx::query(
         "UPDATE products SET ncm = $3, cfop = $4, cst = $5, csosn = $6, cest = $7, origem = $8, \
-           unidade_fiscal = $9, ean = $10, cclass_trib = $11 \
+           unidade_fiscal = $9, ean = $10, cclass_trib = $11, fiscal_profile_id = $12 \
          WHERE tenant_id = $1 AND id = $2",
     )
     .bind(&claims.tenant_id)
@@ -212,6 +222,7 @@ pub async fn update_product_fiscal(
     .bind(&body.unidade_fiscal)
     .bind(&body.ean)
     .bind(&body.cclass_trib)
+    .bind(&body.fiscal_profile_id)
     .execute(&state.pool)
     .await?;
     if updated.rows_affected() == 0 {
@@ -258,9 +269,10 @@ fn non_empty(v: Option<String>) -> Option<String> {
 }
 
 /// CST/CSOSN, CEST e Classificação Tributária (IBS/CBS) padrão da empresa --
-/// cadastrados uma vez em Meu Plano -> Integrações, usados quando o produto
-/// não tem valor específico (mesma lógica de `effective_cfop`, buscado uma
-/// vez por pedido em vez de por item pra não fazer N+1 na emissão).
+/// cadastrados uma vez em Meu Plano -> Integrações, usados como ÚLTIMO
+/// fallback quando nem override do produto nem perfil fiscal definem o
+/// campo (mantido por compatibilidade com config já feita antes dos
+/// perfis existirem; perfis têm precedência).
 struct FiscalDefaults {
     cst: Option<String>,
     csosn: Option<String>,
@@ -280,13 +292,137 @@ async fn tenant_fiscal_defaults(pool: &sqlx::PgPool, tenant_id: &str) -> Result<
     Ok(FiscalDefaults { cst, csosn, cest, cclass_trib })
 }
 
+async fn tenant_profiles(pool: &sqlx::PgPool, tenant_id: &str) -> Result<Vec<FiscalProfile>, AppError> {
+    let rows: Vec<(String, String, Option<String>, Option<String>, Option<String>, Option<String>, bool)> =
+        sqlx::query_as(
+            "SELECT id, nome, cfop, cst, csosn, cclass_trib, is_default FROM fiscal_profiles WHERE tenant_id = $1",
+        )
+        .bind(tenant_id)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, nome, cfop, cst, csosn, cclass_trib, is_default)| FiscalProfile {
+            id,
+            nome,
+            cfop,
+            cst,
+            csosn,
+            cclass_trib,
+            is_default,
+        })
+        .collect())
+}
+
+/// Contexto de venda usado pra decidir interna vs interestadual (seção 5
+/// do pedido: nunca exige editar o produto pra vender pra outro estado).
+/// `order` pode não ter `destinatario_uf` (fluxo atual sem nota fiscal
+/// opt-in) -- nesse caso trata como interna (ver
+/// `OperationContext::is_interestadual`).
+async fn build_operation_context(
+    pool: &sqlx::PgPool,
+    tenant_id: &str,
+    order: &crate::models::OrderRow,
+) -> Result<OperationContext, AppError> {
+    let uf_origem: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT uf_origem FROM tenant_fiscal_settings WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(OperationContext {
+        uf_origem: uf_origem.and_then(|(uf,)| uf).unwrap_or_default(),
+        uf_destino: order.destinatario_uf.clone(),
+        documento_tipo: order.destinatario_documento_tipo.clone(),
+    })
+}
+
+/// Perfil efetivo do PEDIDO: manual (lojista escolheu na venda) tem
+/// prioridade; automático cai no perfil já linkado ao produto ou, se o
+/// produto não tem nenhum, na heurística de `select_automatic_profile`.
+/// Recebe só os dois campos relevantes do pedido (não o `OrderRow` inteiro)
+/// de propósito -- deixa a função pura e testável sem precisar montar um
+/// pedido completo (~40 campos) só pra testar essa regra.
+fn resolve_order_profile<'a>(
+    order_fiscal_profile_mode: &str,
+    order_fiscal_profile_id: Option<&str>,
+    product_fiscal_profile_id: Option<&str>,
+    ctx: &OperationContext,
+    perfis: &'a [FiscalProfile],
+) -> Option<&'a FiscalProfile> {
+    if order_fiscal_profile_mode == "manual" {
+        if let Some(id) = order_fiscal_profile_id {
+            return perfis.iter().find(|p| p.id == id);
+        }
+    }
+    if let Some(id) = product_fiscal_profile_id {
+        if let Some(p) = perfis.iter().find(|p| p.id == id) {
+            return Some(p);
+        }
+    }
+    resolution::select_automatic_profile(ctx, perfis)
+}
+
+#[cfg(test)]
+mod resolve_order_profile_tests {
+    use super::*;
+
+    fn perfil(id: &str, nome: &str, is_default: bool) -> FiscalProfile {
+        FiscalProfile {
+            id: id.to_string(),
+            nome: nome.to_string(),
+            cfop: Some("5102".to_string()),
+            cst: Some("00".to_string()),
+            csosn: None,
+            cclass_trib: Some("000001".to_string()),
+            is_default,
+        }
+    }
+
+    fn ctx() -> OperationContext {
+        OperationContext { uf_origem: "PB".to_string(), uf_destino: Some("PB".to_string()), documento_tipo: None }
+    }
+
+    #[test]
+    fn perfil_manual_do_pedido_tem_prioridade_sobre_tudo() {
+        let perfis = vec![perfil("p1", "Interna", true), perfil("p2", "Especial", false)];
+        let escolhido = resolve_order_profile("manual", Some("p2"), Some("p1"), &ctx(), &perfis).unwrap();
+        assert_eq!(escolhido.id, "p2");
+    }
+
+    #[test]
+    fn perfil_manual_sem_id_valido_cai_pro_fallback_automatico() {
+        let perfis = vec![perfil("p1", "Interna", true)];
+        // fiscal_profile_id inexistente/None em modo manual -- nao trava,
+        // cai pro proximo nivel (perfil do produto, depois automatico).
+        let escolhido = resolve_order_profile("manual", None, Some("p1"), &ctx(), &perfis).unwrap();
+        assert_eq!(escolhido.id, "p1");
+    }
+
+    #[test]
+    fn automatico_usa_perfil_linkado_ao_produto_antes_da_heuristica() {
+        let perfis = vec![perfil("p1", "Interna", true), perfil("p2", "Especial do produto", false)];
+        let escolhido = resolve_order_profile("automatico", None, Some("p2"), &ctx(), &perfis).unwrap();
+        assert_eq!(escolhido.id, "p2");
+    }
+
+    #[test]
+    fn automatico_sem_perfil_no_produto_usa_heuristica_por_uf() {
+        let perfis = vec![perfil("p1", "Venda interna", true)];
+        let escolhido = resolve_order_profile("automatico", None, None, &ctx(), &perfis).unwrap();
+        assert_eq!(escolhido.id, "p1");
+    }
+}
+
 async fn build_fiscal_items(
     pool: &sqlx::PgPool,
     tenant_id: &str,
-    order_id: &str,
+    order: &crate::models::OrderRow,
 ) -> Result<Vec<FiscalItem>, AppError> {
+    let order_id = &order.id;
     let items = orders_common::fetch_items(pool, tenant_id, order_id).await?;
     let defaults = tenant_fiscal_defaults(pool, tenant_id).await?;
+    let perfis = tenant_profiles(pool, tenant_id).await?;
+    let ctx = build_operation_context(pool, tenant_id, order).await?;
     let mut fiscal_items = Vec::with_capacity(items.len());
     for item in items {
         let row: Option<(
@@ -300,16 +436,17 @@ async fn build_fiscal_items(
             Option<String>,
             Option<String>,
             Option<Uuid>,
+            Option<String>,
         )> = sqlx::query_as(
-            "SELECT ncm, cfop, cst, csosn, cest, origem, unidade_fiscal, ean, cclass_trib, jubilados_produto_id \
+            "SELECT ncm, cfop, cst, csosn, cest, origem, unidade_fiscal, ean, cclass_trib, jubilados_produto_id, fiscal_profile_id \
              FROM products WHERE tenant_id = $1 AND id = $2",
         )
         .bind(tenant_id)
         .bind(&item.product_id)
         .fetch_optional(pool)
         .await?;
-        let row = row.map(
-            |(ncm, cfop, cst, csosn, cest, origem, unidade_fiscal, ean, cclass_trib, jubilados_produto_id)| {
+        let (row, product_profile_id) = match row {
+            Some((ncm, cfop, cst, csosn, cest, origem, unidade_fiscal, ean, cclass_trib, jubilados_produto_id, fiscal_profile_id)) => (
                 ProductFiscalRow {
                     ncm,
                     cfop,
@@ -321,35 +458,77 @@ async fn build_fiscal_items(
                     ean,
                     cclass_trib,
                     jubilados_produto_id,
-                }
-            },
+                },
+                fiscal_profile_id,
+            ),
+            None => (
+                ProductFiscalRow {
+                    ncm: None,
+                    cfop: None,
+                    cst: None,
+                    csosn: None,
+                    cest: None,
+                    origem: None,
+                    unidade_fiscal: None,
+                    ean: None,
+                    cclass_trib: None,
+                    jubilados_produto_id: None,
+                },
+                None,
+            ),
+        };
+
+        let profile = resolve_order_profile(
+            &order.fiscal_profile_mode,
+            order.fiscal_profile_id.as_deref(),
+            product_profile_id.as_deref(),
+            &ctx,
+            &perfis,
         );
-        let row = row.unwrap_or(ProductFiscalRow {
-            ncm: None,
-            cfop: None,
-            cst: None,
-            csosn: None,
-            cest: None,
-            origem: None,
-            unidade_fiscal: None,
-            ean: None,
-            cclass_trib: None,
-            jubilados_produto_id: None,
-        });
-        let cfop = effective_cfop(pool, tenant_id, row.cfop.as_deref()).await?;
+        let overrides = ProductFiscalOverrides {
+            cfop: row.cfop.clone(),
+            cst: row.cst.clone(),
+            csosn: row.csosn.clone(),
+            cclass_trib: row.cclass_trib.clone(),
+        };
+        // Resolução via perfil (seção 5/6 do pedido) -- se não resolver
+        // (nem override nem perfil definem o campo), cai no fallback antigo
+        // (tenant_fiscal_defaults) só pra não quebrar configuração feita
+        // antes dos perfis existirem; erro real (nenhum dos três) é
+        // reportado do jeito de sempre por `fiscal::validate_items`.
+        // CFOP é sempre obrigatório em `resolution::resolve`, então
+        // `r.cfop` nunca é `None` quando a resolução dá certo -- só cai no
+        // fallback antigo (tenant_cfops/config pré-perfis) quando nem
+        // override nem NENHUM perfil definem nada.
+        let resolved = resolution::resolve(&overrides, profile).ok();
+        let (cfop, cst, csosn, cclass_trib) = match resolved {
+            Some(r) => (
+                r.cfop.map(|f| f.value),
+                r.cst.map(|f| f.value).or_else(|| defaults.cst.clone()),
+                r.csosn.map(|f| f.value).or_else(|| defaults.csosn.clone()),
+                r.cclass_trib.map(|f| f.value).or_else(|| defaults.cclass_trib.clone()),
+            ),
+            None => (
+                effective_cfop(pool, tenant_id, row.cfop.as_deref()).await?,
+                non_empty(row.cst.clone()).or_else(|| defaults.cst.clone()),
+                non_empty(row.csosn.clone()).or_else(|| defaults.csosn.clone()),
+                non_empty(row.cclass_trib.clone()).or_else(|| defaults.cclass_trib.clone()),
+            ),
+        };
+
         fiscal_items.push(FiscalItem {
             product_id: item.product_id,
             jubilados_produto_id: row.jubilados_produto_id,
             product_name: item.product_name,
             ncm: row.ncm,
             cfop,
-            cst: non_empty(row.cst).or_else(|| defaults.cst.clone()),
-            csosn: non_empty(row.csosn).or_else(|| defaults.csosn.clone()),
+            cst,
+            csosn,
             cest: non_empty(row.cest).or_else(|| defaults.cest.clone()),
             origem: row.origem,
             unidade_fiscal: row.unidade_fiscal,
             ean: row.ean,
-            cclass_trib: non_empty(row.cclass_trib).or_else(|| defaults.cclass_trib.clone()),
+            cclass_trib,
             quantity: item.quantity,
             unit_price: item.unit_price,
         });
@@ -383,7 +562,7 @@ pub async fn emitir(
         .ok_or_else(|| AppError::NotFound("pedido não encontrado".to_string()))?;
     tx.commit().await?;
 
-    let items = build_fiscal_items(&state.pool, &tenant_id, &order_id).await?;
+    let items = build_fiscal_items(&state.pool, &tenant_id, &order).await?;
     if items.is_empty() {
         return Err(AppError::BadRequest("pedido sem itens".to_string()));
     }
@@ -416,9 +595,13 @@ pub async fn emitir(
 
     let kind = DocumentKind::from_order_delivery_type(&order.delivery_type);
     let doc_id = uuid::Uuid::new_v4().to_string();
+    // Snapshot imutável dos valores fiscais EFETIVOS usados nesta emissão
+    // (migration 0059) -- editar um perfil fiscal depois nunca deve mudar
+    // o que uma nota já emitida "diz" que foi usado.
+    let snapshot = serde_json::json!({ "items": items });
     let inserted: Option<(String,)> = sqlx::query_as(
-        "INSERT INTO fiscal_documents (id, tenant_id, order_id, modelo, status) \
-         VALUES ($1, $2, $3, $4, 'processando') \
+        "INSERT INTO fiscal_documents (id, tenant_id, order_id, modelo, status, resolved_snapshot) \
+         VALUES ($1, $2, $3, $4, 'processando', $5) \
          ON CONFLICT (order_id) WHERE status NOT IN ('rejeitada', 'cancelada', 'erro') DO NOTHING \
          RETURNING id",
     )
@@ -426,6 +609,7 @@ pub async fn emitir(
     .bind(&tenant_id)
     .bind(&order_id)
     .bind(kind.modelo())
+    .bind(&snapshot)
     .fetch_optional(&state.pool)
     .await?;
     let Some((doc_id,)) = inserted else {
@@ -648,7 +832,7 @@ pub async fn maybe_auto_emit(pool: &sqlx::PgPool, http: &reqwest::Client, jubila
         .flatten();
     let Some(order) = order else { return };
 
-    let Ok(items) = build_fiscal_items(pool, tenant_id, order_id).await else { return };
+    let Ok(items) = build_fiscal_items(pool, tenant_id, &order).await else { return };
     if items.is_empty() || !fiscal::validate_items(&items).is_empty() {
         tracing::warn!("auto-emitir fiscal pulado pro pedido {order_id}: itens sem dados fiscais completos");
         return;
@@ -671,9 +855,10 @@ pub async fn maybe_auto_emit(pool: &sqlx::PgPool, http: &reqwest::Client, jubila
 
     let kind = DocumentKind::from_order_delivery_type(&order.delivery_type);
     let doc_id = uuid::Uuid::new_v4().to_string();
+    let snapshot = serde_json::json!({ "items": items });
     let inserted: Option<(String,)> = sqlx::query_as(
-        "INSERT INTO fiscal_documents (id, tenant_id, order_id, modelo, status) \
-         VALUES ($1, $2, $3, $4, 'processando') \
+        "INSERT INTO fiscal_documents (id, tenant_id, order_id, modelo, status, resolved_snapshot) \
+         VALUES ($1, $2, $3, $4, 'processando', $5) \
          ON CONFLICT (order_id) WHERE status NOT IN ('rejeitada', 'cancelada', 'erro') DO NOTHING \
          RETURNING id",
     )
@@ -681,6 +866,7 @@ pub async fn maybe_auto_emit(pool: &sqlx::PgPool, http: &reqwest::Client, jubila
     .bind(tenant_id)
     .bind(order_id)
     .bind(kind.modelo())
+    .bind(&snapshot)
     .fetch_optional(pool)
     .await
     .ok()

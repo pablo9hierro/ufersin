@@ -240,6 +240,17 @@ export const adminEndpoint = {
       remove: async (codigo: string) => api.admin.fiscal.cfops.remove(codigo),
       setDefault: async (codigo: string) => api.admin.fiscal.cfops.setDefault(codigo),
     },
+    profiles: {
+      list: async () => api.admin.fiscal.profiles.list(),
+      create: async (payload: { nome: string; cfop?: string | null; cst?: string | null; csosn?: string | null; cclass_trib?: string | null }) =>
+        api.admin.fiscal.profiles.create(payload),
+      update: async (
+        id: string,
+        payload: { nome: string; cfop?: string | null; cst?: string | null; csosn?: string | null; cclass_trib?: string | null },
+      ) => api.admin.fiscal.profiles.update(id, payload),
+      remove: async (id: string) => api.admin.fiscal.profiles.remove(id),
+      setDefault: async (id: string) => api.admin.fiscal.profiles.setDefault(id),
+    },
     emitir: async (orderId: string) => api.admin.fiscal.emitir(orderId),
     get: async (orderId: string) => api.admin.fiscal.get(orderId),
     listDocuments: async () => api.admin.fiscal.listDocuments(),
