@@ -28,6 +28,98 @@ import { isScheduledOpenNow } from './storeHours'
 import { useVendedorAuth } from '../store/vendedorAuth'
 import { useMotoboyAuth } from '../store/motoboyAuth'
 import { getDemoStaffSession, getDemoPlano, planoAtLeast } from './demoMode'
+
+// Chat do Assistente IA na demo da landing (modo 100% local, sem backend) --
+// antes disparava ApiError("não disponível no modo demonstração") pra
+// qualquer tentativa de simular conversa, deixando "Novo Chat" quebrado por
+// design; a demo é justamente a vitrine que convence o lead a assinar, então
+// precisa parecer funcionando de verdade. Estado só de memória (reseta ao
+// recarregar a aba), igual o resto do dado seedado da demo.
+type DemoChatConversation = {
+  id: string
+  phone: string
+  customer_name: string | null
+  status: 'aberta' | 'pausada' | 'fechada'
+  assistant_enabled: boolean
+  human_override: boolean
+  last_message_at: string
+}
+type DemoChatMessage = {
+  id: string
+  conversation_id: string
+  direction: 'inbound' | 'outbound'
+  sender_type: 'cliente' | 'assistente' | 'humano'
+  content: string
+  created_at: string
+}
+let demoChatConversations: DemoChatConversation[] = []
+let demoChatMessages: DemoChatMessage[] = []
+let demoChatReplyCount = 0
+const DEMO_ASSISTANT_REPLIES = [
+  'Show, recebi sua mensagem! Na loja de verdade eu já consigo checar estoque, montar o carrinho e mandar o link de pagamento aqui mesmo no WhatsApp — quer ver como fica um pedido fechado?',
+  'Perfeito! Posso te mostrar o catálogo, tirar dúvida sobre entrega/retirada ou já montar seu pedido. Me diz o que você procura.',
+  'Anotado! Na sua loja de verdade eu confirmo o estoque na hora, calculo o frete e já gero o Pix — quer que eu simule um pedido completo pra você ver?',
+]
+const demoAssistantIa = {
+  simulateMessage: async (phone: string, text: string, customerName?: string) => {
+    const now = nowIso()
+    let convo = demoChatConversations.find((c) => c.phone === phone)
+    if (!convo) {
+      convo = {
+        id: uid(),
+        phone,
+        customer_name: customerName || null,
+        status: 'aberta',
+        assistant_enabled: true,
+        human_override: false,
+        last_message_at: now,
+      }
+      demoChatConversations.unshift(convo)
+    }
+    convo.last_message_at = now
+    convo.status = 'aberta'
+    demoChatMessages.push({
+      id: uid(),
+      conversation_id: convo.id,
+      direction: 'inbound',
+      sender_type: 'cliente',
+      content: text,
+      created_at: now,
+    })
+    if (convo.assistant_enabled) {
+      const conversationId = convo.id
+      setTimeout(() => {
+        const target = demoChatConversations.find((c) => c.id === conversationId)
+        if (!target || !target.assistant_enabled) return
+        const replyAt = nowIso()
+        demoChatMessages.push({
+          id: uid(),
+          conversation_id: conversationId,
+          direction: 'outbound',
+          sender_type: 'assistente',
+          content: DEMO_ASSISTANT_REPLIES[demoChatReplyCount++ % DEMO_ASSISTANT_REPLIES.length],
+          created_at: replyAt,
+        })
+        target.last_message_at = replyAt
+      }, 1100)
+    }
+  },
+  conversations: async (): Promise<DemoChatConversation[]> =>
+    [...demoChatConversations].sort((a, b) => (a.last_message_at < b.last_message_at ? 1 : -1)),
+  conversationMessages: async (id: string): Promise<DemoChatMessage[]> =>
+    demoChatMessages.filter((m) => m.conversation_id === id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)),
+  setConversationEnabled: async (id: string, enabled: boolean) => {
+    const convo = demoChatConversations.find((c) => c.id === id)
+    if (!convo) throw new ApiError(404, 'conversa não encontrada')
+    convo.assistant_enabled = enabled
+    convo.human_override = !enabled
+    return { assistant_enabled: convo.assistant_enabled, human_override: convo.human_override }
+  },
+  deleteConversation: async (id: string) => {
+    demoChatConversations = demoChatConversations.filter((c) => c.id !== id)
+    demoChatMessages = demoChatMessages.filter((m) => m.conversation_id !== id)
+  },
+}
 import type {
   BadgesLayout,
   BadgesSettings,
@@ -3248,15 +3340,7 @@ export const localApi = {
       connectionEvents: async () => [],
       notifyCouponGrant: async () => {},
     },
-    assistantIa: {
-      simulateMessage: async () => {
-        throw new ApiError(400, 'Assistente IA não disponível no modo demonstração.')
-      },
-      conversations: async () => [],
-      conversationMessages: async () => [],
-      setConversationEnabled: async () => ({}),
-      deleteConversation: async () => {},
-    },
+    assistantIa: demoAssistantIa,
     onboardingGate: {
       get: async () => ({ onboarding_hours_done: true }),
     },

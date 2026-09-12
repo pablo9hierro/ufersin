@@ -44,7 +44,6 @@ function friendlySimulateError(err: unknown, fallback: string): string {
  * (ver assistantIaBeta.ts). */
 export default function AdminChat() {
   const tenantConfig = useTenantConfig()
-  const tenantSlug = tenantConfig?.slug
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selected, setSelected] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -64,7 +63,6 @@ export default function AdminChat() {
   const pendingPhoneRef = useRef<string | null>(null)
 
   const loadConversations = () => {
-    if (!tenantSlug) return
     api.admin.assistantIa
       .conversations()
       .then((data) => {
@@ -88,7 +86,7 @@ export default function AdminChat() {
     const interval = setInterval(loadConversations, 1500)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantSlug])
+  }, [])
 
   const selectedId = selected?.id ?? null
 
@@ -198,7 +196,11 @@ export default function AdminChat() {
     }
   }
 
-  if (!tenantSlug) return null
+  // Espera só a config carregar (nunca o slug em si -- no modo demonstração
+  // da landing, `tenantConfig.slug` fica de propósito vazio, ver
+  // tenantConfig.ts::resolveTenantSlug; exigir slug aqui deixava esta
+  // página inteira em branco/preta na demo, bug real encontrado em produção).
+  if (!tenantConfig) return null
 
   // Chat é componente genérico compartilhado por todos os verticais --
   // reveste com a identidade vrtech (preto/vermelho) quando o tenant é
