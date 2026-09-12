@@ -46,7 +46,7 @@ export default function DemoEntrar() {
   const tenantSlug = searchParams.get('tenantSlug')
   const adminName = searchParams.get('name')
   const planoParam = searchParams.get('plano') as PlanoCode | null
-  const plano = planoParam === 'essential' || planoParam === 'management' || planoParam === 'premium' ? planoParam : null
+  const plano = planoParam === 'starter' || planoParam === 'essential' || planoParam === 'management' || planoParam === 'premium' ? planoParam : null
   // Preview 1:1 de um recurso específico da landing (ex: `next=/admin/fiscal`)
   // -- só aceita path interno (nunca URL externa), demo mock local não tem
   // dado sensível de tenant real pra vazar.
