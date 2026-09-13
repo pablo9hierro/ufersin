@@ -69,24 +69,32 @@ type NavItem = {
   hideAtOrAbove?: PlanoCode
 }
 
+// Piso do Starter = exatamente o que o card do plano vende (ver
+// platform_plans "starter": catálogo, checkout/PDV com estoque, pedidos,
+// Pix + Mercado Pago Point, notificação de status por WhatsApp, nota fiscal
+// de produto) -- mesma lista já documentada (mas nunca consultada de
+// verdade) em adminPlanGating.ts::ADMIN_NAV_PLAN. Sem isso todo item exigia
+// 'essential', então a demo do Starter não tinha NENHUM item visível e o
+// fallback de rota bloqueada (abaixo) redirecionava pra si mesmo em loop
+// infinito -- bug real encontrado em produção (tela preta em /demo/admin/starter).
 const NAV_ITEMS: NavItem[] = [
-  { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, requiredPlan: 'essential' },
-  { href: '/admin/pdv', label: 'PDV', icon: ShoppingCart, requiredPlan: 'essential' },
-  { href: '/admin/produtos', label: 'Produtos', icon: Package, requiredPlan: 'essential' },
+  { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList, requiredPlan: 'starter' },
+  { href: '/admin/pdv', label: 'PDV', icon: ShoppingCart, requiredPlan: 'starter' },
+  { href: '/admin/produtos', label: 'Produtos', icon: Package, requiredPlan: 'starter' },
   { href: '/admin/produtos/servicos', label: 'Serviços', icon: Wrench, requiredPlan: 'essential' },
-  { href: '/admin/estoque', label: 'Estoque', icon: Boxes, requiredPlan: 'essential' },
-  { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'essential', hideAtOrAbove: 'management' },
+  { href: '/admin/estoque', label: 'Estoque', icon: Boxes, requiredPlan: 'starter' },
+  { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'starter', hideAtOrAbove: 'management' },
   { href: '/admin/entregas-terceirizadas', label: 'Entregas terceirizadas', icon: Send, requiredPlan: 'essential' },
-  { href: '/admin/fiscal/emitir', label: 'Emitir', icon: FileText, requiredPlan: 'essential' },
+  { href: '/admin/fiscal/emitir', label: 'Emitir', icon: FileText, requiredPlan: 'starter' },
   { href: '/admin/fiscal/inutilizar', label: 'Inutilizar/Anular', icon: Ban, requiredPlan: 'essential' },
   { href: '/admin/fiscal/cce', label: 'Correção fiscal (CCe)', icon: FileEdit, requiredPlan: 'essential' },
   { href: '/admin/fiscal/manifestacao', label: 'Manifestação fiscal', icon: MailCheck, requiredPlan: 'essential' },
   { href: '/admin/fiscal/nuvem', label: 'Consultar nuvem fiscal', icon: Cloud, requiredPlan: 'essential' },
   { href: '/admin/fiscal/perfis', label: 'Perfis fiscais', icon: Layers, requiredPlan: 'essential' },
-  { href: '/admin/mercadopago-point', label: 'Mercado Pago Point', icon: Store, requiredPlan: 'essential' },
+  { href: '/admin/mercadopago-point', label: 'Mercado Pago Point', icon: Store, requiredPlan: 'starter' },
   { href: '/admin/chat', label: 'Chat', icon: MessageCircle, requiredPlan: 'essential' },
   { href: '/admin/agendamentos', label: 'Agendamentos', icon: Calendar, requiredPlan: 'essential' },
-  { href: '/admin/template', label: 'Mensagens', icon: MessageSquareText, requiredPlan: 'essential' },
+  { href: '/admin/template', label: 'Mensagens', icon: MessageSquareText, requiredPlan: 'starter' },
   // requiredPlan aqui é só o "chão": management+ sempre libera. Essential
   // também libera quando o lojista marcou precisar de motoboy/cozinha/
   // vendedor em /meu-plano — ver visibleItems (a necessidade operacional
@@ -94,8 +102,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/motoboys', label: 'Funcionários', icon: Truck, requiredPlan: 'essential' },
   { href: '/admin/crm', label: 'CRM', icon: Users, requiredPlan: 'premium' },
   { href: '/admin/promocoes', label: 'Promoções', icon: Megaphone, requiredPlan: 'management' },
-  { href: '/admin/relatorios', label: 'Relatórios', icon: Wallet, requiredPlan: 'essential' },
-  { href: '/admin/conta', label: 'Configurações', icon: Settings, requiredPlan: 'essential' },
+  { href: '/admin/relatorios', label: 'Relatórios', icon: Wallet, requiredPlan: 'starter' },
+  { href: '/admin/conta', label: 'Configurações', icon: Settings, requiredPlan: 'starter' },
 ]
 
 /** Agrupa alguns itens do menu em dropdowns nativos (<details>) pra encurtar
@@ -568,7 +576,15 @@ export default function AdminLayout() {
     NAV_ITEMS.find((i) => i.href === location.pathname) ??
     NAV_ITEMS.find((i) => i.href !== '/admin' && location.pathname.startsWith(`${i.href}/`))
   if (currentItem && !navVisible(currentItem, demo, tenantPlano)) {
-    return <Navigate to="/admin/pdv" replace />
+    // Nunca redireciona pra uma rota fixa (ex: /admin/pdv) sem checar se ELA
+    // MESMA está visível pro plano atual -- senão um plano sem PDV liberado
+    // cai num loop de redirect pra si mesmo (bug real: Starter via demo
+    // ficava com tela preta porque todo item, incluindo o próprio fallback
+    // /admin/pdv, exigia 'essential'). Cai pro primeiro item realmente
+    // visível; sem nenhum (nunca deveria acontecer), Configurações é o
+    // último recurso por não depender de nenhuma feature além do login.
+    const fallback = NAV_ITEMS.find((i) => navVisible(i, demo, tenantPlano))?.href ?? '/admin/conta'
+    if (location.pathname !== fallback) return <Navigate to={fallback} replace />
   }
   if (
     (location.pathname === '/admin/pedidos' || location.pathname === '/admin/frete') &&

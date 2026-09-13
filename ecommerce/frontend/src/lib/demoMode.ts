@@ -202,12 +202,12 @@ export function isMutatingDemoRpc(fn: string): boolean {
 
 /**
  * Nome da marca na vitrine/admin.
- * - Demo pública → Ufersin
+ * - Demo pública → Resolutoo
  * - Assinante Resolutoo → loja_nome do onboarding
  * - Sem nome ainda → slug ou "Minha loja" (nunca um nome de loja de terceiros)
  */
 export function brandName(lojaNome?: string | null): string {
-  if (isDemoModeActive()) return 'Ufersin'
+  if (isDemoModeActive()) return 'Resolutoo'
   const arg = lojaNome?.trim()
   if (arg) return arg
   const cached = getCachedTenantConfig()

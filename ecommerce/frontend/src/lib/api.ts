@@ -266,7 +266,17 @@ async function request<T>(
   // escreve no Postgres de verdade. Simula sucesso local — próxima leitura
   // real (troca de tela) volta pro dado seedado. Ver lib/demoMode.ts.
   const method = (rest.method || 'GET').toUpperCase()
-  if (isSeededDemoTenant() && method !== 'GET' && method !== 'HEAD') {
+  // Assistente IA é a própria funcionalidade sendo demonstrada na demo
+  // seedada -- ao contrário de outras escritas (que sujariam catálogo/
+  // pedidos reais pra sempre), simular uma conversa usa telefone sintético
+  // (5500xxxxxxxxx, nunca colide com cliente real, ver generateSyntheticPhone
+  // em AdminChat.tsx) e é exatamente o botão "Novo Chat"/"Enviar" que o lead
+  // clica pra testar. Bloquear como as demais escritas fazia "Enviar" fechar
+  // o formulário sem NENHUM request sair (simulado localmente, mas
+  // AdminChat.tsx só faz um GET de refetch depois, que nunca via a conversa
+  // que "escreveu" só no vazio) -- bug real em produção, achado em auditoria.
+  const isAssistantIaWrite = /^\/api\/admin\/assistant-ia\//.test(path)
+  if (isSeededDemoTenant() && method !== 'GET' && method !== 'HEAD' && !isAssistantIaWrite) {
     return simulateDemoWrite<T>(rest.body)
   }
   let res: Response

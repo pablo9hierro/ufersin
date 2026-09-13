@@ -406,12 +406,67 @@ async fn seed_demo_ecommerce(pool: &PgPool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Acessórios à venda — categoria de produto separada da de serviços
+/// ("Reparos"), pra vitrine/destaques não nascerem vazios. Extraído pra ser
+/// chamado tanto na criação do tenant quanto no backfill abaixo (achado em
+/// auditoria: `demo-eletronica` já existia de uma seed anterior a este
+/// bloco, então `seed_demo_eletronica` inteiro nunca rodava de novo pra
+/// gente nenhum, e a vitrine real ficava com catálogo 100% vazio pra
+/// sempre — `!created` cortava tudo antes de chegar aqui).
+async fn seed_demo_eletronica_accessories(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+) -> anyhow::Result<()> {
+    let accessories_category_id = Uuid::new_v4().to_string();
+    sqlx::query("INSERT INTO categories (id, tenant_id, name) VALUES ($1, $2, 'Acessórios')")
+        .bind(&accessories_category_id)
+        .bind(tenant_id)
+        .execute(&mut **tx)
+        .await?;
+    let accessories: [(&str, &str, f64, i64); 5] = [
+        ("Capinha iPhone 13", "Silicone premium, várias cores", 39.9, 30),
+        ("Película de vidro", "Proteção 9H anti-risco", 19.9, 50),
+        ("Carregador USB-C 20W", "Carregamento rápido original", 79.9, 25),
+        ("Fone Bluetooth TWS", "Cancelamento de ruído, estojo carregador", 129.9, 15),
+        ("Cabo USB-C 1m", "Reforçado, trançado em nylon", 24.9, 40),
+    ];
+    for (name, description, price, quantity) in accessories {
+        sqlx::query(
+            "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active, cost_price) \
+             VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, 1, $8)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(tenant_id)
+        .bind(name)
+        .bind(description)
+        .bind(price)
+        .bind(quantity)
+        .bind(&accessories_category_id)
+        .bind(price * 0.5)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
 async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
     let (tenant_id, created) =
         ensure_demo_tenant(&mut tx, "demo-eletronica", "Demo Eletrônica", "eletronicos", "plan_eletronica").await?;
     if !created {
-        tracing::info!("demo-eletronica already seeded, skipping");
+        // Backfill idempotente: só insere se o tenant (já existente) ainda
+        // não tem nenhum produto -- cobre exatamente o caso descrito acima
+        // sem duplicar nada em quem já tiver os acessórios.
+        let (product_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM products WHERE tenant_id = $1")
+            .bind(&tenant_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if product_count == 0 {
+            tracing::info!("demo-eletronica: catálogo de produtos vazio, aplicando backfill de acessórios");
+            seed_demo_eletronica_accessories(&mut tx, &tenant_id).await?;
+            tx.commit().await?;
+        }
+        tracing::info!("demo-eletronica already seeded, skipping the rest");
         return Ok(());
     }
     tracing::info!("seeding demo-eletronica...");
@@ -549,37 +604,7 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
     }
     let _ = &device_type_ids; // reservado pra quando service_catalog_categories.device_type_id virar obrigatório
 
-    // Acessórios à venda — categoria de produto separada da de serviços
-    // ("Reparos"), pra vitrine/destaques não nascerem vazios.
-    let accessories_category_id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO categories (id, tenant_id, name) VALUES ($1, $2, 'Acessórios')")
-        .bind(&accessories_category_id)
-        .bind(&tenant_id)
-        .execute(&mut *tx)
-        .await?;
-    let accessories: [(&str, &str, f64, i64); 5] = [
-        ("Capinha iPhone 13", "Silicone premium, várias cores", 39.9, 30),
-        ("Película de vidro", "Proteção 9H anti-risco", 19.9, 50),
-        ("Carregador USB-C 20W", "Carregamento rápido original", 79.9, 25),
-        ("Fone Bluetooth TWS", "Cancelamento de ruído, estojo carregador", 129.9, 15),
-        ("Cabo USB-C 1m", "Reforçado, trançado em nylon", 24.9, 40),
-    ];
-    for (name, description, price, quantity) in accessories {
-        sqlx::query(
-            "INSERT INTO products (id, tenant_id, name, description, price, quantity, image_url, category_id, active, cost_price) \
-             VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, 1, $8)",
-        )
-        .bind(Uuid::new_v4().to_string())
-        .bind(&tenant_id)
-        .bind(name)
-        .bind(description)
-        .bind(price)
-        .bind(quantity)
-        .bind(&accessories_category_id)
-        .bind(price * 0.5)
-        .execute(&mut *tx)
-        .await?;
-    }
+    seed_demo_eletronica_accessories(&mut tx, &tenant_id).await?;
 
     // Solicitações de serviço cobrindo todo status do Kanban do painel
     let requests: [(&str, &str, &str, &str, &str, Option<f64>); 8] = [
