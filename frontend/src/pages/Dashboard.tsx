@@ -988,66 +988,106 @@ export default function Dashboard() {
               <section className="uf-glass rounded-2xl p-5">
                 <h2 className="font-bold text-sm mb-1">Ranking de motores de IA</h2>
                 <p className="text-xs text-uf-silver-dim mb-4">
-                  Vale pra TODAS as assistentes de IA, de qualquer loja/ramo — não é configuração por tenant. O motor
-                  no topo (#1) responde primeiro; se ele cair ou não responder, cai automaticamente pro próximo
-                  habilitado da lista, sem o cliente perceber. Use as setas pra promover um motor a padrão.
+                  Vale pra TODAS as assistentes de IA, de qualquer loja/ramo — não é configuração por tenant. O
+                  motor com a faixa verde <strong className="text-uf-silver">"USANDO AGORA"</strong> é quem
+                  realmente responde hoje; se ele cair ou não responder, cai automaticamente pro próximo
+                  <strong className="text-uf-silver"> habilitado</strong> da lista (motores desligados são pulados,
+                  mesmo que estejam no topo). Setas mudam a ORDEM de fallback; o interruptor liga/desliga o motor
+                  sem tirar ele da lista.
                 </p>
                 <ul className="space-y-2 mb-4">
-                  {aiEngines.map((eng, idx) => (
-                    <li
-                      key={eng.id}
-                      className={`flex items-center gap-3 rounded-xl border p-3 ${
-                        idx === 0 ? 'border-uf-blue/40 bg-uf-blue/5' : 'border-white/10'
-                      } ${!eng.enabled ? 'opacity-50' : ''}`}
-                    >
-                      <div className="flex flex-col gap-0.5 shrink-0">
-                        <button
-                          type="button"
-                          disabled={busy || idx === 0}
-                          onClick={() => handleMoveAiEngine(eng.id, 'up')}
-                          className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20"
-                          aria-label="Subir no ranking"
+                  {(() => {
+                    const activeId = aiEngines.find((e) => e.enabled)?.id
+                    return aiEngines.map((eng, idx) => {
+                      const isActive = eng.id === activeId
+                      return (
+                        <li
+                          key={eng.id}
+                          className={`rounded-xl border p-3 transition-colors ${
+                            isActive
+                              ? 'border-emerald-500/50 bg-emerald-500/[0.06]'
+                              : eng.enabled
+                                ? 'border-white/10'
+                                : 'border-white/5 bg-white/[0.015]'
+                          }`}
                         >
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy || idx === aiEngines.length - 1}
-                          onClick={() => handleMoveAiEngine(eng.id, 'down')}
-                          className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20"
-                          aria-label="Descer no ranking"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <span className="text-xs font-mono text-uf-silver-dim w-5 text-center shrink-0">#{idx + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate">
-                          {eng.label} {idx === 0 && <span className="text-[10px] text-uf-blue ml-1">PADRÃO ATUAL</span>}
-                        </p>
-                        <p className="text-xs text-uf-silver-dim truncate">
-                          {eng.provider} · {eng.model}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => handleToggleAiEngine(eng.id, !eng.enabled)}
-                        className="text-xs px-2 py-1 rounded-lg border border-white/10 hover:bg-white/5 shrink-0"
-                      >
-                        {eng.enabled ? 'Habilitado' : 'Desabilitado'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => handleDeleteAiEngine(eng.id)}
-                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400/80 hover:text-red-400 shrink-0"
-                        aria-label="Remover motor"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </li>
-                  ))}
+                          <div className="flex items-center gap-3">
+                            <div className="flex flex-col gap-0.5 shrink-0">
+                              <button
+                                type="button"
+                                disabled={busy || idx === 0}
+                                onClick={() => handleMoveAiEngine(eng.id, 'up')}
+                                className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20"
+                                aria-label="Subir no ranking"
+                              >
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy || idx === aiEngines.length - 1}
+                                onClick={() => handleMoveAiEngine(eng.id, 'down')}
+                                className="p-0.5 rounded hover:bg-white/10 disabled:opacity-20"
+                                aria-label="Descer no ranking"
+                              >
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <span
+                              className={`text-xs font-mono w-5 text-center shrink-0 ${
+                                isActive ? 'text-emerald-400' : 'text-uf-silver-dim'
+                              }`}
+                            >
+                              #{idx + 1}
+                            </span>
+                            <div className={`flex-1 min-w-0 ${!eng.enabled ? 'opacity-40' : ''}`}>
+                              <p className="text-sm font-semibold truncate">{eng.label}</p>
+                              <p className="text-xs text-uf-silver-dim truncate">
+                                {eng.provider} · {eng.model}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleToggleAiEngine(eng.id, !eng.enabled)}
+                              role="switch"
+                              aria-checked={eng.enabled}
+                              aria-label={eng.enabled ? 'Desligar este motor' : 'Ligar este motor'}
+                              className={`relative shrink-0 w-10 h-5.5 rounded-full transition-colors ${
+                                eng.enabled ? 'bg-emerald-500' : 'bg-white/15'
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-0.5 left-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-transform ${
+                                  eng.enabled ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleDeleteAiEngine(eng.id)}
+                              className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400/80 hover:text-red-400 shrink-0"
+                              aria-label="Remover motor"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2 pl-[2.75rem]">
+                            {isActive && (
+                              <span className="text-[10px] font-bold tracking-wide text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                USANDO AGORA
+                              </span>
+                            )}
+                            {!eng.enabled && (
+                              <span className="text-[10px] font-semibold tracking-wide text-uf-silver-dim bg-white/5 px-2 py-0.5 rounded-full">
+                                DESLIGADO — pulado no fallback
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })
+                  })()}
                   {aiEngines.length === 0 && <li className="text-sm text-uf-silver-dim">Nenhum motor cadastrado.</li>}
                 </ul>
                 <form onSubmit={handleCreateAiEngine} className="flex flex-wrap gap-2 items-end">
