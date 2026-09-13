@@ -614,6 +614,13 @@ pub async fn cancelar(
     .execute(&state.pool)
     .await?;
 
+    // Cancelamento voluntário derruba o cupom igual ao cancelamento por
+    // inadimplência (expire_grace_periods em billing.rs) -- antes só o
+    // segundo limpava coupon_code/coupon_kind/etc, deixando o cupom "vivo"
+    // no registro de quem cancelou por vontade própria (inconsistente com
+    // a regra "cancela/muda de plano/inadimplência = perde o cupom").
+    coupons::revoke_subscriber_coupon(&state.pool, &claims.sub, "cancelled").await?;
+
     if let Some(slug) = slug.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         if let Err(e) = crate::routes::onboarding::sync_ecommerce_tenant_status(&state, slug, "cancelado").await
         {

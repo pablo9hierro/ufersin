@@ -30,8 +30,6 @@ interface LayoutCmsEditorProps {
   plans: PlatformPlan[]
   planPrices: Record<string, string>
   onPlanPriceChange: (code: string, value: string) => void
-  planLaunchPrices: Record<string, string>
-  onPlanLaunchPriceChange: (code: string, value: string) => void
   onSavePlan: (code: string) => Promise<void>
   onToggleActive: (code: string, active: boolean) => Promise<void>
   onSavePlanName: (code: string, name: string) => Promise<void>
@@ -53,8 +51,6 @@ export default function LayoutCmsEditor({
   plans,
   planPrices,
   onPlanPriceChange,
-  planLaunchPrices,
-  onPlanLaunchPriceChange,
   onSavePlan,
   onToggleActive,
   onSavePlanName,
@@ -154,31 +150,14 @@ export default function LayoutCmsEditor({
                     if (name && name !== p.name) void onSavePlanName(p.code, name)
                   }}
                 />
-                {/* Rótulo ANTES do campo, os dois num container só -- antes o
-                    rótulo vinha depois do input, e com flex-wrap cada um
-                    quebrava numa linha própria, fazendo o rótulo parecer
-                    descrever o PRÓXIMO campo (o de baixo) em vez do que
-                    vinha antes dele. Resultado real já confirmado: valor
-                    digitado como inauguração era salvo como normal. */}
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-[10px] text-uf-silver-dim">R$/mês normal</span>
+                  <span className="text-[10px] text-uf-silver-dim">R$/mês</span>
                   <input
                     className="input-field w-24 text-sm"
                     value={planPrices[p.code] ?? ''}
                     onChange={(e) => onPlanPriceChange(p.code, e.target.value)}
                     inputMode="decimal"
-                    aria-label={`Preço normal ${p.name}`}
-                  />
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[10px] text-uf-silver-dim">R$/mês inauguração</span>
-                  <input
-                    className="input-field w-24 text-sm"
-                    value={planLaunchPrices[p.code] ?? ''}
-                    onChange={(e) => onPlanLaunchPriceChange(p.code, e.target.value)}
-                    placeholder="sem promo"
-                    inputMode="decimal"
-                    aria-label={`Preço de inauguração ${p.name}`}
+                    aria-label={`Preço ${p.name}`}
                   />
                 </div>
                 <label
@@ -210,11 +189,7 @@ export default function LayoutCmsEditor({
               Ativos públicos:{' '}
               {plans
                 .filter((p) => p.active)
-                .map((p) =>
-                  p.launch_price_monthly != null
-                    ? `${p.name} de R$ ${formatBRL(p.price_monthly)} por R$ ${formatBRL(p.launch_price_monthly)}`
-                    : `${p.name} R$ ${formatBRL(p.price_monthly)}`,
-                )
+                .map((p) => `${p.name} R$ ${formatBRL(p.price_monthly)}`)
                 .join(' · ') || '—'}
             </p>
           </div>

@@ -127,7 +127,15 @@ pub async fn assinar_plano(
     // dias úteis de tolerância (ver billing.rs) -- pagar aqui tem que honrar
     // o MESMO valor_mensal já travado, nunca recalcular pelo preço/cupom
     // atual (isso só volta a valer se a janela expirar e ela virar 'cancelado').
-    let reuse_pending = matches!(status.as_str(), "pendente" | "pausado") && existing_monthly.is_some();
+    // Só reaproveita o valor travado reassinando o MESMO plano (troca de
+    // Pix<->cartão) -- sem o `old_plan == body.plano`, pedir um plano
+    // DIFERENTE enquanto pendente/pausado herdava por engano o preço
+    // congelado do plano antigo em vez de recalcular pelo de tabela do
+    // plano novo (bug real: quebrava a mesma regra de "muda de plano perde
+    // o valor congelado" que já vale certo em mudar_plano).
+    let reuse_pending = matches!(status.as_str(), "pendente" | "pausado")
+        && existing_monthly.is_some()
+        && old_plan.as_deref() == Some(body.plano.as_str());
 
     let cupom_code = body
         .cupom

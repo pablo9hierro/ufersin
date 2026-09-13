@@ -10,8 +10,8 @@ pub struct PlanRow {
     pub code: String,
     pub name: String,
     pub price_monthly: f64,
-    /// Preço promocional/inauguração — quando presente, é o que se cobra de
-    /// fato; `price_monthly` vira o "normal" mostrado riscado ao lado.
+    /// @deprecated preço de inauguração removido — coluna mantida no banco
+    /// só por compatibilidade, nunca mais lida/gravada por nenhuma rota.
     pub launch_price_monthly: Option<f64>,
     pub tagline: String,
     pub features: serde_json::Value,
@@ -59,16 +59,17 @@ pub async fn vertical_for(pool: &PgPool, code: &str) -> Result<String, AppError>
         .ok_or_else(|| AppError::BadRequest("plano inválido ou inativo".to_string()))
 }
 
-/// Valor cobrado de fato: preço de inauguração quando definido, senão o
-/// normal. Fonte única de verdade pra checkout/troca de plano/cupom em cima.
+/// Valor cobrado de fato. Fonte única de verdade pra checkout/troca de
+/// plano/cupom em cima (preço de inauguração foi removido -- `price_monthly`
+/// é a única coluna de precificação; `launch_price_monthly` continua na
+/// tabela só por compatibilidade, mas nunca mais é lido/gravado).
 pub async fn monthly_price(pool: &PgPool, code: &str) -> Result<f64, AppError> {
-    let row: Option<(f64, Option<f64>)> = sqlx::query_as(
-        "SELECT price_monthly, launch_price_monthly FROM platform_plans WHERE code = $1 AND active = true",
-    )
-    .bind(code)
-    .fetch_optional(pool)
-    .await?;
-    row.map(|(normal, launch)| launch.unwrap_or(normal))
+    let row: Option<(f64,)> =
+        sqlx::query_as("SELECT price_monthly FROM platform_plans WHERE code = $1 AND active = true")
+            .bind(code)
+            .fetch_optional(pool)
+            .await?;
+    row.map(|(normal,)| normal)
         .ok_or_else(|| AppError::BadRequest("plano inválido ou inativo".to_string()))
 }
 

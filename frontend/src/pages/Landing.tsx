@@ -6,6 +6,7 @@ import Hero from '../components/landing/Hero'
 import Features from '../components/landing/Features'
 import FiveInOne from '../components/landing/FiveInOne'
 import SystemsShowcase from '../components/landing/SystemsShowcase'
+import Integracoes from '../components/landing/Integracoes'
 import Pricing from '../components/landing/Pricing'
 import HowItWorks from '../components/landing/HowItWorks'
 import Demo from '../components/landing/Demo'
@@ -98,6 +99,7 @@ export default function Landing() {
         <Features />
         <SystemsShowcase />
         <FiveInOne />
+        <Integracoes />
         <Pricing />
         <HowItWorks />
         <Demo />

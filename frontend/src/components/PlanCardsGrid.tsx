@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { Check, Lock, MousePointerClick } from 'lucide-react'
-import { CmsText } from '../lib/cms'
+import { Check, MousePointerClick } from 'lucide-react'
 import { formatBRL, getPlans, getPlansByVertical, priceForCycle, SEMESTRAL_DISCOUNT } from '../lib/plans'
 import type { BillingCycle, PlanoCode, Vertical } from '../lib/api'
 
@@ -83,22 +82,12 @@ export default function PlanCardsGrid({
             <p className={`text-sm mt-1 ${plan.highlight ? 'text-white/80' : 'text-uf-silver-dim'}`}>{plan.tagline}</p>
 
             <div className="mt-6 mb-2">
-              {plan.normalPrice != null && (
-                <p className={`text-sm line-through ${plan.highlight ? 'text-white/50' : 'text-uf-silver-dim/60'}`}>
-                  de R$ {formatBRL(ciclo === 'mensal' ? plan.normalPrice : priceForCycle(plan.normalPrice, ciclo))}
-                </p>
-              )}
               {ciclo === 'mensal' ? (
                 <>
                   <span className={`text-4xl font-black ${plan.highlight ? 'text-white' : ''}`}>
                     R$ {formatBRL(plan.price)}
                   </span>
                   <span className={`text-sm ${plan.highlight ? 'text-white/70' : 'text-uf-silver-dim'}`}>/mês</span>
-                  {plan.normalPrice != null && (
-                    <span className="ml-2 text-[11px] font-bold px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-300 align-middle">
-                      <CmsText contentKey="plans.launch_badge">INAUGURAÇÃO</CmsText>
-                    </span>
-                  )}
                 </>
               ) : (
                 <>
@@ -114,19 +103,6 @@ export default function PlanCardsGrid({
                 </>
               )}
             </div>
-
-            {plan.normalPrice != null && (
-              <p
-                className={`flex items-center gap-1.5 text-[11px] font-medium mb-4 ${
-                  plan.highlight ? 'text-white/80' : 'text-uf-silver-dim'
-                }`}
-              >
-                <Lock className="w-3 h-3 shrink-0" />
-                <CmsText contentKey="plans.launch_lockin_note">
-                  Assine agora e o valor fica vitalício — nunca sobe, mesmo se o preço de inauguração mudar depois.
-                </CmsText>
-              </p>
-            )}
 
             <ul className="mt-6 space-y-3 flex-1">
               {plan.features.map((f) => (

@@ -6,6 +6,7 @@ import { useIsAuthenticated } from '../../lib/authStore'
 
 const LINKS = [
   { href: '#recursos', label: 'Recursos' },
+  { href: '#integracoes', label: 'Integrações' },
   { href: '#planos', label: 'Planos' },
   { href: '#como-funciona', label: 'Como funciona' },
   { href: '#faq', label: 'FAQ' },
