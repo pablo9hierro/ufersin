@@ -60,6 +60,63 @@ const DEMO_ASSISTANT_REPLIES = [
   'Perfeito! Posso te mostrar o catálogo, tirar dúvida sobre entrega/retirada ou já montar seu pedido. Me diz o que você procura.',
   'Anotado! Na sua loja de verdade eu confirmo o estoque na hora, calculo o frete e já gero o Pix — quer que eu simule um pedido completo pra você ver?',
 ]
+// Aba "Serviços" (Essential+) na demo -- antes `admin.services.list()`
+// sempre devolvia `[]` no modo local (mock nunca implementou o feature,
+// comentário antigo dizia "Serviços não estão disponíveis no modo
+// demonstração"), deixando a tela vazia como se estivesse quebrada pro
+// lojista vendo a demo antes de assinar. Seed fixo só de LEITURA -- criar/
+// editar/apagar continuam bloqueados no mock (mensagem clara em vez de
+// fingir que salvou). Precisa bater 100% com `ServiceSchema` (ver
+// `types/product.ts`) porque `adminService.services.list()` valida a
+// resposta com Zod antes de qualquer outra coisa.
+const DEMO_SERVICES = [
+  {
+    id: 'demo-service-1',
+    name: 'Montagem de móvel',
+    description: 'Montagem no local, inclui ferramentas',
+    category_id: null,
+    price: 89.9,
+    active: true,
+    estimated_cost: 0,
+    ingredients: [],
+    extra_costs: [],
+    available_quantity: null,
+    low_stock_threshold: null,
+    manual_quantity: null,
+    quantity_from_stock: false,
+  },
+  {
+    id: 'demo-service-2',
+    name: 'Instalação elétrica simples',
+    description: 'Troca de tomada/interruptor, ponto de luz',
+    category_id: null,
+    price: 120,
+    active: true,
+    estimated_cost: 0,
+    ingredients: [],
+    extra_costs: [],
+    available_quantity: null,
+    low_stock_threshold: null,
+    manual_quantity: null,
+    quantity_from_stock: false,
+  },
+  {
+    id: 'demo-service-3',
+    name: 'Consultoria personalizada',
+    description: 'Atendimento de 1h com especialista',
+    category_id: null,
+    price: 150,
+    active: true,
+    estimated_cost: 0,
+    ingredients: [],
+    extra_costs: [],
+    available_quantity: null,
+    low_stock_threshold: null,
+    manual_quantity: null,
+    quantity_from_stock: false,
+  },
+]
+
 const demoAssistantIa = {
   simulateMessage: async (phone: string, text: string, customerName?: string) => {
     const now = nowIso()
@@ -2312,12 +2369,29 @@ async function pdvCreateSale(payload: {
     total,
     discount_amount: discount,
     motoboy_id: null,
+    pix_payment_id: null,
+    pix_qr_base64: null,
+    pix_copia_cola: null,
     items,
     created_at: nowIso(),
     updated_at: nowIso(),
     sold_by_role: actor.role,
     sold_by_id: actor.id,
   } as Order
+
+  // PDV com Pix + "gerar QR" -- mesma simulação do checkout da vitrine
+  // (ver createOrder acima): sem isso, `orderService.createPixPayment` no
+  // PDV devolvia a venda sem nenhum QR, e a tela de PDV mostrava erro
+  // "Cobrança Pix sem QR / copia-e-cola" em vez de renderizar o código —
+  // bug real achado em auditoria (lojista via a demo "quebrada" bem no
+  // fluxo que mais importa pra decidir assinar).
+  if (payload.payment_method === 'pix') {
+    const copiaCola = fakePixCode()
+    order.pix_payment_id = `local-${uid()}`
+    order.pix_copia_cola = copiaCola
+    order.pix_qr_base64 = await QRCode.toDataURL(copiaCola)
+  }
+
   db.orders.push(order)
   saveDb(db)
   return order
@@ -3054,6 +3128,11 @@ export const localApi = {
   },
   pdv: {
     listProducts: async () => listProducts(),
+    // PDV não vende serviço no modo demo (mock não simula esse fluxo de
+    // venda, `pdvCreateSale` rejeitaria) -- mantém vazio de propósito, pra
+    // não mostrar o toggle "Produtos | Serviços" e deixar o lojista tentar
+    // vender algo que ia falhar no fim. O catálogo de Serviços (tela
+    // Produtos → Serviços, só leitura) já mostra dado seedado -- ver DEMO_SERVICES.
     listServices: async () => [] as { id: string; name: string; description: string; category_name: string | null; price: number; available_quantity: number | null }[],
     createSale: pdvCreateSale,
     notifySale: async () => {},
@@ -3237,7 +3316,11 @@ export const localApi = {
       },
     },
     services: {
-      list: async () => [],
+      // Só leitura (seed fixo) -- mutação continua indisponível no mock local,
+      // mas antes a lista vinha sempre vazia e a aba de Serviços (Essential+)
+      // parecia quebrada/vazia pro lojista vendo a demo. Dado de exemplo
+      // suficiente pra mostrar a tela funcionando de verdade.
+      list: async () => DEMO_SERVICES,
       create: async () => {
         throw new ApiError(400, 'Serviços não estão disponíveis no modo demonstração.')
       },
