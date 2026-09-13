@@ -4,7 +4,7 @@ use axum::Json;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::auth::{hash_password, AdminTenant, AdminUser};
+use crate::auth::{hash_password, AdminTenant, AdminTenantAssistantIaDemo, AdminUser};
 use crate::error::AppError;
 use crate::features::{self, Feature};
 use crate::formulation;
@@ -2243,18 +2243,19 @@ pub struct SimulateAssistantIaMessageInput {
 /// assistant-ia estiver fora do ar.
 pub async fn simulate_assistant_ia_message(
     State(state): State<AppState>,
-    admin: AdminTenant,
+    admin: AdminTenantAssistantIaDemo,
     Json(input): Json<SimulateAssistantIaMessageInput>,
 ) -> Result<StatusCode, AppError> {
-    features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;
+    let admin_tenant_id = admin.tenant_id;
+    features::require_feature(&state.pool, &admin_tenant_id, Feature::Whatsapp).await?;
     let phone = input.phone.trim();
     let text = input.text.trim();
     if phone.is_empty() || text.is_empty() {
         return Err(AppError::BadRequest("phone e text são obrigatórios".to_string()));
     }
-    let store = tenant::load_tenant(&state.pool, &admin.tenant_id).await?;
+    let store = tenant::load_tenant(&state.pool, &admin_tenant_id).await?;
     let slug: Option<(String,)> = sqlx::query_as("SELECT slug FROM tenants WHERE id = $1")
-        .bind(&admin.tenant_id)
+        .bind(&admin_tenant_id)
         .fetch_optional(&state.pool)
         .await?;
     let Some((slug,)) = slug else {
@@ -2354,7 +2355,7 @@ pub struct SetAssistantEnabledInput {
 
 pub async fn assistant_ia_set_conversation_enabled(
     State(state): State<AppState>,
-    admin: AdminTenant,
+    admin: AdminTenantAssistantIaDemo,
     Path(id): Path<String>,
     Json(input): Json<SetAssistantEnabledInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
@@ -2375,7 +2376,7 @@ pub async fn assistant_ia_set_conversation_enabled(
 
 pub async fn assistant_ia_delete_conversation(
     State(state): State<AppState>,
-    admin: AdminTenant,
+    admin: AdminTenantAssistantIaDemo,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
     features::require_feature(&state.pool, &admin.tenant_id, Feature::Whatsapp).await?;

@@ -103,6 +103,42 @@ impl FromRequestParts<AppState> for AdminUser {
     }
 }
 
+/// Como `AdminTenant` (JWT normal OU sessão Sunset legada), mas usa
+/// `ensure_tenant_active_allow_assistant_ia_demo_write` no caminho JWT em vez
+/// de `ensure_tenant_active` -- só pras 3 rotas de simulação do Assistente IA
+/// (ver `routes::admin::simulate_assistant_ia_message` e as duas de
+/// gerenciar conversa), que usam telefone sintético e são a própria
+/// funcionalidade sendo demonstrada na loja seedada (que sempre loga via
+/// JWT, nunca via sessão Sunset legada -- o fallback abaixo mantém o
+/// bloqueio normal pra quem usa esse caminho). Nenhuma outra rota deve usar
+/// este extractor -- toda escrita de catálogo/pedido/etc continua bloqueada
+/// por `AdminUser`/`AdminTenant` normalmente.
+pub struct AdminTenantAssistantIaDemo {
+    pub tenant_id: String,
+}
+
+impl FromRequestParts<AppState> for AdminTenantAssistantIaDemo {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        if let Ok(AuthUser(claims)) = AuthUser::from_request_parts(parts, state).await {
+            if claims.role == "admin" {
+                tenant::ensure_tenant_active_allow_assistant_ia_demo_write(&state.pool, &claims.tenant_id)
+                    .await?;
+                return Ok(AdminTenantAssistantIaDemo {
+                    tenant_id: claims.tenant_id,
+                });
+            }
+        }
+        let SunsetAdminSession { tenant_id, .. } =
+            SunsetAdminSession::from_request_parts(parts, state).await?;
+        Ok(AdminTenantAssistantIaDemo { tenant_id })
+    }
+}
+
 /// Extractor: requires role == admin OR role == cozinha. Cozinha tem conta
 /// própria (`cozinha_users`, login em /api/auth/cozinha/login) mas só
 /// enxerga a tela de Pedidos/Cozinha — usado só nos 3 handlers de pedido que

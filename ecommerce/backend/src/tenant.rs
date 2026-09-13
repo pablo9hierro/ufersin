@@ -94,6 +94,36 @@ pub async fn ensure_tenant_active(
     tenant_id: &str,
     method: &axum::http::Method,
 ) -> Result<(), AppError> {
+    let is_mutation = !matches!(
+        *method,
+        axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
+    );
+    ensure_tenant_not_suspended_and(pool, tenant_id, is_mutation).await
+}
+
+/// Mesma checagem de `ensure_tenant_active` (loja suspensa/cancelada
+/// derruba a sessão igual), mas SEM o bloqueio de escrita na demo seedada --
+/// uso restrito a rotas onde a escrita é a própria funcionalidade sendo
+/// demonstrada e não persiste dado que colide com cliente real (ver
+/// `routes::admin::simulate_assistant_ia_message` e as duas rotas de
+/// gerenciar conversa: telefone sempre sintético "5500...", nunca um número
+/// de verdade). Achado em auditoria: sem isso, "Enviar" no botão "Novo
+/// Chat" da demo `/admin/chat` batia nesse mesmo bloqueio pensado pra
+/// impedir escrita de CATÁLOGO/PEDIDO na loja seedada, e devolvia um 401
+/// "invalid or expired session" confuso (o fallback pra sessão Sunset
+/// legada mascarava o 403 real de `ensure_tenant_active`).
+pub async fn ensure_tenant_active_allow_assistant_ia_demo_write(
+    pool: &PgPool,
+    tenant_id: &str,
+) -> Result<(), AppError> {
+    ensure_tenant_not_suspended_and(pool, tenant_id, false).await
+}
+
+async fn ensure_tenant_not_suspended_and(
+    pool: &PgPool,
+    tenant_id: &str,
+    block_demo_write: bool,
+) -> Result<(), AppError> {
     let status: Option<(String, String)> =
         sqlx::query_as("SELECT status, slug FROM tenants WHERE id = $1")
             .bind(tenant_id)
@@ -105,11 +135,7 @@ pub async fn ensure_tenant_active(
     if matches!(status.as_str(), "suspenso" | "cancelado") {
         return Err(AppError::Unauthorized(LOJA_OFFLINE_MSG.to_string()));
     }
-    let is_mutation = !matches!(
-        *method,
-        axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
-    );
-    if is_mutation && DEMO_TENANT_SLUGS.contains(&slug.as_str()) {
+    if block_demo_write && DEMO_TENANT_SLUGS.contains(&slug.as_str()) {
         return Err(AppError::Forbidden(
             "demo é somente leitura".to_string(),
         ));
