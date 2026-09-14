@@ -48,7 +48,6 @@ const AdminFiscalInutilizar = lazyWithReload(() => import('./pages/admin/AdminFi
 const AdminFiscalCce = lazyWithReload(() => import('./pages/admin/AdminFiscalCce'))
 const AdminFiscalManifestacao = lazyWithReload(() => import('./pages/admin/AdminFiscalManifestacao'))
 const AdminFiscalNuvem = lazyWithReload(() => import('./pages/admin/AdminFiscalNuvem'))
-const AdminFiscalPerfis = lazyWithReload(() => import('./pages/admin/AdminFiscalPerfis'))
 const AdminMercadoPagoPoint = lazyWithReload(() => import('./pages/admin/AdminMercadoPagoPoint'))
 const AdminFinanceiro = lazyWithReload(() => import('./pages/admin/AdminFinanceiro'))
 const AdminSenha = lazyWithReload(() => import('./pages/admin/AdminSenha'))
@@ -398,7 +397,6 @@ export default function App() {
             <Route path="fiscal/cce" element={<AdminFiscalCce />} />
             <Route path="fiscal/manifestacao" element={<AdminFiscalManifestacao />} />
             <Route path="fiscal/nuvem" element={<AdminFiscalNuvem />} />
-            <Route path="fiscal/perfis" element={<AdminFiscalPerfis />} />
             <Route path="mercadopago-point" element={<AdminMercadoPagoPoint />} />
             <Route path="motoboys" element={<AdminMotoboys />} />
             <Route path="crm" element={<AdminCrm />} />

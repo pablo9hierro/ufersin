@@ -1,7 +1,9 @@
-//! CRUD de Perfis fiscais (migration 0056) -- somente no admin da loja
-//! (ecommerce), nao replicado na plataforma/Meu Plano, por decisao
-//! explicita do usuario. Nome e valores sao texto livre (nunca um enum
-//! fixo de "tipos de perfil"); templates ("Venda interna", "Venda
+//! CRUD de Perfis fiscais (migration 0056). A logica real mora nas funcoes
+//! `core_*` abaixo, chamadas tanto pelos handlers `AdminUser` (admin da
+//! loja, JWT) quanto pelos handlers `/internal/fiscal-profiles*`
+//! (routes/internal.rs, chave interna) usados pela plataforma em
+//! Meu Plano -> Financeiro -> Fiscal. Nome e valores sao texto livre (nunca
+//! um enum fixo de "tipos de perfil"); templates ("Venda interna", "Venda
 //! interestadual") sao so sugestao de preenchimento no frontend.
 
 use axum::{
@@ -62,19 +64,23 @@ fn validate_escopo(escopo: &str) -> Result<(), AppError> {
     }
 }
 
-pub async fn list_profiles(
-    State(state): State<AppState>,
-    AdminUser(claims): AdminUser,
-) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
-    require_beta(&state.pool, &claims.tenant_id).await?;
+pub async fn core_list(pool: &sqlx::PgPool, tenant_id: &str) -> Result<Vec<FiscalProfileDto>, AppError> {
+    require_beta(pool, tenant_id).await?;
     let rows: Vec<ProfileRow> = sqlx::query_as(
         "SELECT id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops, escopo FROM fiscal_profiles \
          WHERE tenant_id = $1 ORDER BY is_default DESC, nome",
     )
-    .bind(&claims.tenant_id)
-    .fetch_all(&state.pool)
+    .bind(tenant_id)
+    .fetch_all(pool)
     .await?;
-    Ok(Json(rows.into_iter().map(to_dto).collect()))
+    Ok(rows.into_iter().map(to_dto).collect())
+}
+
+pub async fn list_profiles(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
+    Ok(Json(core_list(&state.pool, &claims.tenant_id).await?))
 }
 
 /// Perfil completo (cfop + allowed_cfops) pra validar override de CFOP no
@@ -156,29 +162,29 @@ fn clean_allowed_cfops(raw: &[String]) -> Vec<String> {
     out
 }
 
-pub async fn create_profile(
-    State(state): State<AppState>,
-    AdminUser(claims): AdminUser,
-    Json(body): Json<UpsertProfileInput>,
-) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
-    require_beta(&state.pool, &claims.tenant_id).await?;
+pub async fn core_create(
+    pool: &sqlx::PgPool,
+    tenant_id: &str,
+    body: &UpsertProfileInput,
+) -> Result<Vec<FiscalProfileDto>, AppError> {
+    require_beta(pool, tenant_id).await?;
     if body.nome.trim().is_empty() {
         return Err(AppError::BadRequest("nome do perfil é obrigatório".to_string()));
     }
-    validate_format(&body)?;
+    validate_format(body)?;
     let escopo = escopo_ou_outro(&body.escopo);
     let has_default: Option<(bool,)> =
         sqlx::query_as("SELECT true FROM fiscal_profiles WHERE tenant_id = $1 AND is_default LIMIT 1")
-            .bind(&claims.tenant_id)
-            .fetch_optional(&state.pool)
+            .bind(tenant_id)
+            .fetch_optional(pool)
             .await?;
     // escopo "padrao" implica is_default -- mesma exclusividade de
     // set_default_profile (so um is_default = true por tenant).
     let is_default = escopo == "padrao" || has_default.is_none();
-    let mut tx = state.pool.begin().await?;
+    let mut tx = pool.begin().await?;
     if is_default {
         sqlx::query("UPDATE fiscal_profiles SET is_default = false WHERE tenant_id = $1")
-            .bind(&claims.tenant_id)
+            .bind(tenant_id)
             .execute(&mut *tx)
             .await?;
     }
@@ -187,7 +193,7 @@ pub async fn create_profile(
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(Uuid::new_v4().to_string())
-    .bind(&claims.tenant_id)
+    .bind(tenant_id)
     .bind(body.nome.trim())
     .bind(non_empty(&body.cfop))
     .bind(non_empty(&body.cst))
@@ -199,27 +205,35 @@ pub async fn create_profile(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    list_profiles(State(state), AdminUser(claims)).await
+    core_list(pool, tenant_id).await
 }
 
-pub async fn update_profile(
+pub async fn create_profile(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
-    Path(id): Path<String>,
     Json(body): Json<UpsertProfileInput>,
 ) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
-    require_beta(&state.pool, &claims.tenant_id).await?;
+    Ok(Json(core_create(&state.pool, &claims.tenant_id, &body).await?))
+}
+
+pub async fn core_update(
+    pool: &sqlx::PgPool,
+    tenant_id: &str,
+    id: &str,
+    body: &UpsertProfileInput,
+) -> Result<Vec<FiscalProfileDto>, AppError> {
+    require_beta(pool, tenant_id).await?;
     if body.nome.trim().is_empty() {
         return Err(AppError::BadRequest("nome do perfil é obrigatório".to_string()));
     }
-    validate_format(&body)?;
+    validate_format(body)?;
     let escopo = escopo_ou_outro(&body.escopo);
-    let mut tx = state.pool.begin().await?;
+    let mut tx = pool.begin().await?;
     // escopo "padrao" implica is_default -- mesma exclusividade de
     // set_default_profile (so um is_default = true por tenant).
     if escopo == "padrao" {
         sqlx::query("UPDATE fiscal_profiles SET is_default = false WHERE tenant_id = $1")
-            .bind(&claims.tenant_id)
+            .bind(tenant_id)
             .execute(&mut *tx)
             .await?;
     }
@@ -228,8 +242,8 @@ pub async fn update_profile(
            allowed_cfops = $8, escopo = $9, is_default = is_default OR $9 = 'padrao', updated_at = now()::text \
          WHERE tenant_id = $1 AND id = $2",
     )
-    .bind(&claims.tenant_id)
-    .bind(&id)
+    .bind(tenant_id)
+    .bind(id)
     .bind(body.nome.trim())
     .bind(non_empty(&body.cfop))
     .bind(non_empty(&body.cst))
@@ -243,47 +257,64 @@ pub async fn update_profile(
         return Err(AppError::NotFound("perfil fiscal não encontrado".to_string()));
     }
     tx.commit().await?;
-    list_profiles(State(state), AdminUser(claims)).await
+    core_list(pool, tenant_id).await
+}
+
+pub async fn update_profile(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+    Json(body): Json<UpsertProfileInput>,
+) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
+    Ok(Json(core_update(&state.pool, &claims.tenant_id, &id, &body).await?))
 }
 
 /// Nunca mais de um perfil default por tenant (garantido pelo índice
 /// único parcial da migration 0056) -- mesmo padrão de set_default_cfop.
-pub async fn set_default_profile(
-    State(state): State<AppState>,
-    AdminUser(claims): AdminUser,
-    Path(id): Path<String>,
-) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
-    require_beta(&state.pool, &claims.tenant_id).await?;
-    let mut tx = state.pool.begin().await?;
+pub async fn core_set_default(pool: &sqlx::PgPool, tenant_id: &str, id: &str) -> Result<Vec<FiscalProfileDto>, AppError> {
+    require_beta(pool, tenant_id).await?;
+    let mut tx = pool.begin().await?;
     sqlx::query("UPDATE fiscal_profiles SET is_default = false WHERE tenant_id = $1")
-        .bind(&claims.tenant_id)
+        .bind(tenant_id)
         .execute(&mut *tx)
         .await?;
     let updated = sqlx::query("UPDATE fiscal_profiles SET is_default = true WHERE tenant_id = $1 AND id = $2")
-        .bind(&claims.tenant_id)
-        .bind(&id)
+        .bind(tenant_id)
+        .bind(id)
         .execute(&mut *tx)
         .await?;
     if updated.rows_affected() == 0 {
         return Err(AppError::NotFound("perfil fiscal não encontrado".to_string()));
     }
     tx.commit().await?;
-    list_profiles(State(state), AdminUser(claims)).await
+    core_list(pool, tenant_id).await
+}
+
+pub async fn set_default_profile(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
+    Ok(Json(core_set_default(&state.pool, &claims.tenant_id, &id).await?))
 }
 
 /// Produtos vinculados a este perfil ficam com `fiscal_profile_id = NULL`
 /// (ON DELETE SET NULL, migration 0057) -- nunca apaga o produto, so
 /// deixa de herdar (fica sem CFOP efetivo ate o lojista linkar outro).
+pub async fn core_delete(pool: &sqlx::PgPool, tenant_id: &str, id: &str) -> Result<Vec<FiscalProfileDto>, AppError> {
+    require_beta(pool, tenant_id).await?;
+    sqlx::query("DELETE FROM fiscal_profiles WHERE tenant_id = $1 AND id = $2")
+        .bind(tenant_id)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    core_list(pool, tenant_id).await
+}
+
 pub async fn delete_profile(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
     Path(id): Path<String>,
 ) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
-    require_beta(&state.pool, &claims.tenant_id).await?;
-    sqlx::query("DELETE FROM fiscal_profiles WHERE tenant_id = $1 AND id = $2")
-        .bind(&claims.tenant_id)
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
-    list_profiles(State(state), AdminUser(claims)).await
+    Ok(Json(core_delete(&state.pool, &claims.tenant_id, &id).await?))
 }

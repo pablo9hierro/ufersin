@@ -1086,6 +1086,18 @@ async fn main() -> anyhow::Result<()> {
         .route("/internal/cfops/default", post(routes::internal::set_default_cfop))
         .route("/internal/cfops/remove", post(routes::internal::remove_cfop))
         .route(
+            "/internal/fiscal-profiles",
+            get(routes::internal::list_fiscal_profiles).post(routes::internal::create_fiscal_profile),
+        )
+        .route(
+            "/internal/fiscal-profiles/{id}",
+            put(routes::internal::update_fiscal_profile).delete(routes::internal::delete_fiscal_profile),
+        )
+        .route(
+            "/internal/fiscal-profiles/{id}/default",
+            put(routes::internal::set_default_fiscal_profile),
+        )
+        .route(
             "/internal/fiscal-defaults",
             get(routes::internal::get_fiscal_defaults).post(routes::internal::set_fiscal_defaults),
         )

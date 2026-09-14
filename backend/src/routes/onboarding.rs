@@ -2201,6 +2201,144 @@ pub async fn classificacao_tributaria(
     Ok(Json(parsed))
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FiscalProfileDto {
+    pub id: String,
+    pub nome: String,
+    pub cfop: Option<String>,
+    pub cst: Option<String>,
+    pub csosn: Option<String>,
+    pub cclass_trib: Option<String>,
+    pub is_default: bool,
+    pub allowed_cfops: Vec<String>,
+    pub escopo: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct FiscalProfileInput {
+    pub nome: String,
+    #[serde(default)]
+    pub cfop: Option<String>,
+    #[serde(default)]
+    pub cst: Option<String>,
+    #[serde(default)]
+    pub csosn: Option<String>,
+    #[serde(default)]
+    pub cclass_trib: Option<String>,
+    #[serde(default)]
+    pub allowed_cfops: Vec<String>,
+    #[serde(default)]
+    pub escopo: Option<String>,
+}
+
+async fn fiscal_profiles_parse(resp: reqwest::Response) -> Result<Vec<FiscalProfileDto>, AppError> {
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::BadRequest(format!("{status}: {text}")));
+    }
+    resp.json()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-profiles parse failed: {e}")))
+}
+
+/// Perfis fiscais (migration 0056) -- mesma tabela do painel da loja
+/// (ecommerce/backend routes/fiscal_profiles.rs), agora gerenciada também
+/// por aqui (Meu Plano -> Financeiro -> Fiscal) via proxy de chave interna.
+pub async fn list_fiscal_profiles(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    let url = ecommerce_internal_url(&state, "/internal/fiscal-profiles")?;
+    let resp = state
+        .http
+        .get(&url)
+        .query(&[("tenant_slug", &slug)])
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-profiles unreachable: {e}")))?;
+    Ok(Json(fiscal_profiles_parse(resp).await?))
+}
+
+pub async fn create_fiscal_profile(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<FiscalProfileInput>,
+) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    let url = ecommerce_internal_url(&state, "/internal/fiscal-profiles")?;
+    let mut payload = serde_json::to_value(&body).unwrap_or_default();
+    payload["tenant_slug"] = serde_json::Value::String(slug);
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-profiles unreachable: {e}")))?;
+    Ok(Json(fiscal_profiles_parse(resp).await?))
+}
+
+pub async fn update_fiscal_profile(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Path(id): Path<String>,
+    Json(body): Json<FiscalProfileInput>,
+) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    let url = ecommerce_internal_url(&state, &format!("/internal/fiscal-profiles/{id}"))?;
+    let mut payload = serde_json::to_value(&body).unwrap_or_default();
+    payload["tenant_slug"] = serde_json::Value::String(slug);
+    let resp = state
+        .http
+        .put(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-profiles unreachable: {e}")))?;
+    Ok(Json(fiscal_profiles_parse(resp).await?))
+}
+
+pub async fn delete_fiscal_profile(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    let url = ecommerce_internal_url(&state, &format!("/internal/fiscal-profiles/{id}"))?;
+    let resp = state
+        .http
+        .delete(&url)
+        .query(&[("tenant_slug", &slug)])
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-profiles unreachable: {e}")))?;
+    Ok(Json(fiscal_profiles_parse(resp).await?))
+}
+
+pub async fn set_default_fiscal_profile(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
+    let slug = subscriber_slug(&state, &claims.sub).await?;
+    let url = ecommerce_internal_url(&state, &format!("/internal/fiscal-profiles/{id}/default"))?;
+    let resp = state
+        .http
+        .put(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .json(&serde_json::json!({ "tenant_slug": slug }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-profiles unreachable: {e}")))?;
+    Ok(Json(fiscal_profiles_parse(resp).await?))
+}
+
 async fn sync_fiscal_config(state: &AppState, slug: &str, empresa_id: &str, ambiente: &str) -> Result<(), AppError> {
     if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
         return Ok(());

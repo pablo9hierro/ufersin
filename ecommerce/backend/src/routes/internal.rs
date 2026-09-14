@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -729,6 +729,84 @@ pub async fn remove_cfop(
         axum::extract::Query(CfopListQuery { tenant_slug: body.tenant_slug }),
     )
     .await
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FiscalProfileListQuery {
+    pub tenant_slug: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FiscalProfileMutationInput {
+    pub tenant_slug: String,
+    #[serde(flatten)]
+    pub body: crate::routes::fiscal_profiles::UpsertProfileInput,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FiscalProfileIdQuery {
+    pub tenant_slug: String,
+}
+
+/// Perfis fiscais (migration 0056) -- mesma tabela `fiscal_profiles` do
+/// painel da loja (routes/fiscal_profiles.rs), só que acessada pela
+/// plataforma via chave interna (Meu Plano -> Financeiro -> Fiscal).
+pub async fn list_fiscal_profiles(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<FiscalProfileListQuery>,
+) -> Result<Json<Vec<crate::routes::fiscal_profiles::FiscalProfileDto>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &q.tenant_slug).await?;
+    Ok(Json(crate::routes::fiscal_profiles::core_list(&state.pool, &tenant_id).await?))
+}
+
+pub async fn create_fiscal_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<FiscalProfileMutationInput>,
+) -> Result<Json<Vec<crate::routes::fiscal_profiles::FiscalProfileDto>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &input.tenant_slug).await?;
+    Ok(Json(crate::routes::fiscal_profiles::core_create(&state.pool, &tenant_id, &input.body).await?))
+}
+
+pub async fn update_fiscal_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<FiscalProfileMutationInput>,
+) -> Result<Json<Vec<crate::routes::fiscal_profiles::FiscalProfileDto>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &input.tenant_slug).await?;
+    Ok(Json(crate::routes::fiscal_profiles::core_update(&state.pool, &tenant_id, &id, &input.body).await?))
+}
+
+pub async fn delete_fiscal_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<FiscalProfileIdQuery>,
+) -> Result<Json<Vec<crate::routes::fiscal_profiles::FiscalProfileDto>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &q.tenant_slug).await?;
+    Ok(Json(crate::routes::fiscal_profiles::core_delete(&state.pool, &tenant_id, &id).await?))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetDefaultFiscalProfileInput {
+    pub tenant_slug: String,
+}
+
+pub async fn set_default_fiscal_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<SetDefaultFiscalProfileInput>,
+) -> Result<Json<Vec<crate::routes::fiscal_profiles::FiscalProfileDto>>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let tenant_id = tenant_id_by_slug(&state, &input.tenant_slug).await?;
+    Ok(Json(crate::routes::fiscal_profiles::core_set_default(&state.pool, &tenant_id, &id).await?))
 }
 
 #[derive(Debug, Serialize, Default)]

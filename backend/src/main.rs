@@ -263,6 +263,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/onboarding/classificacao-tributaria",
             get(routes::onboarding::classificacao_tributaria),
         )
+        .route(
+            "/api/onboarding/fiscal-profiles",
+            get(routes::onboarding::list_fiscal_profiles).post(routes::onboarding::create_fiscal_profile),
+        )
+        .route(
+            "/api/onboarding/fiscal-profiles/{id}",
+            put(routes::onboarding::update_fiscal_profile).delete(routes::onboarding::delete_fiscal_profile),
+        )
+        .route(
+            "/api/onboarding/fiscal-profiles/{id}/default",
+            put(routes::onboarding::set_default_fiscal_profile),
+        )
         .route("/api/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start))
         .route("/api/mercadopago/oauth/callback", get(mercadopago_oauth::oauth_callback))
         .route("/api/mercadopago/oauth/disconnect", post(mercadopago_oauth::oauth_disconnect))

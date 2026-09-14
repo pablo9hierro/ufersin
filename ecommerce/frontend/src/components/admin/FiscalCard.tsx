@@ -4,6 +4,7 @@ import Card from '../ui/Card'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
 import type { CfopOption, FiscalSettings, TenantCfop } from '../../lib/api'
+import { platformOrigin } from '../../lib/platformUrl'
 
 /** Beta: NF-e/NFC-e via módulo Jubilados, atrás de Feature::EmissaoFiscal.
  * Cadastro fiscal da empresa (CNPJ/certificado) fica em Meu Plano →
@@ -124,6 +125,14 @@ export default function FiscalCard({ className = 'p-4 mb-6' }: { className?: str
         Cadastro da empresa (CNPJ, certificado) fica em Meu Plano → Financeiro → Fiscal. Aqui você ajusta o ambiente,
         o CFOP padrão e se a emissão acontece sozinha ao confirmar o pagamento.
       </p>
+      <a
+        href={`${platformOrigin()}/meu-plano`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-xs underline text-son-silver-dim hover:text-son-pink inline-block mb-4"
+      >
+        Configurar perfis fiscais → Meu Plano → Financeiro → Fiscal
+      </a>
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin text-son-pink" />
       ) : (

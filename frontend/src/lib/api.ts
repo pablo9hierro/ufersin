@@ -326,6 +326,44 @@ export interface FiscalDefaults {
   cest_padrao: string | null
   cclass_trib_padrao: string | null
 }
+export const FISCAL_ESCOPOS = [
+  { value: 'padrao', label: 'Padrão (venda interna)' },
+  { value: 'cpf_fora_estado', label: 'CPF fora do estado' },
+  { value: 'cnpj_fora_estado_nao_contribuinte', label: 'CNPJ fora do estado — não contribuinte' },
+  { value: 'cnpj_fora_estado_contribuinte', label: 'CNPJ fora do estado — contribuinte (revenda)' },
+  { value: 'outro', label: 'Outro' },
+] as const
+export type FiscalEscopo = (typeof FISCAL_ESCOPOS)[number]['value']
+/** Os 4 escopos obrigatórios pra `auto_emitir` ser permitido (ver
+ * ecommerce/backend fiscal.rs::update_settings) -- "outro" é opcional. */
+export const FISCAL_ESCOPOS_OBRIGATORIOS: FiscalEscopo[] = [
+  'padrao',
+  'cpf_fora_estado',
+  'cnpj_fora_estado_nao_contribuinte',
+  'cnpj_fora_estado_contribuinte',
+]
+
+export interface FiscalProfile {
+  id: string
+  nome: string
+  cfop: string | null
+  cst: string | null
+  csosn: string | null
+  cclass_trib: string | null
+  is_default: boolean
+  allowed_cfops: string[]
+  escopo: FiscalEscopo
+}
+export interface FiscalProfileInput {
+  nome: string
+  cfop: string | null
+  cst: string | null
+  csosn: string | null
+  cclass_trib: string | null
+  allowed_cfops: string[]
+  escopo: FiscalEscopo
+}
+
 /** Só os campos usados na UI -- o Jubilados devolve bem mais colunas
  * (reduções de IBS/CBS, tipo de alíquota etc.) que não renderizamos aqui. */
 export interface ClassificacaoTributariaItem {
@@ -686,6 +724,17 @@ export const api = {
       request<CfopOption[]>('/api/onboarding/cfops/default', { method: 'POST', body: JSON.stringify({ codigo }) }),
     remove: (codigo: string) =>
       request<CfopOption[]>('/api/onboarding/cfops/remove', { method: 'POST', body: JSON.stringify({ codigo }) }),
+  },
+  fiscalProfiles: {
+    list: () => request<FiscalProfile[]>('/api/onboarding/fiscal-profiles'),
+    create: (input: FiscalProfileInput) =>
+      request<FiscalProfile[]>('/api/onboarding/fiscal-profiles', { method: 'POST', body: JSON.stringify(input) }),
+    update: (id: string, input: FiscalProfileInput) =>
+      request<FiscalProfile[]>(`/api/onboarding/fiscal-profiles/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+    delete: (id: string) =>
+      request<FiscalProfile[]>(`/api/onboarding/fiscal-profiles/${id}`, { method: 'DELETE' }),
+    setDefault: (id: string) =>
+      request<FiscalProfile[]>(`/api/onboarding/fiscal-profiles/${id}/default`, { method: 'PUT' }),
   },
   getFiscalDefaults: () => request<FiscalDefaults>('/api/onboarding/fiscal-defaults'),
   salvarFiscalDefaults: (input: FiscalDefaults) =>

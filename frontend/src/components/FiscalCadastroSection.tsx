@@ -1,16 +1,28 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, FileText, Loader2, Plus, Save, ShieldCheck, Star, Trash2, Upload } from 'lucide-react'
+import { CheckCircle2, FileText, Layers, Loader2, Plus, Save, ShieldCheck, Star, Trash2, Upload, X } from 'lucide-react'
 import {
   api,
   ApiError,
+  FISCAL_ESCOPOS,
+  FISCAL_ESCOPOS_OBRIGATORIOS,
   type CertificadoStatus,
   type CfopOption,
   type ClassificacaoTributariaItem,
   type FiscalCityOption,
   type FiscalConfigInput,
   type FiscalDefaults,
+  type FiscalEscopo,
+  type FiscalProfile,
+  type FiscalProfileInput,
   type FiscalStateOption,
 } from '../lib/api'
+
+// Mesma regra de formato de ecommerce/backend fiscal/validation.rs --
+// duplicada aqui pra UX (backend sempre revalida).
+function isValidCfopFormat(v: string): boolean {
+  const d = v.replace(/\D/g, '')
+  return d.length === 4 && d !== '0000'
+}
 
 // Códigos oficiais fixos (Convênio s/n 70/97 Anexo/Ajuste SINIEF 07/05) --
 // não mudam com frequência, seguros pra hardcode (sem tabela de origem
@@ -41,6 +53,16 @@ const CSOSN_OPTIONS = [
   { value: '500', label: '500 — ICMS cobrado anteriormente por ST/antecipação' },
   { value: '900', label: '900 — Outros' },
 ]
+
+const EMPTY_PROFILE: FiscalProfileInput = {
+  nome: '',
+  cfop: null,
+  cst: null,
+  csosn: null,
+  cclass_trib: null,
+  allowed_cfops: [],
+  escopo: 'outro',
+}
 
 const EMPTY: FiscalConfigInput = {
   cnpj: '',
@@ -102,6 +124,16 @@ export default function FiscalCadastroSection() {
 
   const [classTribList, setClassTribList] = useState<ClassificacaoTributariaItem[]>([])
   const [classTribQuery, setClassTribQuery] = useState('')
+
+  // Perfis fiscais (migration 0056) -- CRUD portado de
+  // ecommerce/frontend AdminFiscalPerfis.tsx pra cá (Meu Plano).
+  const [profiles, setProfiles] = useState<FiscalProfile[]>([])
+  const [profilesLoading, setProfilesLoading] = useState(true)
+  const [profilesError, setProfilesError] = useState<string | null>(null)
+  const [profileEditingId, setProfileEditingId] = useState<string | 'new' | null>(null)
+  const [profileForm, setProfileForm] = useState<FiscalProfileInput>(EMPTY_PROFILE)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [allowedCfopInput, setAllowedCfopInput] = useState('')
 
   useEffect(() => {
     api.fiscalStates().then(setStates).catch(() => {})
@@ -282,6 +314,101 @@ export default function FiscalCadastroSection() {
       setSavingDefaults(false)
     }
   }
+
+  const loadProfiles = async () => {
+    setProfilesError(null)
+    try {
+      setProfiles(await api.fiscalProfiles.list())
+    } catch (e) {
+      setProfilesError(e instanceof ApiError ? e.message : 'Não foi possível carregar os perfis fiscais.')
+    } finally {
+      setProfilesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadProfiles()
+  }, [])
+
+  const startNewProfile = () => {
+    setProfileForm(EMPTY_PROFILE)
+    setAllowedCfopInput('')
+    setProfileEditingId('new')
+  }
+
+  const startEditProfile = (p: FiscalProfile) => {
+    setProfileForm({
+      nome: p.nome,
+      cfop: p.cfop,
+      cst: p.cst,
+      csosn: p.csosn,
+      cclass_trib: p.cclass_trib,
+      allowed_cfops: p.allowed_cfops,
+      escopo: p.escopo,
+    })
+    setAllowedCfopInput('')
+    setProfileEditingId(p.id)
+  }
+
+  const cancelEditProfile = () => {
+    setProfileEditingId(null)
+    setProfileForm(EMPTY_PROFILE)
+  }
+
+  const addAllowedCfop = () => {
+    const v = allowedCfopInput.trim()
+    if (!v || !isValidCfopFormat(v) || profileForm.allowed_cfops.includes(v)) return
+    setProfileForm((f) => ({ ...f, allowed_cfops: [...f.allowed_cfops, v] }))
+    setAllowedCfopInput('')
+  }
+
+  const saveProfile = async () => {
+    if (!profileForm.nome.trim()) {
+      setProfilesError('Dê um nome pro perfil (ex: "Venda interna PB").')
+      return
+    }
+    setProfileSaving(true)
+    setProfilesError(null)
+    const payload: FiscalProfileInput = {
+      ...profileForm,
+      nome: profileForm.nome.trim(),
+      cfop: profileForm.cfop?.trim() || null,
+      cst: profileForm.cst?.trim() || null,
+      csosn: profileForm.csosn?.trim() || null,
+      cclass_trib: profileForm.cclass_trib?.trim() || null,
+    }
+    try {
+      const list =
+        profileEditingId === 'new'
+          ? await api.fiscalProfiles.create(payload)
+          : await api.fiscalProfiles.update(profileEditingId as string, payload)
+      setProfiles(list)
+      cancelEditProfile()
+    } catch (e) {
+      setProfilesError(e instanceof ApiError ? e.message : 'Não foi possível salvar o perfil fiscal.')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
+  const removeProfile = async (p: FiscalProfile) => {
+    if (!window.confirm(`Excluir o perfil "${p.nome}"? Produtos vinculados a ele deixam de ter CFOP/CST/CSOSN efetivo até você linkar outro perfil.`)) return
+    try {
+      setProfiles(await api.fiscalProfiles.delete(p.id))
+    } catch (e) {
+      setProfilesError(e instanceof ApiError ? e.message : 'Não foi possível excluir o perfil.')
+    }
+  }
+
+  const setDefaultProfile = async (p: FiscalProfile) => {
+    try {
+      setProfiles(await api.fiscalProfiles.setDefault(p.id))
+    } catch (e) {
+      setProfilesError(e instanceof ApiError ? e.message : 'Não foi possível definir o perfil padrão.')
+    }
+  }
+
+  const escoposPresentes = new Set(profiles.map((p) => p.escopo))
 
   const classTribMatches =
     classTribQuery.trim().length < 2
@@ -690,6 +817,202 @@ export default function FiscalCadastroSection() {
         </button>
         {defaultsSaved && <p className="text-xs text-emerald-400 mt-1">Padrões salvos.</p>}
         {defaultsError && <p className="error-msg mt-1">{defaultsError}</p>}
+      </div>
+
+      <div className="border-t border-white/10" />
+
+      {/* Perfis fiscais (migration 0056) -- portado do admin da loja pra cá.
+       * O checklist abaixo mostra de cara se os 4 escopos obrigatórios pra
+       * emissão automática (auto_emitir) já existem, sem o lojista ter que
+       * adivinhar (ver ecommerce/backend fiscal.rs::update_settings). */}
+      <div>
+        {sectionTitle('Perfis fiscais')}
+        <p className="text-xs text-uf-silver-dim mb-2">
+          Cada perfil agrupa CFOP/CST/CSOSN/Classificação Tributária pra um tipo de venda. A venda escolhe o perfil
+          automaticamente pelo escopo (ex: cliente de outro estado) — o produto não precisa ser editado.
+        </p>
+
+        <div className="uf-glass rounded-lg p-3 mb-3 space-y-1">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-uf-silver-dim/70 mb-1">
+            Escopos obrigatórios pra emissão automática
+          </p>
+          {FISCAL_ESCOPOS_OBRIGATORIOS.map((escopo) => {
+            const ok = escoposPresentes.has(escopo)
+            const label = FISCAL_ESCOPOS.find((e) => e.value === escopo)?.label ?? escopo
+            return (
+              <div key={escopo} className="flex items-center gap-1.5 text-sm">
+                {ok ? <span className="text-emerald-400">✅</span> : <span className="text-red-400">❌</span>}
+                {label}
+              </div>
+            )
+          })}
+        </div>
+
+        {profilesError && <p className="error-msg mb-2">{profilesError}</p>}
+
+        {profilesLoading ? (
+          <div className="flex items-center gap-2 text-uf-silver-dim text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" /> Carregando perfis fiscais…
+          </div>
+        ) : profileEditingId ? (
+          <div className="uf-glass rounded-lg p-3 space-y-3">
+            <div>
+              <label className="label">Nome do perfil</label>
+              <input
+                className="input-field"
+                placeholder='ex: "Venda interna PB"'
+                value={profileForm.nome}
+                onChange={(e) => setProfileForm((f) => ({ ...f, nome: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="label">Escopo</label>
+              <select
+                className="input-field"
+                value={profileForm.escopo}
+                onChange={(e) => setProfileForm((f) => ({ ...f, escopo: e.target.value as FiscalEscopo }))}
+              >
+                {FISCAL_ESCOPOS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">CFOP</label>
+                <input
+                  className="input-field"
+                  placeholder="ex: 5102"
+                  value={profileForm.cfop ?? ''}
+                  onChange={(e) => setProfileForm((f) => ({ ...f, cfop: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="label">Classificação Tributária (IBS/CBS)</label>
+                <input
+                  className="input-field"
+                  value={profileForm.cclass_trib ?? ''}
+                  onChange={(e) => setProfileForm((f) => ({ ...f, cclass_trib: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="label">CST (regime normal)</label>
+                <select
+                  className="input-field"
+                  value={profileForm.cst ?? ''}
+                  onChange={(e) => setProfileForm((f) => ({ ...f, cst: e.target.value }))}
+                >
+                  <option value="">Não define (usar CSOSN)</option>
+                  {CST_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">CSOSN (Simples Nacional)</label>
+                <select
+                  className="input-field"
+                  value={profileForm.csosn ?? ''}
+                  onChange={(e) => setProfileForm((f) => ({ ...f, csosn: e.target.value }))}
+                >
+                  <option value="">Não define (usar CST)</option>
+                  {CSOSN_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="label">CFOPs alternativos habilitados neste perfil</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {profileForm.allowed_cfops.map((cfop) => (
+                  <span key={cfop} className="inline-flex items-center gap-1 text-xs bg-white/10 rounded-full pl-2.5 pr-1 py-1">
+                    {cfop}
+                    <button
+                      type="button"
+                      onClick={() => setProfileForm((f) => ({ ...f, allowed_cfops: f.allowed_cfops.filter((c) => c !== cfop) }))}
+                      className="p-0.5 rounded-full hover:bg-white/10"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  className="input-field flex-1"
+                  value={allowedCfopInput}
+                  onChange={(e) => setAllowedCfopInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addAllowedCfop())}
+                  placeholder="ex: 5949"
+                />
+                <button type="button" onClick={addAllowedCfop} disabled={!allowedCfopInput.trim()} className="btn-secondary px-3">
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={saveProfile}
+                disabled={profileSaving}
+                className="btn-primary flex-1 py-2.5 flex items-center justify-center gap-2"
+              >
+                {profileSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salvar perfil
+              </button>
+              <button type="button" onClick={cancelEditProfile} className="btn-secondary px-4">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={startNewProfile} className="btn-primary py-2 px-4 flex items-center gap-2 mb-3">
+            <Plus className="w-4 h-4" /> Novo perfil
+          </button>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2 mt-3">
+          {profiles.map((p) => (
+            <div key={p.id} className="uf-glass rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold flex items-center gap-1.5 text-sm">
+                  <Layers className="w-3.5 h-3.5" />
+                  {p.nome}
+                  {p.is_default && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+                </h3>
+                <div className="flex gap-1">
+                  {!p.is_default && (
+                    <button
+                      type="button"
+                      onClick={() => setDefaultProfile(p)}
+                      title="Definir como padrão"
+                      className="p-1.5 rounded hover:bg-white/10 text-uf-silver-dim"
+                    >
+                      <Star className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button type="button" onClick={() => removeProfile(p)} title="Excluir" className="p-1.5 rounded hover:bg-white/10 text-red-400">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="text-xs text-uf-silver-dim space-y-0.5">
+                <div>Escopo: {FISCAL_ESCOPOS.find((e) => e.value === p.escopo)?.label ?? p.escopo}</div>
+                <div>CFOP: {p.cfop ?? '—'}{p.allowed_cfops.length > 0 && ` (+${p.allowed_cfops.length} alternativo${p.allowed_cfops.length > 1 ? 's' : ''})`}</div>
+                <div>CST/CSOSN: {p.cst ?? p.csosn ?? '—'}</div>
+              </div>
+              <button type="button" onClick={() => startEditProfile(p)} className="text-xs underline text-uf-silver-dim">
+                Editar
+              </button>
+            </div>
+          ))}
+          {profiles.length === 0 && !profileEditingId && !profilesLoading && (
+            <p className="text-sm text-uf-silver-dim">Nenhum perfil fiscal cadastrado ainda.</p>
+          )}
+        </div>
       </div>
 
       <button
