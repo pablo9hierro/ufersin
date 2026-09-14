@@ -26,7 +26,7 @@ import { pdvService } from '../../services/pdvService'
 import type { Order, PaymentMethod, Product } from '../../types'
 import type { PublicService } from '../../services/serviceService'
 import type { FiscalProfile } from '../../lib/api'
-import { IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE, isValidDocumento } from '../../lib/fiscalValidation'
+import { IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE, isValidDocumento, UF_OPTIONS } from '../../lib/fiscalValidation'
 import DocumentoInput from '../../components/ui/DocumentoInput'
 import { Wrench } from 'lucide-react'
 import CashAmountInput from '../../components/CashAmountInput'
@@ -130,6 +130,7 @@ export default function AdminPdv() {
   const [emitirNota, setEmitirNota] = useState(false)
   const [notaDocTipo, setNotaDocTipo] = useState<'cpf' | 'cnpj'>('cpf')
   const [notaDocValor, setNotaDocValor] = useState('')
+  const [notaUf, setNotaUf] = useState('')
   // fiscal-part-2: só faz sentido pra CNPJ (afeta CFOP/CST em venda
   // interestadual) -- default "não" (mais comum: comprador final).
   const [notaContribuinteIcms, setNotaContribuinteIcms] = useState(false)
@@ -364,6 +365,7 @@ export default function AdminPdv() {
     setCardInstallments(1)
     setEmitirNota(false)
     setNotaDocValor('')
+    setNotaUf('')
     setNotaProfileMode('automatico')
     setNotaProfileId('')
     pdvService.listProducts().then((p) => setProducts(p.filter((x) => x.active !== false)))
@@ -390,6 +392,7 @@ export default function AdminPdv() {
           destinatario_documento_tipo: notaDocTipo,
           destinatario_documento: notaDocValor,
           destinatario_nome: customerName.trim() || undefined,
+          destinatario_uf: notaUf || undefined,
           contribuinte_icms: notaDocTipo === 'cnpj' ? notaContribuinteIcms : false,
           fiscal_profile_mode: notaProfileMode,
           fiscal_profile_id: notaProfileMode === 'manual' ? notaProfileId || undefined : undefined,
@@ -413,6 +416,10 @@ export default function AdminPdv() {
           ? `Vendas a partir de R$ ${IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE},00 exigem identificação do comprador — informe um ${notaDocTipo.toUpperCase()} válido.`
           : `Informe um ${notaDocTipo.toUpperCase()} válido pra emitir nota fiscal.`
       )
+      return
+    }
+    if (notaAtiva && !notaUf) {
+      setFinalizeError('Informe a UF do comprador pra emitir nota fiscal.')
       return
     }
 
@@ -901,6 +908,12 @@ export default function AdminPdv() {
             {notaAtiva && (
               <div className="space-y-2 pt-2 border-t border-white/10">
                 <DocumentoInput tipo={notaDocTipo} onTipoChange={setNotaDocTipo} valor={notaDocValor} onValorChange={setNotaDocValor} />
+                <select className="input-field" value={notaUf} onChange={(e) => setNotaUf(e.target.value)}>
+                  <option value="">UF do comprador…</option>
+                  {UF_OPTIONS.map((uf) => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
                 {notaDocTipo === 'cnpj' && (
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <input
