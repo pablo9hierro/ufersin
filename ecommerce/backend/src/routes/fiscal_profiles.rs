@@ -33,12 +33,33 @@ pub struct FiscalProfileDto {
     /// `cfop` padrao acima (secao 5 do pedido de reorganizacao fiscal) --
     /// nunca um catalogo pesquisavel, so os que o proprio lojista digitou.
     pub allowed_cfops: Vec<String>,
+    /// Escopo estruturado usado pela selecao automatica (fiscal/resolution.rs)
+    /// -- "padrao" | "cpf_fora_estado" | "cnpj_fora_estado_nao_contribuinte" |
+    /// "cnpj_fora_estado_contribuinte" | "outro".
+    pub escopo: String,
 }
 
-type ProfileRow = (String, String, Option<String>, Option<String>, Option<String>, Option<String>, bool, Vec<String>);
+type ProfileRow =
+    (String, String, Option<String>, Option<String>, Option<String>, Option<String>, bool, Vec<String>, String);
 
-fn to_dto((id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops): ProfileRow) -> FiscalProfileDto {
-    FiscalProfileDto { id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops }
+fn to_dto(
+    (id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops, escopo): ProfileRow,
+) -> FiscalProfileDto {
+    FiscalProfileDto { id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops, escopo }
+}
+
+const ESCOPOS_VALIDOS: [&str; 5] =
+    ["padrao", "cpf_fora_estado", "cnpj_fora_estado_nao_contribuinte", "cnpj_fora_estado_contribuinte", "outro"];
+
+fn validate_escopo(escopo: &str) -> Result<(), AppError> {
+    if ESCOPOS_VALIDOS.contains(&escopo) {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(format!(
+            "escopo \"{escopo}\" invalido -- use um de: {}",
+            ESCOPOS_VALIDOS.join(", ")
+        )))
+    }
 }
 
 pub async fn list_profiles(
@@ -47,7 +68,7 @@ pub async fn list_profiles(
 ) -> Result<Json<Vec<FiscalProfileDto>>, AppError> {
     require_beta(&state.pool, &claims.tenant_id).await?;
     let rows: Vec<ProfileRow> = sqlx::query_as(
-        "SELECT id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops FROM fiscal_profiles \
+        "SELECT id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops, escopo FROM fiscal_profiles \
          WHERE tenant_id = $1 ORDER BY is_default DESC, nome",
     )
     .bind(&claims.tenant_id)
@@ -86,6 +107,14 @@ pub struct UpsertProfileInput {
     pub cclass_trib: Option<String>,
     #[serde(default)]
     pub allowed_cfops: Vec<String>,
+    /// Default "outro" pra compat com qualquer caller que ainda nao manda
+    /// esse campo.
+    #[serde(default)]
+    pub escopo: Option<String>,
+}
+
+fn escopo_ou_outro(v: &Option<String>) -> String {
+    non_empty(v).unwrap_or_else(|| "outro".to_string())
 }
 
 fn non_empty(v: &Option<String>) -> Option<String> {
@@ -97,6 +126,7 @@ fn non_empty(v: &Option<String>) -> Option<String> {
 /// perfil pode nao definir todos, o produto complementa via override).
 fn validate_format(body: &UpsertProfileInput) -> Result<(), AppError> {
     use crate::fiscal::validation::*;
+    validate_escopo(&escopo_ou_outro(&body.escopo))?;
     if let Some(v) = non_empty(&body.cfop) {
         if !valid_cfop_format(&v) {
             return Err(AppError::BadRequest("CFOP deve ter 4 dígitos".to_string()));
@@ -136,14 +166,25 @@ pub async fn create_profile(
         return Err(AppError::BadRequest("nome do perfil é obrigatório".to_string()));
     }
     validate_format(&body)?;
+    let escopo = escopo_ou_outro(&body.escopo);
     let has_default: Option<(bool,)> =
         sqlx::query_as("SELECT true FROM fiscal_profiles WHERE tenant_id = $1 AND is_default LIMIT 1")
             .bind(&claims.tenant_id)
             .fetch_optional(&state.pool)
             .await?;
+    // escopo "padrao" implica is_default -- mesma exclusividade de
+    // set_default_profile (so um is_default = true por tenant).
+    let is_default = escopo == "padrao" || has_default.is_none();
+    let mut tx = state.pool.begin().await?;
+    if is_default {
+        sqlx::query("UPDATE fiscal_profiles SET is_default = false WHERE tenant_id = $1")
+            .bind(&claims.tenant_id)
+            .execute(&mut *tx)
+            .await?;
+    }
     sqlx::query(
-        "INSERT INTO fiscal_profiles (id, tenant_id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        "INSERT INTO fiscal_profiles (id, tenant_id, nome, cfop, cst, csosn, cclass_trib, is_default, allowed_cfops, escopo) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(&claims.tenant_id)
@@ -152,10 +193,12 @@ pub async fn create_profile(
     .bind(non_empty(&body.cst))
     .bind(non_empty(&body.csosn))
     .bind(non_empty(&body.cclass_trib))
-    .bind(has_default.is_none())
+    .bind(is_default)
     .bind(clean_allowed_cfops(&body.allowed_cfops))
-    .execute(&state.pool)
+    .bind(&escopo)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     list_profiles(State(state), AdminUser(claims)).await
 }
 
@@ -170,9 +213,20 @@ pub async fn update_profile(
         return Err(AppError::BadRequest("nome do perfil é obrigatório".to_string()));
     }
     validate_format(&body)?;
+    let escopo = escopo_ou_outro(&body.escopo);
+    let mut tx = state.pool.begin().await?;
+    // escopo "padrao" implica is_default -- mesma exclusividade de
+    // set_default_profile (so um is_default = true por tenant).
+    if escopo == "padrao" {
+        sqlx::query("UPDATE fiscal_profiles SET is_default = false WHERE tenant_id = $1")
+            .bind(&claims.tenant_id)
+            .execute(&mut *tx)
+            .await?;
+    }
     let updated = sqlx::query(
         "UPDATE fiscal_profiles SET nome = $3, cfop = $4, cst = $5, csosn = $6, cclass_trib = $7, \
-           allowed_cfops = $8, updated_at = now()::text WHERE tenant_id = $1 AND id = $2",
+           allowed_cfops = $8, escopo = $9, is_default = is_default OR $9 = 'padrao', updated_at = now()::text \
+         WHERE tenant_id = $1 AND id = $2",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -182,11 +236,13 @@ pub async fn update_profile(
     .bind(non_empty(&body.csosn))
     .bind(non_empty(&body.cclass_trib))
     .bind(clean_allowed_cfops(&body.allowed_cfops))
-    .execute(&state.pool)
+    .bind(&escopo)
+    .execute(&mut *tx)
     .await?;
     if updated.rows_affected() == 0 {
         return Err(AppError::NotFound("perfil fiscal não encontrado".to_string()));
     }
+    tx.commit().await?;
     list_profiles(State(state), AdminUser(claims)).await
 }
 

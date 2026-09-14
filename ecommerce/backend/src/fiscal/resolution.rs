@@ -18,6 +18,10 @@ pub struct OperationContext {
     pub uf_origem: String,
     pub uf_destino: Option<String>,
     pub documento_tipo: Option<String>, // "cpf" | "cnpj" | None (nao identificado)
+    /// Se o destinatario e contribuinte de ICMS (afeta CFOP/CST em venda
+    /// interestadual CNPJ). TODO(fiscal-part-2): ainda nao vem de nenhuma
+    /// coluna real, sempre `false` ate essa venda ser wireada.
+    pub contribuinte_icms: bool,
 }
 
 impl OperationContext {
@@ -42,6 +46,7 @@ pub struct FiscalProfile {
     pub csosn: Option<String>,
     pub cclass_trib: Option<String>,
     pub is_default: bool,
+    pub escopo: String,
 }
 
 /// Overrides opcionais cadastrados diretamente no produto -- mesmos campos
@@ -109,48 +114,34 @@ fn resolve_field(
     }
 }
 
-fn nome_bate_uf(nome: &str, interestadual: bool) -> bool {
-    if interestadual {
-        nome.contains("interestadual")
-    } else {
-        nome.contains("interna") && !nome.contains("interestadual")
+/// Escopo estruturado esperado pro contexto da venda -- substitui a antiga
+/// heuristica por SUBSTRING no nome livre do perfil (falhava
+/// silenciosamente sempre que o lojista nomeava o perfil diferente do
+/// esperado, caindo no default com CFOP errado sem aviso nenhum).
+fn escopo_esperado(interestadual: bool, documento_tipo: Option<&str>, contribuinte_icms: bool) -> &'static str {
+    if !interestadual {
+        return "padrao";
+    }
+    match documento_tipo {
+        Some("cpf") => "cpf_fora_estado",
+        Some("cnpj") if contribuinte_icms => "cnpj_fora_estado_contribuinte",
+        Some("cnpj") => "cnpj_fora_estado_nao_contribuinte",
+        _ => "padrao",
     }
 }
 
-/// Escolhe automaticamente entre os perfis do tenant, do mais especifico
-/// pro mais generico -- heuristica simples e explicita por NOME do perfil,
-/// nunca "inteligente" demais:
-/// 1. Perfil cujo nome bate com UF (interna/interestadual) E com o tipo de
-///    documento do destinatario (ex: "Venda interestadual CNPJ") -- so
-///    aplica quando o documento foi informado (venda com nota fiscal).
-/// 2. Perfil cujo nome bate só com UF (interna/interestadual).
-/// 3. Perfil `is_default`.
+/// Escolhe automaticamente entre os perfis do tenant pela coluna
+/// estruturada `escopo` -- deterministico, nunca depende de como o lojista
+/// nomeou o perfil. Cai no perfil de escopo `"padrao"` quando nenhum perfil
+/// do tenant tem o escopo esperado (ex: tenant so configurou o default).
 /// O lojista sempre pode sobrepor escolhendo "Manual" em vez de
-/// "Automatico" (ver PdvFiscalInput) quando a heuristica não serve.
+/// "Automatico" (ver PdvFiscalInput) quando a selecao automatica não serve.
 pub fn select_automatic_profile<'a>(
     ctx: &OperationContext,
     perfis: &'a [FiscalProfile],
 ) -> Option<&'a FiscalProfile> {
-    let interestadual = ctx.is_interestadual();
-
-    if let Some(doc_tipo) = ctx.documento_tipo.as_deref() {
-        let by_uf_and_doc = perfis.iter().find(|p| {
-            let nome = p.nome.to_lowercase();
-            nome_bate_uf(&nome, interestadual) && nome.contains(doc_tipo)
-        });
-        if by_uf_and_doc.is_some() {
-            return by_uf_and_doc;
-        }
-    }
-
-    // Sem documento (cliente nao identificado, ex. balcao) -- nunca cai
-    // num perfil nomeado especificamente pra CPF/CNPJ so por coincidir a
-    // UF; so usa perfis "genericos" (sem menção a documento no nome).
-    let by_uf = perfis.iter().find(|p| {
-        let nome = p.nome.to_lowercase();
-        nome_bate_uf(&nome, interestadual) && !nome.contains("cpf") && !nome.contains("cnpj")
-    });
-    by_uf.or_else(|| perfis.iter().find(|p| p.is_default))
+    let escopo = escopo_esperado(ctx.is_interestadual(), ctx.documento_tipo.as_deref(), ctx.contribuinte_icms);
+    perfis.iter().find(|p| p.escopo == escopo).or_else(|| perfis.iter().find(|p| p.escopo == "padrao"))
 }
 
 /// Combina perfil + overrides do produto em cima do contexto -- essa e a
@@ -191,6 +182,7 @@ mod tests {
             uf_origem: uf_origem.to_string(),
             uf_destino: uf_destino.map(str::to_string),
             documento_tipo: None,
+            contribuinte_icms: false,
         }
     }
 
@@ -198,7 +190,7 @@ mod tests {
         OperationContext { documento_tipo: Some(documento_tipo.to_string()), ..ctx(uf_origem, uf_destino) }
     }
 
-    fn profile(nome: &str, cfop: &str, is_default: bool) -> FiscalProfile {
+    fn profile(nome: &str, cfop: &str, is_default: bool, escopo: &str) -> FiscalProfile {
         FiscalProfile {
             id: format!("perfil-{nome}"),
             nome: nome.to_string(),
@@ -207,6 +199,7 @@ mod tests {
             csosn: None,
             cclass_trib: Some("000001".to_string()),
             is_default,
+            escopo: escopo.to_string(),
         }
     }
 
@@ -226,54 +219,97 @@ mod tests {
     }
 
     #[test]
-    fn automatico_escolhe_perfil_interestadual_por_nome() {
-        let perfis = vec![profile("Venda interna PB", "5102", true), profile("Venda interestadual", "6102", false)];
-        let escolhido = select_automatic_profile(&ctx("PB", Some("PE")), &perfis).unwrap();
-        assert_eq!(escolhido.cfop.as_deref(), Some("6102"));
+    fn escopo_esperado_interno_e_sempre_padrao() {
+        assert_eq!(escopo_esperado(false, Some("cnpj"), true), "padrao");
+        assert_eq!(escopo_esperado(false, None, false), "padrao");
     }
 
     #[test]
-    fn automatico_sem_perfil_nomeado_cai_no_default() {
-        let perfis = vec![profile("Servico geral", "5933", true)];
-        let escolhido = select_automatic_profile(&ctx("PB", Some("PE")), &perfis).unwrap();
-        assert_eq!(escolhido.id, "perfil-Servico geral");
+    fn escopo_esperado_interestadual_cpf() {
+        assert_eq!(escopo_esperado(true, Some("cpf"), false), "cpf_fora_estado");
     }
 
     #[test]
-    fn automatico_prefere_perfil_especifico_de_cnpj_sobre_generico() {
+    fn escopo_esperado_interestadual_cnpj_nao_contribuinte() {
+        assert_eq!(escopo_esperado(true, Some("cnpj"), false), "cnpj_fora_estado_nao_contribuinte");
+    }
+
+    #[test]
+    fn escopo_esperado_interestadual_cnpj_contribuinte() {
+        assert_eq!(escopo_esperado(true, Some("cnpj"), true), "cnpj_fora_estado_contribuinte");
+    }
+
+    #[test]
+    fn escopo_esperado_interestadual_sem_documento_cai_em_padrao() {
+        assert_eq!(escopo_esperado(true, None, false), "padrao");
+    }
+
+    #[test]
+    fn automatico_venda_interna_escolhe_perfil_padrao() {
+        let perfis = vec![profile("Venda interna PB", "5102", true, "padrao"), profile("Venda interestadual", "6102", false, "cnpj_fora_estado_nao_contribuinte")];
+        let escolhido = select_automatic_profile(&ctx("PB", Some("PB")), &perfis).unwrap();
+        assert_eq!(escolhido.cfop.as_deref(), Some("5102"));
+    }
+
+    #[test]
+    fn automatico_venda_interestadual_cpf_escolhe_perfil_de_escopo_cpf() {
         let perfis = vec![
-            profile("Venda interestadual", "6102", false),
-            profile("Venda interestadual CNPJ", "6108", true),
-        ];
-        let escolhido = select_automatic_profile(&ctx_com_documento("PB", Some("PE"), "cnpj"), &perfis).unwrap();
-        assert_eq!(escolhido.cfop.as_deref(), Some("6108"));
-    }
-
-    #[test]
-    fn automatico_prefere_perfil_especifico_de_cpf_sobre_generico() {
-        let perfis = vec![
-            profile("Venda interestadual", "6102", false),
-            profile("Venda interestadual CPF", "6108", false),
+            profile("Venda interna PB", "5102", true, "padrao"),
+            profile("Venda interestadual CPF", "6102", false, "cpf_fora_estado"),
         ];
         let escolhido = select_automatic_profile(&ctx_com_documento("PB", Some("PE"), "cpf"), &perfis).unwrap();
+        assert_eq!(escolhido.cfop.as_deref(), Some("6102"));
+    }
+
+    #[test]
+    fn automatico_venda_interestadual_cnpj_nao_contribuinte_escolhe_escopo_certo() {
+        let perfis = vec![
+            profile("Padrao", "5102", true, "padrao"),
+            profile("CNPJ nao contribuinte", "6108", false, "cnpj_fora_estado_nao_contribuinte"),
+            profile("CNPJ contribuinte", "6109", false, "cnpj_fora_estado_contribuinte"),
+        ];
+        let ctx = OperationContext {
+            uf_origem: "PB".to_string(),
+            uf_destino: Some("PE".to_string()),
+            documento_tipo: Some("cnpj".to_string()),
+            contribuinte_icms: false,
+        };
+        let escolhido = select_automatic_profile(&ctx, &perfis).unwrap();
         assert_eq!(escolhido.cfop.as_deref(), Some("6108"));
     }
 
     #[test]
-    fn automatico_sem_documento_ignora_perfis_especificos_de_documento() {
-        let perfis = vec![profile("Venda interestadual CNPJ", "6108", false), profile("Venda interestadual", "6102", true)];
-        // Cliente sem identificacao (documento_tipo = None, ex. balcao) --
-        // nao deve cair num perfil pensado pra CNPJ so porque o nome bate
-        // com a UF; usa o generico.
-        let escolhido = select_automatic_profile(&ctx("PB", Some("PE")), &perfis).unwrap();
-        assert_eq!(escolhido.cfop.as_deref(), Some("6102"));
+    fn automatico_venda_interestadual_cnpj_contribuinte_escolhe_escopo_certo() {
+        let perfis = vec![
+            profile("Padrao", "5102", true, "padrao"),
+            profile("CNPJ nao contribuinte", "6108", false, "cnpj_fora_estado_nao_contribuinte"),
+            profile("CNPJ contribuinte", "6109", false, "cnpj_fora_estado_contribuinte"),
+        ];
+        let ctx = OperationContext {
+            uf_origem: "PB".to_string(),
+            uf_destino: Some("PE".to_string()),
+            documento_tipo: Some("cnpj".to_string()),
+            contribuinte_icms: true,
+        };
+        let escolhido = select_automatic_profile(&ctx, &perfis).unwrap();
+        assert_eq!(escolhido.cfop.as_deref(), Some("6109"));
+    }
+
+    #[test]
+    fn automatico_sem_perfil_do_escopo_esperado_cai_no_padrao() {
+        // Perfil so tem "outro" e "padrao" configurados -- venda
+        // interestadual CNPJ nao tem perfil especifico, cai no padrao em
+        // vez de ficar sem perfil nenhum (nunca silenciosamente "outro").
+        let perfis = vec![profile("Servico geral", "5933", true, "padrao"), profile("Qualquer coisa", "9999", false, "outro")];
+        let escolhido = select_automatic_profile(&ctx_com_documento("PB", Some("PE"), "cnpj"), &perfis).unwrap();
+        assert_eq!(escolhido.id, "perfil-Servico geral");
     }
 
     #[test]
     fn venda_interestadual_nao_altera_produto_so_troca_perfil_escolhido() {
         let overrides = ProductFiscalOverrides::default();
-        let interna = profile("interna", "5102", true);
-        let interestadual = profile("interestadual", "6102", false);
+        let interna = profile("interna", "5102", true, "padrao");
+        let interestadual = profile("interestadual", "6102", false, "cnpj_fora_estado_nao_contribuinte");
         let r1 = resolve(&overrides, Some(&interna)).unwrap();
         let r2 = resolve(&overrides, Some(&interestadual)).unwrap();
         assert_eq!(r1.cfop.unwrap().value, "5102");
@@ -283,7 +319,7 @@ mod tests {
     #[test]
     fn override_produto_tem_precedencia_sobre_perfil() {
         let overrides = ProductFiscalOverrides { cfop: Some("5949".to_string()), ..Default::default() };
-        let perfil = profile("interna", "5102", true);
+        let perfil = profile("interna", "5102", true, "padrao");
         let r = resolve(&overrides, Some(&perfil)).unwrap();
         let f = r.cfop.unwrap();
         assert_eq!(f.value, "5949");
@@ -293,10 +329,10 @@ mod tests {
     #[test]
     fn mudar_perfil_default_propaga_pra_quem_nao_tem_override() {
         let overrides = ProductFiscalOverrides::default();
-        let perfil_antigo = profile("interna", "5102", true);
+        let perfil_antigo = profile("interna", "5102", true, "padrao");
         let r1 = resolve(&overrides, Some(&perfil_antigo)).unwrap();
         assert_eq!(r1.cfop.unwrap().value, "5102");
-        let perfil_editado = profile("interna", "5101", true);
+        let perfil_editado = profile("interna", "5101", true, "padrao");
         let r2 = resolve(&overrides, Some(&perfil_editado)).unwrap();
         assert_eq!(r2.cfop.unwrap().value, "5101");
     }
@@ -304,8 +340,8 @@ mod tests {
     #[test]
     fn override_imune_a_mudanca_do_perfil_default() {
         let overrides = ProductFiscalOverrides { cfop: Some("5949".to_string()), ..Default::default() };
-        let perfil_v1 = profile("interna", "5102", true);
-        let perfil_v2 = profile("interna", "5101", true);
+        let perfil_v1 = profile("interna", "5102", true, "padrao");
+        let perfil_v2 = profile("interna", "5101", true, "padrao");
         let r1 = resolve(&overrides, Some(&perfil_v1)).unwrap();
         let r2 = resolve(&overrides, Some(&perfil_v2)).unwrap();
         assert_eq!(r1.cfop.unwrap().value, "5949");
@@ -331,6 +367,7 @@ mod tests {
             csosn: None,
             cclass_trib: Some("000001".to_string()),
             is_default: true,
+            escopo: "padrao".to_string(),
         };
         let err = resolve(&overrides, Some(&perfil)).unwrap_err();
         assert_eq!(err, FiscalResolutionError::CampoObrigatorioAusente("CST/CSOSN"));
@@ -347,6 +384,7 @@ mod tests {
             csosn: Some("102".to_string()),
             cclass_trib: Some("000001".to_string()),
             is_default: true,
+            escopo: "padrao".to_string(),
         };
         assert!(resolve(&overrides, Some(&perfil)).is_ok());
     }

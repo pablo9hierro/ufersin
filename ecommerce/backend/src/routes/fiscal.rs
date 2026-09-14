@@ -331,16 +331,16 @@ async fn tenant_fiscal_defaults(pool: &sqlx::PgPool, tenant_id: &str) -> Result<
 }
 
 async fn tenant_profiles(pool: &sqlx::PgPool, tenant_id: &str) -> Result<Vec<FiscalProfile>, AppError> {
-    let rows: Vec<(String, String, Option<String>, Option<String>, Option<String>, Option<String>, bool)> =
+    let rows: Vec<(String, String, Option<String>, Option<String>, Option<String>, Option<String>, bool, String)> =
         sqlx::query_as(
-            "SELECT id, nome, cfop, cst, csosn, cclass_trib, is_default FROM fiscal_profiles WHERE tenant_id = $1",
+            "SELECT id, nome, cfop, cst, csosn, cclass_trib, is_default, escopo FROM fiscal_profiles WHERE tenant_id = $1",
         )
         .bind(tenant_id)
         .fetch_all(pool)
         .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, nome, cfop, cst, csosn, cclass_trib, is_default)| FiscalProfile {
+        .map(|(id, nome, cfop, cst, csosn, cclass_trib, is_default, escopo)| FiscalProfile {
             id,
             nome,
             cfop,
@@ -348,6 +348,7 @@ async fn tenant_profiles(pool: &sqlx::PgPool, tenant_id: &str) -> Result<Vec<Fis
             csosn,
             cclass_trib,
             is_default,
+            escopo,
         })
         .collect())
 }
@@ -371,6 +372,11 @@ async fn build_operation_context(
         uf_origem: uf_origem.and_then(|(uf,)| uf).unwrap_or_default(),
         uf_destino: order.destinatario_uf.clone(),
         documento_tipo: order.destinatario_documento_tipo.clone(),
+        // TODO(fiscal-part-2): ainda nao existe coluna real pra isso no
+        // pedido; sempre `false` mantem o comportamento de hoje (venda
+        // CNPJ interestadual cai em "nao contribuinte") ate essa venda
+        // ser wireada numa tarefa futura.
+        contribuinte_icms: false,
     })
 }
 
@@ -413,11 +419,17 @@ mod resolve_order_profile_tests {
             csosn: None,
             cclass_trib: Some("000001".to_string()),
             is_default,
+            escopo: if is_default { "padrao".to_string() } else { "outro".to_string() },
         }
     }
 
     fn ctx() -> OperationContext {
-        OperationContext { uf_origem: "PB".to_string(), uf_destino: Some("PB".to_string()), documento_tipo: None }
+        OperationContext {
+            uf_origem: "PB".to_string(),
+            uf_destino: Some("PB".to_string()),
+            documento_tipo: None,
+            contribuinte_icms: false,
+        }
     }
 
     #[test]
