@@ -448,10 +448,10 @@ pub async fn create_assistant_order(
             payment_method, payment_status, status, shipping_price, total, discount_amount, sold_by_role, \
             emitir_nota_fiscal, destinatario_documento_tipo, destinatario_documento, destinatario_nome, \
             destinatario_uf, destinatario_municipio_ibge, destinatario_cep, destinatario_endereco, \
-            fiscal_profile_id, fiscal_profile_mode\
+            fiscal_profile_id, fiscal_profile_mode, destinatario_contribuinte_icms\
          ) VALUES (\
             $1, $2, $3, $4, $5, $6, $7, 'pendente', 'pendente', $8, $9, 0, 'assistente_ia', \
-            $10, $11, $12, $13, $14, $15, $16, $17, $18, $19\
+            $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20\
          )",
     )
     .bind(&order_id)
@@ -473,6 +473,7 @@ pub async fn create_assistant_order(
     .bind(fiscal.and_then(|f| f.destinatario_endereco.clone()))
     .bind(&fiscal_profile_id)
     .bind(fiscal_profile_mode)
+    .bind(fiscal.map(|f| f.contribuinte_icms).unwrap_or(false))
     .execute(&mut *tx)
     .await?;
 

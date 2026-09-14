@@ -137,6 +137,30 @@ pub struct UpdateFiscalSettingsInput {
 /// plataforma já resolveu o `jubilados_empresa_id` do lado dela), mas
 /// também exposto pro admin poder ajustar ambiente/CFOP padrão/auto-emitir
 /// sem precisar passar pela plataforma de novo.
+/// Escopos obrigatórios pra ligar "emitir nota automaticamente" -- sem os 4
+/// cadastrados, a resolução automática (`select_automatic_profile`) cai
+/// silenciosamente no perfil "padrao" pra vendas que precisavam de outro
+/// CFOP/CST (ex: CNPJ fora do estado), gerando nota com tributação errada
+/// sem ninguém perceber. Bloquear aqui é mais barato que descobrir isso
+/// numa nota já emitida.
+const ESCOPOS_OBRIGATORIOS: [(&str, &str); 4] = [
+    ("padrao", "Padrão"),
+    ("cpf_fora_estado", "CPF fora do estado"),
+    ("cnpj_fora_estado_nao_contribuinte", "CNPJ fora do estado (não contribuinte)"),
+    ("cnpj_fora_estado_contribuinte", "CNPJ fora do estado (contribuinte)"),
+];
+
+/// Pura e testável (mesmo espírito de `escopo_esperado` em resolution.rs):
+/// recebe só os escopos já cadastrados pelo tenant, devolve os rótulos
+/// humanos dos que faltam, na ordem de `ESCOPOS_OBRIGATORIOS`.
+fn missing_mandatory_profile_labels(escopos_cadastrados: &[String]) -> Vec<&'static str> {
+    ESCOPOS_OBRIGATORIOS
+        .iter()
+        .filter(|(escopo, _)| !escopos_cadastrados.iter().any(|e| e == escopo))
+        .map(|(_, label)| *label)
+        .collect()
+}
+
 pub async fn update_settings(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
@@ -145,6 +169,20 @@ pub async fn update_settings(
     require_beta(&state.pool, &claims.tenant_id).await?;
     if !matches!(body.ambiente.as_str(), "homologacao" | "producao") {
         return Err(AppError::BadRequest("ambiente deve ser 'homologacao' ou 'producao'".to_string()));
+    }
+    if body.auto_emitir {
+        let escopos: Vec<(String,)> = sqlx::query_as("SELECT escopo FROM fiscal_profiles WHERE tenant_id = $1")
+            .bind(&claims.tenant_id)
+            .fetch_all(&state.pool)
+            .await?;
+        let escopos: Vec<String> = escopos.into_iter().map(|(e,)| e).collect();
+        let faltando = missing_mandatory_profile_labels(&escopos);
+        if !faltando.is_empty() {
+            return Err(AppError::BadRequest(format!(
+                "Cadastre os perfis fiscais obrigatórios antes de ativar a emissão automática: {}.",
+                faltando.join(", ")
+            )));
+        }
     }
     sqlx::query(
         "INSERT INTO tenant_fiscal_settings \
@@ -372,11 +410,7 @@ async fn build_operation_context(
         uf_origem: uf_origem.and_then(|(uf,)| uf).unwrap_or_default(),
         uf_destino: order.destinatario_uf.clone(),
         documento_tipo: order.destinatario_documento_tipo.clone(),
-        // TODO(fiscal-part-2): ainda nao existe coluna real pra isso no
-        // pedido; sempre `false` mantem o comportamento de hoje (venda
-        // CNPJ interestadual cai em "nao contribuinte") ate essa venda
-        // ser wireada numa tarefa futura.
-        contribuinte_icms: false,
+        contribuinte_icms: order.destinatario_contribuinte_icms,
     })
 }
 
@@ -404,6 +438,42 @@ fn resolve_order_profile<'a>(
         }
     }
     resolution::select_automatic_profile(ctx, perfis)
+}
+
+#[cfg(test)]
+mod missing_mandatory_profile_labels_tests {
+    use super::*;
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn todos_os_4_cadastrados_nao_falta_nada() {
+        let escopos = s(&["padrao", "cpf_fora_estado", "cnpj_fora_estado_nao_contribuinte", "cnpj_fora_estado_contribuinte"]);
+        assert!(missing_mandatory_profile_labels(&escopos).is_empty());
+    }
+
+    #[test]
+    fn nenhum_cadastrado_falta_os_4_na_ordem() {
+        let faltando = missing_mandatory_profile_labels(&[]);
+        assert_eq!(
+            faltando,
+            vec!["Padrão", "CPF fora do estado", "CNPJ fora do estado (não contribuinte)", "CNPJ fora do estado (contribuinte)"]
+        );
+    }
+
+    #[test]
+    fn falta_so_um_reporta_so_esse() {
+        let escopos = s(&["padrao", "cpf_fora_estado", "cnpj_fora_estado_nao_contribuinte"]);
+        assert_eq!(missing_mandatory_profile_labels(&escopos), vec!["CNPJ fora do estado (contribuinte)"]);
+    }
+
+    #[test]
+    fn escopo_outro_nao_conta_pra_nenhum_obrigatorio() {
+        let escopos = s(&["outro"]);
+        assert_eq!(missing_mandatory_profile_labels(&escopos).len(), 4);
+    }
 }
 
 #[cfg(test)]

@@ -524,6 +524,9 @@ pub struct OrderRow {
     pub destinatario_endereco: Option<String>,
     pub fiscal_profile_id: Option<String>,
     pub fiscal_profile_mode: String,
+    // fiscal-part-2 (migration 0065): mesmo cuidado dos campos acima --
+    // sqlx::FromRow ignora silenciosamente se não declarada aqui.
+    pub destinatario_contribuinte_icms: bool,
 }
 
 #[derive(Debug, sqlx::FromRow, Serialize, Clone)]
@@ -704,6 +707,11 @@ pub struct PdvFiscalInput {
     pub fiscal_profile_mode: Option<String>,
     #[serde(default)]
     pub fiscal_profile_id: Option<String>,
+    /// Se o destinatario e contribuinte de ICMS (fiscal-part-2) -- só
+    /// relevante pra CNPJ; default `false` preserva o comportamento de
+    /// sempre (venda CNPJ interestadual cai em "não contribuinte").
+    #[serde(default)]
+    pub contribuinte_icms: bool,
 }
 
 #[derive(Debug, Deserialize)]

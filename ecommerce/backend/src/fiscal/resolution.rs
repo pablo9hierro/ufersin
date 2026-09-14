@@ -19,8 +19,8 @@ pub struct OperationContext {
     pub uf_destino: Option<String>,
     pub documento_tipo: Option<String>, // "cpf" | "cnpj" | None (nao identificado)
     /// Se o destinatario e contribuinte de ICMS (afeta CFOP/CST em venda
-    /// interestadual CNPJ). TODO(fiscal-part-2): ainda nao vem de nenhuma
-    /// coluna real, sempre `false` ate essa venda ser wireada.
+    /// interestadual CNPJ). Vem de `orders.destinatario_contribuinte_icms`
+    /// (migration 0065, fiscal-part-2).
     pub contribuinte_icms: bool,
 }
 

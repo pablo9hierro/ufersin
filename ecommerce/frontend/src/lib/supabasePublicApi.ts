@@ -139,6 +139,7 @@ export const supabasePublicApi = {
       destinatario_municipio_ibge?: string
       destinatario_cep?: string
       destinatario_endereco?: string
+      contribuinte_icms?: boolean
     }) => {
       if (payload.delivery_type === 'entrega') {
         const cfg = await getTenantConfig()
@@ -181,6 +182,7 @@ export const supabasePublicApi = {
         p_destinatario_municipio_ibge: payload.destinatario_municipio_ibge ?? null,
         p_destinatario_cep: payload.destinatario_cep ?? null,
         p_destinatario_endereco: payload.destinatario_endereco ?? null,
+        p_contribuinte_icms: payload.contribuinte_icms ?? false,
       })
       if (error) throw new ApiError(400, error.message)
       return data as Order

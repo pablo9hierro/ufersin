@@ -295,10 +295,10 @@ pub(crate) async fn create_sale_core(
             sold_by_role, sold_by_id, card_payment_mode, card_type, card_installments, \
             emitir_nota_fiscal, destinatario_documento_tipo, destinatario_documento, destinatario_nome, \
             destinatario_uf, destinatario_municipio_ibge, destinatario_cep, destinatario_endereco, \
-            fiscal_profile_id, fiscal_profile_mode\
+            fiscal_profile_id, fiscal_profile_mode, destinatario_contribuinte_icms\
          ) VALUES (\
             $1, $2, $3, $4, $5, 'balcao', $6, $7, $15, 0, $8, $9, $10, $11, $12, $13, $14, \
-            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25\
+            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26\
          )",
     )
     .bind(&order_id)
@@ -326,6 +326,7 @@ pub(crate) async fn create_sale_core(
     .bind(fiscal.and_then(|f| f.destinatario_endereco.clone()))
     .bind(&fiscal_profile_id)
     .bind(fiscal_profile_mode)
+    .bind(fiscal.map(|f| f.contribuinte_icms).unwrap_or(false))
     .execute(&mut *tx)
     .await?;
 

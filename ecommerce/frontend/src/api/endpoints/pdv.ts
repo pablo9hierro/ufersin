@@ -39,6 +39,7 @@ export const pdvEndpoint = {
       destinatario_uf?: string
       destinatario_cep?: string
       destinatario_endereco?: string
+      contribuinte_icms?: boolean
       fiscal_profile_mode?: 'automatico' | 'manual'
       fiscal_profile_id?: string
     }

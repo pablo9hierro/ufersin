@@ -79,6 +79,9 @@ export default function Checkout() {
   const [docUf, setDocUf] = useState('')
   const [docCep, setDocCep] = useState('')
   const [docEndereco, setDocEndereco] = useState('')
+  // fiscal-part-2: só faz sentido pra CNPJ (afeta CFOP/CST em venda
+  // interestadual) -- default "não" (mais comum: comprador final).
+  const [docContribuinteIcms, setDocContribuinteIcms] = useState(false)
   // Finalizar exige login — sem sessão, abre o toggle de entrar/criar
   // conta em vez de seguir com o pedido; ao logar/cadastrar com sucesso,
   // tenta finalizar de novo sozinho.
@@ -469,6 +472,7 @@ export default function Checkout() {
         destinatario_uf: notaAtiva ? docUf : undefined,
         destinatario_cep: notaAtiva ? docCep || undefined : undefined,
         destinatario_endereco: notaAtiva ? docEndereco || undefined : undefined,
+        contribuinte_icms: notaAtiva && docTipo === 'cnpj' ? docContribuinteIcms : undefined,
       })
       // Checkout de campanha nunca mexeu no carrinho normal — só limpa o
       // carrinho quando o pedido realmente veio dele.
@@ -957,6 +961,16 @@ export default function Checkout() {
             {notaAtiva && (
               <div className="space-y-2 pt-1 border-t border-white/10">
                 <DocumentoInput tipo={docTipo} onTipoChange={setDocTipo} valor={docValor} onValorChange={setDocValor} />
+                {docTipo === 'cnpj' && (
+                  <label className="flex items-center gap-2 text-xs text-son-silver-dim cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={docContribuinteIcms}
+                      onChange={(e) => setDocContribuinteIcms(e.target.checked)}
+                    />
+                    Comprador é contribuinte do ICMS (vai revender)?
+                  </label>
+                )}
                 <input
                   value={docNome}
                   onChange={(e) => setDocNome(e.target.value)}

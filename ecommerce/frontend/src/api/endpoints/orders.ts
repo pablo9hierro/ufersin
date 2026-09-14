@@ -27,6 +27,8 @@ export interface CreateOrderPayload {
   destinatario_municipio_ibge?: string
   destinatario_cep?: string
   destinatario_endereco?: string
+  /** Só relevante pra CNPJ (fiscal-part-2) -- afeta CFOP/CST em venda interestadual. */
+  contribuinte_icms?: boolean
 }
 
 // Módulo Pedidos — único ponto do app autorizado a chamar `api.orders.*`,

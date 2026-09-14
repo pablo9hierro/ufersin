@@ -130,6 +130,9 @@ export default function AdminPdv() {
   const [emitirNota, setEmitirNota] = useState(false)
   const [notaDocTipo, setNotaDocTipo] = useState<'cpf' | 'cnpj'>('cpf')
   const [notaDocValor, setNotaDocValor] = useState('')
+  // fiscal-part-2: só faz sentido pra CNPJ (afeta CFOP/CST em venda
+  // interestadual) -- default "não" (mais comum: comprador final).
+  const [notaContribuinteIcms, setNotaContribuinteIcms] = useState(false)
   const [notaProfileMode, setNotaProfileMode] = useState<'automatico' | 'manual'>('automatico')
   const [notaProfileId, setNotaProfileId] = useState('')
   const [fiscalProfiles, setFiscalProfiles] = useState<FiscalProfile[]>([])
@@ -387,6 +390,7 @@ export default function AdminPdv() {
           destinatario_documento_tipo: notaDocTipo,
           destinatario_documento: notaDocValor,
           destinatario_nome: customerName.trim() || undefined,
+          contribuinte_icms: notaDocTipo === 'cnpj' ? notaContribuinteIcms : false,
           fiscal_profile_mode: notaProfileMode,
           fiscal_profile_id: notaProfileMode === 'manual' ? notaProfileId || undefined : undefined,
         }
@@ -897,6 +901,16 @@ export default function AdminPdv() {
             {notaAtiva && (
               <div className="space-y-2 pt-2 border-t border-white/10">
                 <DocumentoInput tipo={notaDocTipo} onTipoChange={setNotaDocTipo} valor={notaDocValor} onValorChange={setNotaDocValor} />
+                {notaDocTipo === 'cnpj' && (
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notaContribuinteIcms}
+                      onChange={(e) => setNotaContribuinteIcms(e.target.checked)}
+                    />
+                    Comprador é contribuinte do ICMS (vai revender)?
+                  </label>
+                )}
                 <div>
                   <label className="label">Perfil fiscal</label>
                   <div className="flex rounded-lg bg-white/10 p-0.5 text-xs font-semibold w-fit mb-2">
