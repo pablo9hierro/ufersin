@@ -574,6 +574,21 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         .execute(&mut *tx)
         .await?;
 
+    // eletronicos.shipping_settings (endereço/coords da loja, tabela
+    // própria do módulo de assistência técnica, distinta da `shipping_settings`
+    // do ecommerce acima) -- sem essa linha, resolve_driver_location() não
+    // acha nem o fallback da loja e o mapa de rastreio do card de
+    // deslocamento (/consultar) fica sem nenhum ponto pra mostrar.
+    sqlx::query(
+        "INSERT INTO eletronicos.shipping_settings \
+         (tenant_id, price_per_km, minutes_per_km, store_lat, store_lng, store_address) \
+         VALUES ($1, 2.0, 3.0, -7.1195, -34.8450, 'Rua das Trincheiras, 500 - João Pessoa, PB') \
+         ON CONFLICT (tenant_id) DO NOTHING",
+    )
+    .bind(&tenant_id)
+    .execute(&mut *tx)
+    .await?;
+
     // Categoria pro catálogo de serviços de reparo (services.category_id)
     let category_id = Uuid::new_v4().to_string();
     sqlx::query("INSERT INTO categories (id, tenant_id, name) VALUES ($1, $2, 'Reparos')")
@@ -784,6 +799,29 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         .await?;
         request_ids.insert(status, request_id);
     }
+
+    // Card de deslocamento com entrega em andamento -- ponto real pro mapa
+    // de rastreio ao vivo (LiveTrackingMap, /consultar) ter algo pra
+    // mostrar na demo: endereço a ~2km da loja seedada acima
+    // (eletronicos.shipping_settings, -7.1195,-34.8450), status "em_entrega"
+    // + self_pickup=false (única combinação que liga showLiveMap em
+    // EletronicaConsultar.tsx). Sem GPS real empurrando driver_location, o
+    // mapa cai no fallback já existente em resolve_driver_location()
+    // (posição fixa da loja, is_live=false) -- mostra o trajeto loja->
+    // cliente com um ponto real, não anima sozinho.
+    sqlx::query(
+        "INSERT INTO eletronicos.service_requests \
+         (tenant_id, customer_name, customer_phone, customer_email, phone_model, problem_description, \
+          status, quote_value, self_pickup, address_street, address_number, address_neighborhood, \
+          address_city, address_state, address_lat, address_lng, payment_methods) \
+         VALUES ($1, 'Camila Ferreira', '83988870000', 'camila.ferreira@example.com', 'iPhone 12 Pro', \
+          'Troca de tela concluída, aparelho a caminho', 'em_entrega', 349.9, false, \
+          'Av. Epitácio Pessoa', '1200', 'Tambaú', 'João Pessoa', 'PB', -7.1035, -34.8291, \
+          '[\"pix\", \"dinheiro\"]'::jsonb)",
+    )
+    .bind(&tenant_id)
+    .execute(&mut *tx)
+    .await?;
 
     // Diagnóstico preenchido pros 3 cards que passam pela etapa de
     // diagnóstico/reparo (Parte 9.5) -- sem isso, EletronicaDiagnosticSection
