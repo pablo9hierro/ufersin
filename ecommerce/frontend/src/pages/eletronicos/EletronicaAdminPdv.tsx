@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import { Search, Loader2, Plus, Minus, X, ShoppingCart, CreditCard, Banknote, QrCode, Check, Calendar } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
 import type { PdvSaleDetail } from '../../lib/eletronicosAdminApi'
@@ -199,8 +200,18 @@ function PixDialog({ state, onClose }: { state: PixDialogState; onClose: () => v
           </p>
         ) : (
           <>
-            {state.qr_code_base64 && (
+            {state.qr_code_base64 ? (
               <img src={`data:image/png;base64,${state.qr_code_base64}`} alt="QR Code Pix" className="w-full rounded-xl bg-white p-2" />
+            ) : (
+              // Backend/mercado pago às vezes só devolve o copia-e-cola sem
+              // PNG pronto (e a demo seedada -- item 3 -- nunca tem PNG,
+              // só o copia-e-cola fake) -- desenha o QR a partir do
+              // copia-e-cola em vez de deixar o dialog sem nenhum QR.
+              state.qr_code && (
+                <div className="w-full rounded-xl bg-white p-4 flex items-center justify-center">
+                  <QRCodeSVG value={state.qr_code} size={220} />
+                </div>
+              )
             )}
             <button
               onClick={() => { navigator.clipboard.writeText(state.qr_code); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
