@@ -7,7 +7,6 @@ mod jwks;
 mod mercadopago;
 mod mercadopago_oauth;
 mod openapi;
-mod pandadoc;
 mod plans;
 mod routes;
 mod state;
@@ -125,9 +124,6 @@ async fn main() -> anyhow::Result<()> {
     let http = reqwest::Client::new();
     let supabase_jwks = jwks::JwksVerifier::new(&supabase_url, http.clone());
 
-    let pandadoc = pandadoc::PandadocConfig::from_env();
-    tracing::info!("{}", pandadoc::status(&pandadoc).message);
-
     let mercadopago_oauth = mercadopago_oauth::MercadoPagoOAuthConfig::from_env();
     if !mercadopago_oauth.enabled() {
         tracing::warn!(
@@ -186,7 +182,6 @@ async fn main() -> anyhow::Result<()> {
         platform_internal_key: Arc::new(platform_internal_key),
         jubilados_api_url: Arc::new(jubilados_api_url),
         jubilados_internal_key: Arc::new(jubilados_internal_key),
-        pandadoc,
         supabase_url: supabase_url.clone(),
         supabase_service_key,
         payment_mode,
@@ -305,18 +300,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/contratos/me", get(routes::contratos::me_documents))
         .route("/api/contratos/accept", post(routes::contratos::accept))
         .route(
-            "/api/public/contratos/pandadoc/status",
-            get(routes::contratos::pandadoc_status),
-        )
-        .route(
-            "/api/contratos/pandadoc/session",
-            post(routes::contratos::pandadoc_session),
-        )
-        .route(
             "/api/webhooks/mercadopago",
             get(routes::webhooks::mercadopago_webhook).post(routes::webhooks::mercadopago_webhook),
         )
-        .route("/api/webhooks/pandadoc", post(routes::webhooks::pandadoc_webhook))
         .route("/api/public/plans", get(routes::plans::list_public))
         .route("/api/public/content", get(routes::plans::list_content))
         .route("/api/public/coupons/preview", post(routes::plans::coupon_preview))

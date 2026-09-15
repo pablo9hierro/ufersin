@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use crate::jwks::JwksVerifier;
 use crate::mercadopago_oauth::MercadoPagoOAuthConfig;
-use crate::pandadoc::PandadocConfig;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -44,8 +43,6 @@ pub struct AppState {
     /// exposto ao navegador. Vazio = módulo fiscal desligado.
     pub jubilados_api_url: Arc<String>,
     pub jubilados_internal_key: Arc<String>,
-    /// PandaDoc (sandbox/prod). Sem API key = stub de contratos.
-    pub pandadoc: PandadocConfig,
     /// Base URL do projeto Supabase (storage + JWKS).
     pub supabase_url: String,
     /// Service role — só server-side (upload de logo).

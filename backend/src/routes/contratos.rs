@@ -1,4 +1,4 @@
-//! Rotas do módulo de contratos (PandaDoc-ready).
+//! Rotas do módulo de contratos (aceite via checkbox).
 
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,6 @@ use sqlx::FromRow;
 
 use crate::auth::AuthSubscriber;
 use crate::error::AppError;
-use crate::pandadoc::{self, CreateSessionRequest};
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, FromRow)]
@@ -187,23 +186,4 @@ pub async fn accept_checkout(
         kind: body.kind,
         accepted: true,
     }))
-}
-
-/// Status público da integração (sem segredos) — o front de /assinar usa pra
-/// saber se mostra “e-sign PandaDoc” ou só checkbox.
-pub async fn pandadoc_status(State(state): State<AppState>) -> Json<pandadoc::StatusResponse> {
-    Json(pandadoc::status(&state.pandadoc))
-}
-
-pub async fn pandadoc_session(
-    State(state): State<AppState>,
-    AuthSubscriber(_claims): AuthSubscriber,
-    Json(body): Json<CreateSessionRequest>,
-) -> Result<Json<pandadoc::CreateSessionResponse>, AppError> {
-    // Só contrato do lojista. Checkout kinds → mensagem explícita (checkbox only).
-    if body.kind != "platform_subscription" {
-        return Ok(Json(pandadoc::create_signing_session(&state.pandadoc, &state.http, &body).await));
-    }
-    let resp = pandadoc::create_signing_session(&state.pandadoc, &state.http, &body).await;
-    Ok(Json(resp))
 }

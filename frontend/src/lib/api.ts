@@ -299,17 +299,6 @@ export interface MeResponse {
 }
 
 export type ContractKind = 'platform_subscription' | 'checkout_compra_normal' | 'checkout_mais18'
-/** E-sign PandaDoc — exclusivo do contrato lojista em /assinar. */
-export type PlatformContractKind = 'platform_subscription'
-
-export interface PandadocStatus {
-  enabled: boolean
-  sandbox: boolean
-  platform_template_configured: boolean
-  platform_signing_ready: boolean
-  checkout_uses_pandadoc: boolean
-  message: string
-}
 
 export interface ContractCatalogItem {
   kind: ContractKind
@@ -765,7 +754,6 @@ export const api = {
   mercadoPagoOAuthDisconnect: () =>
     request<{ disconnected: boolean }>('/api/mercadopago/oauth/disconnect', { method: 'POST' }),
 
-  getPandadocStatus: () => request<PandadocStatus>('/api/public/contratos/pandadoc/status'),
   contratosCatalog: () => request<ContractCatalogItem[]>('/api/public/contratos/catalog'),
   contratosAccept: (kind: ContractKind, channel = 'checkbox') =>
     request<{ id: string; kind: string; accepted: boolean }>('/api/contratos/accept', {
@@ -782,16 +770,4 @@ export const api = {
         signed_at: string | null
       }>
     >('/api/contratos/me'),
-  /** Só `platform_subscription` — checkout kinds usam checkbox no e-commerce. */
-  contratosPandadocSession: (signer_email: string, signer_name?: string) =>
-    request<{
-      ready: boolean
-      mode: string
-      message: string
-      session_id: string | null
-      share_link: string | null
-    }>('/api/contratos/pandadoc/session', {
-      method: 'POST',
-      body: JSON.stringify({ kind: 'platform_subscription' satisfies PlatformContractKind, signer_email, signer_name }),
-    }),
 }

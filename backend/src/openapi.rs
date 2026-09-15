@@ -111,11 +111,8 @@ pub fn build() -> OpenApi {
         ("/api/public/contratos/accept-checkout", Post, "Aceitar contrato durante checkout", "Contratos", false, true),
         ("/api/contratos/me", Get, "Documentos/contratos do assinante logado", "Contratos", true, false),
         ("/api/contratos/accept", Post, "Aceitar contrato (assinante logado)", "Contratos", true, true),
-        ("/api/public/contratos/pandadoc/status", Get, "Status de assinatura PandaDoc", "Contratos", false, false),
-        ("/api/contratos/pandadoc/session", Post, "Criar sessão de assinatura PandaDoc", "Contratos", true, true),
         ("/api/webhooks/mercadopago", Get, "Webhook Mercado Pago (verificação)", "Webhooks", false, false),
         ("/api/webhooks/mercadopago", Post, "Webhook Mercado Pago (evento)", "Webhooks", false, true),
-        ("/api/webhooks/pandadoc", Post, "Webhook PandaDoc", "Webhooks", false, true),
         ("/api/public/plans", Get, "Lista pública de planos", "Público", false, false),
         ("/api/public/content", Get, "Conteúdo público (landing/textos)", "Público", false, false),
         ("/api/public/coupons/preview", Post, "Pré-visualizar cupom de desconto", "Público", false, true),
@@ -224,7 +221,7 @@ pub fn build() -> OpenApi {
                 .version(env!("CARGO_PKG_VERSION"))
                 .description(Some(
                     "API central do Resolutoo (resolutoo.com): assinaturas, onboarding de lojas, \
-                     Mercado Pago (lojista e plataforma), contratos/PandaDoc, superadmin e conteúdo \
+                     Mercado Pago (lojista e plataforma), contratos, superadmin e conteúdo \
                      público. Autenticação via Bearer JWT (Supabase Auth) nas rotas marcadas com cadeado.",
                 ))
                 .build(),
