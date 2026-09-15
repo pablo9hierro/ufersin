@@ -255,6 +255,15 @@ async fn seed_demo_ecommerce(pool: &PgPool) -> anyhow::Result<()> {
     }
     tracing::info!("seeding demo-ecommerce...");
 
+    // Hero da vitrine pública -- sem isso a landing da demo nascia sem banner
+    // (comportamento correto pra lojista real que nunca configurou nada, mas
+    // passa impressão de produto quebrado numa vitrine de vendas).
+    sqlx::query("UPDATE tenants SET landing_hero_image_url = $2 WHERE id = $1")
+        .bind(&tenant_id)
+        .bind("https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1600&q=80")
+        .execute(&mut *tx)
+        .await?;
+
     let admin_hash = hash_password("demo-nao-usar-login-por-senha").expect("hash demo admin password");
     sqlx::query("INSERT INTO admins (id, tenant_id, email, password_hash, name) VALUES ($1, $2, 'admin@demo-ecommerce.resolutoo.app', $3, 'Admin (demo)')")
         .bind(Uuid::new_v4().to_string())
@@ -401,6 +410,64 @@ async fn seed_demo_ecommerce(pool: &PgPool) -> anyhow::Result<()> {
         .await?;
     }
 
+    // Reforço de dados de demo (Part 4 do plano): mais clientes e mais
+    // pedidos concluídos espalhados nos últimos dias, pra Financeiro/gráfico
+    // de receita não ficarem achatados com só 1 pedido concluído.
+    let extra_customers: [(&str, &str); 3] = [
+        ("Beatriz Nunes", "5583999996655"),
+        ("Rafael Torres", "5583999995544"),
+        ("Camila Prado", "5583999994433"),
+    ];
+    let mut extra_customer_ids = Vec::new();
+    for (name, whatsapp) in extra_customers {
+        let id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO customers (id, tenant_id, name, whatsapp) VALUES ($1, $2, $3, $4)")
+            .bind(&id)
+            .bind(&tenant_id)
+            .bind(name)
+            .bind(whatsapp)
+            .execute(&mut *tx)
+            .await?;
+        extra_customer_ids.push((id, name.to_string(), whatsapp.to_string()));
+    }
+
+    // (customer idx, product idx, dias atrás)
+    let extra_orders: [(usize, usize, i64); 4] = [(0, 0, 3), (1, 2, 7), (2, 4, 15), (0, 6, 28)];
+    for (customer_idx, product_idx, days_ago) in extra_orders {
+        let (customer_id, customer_name, whatsapp) = &extra_customer_ids[customer_idx];
+        let (product_id, product_name, price) = &product_ids[product_idx % product_ids.len()];
+        let order_id = Uuid::new_v4().to_string();
+        let total = *price * 2.0;
+        sqlx::query(
+            "INSERT INTO orders (id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
+             neighborhood, address, payment_method, payment_status, status, shipping_price, total, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, 'entrega', 'Centro', 'Rua Demo, 456', 'pix', 'pago', 'concluido', 5.0, $6, \
+             (NOW() - ($7 || ' days')::interval)::text, (NOW() - ($7 || ' days')::interval)::text)",
+        )
+        .bind(&order_id)
+        .bind(&tenant_id)
+        .bind(customer_id)
+        .bind(customer_name)
+        .bind(whatsapp)
+        .bind(total)
+        .bind(days_ago.to_string())
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "INSERT INTO order_items (id, tenant_id, order_id, product_id, product_name, unit_price, quantity) \
+             VALUES ($1, $2, $3, $4, $5, $6, 2)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&tenant_id)
+        .bind(&order_id)
+        .bind(product_id)
+        .bind(product_name)
+        .bind(price)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     tx.commit().await?;
     tracing::info!("demo-ecommerce seeded");
     Ok(())
@@ -470,6 +537,14 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         return Ok(());
     }
     tracing::info!("seeding demo-eletronica...");
+
+    // Hero da vitrine pública (assistência técnica/eletrônicos), mesmo motivo
+    // do demo-ecommerce acima.
+    sqlx::query("UPDATE tenants SET landing_hero_image_url = $2 WHERE id = $1")
+        .bind(&tenant_id)
+        .bind("https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=1600&q=80")
+        .execute(&mut *tx)
+        .await?;
 
     let admin_hash = hash_password("demo-nao-usar-login-por-senha").expect("hash demo admin password");
     sqlx::query("INSERT INTO admins (id, tenant_id, email, password_hash, name) VALUES ($1, $2, 'admin@demo-eletronica.resolutoo.app', $3, 'Admin (demo)')")
@@ -636,24 +711,35 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         .await?;
     }
 
-    // Agendamentos — passado, hoje e futuro, em status variados
-    let appointments: [(&str, &str, &str, &str, i64); 4] = [
-        ("Maria Silva", "83988887777", "Consulta de diagnóstico", "agendado", 2),
-        ("João Souza", "83988886666", "Retirada de aparelho", "agendado", -1),
-        ("Ana Costa", "83988885555", "Orçamento presencial", "concluido", -5),
-        ("Pedro Lima", "83988884444", "Reagendado", "cancelado", 5),
+    // Agendamentos — a tela real (EletronicaAdminAgenda.tsx →
+    // eletronicosAdmin.appointments.list()) lê de `eletronicos.appointments`,
+    // não de `service_appointments` (tabela legada, sem leitor nenhum na UI
+    // atual) — sem isso a agenda da demo aparecia sempre vazia. Passado,
+    // hoje e futuro, em status variados, com starts_at/ends_at de 1h.
+    let appointments: [(&str, &str, &str, &str, i64, u32); 5] = [
+        ("Maria Silva", "83988887777", "Consulta de diagnóstico", "agendado", 0, 10),
+        ("João Souza", "83988886666", "Retirada de aparelho", "agendado", 1, 14),
+        ("Carla Dias", "83988883333", "Troca de tela", "agendado", 2, 11),
+        ("Ana Costa", "83988885555", "Orçamento presencial", "concluido", -5, 9),
+        ("Pedro Lima", "83988884444", "Reagendado", "cancelado", 5, 16),
     ];
-    for (name, phone, reason, status, days_offset) in appointments {
+    for (name, phone, reason, status, days_offset, hour) in appointments {
+        let id = Uuid::new_v4().to_string();
         sqlx::query(
-            "INSERT INTO service_appointments (id, tenant_id, customer_phone, customer_name, scheduled_at, reason, status) \
-             VALUES ($1, $2, $3, $4, NOW() + ($5 || ' days')::interval, $6, $7)",
+            "INSERT INTO eletronicos.appointments \
+             (id, tenant_id, service_label, customer_name, customer_phone, starts_at, ends_at, status, notes, created_by, appointment_type) \
+             VALUES ($1::uuid, $2, $3, $4, $5, \
+              date_trunc('day', NOW()) + ($6 || ' days')::interval + ($7 || ' hours')::interval, \
+              date_trunc('day', NOW()) + ($6 || ' days')::interval + ($7 || ' hours')::interval + interval '1 hour', \
+              $8, NULL, 'admin', 'service')",
         )
-        .bind(Uuid::new_v4().to_string())
+        .bind(&id)
         .bind(&tenant_id)
-        .bind(phone)
-        .bind(name)
-        .bind(days_offset.to_string())
         .bind(reason)
+        .bind(name)
+        .bind(phone)
+        .bind(days_offset.to_string())
+        .bind(hour.to_string())
         .bind(status)
         .execute(&mut *tx)
         .await?;
