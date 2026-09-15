@@ -25,6 +25,44 @@ function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
 }
 
+// Mesmo gesto de arrastar do SwipeToComplete, só que mais curto e sem
+// "travar" nada — arrastou até o fim, abre o app de navegação escolhido
+// (nova aba/app externo) e volta pro início sozinho, pra poder usar de novo
+// quantas vezes precisar durante a mesma entrega.
+function SwipeToOpen({ label, onOpen }: { label: string; onOpen: () => void }) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+  const x = useMotionValue(0)
+
+  useEffect(() => {
+    if (trackRef.current) setWidth(Math.max(0, trackRef.current.offsetWidth - 44))
+  }, [])
+
+  return (
+    <div ref={trackRef} className="relative h-11 rounded-full bg-son-surface-light overflow-hidden select-none">
+      <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-son-silver-dim pointer-events-none">
+        {label}
+      </div>
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: 0, right: width }}
+        dragElastic={0}
+        dragMomentum={false}
+        style={{ x }}
+        onDragEnd={() => {
+          if (x.get() > width * 0.75) {
+            onOpen()
+          }
+          animate(x, 0, { duration: 0.2 })
+        }}
+        className="absolute left-0 top-0 w-11 h-11 rounded-full sunset-bg flex items-center justify-center cursor-grab active:cursor-grabbing touch-none"
+      >
+        <ChevronsRight className="w-4 h-4 text-son-silver" />
+      </motion.div>
+    </div>
+  )
+}
+
 // Arraste até o fim pra concluir a entrega — só "destrava" de verdade
 // depois que o pai confirma (pagamento, se precisar); se não confirmar,
 // volta pro início sozinho.
@@ -401,6 +439,35 @@ export default function MotoboyCorrida() {
 
       {!loading && !run && (
         <p className="text-sm text-son-silver-dim text-center py-8">Nenhuma corrida ativa no momento.</p>
+      )}
+
+      {/* Abaixo do mapa, de propósito -- é a navegação de verdade (giro por
+          voz, trânsito em tempo real), o mapa da tela é só pra guiar visual
+          com a rota já calculada. Dois apps porque motoboy tem preferência
+          forte por um ou outro, nunca os dois ao mesmo tempo. */}
+      {run && current?.customer_lat != null && current?.customer_lng != null && (
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          <SwipeToOpen
+            label="→ Google Maps"
+            onOpen={() =>
+              window.open(
+                `https://www.google.com/maps/dir/?api=1&destination=${current.customer_lat},${current.customer_lng}&travelmode=driving`,
+                '_blank',
+                'noopener,noreferrer'
+              )
+            }
+          />
+          <SwipeToOpen
+            label="→ Waze"
+            onOpen={() =>
+              window.open(
+                `https://waze.com/ul?ll=${current.customer_lat},${current.customer_lng}&navigate=yes`,
+                '_blank',
+                'noopener,noreferrer'
+              )
+            }
+          />
+        </div>
       )}
 
       {run && current && (
