@@ -3,7 +3,7 @@ use axum::Json;
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::auth::PdvUser;
+use crate::auth::{AdminOrCozinhaUser, PdvUser};
 use crate::error::AppError;
 use crate::features::{self, Feature};
 use crate::models::{
@@ -528,6 +528,7 @@ pub(crate) async fn load_comanda_dto(
         items,
         total,
         version: comanda.version,
+        kitchen_ticket_status: comanda.kitchen_ticket_status,
     }))
 }
 
@@ -758,7 +759,7 @@ pub async fn remove_comanda_item(
     bump_comanda_version(&mut tx, &claims.tenant_id, &id, input.expected_version).await?;
     let removed: Option<ComandaItemRow> = sqlx::query_as(
         "DELETE FROM comanda_items WHERE tenant_id = $1 AND comanda_id = $2 AND id = $3 \
-         RETURNING id, comanda_id, product_id, product_name, unit_price, quantity",
+         RETURNING id, comanda_id, product_id, product_name, unit_price, quantity, sent_to_kitchen_at",
     )
     .bind(&claims.tenant_id)
     .bind(&id)
@@ -889,7 +890,7 @@ pub async fn replace_comanda_item(
     bump_comanda_version(&mut tx, &claims.tenant_id, &id, input.expected_version).await?;
 
     let old_item: Option<ComandaItemRow> = sqlx::query_as(
-        "SELECT id, comanda_id, product_id, product_name, unit_price, quantity \
+        "SELECT id, comanda_id, product_id, product_name, unit_price, quantity, sent_to_kitchen_at \
          FROM comanda_items WHERE tenant_id = $1 AND comanda_id = $2 AND id = $3",
     )
     .bind(&claims.tenant_id)
@@ -942,4 +943,141 @@ pub async fn replace_comanda_item(
         .ok_or_else(|| AppError::Internal("comanda vanished after item replace".to_string()))?;
     tx.commit().await?;
     Ok(Json(dto))
+}
+
+// ---------- Impressão térmica -> cozinha ----------
+// Só marca itens como enviados pra cozinha e imprime um cupom -- nunca fecha
+// a comanda nem cria Order (isso continua só em `pay_comanda`). Idempotente:
+// chamar de novo só pega o que ainda não foi enviado (`sent_to_kitchen_at
+// IS NULL`).
+
+#[derive(Debug, Serialize)]
+pub struct KitchenTicketItemDto {
+    pub product_name: String,
+    pub quantity: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KitchenTicketDto {
+    pub comanda_id: String,
+    pub comanda_label: String,
+    pub employee_name: String,
+    pub items: Vec<KitchenTicketItemDto>,
+}
+
+pub async fn print_kitchen_ticket(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+    Path(id): Path<String>,
+) -> Result<Json<KitchenTicketDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+
+    let comanda: Option<(String,)> = sqlx::query_as(
+        "SELECT label FROM comandas WHERE tenant_id = $1 AND id = $2 AND status = 'aberta'",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((label,)) = comanda else {
+        return Err(AppError::NotFound("comanda not found or already closed".to_string()));
+    };
+
+    let pending: Vec<(String, i64)> = sqlx::query_as(
+        "UPDATE comanda_items SET sent_to_kitchen_at = now() \
+         WHERE tenant_id = $1 AND comanda_id = $2 AND sent_to_kitchen_at IS NULL \
+         RETURNING product_name, quantity",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_all(&mut *tx)
+    .await?;
+    if pending.is_empty() {
+        return Err(AppError::BadRequest(
+            "Nenhum item novo pra mandar pra cozinha -- tudo já foi enviado.".to_string(),
+        ));
+    }
+
+    sqlx::query("UPDATE comandas SET kitchen_ticket_status = 'pendente' WHERE tenant_id = $1 AND id = $2")
+        .bind(&claims.tenant_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    add_comanda_history(
+        &mut tx, &claims.tenant_id, &id, &claims.role, &claims.sub, "KITCHEN_TICKET_PRINTED", None,
+        None, Some(serde_json::json!({ "items": pending.len() })), None,
+    )
+    .await?;
+    tx.commit().await?;
+
+    Ok(Json(KitchenTicketDto {
+        comanda_id: id,
+        comanda_label: label,
+        employee_name: claims.name.clone(),
+        items: pending
+            .into_iter()
+            .map(|(product_name, quantity)| KitchenTicketItemDto { product_name, quantity })
+            .collect(),
+    }))
+}
+
+/// Cozinha/admin marcando o ticket como pronto. Se novos itens forem
+/// mandados pra cozinha depois (`print_kitchen_ticket`), o status volta pra
+/// 'pendente' normalmente -- não precisa reabrir nada aqui.
+pub async fn mark_kitchen_ready(
+    State(state): State<AppState>,
+    AdminOrCozinhaUser(claims): AdminOrCozinhaUser,
+    Path(id): Path<String>,
+) -> Result<Json<ComandaDto>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let updated: Option<(String,)> = sqlx::query_as(
+        "UPDATE comandas SET kitchen_ticket_status = 'pronto' \
+         WHERE tenant_id = $1 AND id = $2 AND kitchen_ticket_status = 'pendente' RETURNING id",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if updated.is_none() {
+        return Err(AppError::NotFound("comanda sem ticket pendente pra marcar pronto".to_string()));
+    }
+    add_comanda_history(
+        &mut tx, &claims.tenant_id, &id, &claims.role, &claims.sub, "KITCHEN_TICKET_READY", None, None, None, None,
+    )
+    .await?;
+    let dto = load_comanda_dto(&mut tx, &claims.tenant_id, &id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("comanda not found".to_string()))?;
+    tx.commit().await?;
+    Ok(Json(dto))
+}
+
+/// Lista pra tela de cozinha: comandas com ticket ativo (pendente ou
+/// pronto), com só os itens já enviados (`sent_to_kitchen_at IS NOT NULL`) --
+/// reaproveita `ComandaDto`/`load_comanda_dto` e filtra os itens depois, sem
+/// duplicar a query.
+pub async fn list_kitchen_comandas(
+    State(state): State<AppState>,
+    AdminOrCozinhaUser(claims): AdminOrCozinhaUser,
+) -> Result<Json<Vec<ComandaDto>>, AppError> {
+    features::require_feature(&state.pool, &claims.tenant_id, Feature::Catalogo).await?;
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let rows: Vec<ComandaRow> = sqlx::query_as(
+        "SELECT * FROM comandas WHERE tenant_id = $1 AND kitchen_ticket_status IN ('pendente', 'pronto') \
+         ORDER BY created_at",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut result = Vec::with_capacity(rows.len());
+    for row in rows {
+        if let Some(mut dto) = load_comanda_dto(&mut tx, &claims.tenant_id, &row.id).await? {
+            dto.items.retain(|i| i.sent_to_kitchen_at.is_some());
+            result.push(dto);
+        }
+    }
+    tx.commit().await?;
+    Ok(Json(result))
 }

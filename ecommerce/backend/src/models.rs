@@ -745,6 +745,8 @@ pub struct ComandaRow {
     /// (`UPDATE ... WHERE version = $n`); se não bater, outra pessoa mexeu
     /// na comanda entre a leitura e a escrita.
     pub version: i32,
+    /// 'nenhum' | 'pendente' | 'pronto' -- ver migration 0067.
+    pub kitchen_ticket_status: String,
 }
 
 #[derive(Debug, sqlx::FromRow, Serialize)]
@@ -755,6 +757,7 @@ pub struct ComandaItemRow {
     pub product_name: String,
     pub unit_price: f64,
     pub quantity: i64,
+    pub sent_to_kitchen_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -769,6 +772,7 @@ pub struct ComandaDto {
     /// (`expected_version`) -- se não bater mais, a comanda mudou por outra
     /// mão desde a última leitura.
     pub version: i32,
+    pub kitchen_ticket_status: String,
 }
 
 #[derive(Debug, Deserialize)]

@@ -17,6 +17,7 @@ import type {
   Category,
   Comanda,
   ComandaHistoryEntry,
+  KitchenTicket,
   CozinhaUser,
   Coupon,
   CouponGrant,
@@ -2050,6 +2051,15 @@ const remoteApi = {
           expected_version: number
         },
       ) => railwayAdmin<Order>(`/api/pdv/comandas/${id}/pay`, { method: 'POST', body: JSON.stringify(payload) }),
+      /** Marca os itens ainda não enviados como enviados e devolve o cupom
+       * formatado -- idempotente, não fecha a comanda. */
+      printKitchenTicket: (id: string) =>
+        railwayAdmin<KitchenTicket>(`/api/pdv/comandas/${id}/print-kitchen-ticket`, { method: 'POST' }),
+      markKitchenReady: (id: string) =>
+        railwayAdmin<Comanda>(`/api/pdv/comandas/${id}/mark-kitchen-ready`, { method: 'POST' }),
+    },
+    kitchenComandas: {
+      list: () => railwayAdmin<Comanda[]>('/api/pdv/kitchen-comandas'),
     },
   },
   // Autoatendimento de pagamento fixo (motoboy ou vendedor logado).

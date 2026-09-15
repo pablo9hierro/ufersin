@@ -3160,6 +3160,11 @@ export const localApi = {
       replaceItem: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
       history: async () => [],
       pay: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+      printKitchenTicket: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+      markKitchenReady: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+    },
+    kitchenComandas: {
+      list: async () => [],
     },
   },
   admin: {

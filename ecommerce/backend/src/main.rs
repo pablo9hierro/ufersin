@@ -564,6 +564,17 @@ async fn main() -> anyhow::Result<()> {
             post(routes::pdv::replace_comanda_item),
         )
         .route("/api/pdv/comandas/{id}/pay", post(routes::pdv::pay_comanda))
+        // Impressão térmica de comanda -> cozinha (Etapa 4). Não fecha a
+        // comanda nem cria Order -- só marca itens como enviados.
+        .route(
+            "/api/pdv/comandas/{id}/print-kitchen-ticket",
+            post(routes::pdv::print_kitchen_ticket),
+        )
+        .route(
+            "/api/pdv/comandas/{id}/mark-kitchen-ready",
+            post(routes::pdv::mark_kitchen_ready),
+        )
+        .route("/api/pdv/kitchen-comandas", get(routes::pdv::list_kitchen_comandas))
         // Mesas (Parte 3, usa_mesas) -- cadastro é admin-only mais abaixo em
         // /api/admin/restaurant-tables; abrir comanda numa mesa é ação de
         // qualquer PDV (admin ou vendedor/garçom).

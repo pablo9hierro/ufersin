@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Loader2, Plus, QrCode, Search, Settings, Trash2, X } from 'lucide-react'
+import { Loader2, Plus, Printer, QrCode, Search, Settings, Trash2, X } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { pdvService } from '../../services/pdvService'
 import { adminService } from '../../services/adminService'
@@ -8,10 +8,70 @@ import { orderService } from '../../services/orderService'
 import { filterPdvProducts } from '../../lib/pdvHelpers'
 import { tenantHasOnlinePix } from '../../lib/tenantConfig'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import type { Comanda, Order, PaymentMethod, Product, RestaurantTable } from '../../types'
+import type { Comanda, ImpressaoModo, KitchenTicket, Order, PaymentMethod, Product, RestaurantTable } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
+}
+
+// ponytail: porta do agente local hardcoded (padrão de agentes tipo QZ Tray)
+// -- torna configurável se algum tenant precisar de porta diferente.
+const LOCAL_PRINT_AGENT_URL = 'ws://localhost:8181'
+
+/** Cupom em texto puro, 80mm, monoespaçado -- serve tanto pro agente local
+ * (texto puro, a maioria aceita) quanto pra janela de impressão do navegador. */
+function formatKitchenTicketText(ticket: KitchenTicket) {
+  const lines = [
+    '=== COZINHA ===',
+    `Comanda: ${ticket.comanda_label}`,
+    `Atendente: ${ticket.employee_name}`,
+    `Hora: ${new Date().toLocaleString('pt-BR')}`,
+    '--------------------------------',
+    ...ticket.items.map((i) => `${i.quantity}x ${i.product_name}`),
+    '--------------------------------',
+  ]
+  return lines.join('\n')
+}
+
+function printInBrowser(ticket: KitchenTicket) {
+  const win = window.open('', '_blank', 'width=320,height=600')
+  if (!win) throw new Error('Não foi possível abrir a janela de impressão (pop-up bloqueado?).')
+  const text = formatKitchenTicketText(ticket)
+  win.document.write(`<!doctype html><html><head><title>Cupom cozinha</title><style>
+    @media print { @page { size: 80mm auto; margin: 0; } }
+    body { width: 80mm; margin: 0; padding: 8px; font-family: 'Courier New', monospace; font-size: 12px; color: #000; background: #fff; white-space: pre-wrap; }
+  </style></head><body>${text.replace(/</g, '&lt;')}</body></html>`)
+  win.document.close()
+  win.onafterprint = () => win.close()
+  win.focus()
+  win.print()
+}
+
+/** Se o agente não estiver rodando, o `onerror`/timeout do WebSocket rejeita
+ * com mensagem clara em vez de travar silenciosamente. */
+function printViaLocalAgent(ticket: KitchenTicket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const ws = new WebSocket(LOCAL_PRINT_AGENT_URL)
+    const fail = () => {
+      if (settled) return
+      settled = true
+      reject(new Error('Agente de impressão local não encontrado — verifique se está instalado e rodando.'))
+      ws.close()
+    }
+    const timer = setTimeout(fail, 2500)
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'print', content: formatKitchenTicketText(ticket) }))
+      clearTimeout(timer)
+      settled = true
+      resolve()
+      ws.close()
+    }
+    ws.onerror = () => {
+      clearTimeout(timer)
+      fail()
+    }
+  })
 }
 
 /** Comanda de PDV: cliente consumindo no local, paga o total no final.
@@ -33,6 +93,7 @@ export default function ComandasSection({ products }: { products: Product[] }) {
   // pública, então lê de `/api/pdv/employee-config` (proxy pra plataforma,
   // liberado tanto pra admin quanto vendedor/garçom).
   const [usaMesas, setUsaMesas] = useState(false)
+  const [impressaoModo, setImpressaoModo] = useState<ImpressaoModo>('nenhuma')
   const [tables, setTables] = useState<RestaurantTable[]>([])
   const [tablesLoading, setTablesLoading] = useState(false)
   const [tableError, setTableError] = useState<string | null>(null)
@@ -59,6 +120,7 @@ export default function ComandasSection({ products }: { products: Product[] }) {
       .employeeConfig()
       .then((cfg) => {
         setUsaMesas(cfg.usa_mesas)
+        setImpressaoModo(cfg.impressao_modo)
         if (cfg.usa_mesas) loadTables()
       })
       .catch(() => {})
@@ -206,6 +268,7 @@ export default function ComandasSection({ products }: { products: Product[] }) {
           comanda={openComanda}
           products={products}
           onlinePix={onlinePix}
+          impressaoModo={impressaoModo}
           onClose={() => setOpenComanda(null)}
           onChange={(updated) => {
             setOpenComanda(updated)
@@ -353,6 +416,7 @@ function ComandaDialog({
   comanda,
   products,
   onlinePix,
+  impressaoModo,
   onClose,
   onChange,
   onClosed,
@@ -360,6 +424,7 @@ function ComandaDialog({
   comanda: Comanda
   products: Product[]
   onlinePix: boolean
+  impressaoModo: ImpressaoModo
   onClose: () => void
   onChange: (c: Comanda) => void
   onClosed: () => void
@@ -368,6 +433,36 @@ function ComandaDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showPay, setShowPay] = useState(false)
+  const [printing, setPrinting] = useState(false)
+  const [choosingPrintMethod, setChoosingPrintMethod] = useState(false)
+
+  const runPrint = async (mode: 'navegador' | 'agente_local') => {
+    setPrinting(true)
+    setError(null)
+    setChoosingPrintMethod(false)
+    try {
+      const ticket = await pdvService.comandas.printKitchenTicket(comanda.id)
+      if (mode === 'navegador') {
+        printInBrowser(ticket)
+      } else {
+        await printViaLocalAgent(ticket)
+      }
+      const refreshed = await pdvService.comandas.get(comanda.id)
+      onChange(refreshed)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível imprimir o cupom da cozinha.')
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  const printAndSendToKitchen = () => {
+    if (impressaoModo === 'ambos') {
+      setChoosingPrintMethod(true)
+      return
+    }
+    runPrint(impressaoModo === 'agente_local' ? 'agente_local' : 'navegador')
+  }
 
   const results = filterPdvProducts(products, query)
 
@@ -469,15 +564,43 @@ function ComandaDialog({
           <span className="text-son-gold font-black text-xl">{currency(comanda.total)}</span>
         </div>
 
+        {impressaoModo !== 'nenhuma' && (
+          <button
+            type="button"
+            onClick={printAndSendToKitchen}
+            disabled={printing || comanda.items.every((i) => i.sent_to_kitchen_at)}
+            className="btn-secondary w-full mt-4"
+          >
+            {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+            Imprimir e mandar pra cozinha
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => setShowPay(true)}
           disabled={comanda.items.length === 0}
-          className="btn-primary w-full mt-4"
+          className="btn-primary w-full mt-2"
         >
           Pagar conta
         </button>
       </div>
+
+      {choosingPrintMethod && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[70] flex items-center justify-center p-4" onClick={() => setChoosingPrintMethod(false)}>
+          <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-white mb-4">Imprimir por onde?</h3>
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={() => runPrint('agente_local')} className="btn-primary w-full">
+                Imprimir pelo agente local
+              </button>
+              <button type="button" onClick={() => runPrint('navegador')} className="btn-secondary w-full">
+                Imprimir pelo navegador
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPay && (
         <PayComandaDialog

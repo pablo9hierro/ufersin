@@ -17,7 +17,7 @@ import { orderService } from '../../services/orderService'
 import { ADMIN_DELIVERY_STATUS_LABEL, labelDeliveryStatus } from '../../lib/deliveryStatus'
 import { pdvService } from '../../services/pdvService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import { adminCanCancelOrder, type Order, type PaymentMethod } from '../../types'
+import { adminCanCancelOrder, type Comanda, type Order, type PaymentMethod } from '../../types'
 import CashAmountInput from '../../components/CashAmountInput'
 import { cashCoversTotal, formatCashMask, formatTrocoLabel, computeTroco } from '../../lib/cashMask'
 
@@ -292,6 +292,10 @@ export default function AdminPedidos() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [visible, setVisible] = useState<Order[]>([])
+  // Aba "Comandas" (Etapa 4, impressão -> cozinha): não é um status de Order
+  // (comandas são outra tabela), então fica fora do fluxo de `filter` normal
+  // -- um toggle simples que troca o conteúdo da página.
+  const [showComandas, setShowComandas] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -548,17 +552,30 @@ export default function AdminPedidos() {
         {filters.map((f) => (
           <button
             key={f.value}
-            onClick={() => setFilter(f.value)}
+            onClick={() => {
+              setShowComandas(false)
+              setFilter(f.value)
+            }}
             className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              filter === f.value ? 'sunset-bg text-white' : 'bg-son-surface-light border border-white/5 text-son-silver hover:border-son-pink/30'
+              !showComandas && filter === f.value ? 'sunset-bg text-white' : 'bg-son-surface-light border border-white/5 text-son-silver hover:border-son-pink/30'
             }`}
           >
             {f.label} ({counts[f.value] ?? 0})
           </button>
         ))}
+        <button
+          onClick={() => setShowComandas(true)}
+          className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+            showComandas ? 'sunset-bg text-white' : 'bg-son-surface-light border border-white/5 text-son-silver hover:border-son-pink/30'
+          }`}
+        >
+          Comandas
+        </button>
       </div>
 
-      {loading ? (
+      {showComandas ? (
+        <KitchenComandasTab />
+      ) : loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
         </div>
@@ -876,6 +893,91 @@ export default function AdminPedidos() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Aba "Comandas" da tela de cozinha/pedidos (Etapa 4): lista comandas com
+ * ticket de cozinha ativo (`kitchen_ticket_status` pendente ou pronto) e os
+ * itens já enviados pra cozinha, com botão "Marcar pronto" -- mesmo padrão
+ * visual de card+botão já usado no resto da tela. Visível sempre (admin ou
+ * cozinha); sem comandas ativas só mostra o estado vazio. */
+function KitchenComandasTab() {
+  const [comandas, setComandas] = useState<Comanda[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = () => {
+    setLoading(true)
+    pdvService.kitchenComandas
+      .list()
+      .then(setComandas)
+      .catch(() => setError('Não foi possível carregar as comandas da cozinha.'))
+      .finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  const markReady = async (comanda: Comanda) => {
+    setBusyId(comanda.id)
+    setError(null)
+    try {
+      await pdvService.comandas.markKitchenReady(comanda.id)
+      load()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Não foi possível marcar como pronto.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="w-6 h-6 animate-spin text-son-pink" />
+      </div>
+    )
+  }
+
+  if (comandas.length === 0) {
+    return (
+      <div className="text-center py-16 text-son-silver-dim">
+        <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
+        <p>Nenhuma comanda na cozinha no momento.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {error && <p className="error-msg">{error}</p>}
+      {comandas.map((c) => (
+        <Card key={c.id} className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold text-white">{c.label}</span>
+            <span className={`text-xs font-medium px-2 py-1 rounded-lg ${c.kitchen_ticket_status === 'pronto' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+              {c.kitchen_ticket_status === 'pronto' ? 'Pronto' : 'Pendente'}
+            </span>
+          </div>
+          <ul className="text-sm text-son-silver space-y-0.5 mb-3">
+            {c.items.filter((i) => i.sent_to_kitchen_at).map((i) => (
+              <li key={i.id}>
+                {i.quantity}x {i.product_name}
+              </li>
+            ))}
+          </ul>
+          {c.kitchen_ticket_status === 'pendente' && (
+            <button
+              onClick={() => markReady(c)}
+              disabled={busyId === c.id}
+              className="btn-primary w-full text-sm py-2"
+            >
+              {busyId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              Marcar pronto
+            </button>
+          )}
+        </Card>
+      ))}
     </div>
   )
 }
