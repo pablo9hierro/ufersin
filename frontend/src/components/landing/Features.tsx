@@ -1,5 +1,5 @@
 ﻿import { motion } from 'framer-motion'
-import { BadgePercent, Bike, FileText, LayoutGrid, MessageCircle, QrCode, ShoppingCart, Users2, Wrench } from 'lucide-react'
+import { BadgePercent, FileText, LayoutGrid, MessageCircle, QrCode, ShoppingCart, Users2, Wrench } from 'lucide-react'
 import { CmsText } from '../../lib/cms'
 
 const FEATURES = [
@@ -26,12 +26,6 @@ const FEATURES = [
     icon: FileText,
     title: 'Nota fiscal automática',
     desc: 'NF-e e NFC-e emitidas sozinhas quando o pagamento cai. Sem digitar nada na mão.',
-  },
-  {
-    key: 'features.f8',
-    icon: Bike,
-    title: 'Uber Direct nativo',
-    desc: 'Despacha e acompanha o entregador em tempo real, direto do painel de pedidos.',
   },
   {
     key: 'features.f4',

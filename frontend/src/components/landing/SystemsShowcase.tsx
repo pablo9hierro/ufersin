@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Bike, ChefHat, ClipboardList, CreditCard, FileText, Loader2, Package, ShoppingBag, Wrench } from 'lucide-react'
+import { ChefHat, ClipboardList, CreditCard, FileText, Loader2, Package, ShoppingBag, Wrench } from 'lucide-react'
 import { CmsText } from '../../lib/cms'
 import { fetchDemoAdminAutoLoginUrl, prefetchDemoAdminToken } from '../../lib/ecommerceUrl'
 import FeaturePreviewDialog from './FeaturePreviewDialog'
@@ -43,13 +43,6 @@ const ITEMS: Item[] = [
     title: 'Serviço vinculado a estoque',
     desc: 'Liga uma peça ao serviço — ao concluir, o estoque baixa sozinho, sem lançar nada manual.',
     path: '/admin/produtos/servicos',
-  },
-  {
-    key: 'systems.uber',
-    icon: Bike,
-    title: 'Uber Direct nativo',
-    desc: 'Chama o entregador direto do painel e acompanha a corrida em tempo real, sem app terceiro.',
-    path: '/admin/entregas-terceirizadas',
   },
   {
     key: 'systems.point',

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Bike, Check, FileText, MessageCircle, Store, X } from 'lucide-react'
+import { Check, FileText, MessageCircle, Store, X } from 'lucide-react'
 import { CmsText } from '../../lib/cms'
 
 const SYSTEMS = [
@@ -29,13 +29,6 @@ const SYSTEMS = [
   },
 ]
 
-const UBER_ROW = {
-  icon: Bike,
-  name: 'Uber Direct integrado à loja',
-  example: 'Nenhuma plataforma de e-commerce do mercado oferece isso — você teria que chamar o motoboy manualmente, sempre.',
-  exclusive: true,
-}
-
 export default function FiveInOne() {
   return (
     <section className="uf-section">
@@ -49,13 +42,13 @@ export default function FiveInOne() {
         >
           <span className="uf-eyebrow mb-4">O mote</span>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mt-4">
-            <CmsText contentKey="fiveinone.title">5 sistemas em 1 — não 5 assinaturas</CmsText>
+            <CmsText contentKey="fiveinone.title">4 sistemas em 1 — não 4 assinaturas</CmsText>
           </h2>
           <p className="mt-4 text-uf-silver-dim max-w-2xl mx-auto">
             <CmsText contentKey="fiveinone.sub">
-              Loja virtual, nota fiscal, atendimento com IA, PDV/estoque e entrega terceirizada nativa (Uber Direct)
-              — hoje isso é sempre 5 sistemas diferentes, 5 painéis que não conversam entre si, e você quem fica no
-              meio repassando status de um pro outro na mão. Na Resolutoo é um painel só, tudo nativo.
+              Loja virtual, nota fiscal, atendimento com IA e PDV/estoque — hoje isso é sempre 4 sistemas diferentes,
+              4 painéis que não conversam entre si, e você quem fica no meio repassando status de um pro outro na
+              mão. Na Resolutoo é um painel só, tudo nativo.
             </CmsText>
           </p>
         </motion.div>
@@ -83,19 +76,9 @@ export default function FiveInOne() {
                   <p className="text-sm font-mono text-uf-silver-dim flex-shrink-0">{s.price}</p>
                 </div>
               ))}
-              <div className="flex items-start gap-3 pt-1">
-                <div className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0">
-                  <UBER_ROW.icon className="w-4 h-4 text-uf-silver-dim" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold">{UBER_ROW.name}</p>
-                  <p className="text-xs text-uf-silver-dim">{UBER_ROW.example}</p>
-                </div>
-                <p className="text-xs font-bold text-red-400 flex-shrink-0">não existe</p>
-              </div>
             </div>
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
-              <p className="font-bold flex items-center gap-1.5"><X className="w-4 h-4 text-red-400" /> Total (4 painéis + Uber Direct que ninguém vende)</p>
+              <p className="font-bold flex items-center gap-1.5"><X className="w-4 h-4 text-red-400" /> Total (4 painéis separados)</p>
               <p className="font-mono font-bold text-red-400">R$ 607 – 1.598/mês</p>
             </div>
           </motion.div>
@@ -118,15 +101,6 @@ export default function FiveInOne() {
                   <p className="text-sm font-semibold">{s}</p>
                 </div>
               ))}
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                  <Check className="w-4 h-4 text-emerald-400" />
-                </div>
-                <p className="text-sm font-semibold flex-1">Uber Direct com rastreio ao vivo</p>
-                <span className="text-[10px] font-bold text-uf-blue border border-uf-blue/40 rounded-full px-2 py-0.5 flex-shrink-0">
-                  exclusivo
-                </span>
-              </div>
             </div>
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
               <p className="font-bold">1 painel só, tudo integrado</p>
