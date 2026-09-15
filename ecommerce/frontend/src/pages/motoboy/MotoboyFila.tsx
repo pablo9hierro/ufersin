@@ -78,9 +78,15 @@ function OrderCard({
         {order.reference_point && (
           <p className="text-xs text-son-silver-dim mt-0.5 italic">{order.reference_point}</p>
         )}
-        <div className="flex items-center justify-between text-sm mt-2">
-          <span className="text-son-silver-dim">{order.payment_method}</span>
-          <span className="sunset-text font-bold">{currency(order.total)}</span>
+        <div className="flex items-center justify-between text-sm mt-2 gap-2">
+          <span
+            className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
+              order.payment_status === 'pago' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'
+            }`}
+          >
+            {order.payment_status === 'pago' ? 'Pago' : `Pendente · ${order.payment_method}`}
+          </span>
+          <span className="sunset-text font-bold flex-shrink-0">{currency(order.total)}</span>
         </div>
       </div>
     </Reorder.Item>
@@ -144,6 +150,26 @@ export default function MotoboyFila() {
   }
 
   useEffect(load, [tab])
+
+  // Parte 5 -- fila do motoboy usa polling curto (não SSE): a cada ~3s,
+  // rebusca "pedido pronto" e some da tela qualquer pedido que outro
+  // motoboy já pegou nesse meio tempo -- é o que garante que a tela nunca
+  // mostra por mais de alguns segundos um pedido já indisponível, mesmo
+  // sem clicar em nada. Mesmo padrão de polling curto já usado no chat/
+  // PayrollBell, sem infra nova.
+  useEffect(() => {
+    if (tab !== 'pedido_pronto') return
+    const interval = setInterval(() => {
+      motoboyService.orders.list('pedido_pronto').then((fresh) => {
+        const freshIds = new Set(fresh.map((o) => o.id))
+        setOrders(fresh)
+        setSelected((prev) => prev.filter((id) => freshIds.has(id)))
+      })
+      loadCounts()
+    }, 3000)
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))

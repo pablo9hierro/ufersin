@@ -51,7 +51,7 @@ pub async fn enable_beta(
 /// vínculo explícito. Só quando o lojista liga essa preferência o vínculo em
 /// `mp_point_employee_pos` volta a valer (comportamento antigo, fail-closed).
 /// Admin sempre pode usar qualquer POS, nos dois modos.
-async fn check_pos_access(
+pub(crate) async fn check_pos_access(
     state: &AppState,
     claims: &crate::auth::Claims,
     employee: &EmployeeRef,
@@ -677,11 +677,25 @@ pub async fn charge_order_point(
     Path(order_id): Path<String>,
     Json(input): Json<ChargeOrderPointInput>,
 ) -> Result<Json<OrderPointDto>, AppError> {
+    charge_order_point_for(&state, &claims, &order_id, &input).await
+}
+
+/// Extraído de `charge_order_point` pra ser reaproveitado pelo motoboy
+/// (Parte 4, `motoboy.rs::charge_motoboy_point`) -- toma `Claims` direto em
+/// vez do extractor `PdvUser`, já que motoboy não é PDV (admin/vendedor).
+/// A lógica de autorização (require_beta, check_pos_access) é idêntica pra
+/// qualquer papel -- só o extractor de entrada muda por chamador.
+pub(crate) async fn charge_order_point_for(
+    state: &AppState,
+    claims: &crate::auth::Claims,
+    order_id: &str,
+    input: &ChargeOrderPointInput,
+) -> Result<Json<OrderPointDto>, AppError> {
     require_beta(&state.pool, &claims.tenant_id).await?;
 
     let order: Option<(f64,)> = sqlx::query_as("SELECT total FROM orders WHERE tenant_id = $1 AND id = $2")
         .bind(&claims.tenant_id)
-        .bind(&order_id)
+        .bind(order_id)
         .fetch_optional(&state.pool)
         .await?;
     let Some((amount,)) = order else {
@@ -700,9 +714,9 @@ pub async fn charge_order_point(
     };
 
     let employee = EmployeeRef { role: claims.role.clone(), id: claims.sub.clone() };
-    check_pos_access(&state, &claims, &employee, &input.pos_id).await?;
+    check_pos_access(state, claims, &employee, &input.pos_id).await?;
 
-    let (token, _payment) = access_token(&state, &claims.tenant_id).await?;
+    let (token, _payment) = access_token(state, &claims.tenant_id).await?;
 
     // idempotency_ref = o próprio order_id -- nunca duas cobranças ativas
     // pro mesmo pedido, mesmo padrão de fiscal_documents/deliveries.
@@ -717,7 +731,7 @@ pub async fn charge_order_point(
     .bind(&id)
     .bind(&claims.tenant_id)
     .bind(&input.pos_id)
-    .bind(&order_id)
+    .bind(order_id)
     .bind(&employee.role)
     .bind(&employee.id)
     .bind(amount)
@@ -727,7 +741,7 @@ pub async fn charge_order_point(
         return Err(AppError::Conflict("Já existe uma cobrança em andamento para este pedido.".to_string()));
     };
 
-    let result = point_client::create_order(&state, &token, &external_pos_id, amount, &order_id, "Cobrança Resolutoo").await;
+    let result = point_client::create_order(state, &token, &external_pos_id, amount, order_id, "Cobrança Resolutoo").await;
     let (status, mp_order_id) = match &result {
         Ok(r) => (PointOrderStatus::from_mp_status(r.status.as_deref().unwrap_or("created")), Some(r.id.clone())),
         Err(_) => (PointOrderStatus::Failed, None),

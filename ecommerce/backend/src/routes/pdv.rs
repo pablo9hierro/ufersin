@@ -14,6 +14,7 @@ use crate::models::{
 use crate::orders_common;
 use crate::orders_common::fetch_order_dto;
 use crate::routes::public::{load_public_service_availability, PublicServiceDto};
+use crate::routes::tables::publish_comanda_event;
 use crate::state::AppState;
 use crate::tenant;
 
@@ -657,6 +658,7 @@ pub async fn create_comanda(
         .await?
         .ok_or_else(|| AppError::Internal("comanda vanished after insert".to_string()))?;
     tx.commit().await?;
+    publish_comanda_event(&state, &claims.tenant_id, Some(&id), "comanda_opened");
     Ok(Json(dto))
 }
 
@@ -739,6 +741,7 @@ pub async fn add_comanda_item(
         .await?
         .ok_or_else(|| AppError::Internal("comanda vanished after item insert".to_string()))?;
     tx.commit().await?;
+    publish_comanda_event(&state, &claims.tenant_id, Some(&id), "item_added");
     Ok(Json(dto))
 }
 
@@ -779,6 +782,7 @@ pub async fn remove_comanda_item(
         .await?
         .ok_or_else(|| AppError::NotFound("comanda not found".to_string()))?;
     tx.commit().await?;
+    publish_comanda_event(&state, &claims.tenant_id, Some(&id), "item_removed");
     Ok(Json(dto))
 }
 
@@ -866,6 +870,7 @@ pub async fn pay_comanda(
     )
     .await?;
     tx.commit().await?;
+    publish_comanda_event(&state, &claims.tenant_id, Some(&id), "comanda_closed");
 
     Ok(Json(dto))
 }
@@ -942,6 +947,7 @@ pub async fn replace_comanda_item(
         .await?
         .ok_or_else(|| AppError::Internal("comanda vanished after item replace".to_string()))?;
     tx.commit().await?;
+    publish_comanda_event(&state, &claims.tenant_id, Some(&id), "item_replaced");
     Ok(Json(dto))
 }
 

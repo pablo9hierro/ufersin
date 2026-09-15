@@ -7,8 +7,10 @@
 //! livre digitado, em qualquer estilo de loja (ver `routes::pdv::create_comanda`).
 
 use axum::extract::{Path, State};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use tokio_stream::{Stream, StreamExt};
 use uuid::Uuid;
 
 use crate::auth::{AdminUser, PdvUser};
@@ -18,6 +20,50 @@ use crate::models::ComandaDto;
 use crate::routes::pdv::load_comanda_dto;
 use crate::state::AppState;
 use crate::tenant;
+
+/// Parte 5 — SSE real pra comandas/mesas (nunca pra fila do motoboy, que
+/// continua em polling curto): payload mínimo, o frontend só usa isso pra
+/// saber QUANDO rebuscar (a comanda/lista via REST), nunca como fonte de
+/// verdade dos dados em si — evita qualquer risco de estado otimista
+/// divergente entre abas.
+#[derive(Debug, Clone, Serialize)]
+pub struct ComandaEvent {
+    pub tenant_id: String,
+    pub comanda_id: Option<String>,
+    pub kind: &'static str,
+}
+
+/// Publica um evento no canal compartilhado -- nunca falha a request que
+/// chama isso (`send` só erra se não há nenhum assinante, o que é normal
+/// quando nenhuma tela de comandas está aberta agora).
+pub fn publish_comanda_event(state: &AppState, tenant_id: &str, comanda_id: Option<&str>, kind: &'static str) {
+    let _ = state.comanda_events.send(ComandaEvent {
+        tenant_id: tenant_id.to_string(),
+        comanda_id: comanda_id.map(str::to_string),
+        kind,
+    });
+}
+
+/// GET /api/pdv/comandas/stream -- qualquer PDV (admin ou vendedor/garçom)
+/// assina o canal ÚNICO compartilhado e recebe só os eventos do PRÓPRIO
+/// tenant (filtro aqui, não um canal por tenant -- ver AppState).
+pub async fn comandas_stream(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
+    let rx = state.comanda_events.subscribe();
+    let tenant_id = claims.tenant_id;
+    let stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(move |msg| match msg {
+        Ok(ev) if ev.tenant_id == tenant_id => {
+            let data = serde_json::to_string(&ev).unwrap_or_default();
+            Some(Ok(Event::default().data(data)))
+        }
+        // evento de outro tenant, ou assinante ficou pra trás no buffer
+        // (Lagged) -- ignora e segue, nunca derruba a conexão.
+        _ => None,
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct RestaurantTableDto {
@@ -200,5 +246,6 @@ pub async fn open_comanda(
         .await?
         .ok_or_else(|| AppError::Internal("comanda vanished after insert".to_string()))?;
     tx.commit().await?;
+    publish_comanda_event(&state, &claims.tenant_id, Some(&comanda_id), "comanda_opened");
     Ok(Json(dto))
 }

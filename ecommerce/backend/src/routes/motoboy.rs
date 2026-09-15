@@ -300,6 +300,9 @@ pub async fn update_order_status(
     }
 
     if input.status == "em_rota_de_entrega" {
+        // Parte 3: primeira atividade do dia -- ON CONFLICT DO NOTHING já
+        // garante que a 2a corrida do mesmo dia não duplica.
+        crate::routes::payroll::record_work_day(&state.pool, &claims.tenant_id, &claims.sub).await?;
         let store = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
         let digits = whatsapp::digits_only(&order.customer_whatsapp);
         whatsapp::notify(
@@ -493,4 +496,39 @@ pub async fn create_motoboy_pix(
         qr_code: pix.qr_code,
         qr_code_base64: pix.qr_code_base64,
     }))
+}
+
+/// POST /api/motoboy/orders/{id}/point-charge -- Parte 4: cobrança por
+/// cartão na entrega via maquininha (Mercado Pago Point), só liberada
+/// quando a loja ligou `motoboy_usa_maquininha` (config global, Parte 1).
+/// Antes disso motoboy não tinha NENHUM jeito de cobrar cartão (só
+/// PdvUser -- admin/vendedor -- conseguia chamar o Point), então esse
+/// endpoint é capacidade nova, não um "desligar" de algo que já existia.
+/// Reaproveita a mesma lógica de autorização/cobrança de
+/// `point::charge_order_point` (beta feature flag + check_pos_access
+/// fail-open, ver point.rs) -- só a checagem extra da config de motoboy
+/// muda.
+pub async fn charge_motoboy_point(
+    State(state): State<AppState>,
+    MotoboyUser(claims): MotoboyUser,
+    Path(id): Path<String>,
+    Json(input): Json<crate::routes::point::ChargeOrderPointInput>,
+) -> Result<Json<crate::routes::point::OrderPointDto>, AppError> {
+    let cfg = crate::routes::payroll::load_motoboy_payroll_config(&state.pool, &claims.tenant_id).await?;
+    if !cfg.usa_maquininha {
+        return Err(AppError::Forbidden(
+            "Esta loja não usa maquininha para motoboy -- cobre em dinheiro, Pix ou avise que já está pago.".to_string(),
+        ));
+    }
+
+    let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
+    let Some(order) = fetch_order_row(&mut *tx, &claims.tenant_id, &id).await? else {
+        return Err(AppError::NotFound("order not found".to_string()));
+    };
+    tx.commit().await?;
+    if order.motoboy_id.as_deref() != Some(claims.sub.as_str()) {
+        return Err(AppError::Forbidden("order is not assigned to you".to_string()));
+    }
+
+    crate::routes::point::charge_order_point_for(&state, &claims, &id, &input).await
 }

@@ -87,6 +87,7 @@ export const pdvEndpoint = {
       validate(KitchenTicketSchema, await api.pdv.comandas.printKitchenTicket(id), 'pdv.comandas.printKitchenTicket'),
     markKitchenReady: async (id: string) =>
       validate(ComandaSchema, await api.pdv.comandas.markKitchenReady(id), 'pdv.comandas.markKitchenReady'),
+    stream: () => api.pdv.comandas.stream(),
   },
   kitchenComandas: {
     list: async () => validateList(ComandaSchema, await api.pdv.kitchenComandas.list(), 'pdv.kitchenComandas.list'),

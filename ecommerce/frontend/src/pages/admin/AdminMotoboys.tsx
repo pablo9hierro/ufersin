@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChefHat, Eye, Loader2, Pencil, Plus, Store, Trash2, Truck, Wallet, X } from 'lucide-react'
+import { ChefHat, Clock, Eye, Loader2, Pencil, Plus, Store, Trash2, Truck, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import FreteSettingsCard from '../../components/admin/FreteSettingsCard'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
@@ -11,10 +11,12 @@ import type {
   EmployeeConfig,
   ImpressaoModo,
   Motoboy,
+  MotoboyPayrollConfig,
   PaymentFrequency,
   PaymentMethod,
   PayrollPayment,
   Vendedor,
+  WorkDay,
 } from '../../types'
 
 const IMPRESSAO_OPTIONS: { value: ImpressaoModo; label: string }[] = [
@@ -35,8 +37,6 @@ const EMPTY_MOTOBOY_FORM = {
   name: '',
   phone: '',
   password: '',
-  payment_frequency: '' as PaymentFrequency | '',
-  payment_fixed_value: '',
 }
 const EMPTY_VENDEDOR_FORM = {
   name: '',
@@ -106,6 +106,48 @@ export default function AdminMotoboys() {
     else if (tab === 'vendedores' && !showVendedores) setTab(showMotoboys ? 'motoboys' : 'cozinha')
     else if (tab === 'cozinha' && !showCozinha) setTab(showMotoboys ? 'motoboys' : 'vendedores')
   }, [tab, showMotoboys, showVendedores, showCozinha])
+
+  // Parte 1 -- config GLOBAL de pagamento de motoboy (comissão XOR fixo),
+  // substitui os campos por-motoboy antigos removidos do form acima.
+  const [payrollCfg, setPayrollCfg] = useState<MotoboyPayrollConfig | null>(null)
+  const [payrollCfgSaving, setPayrollCfgSaving] = useState(false)
+  const [payrollCfgError, setPayrollCfgError] = useState<string | null>(null)
+  const [payrollCfgDraft, setPayrollCfgDraft] = useState({ frequency: '' as PaymentFrequency | '', value: '' })
+  useEffect(() => {
+    adminService.motoboyPayrollConfig
+      .get()
+      .then((cfg) => {
+        setPayrollCfg(cfg)
+        setPayrollCfgDraft({ frequency: cfg.payment_frequency ?? '', value: cfg.payment_fixed_value != null ? String(cfg.payment_fixed_value) : '' })
+      })
+      .catch(() => setPayrollCfgError('Não foi possível carregar a config de pagamento de motoboy.'))
+  }, [])
+  const savePayrollCfg = async (patch: Partial<MotoboyPayrollConfig>) => {
+    if (!payrollCfg) return
+    const next = { ...payrollCfg, ...patch }
+    setPayrollCfgSaving(true)
+    setPayrollCfgError(null)
+    try {
+      const saved = await adminService.motoboyPayrollConfig.update(next)
+      setPayrollCfg(saved)
+      setPayrollCfgDraft({ frequency: saved.payment_frequency ?? '', value: saved.payment_fixed_value != null ? String(saved.payment_fixed_value) : '' })
+    } catch (e) {
+      setPayrollCfgError(e instanceof ApiError ? e.message : 'Não foi possível salvar a config de pagamento.')
+    } finally {
+      setPayrollCfgSaving(false)
+    }
+  }
+
+  const [workDaysPopup, setWorkDaysPopup] = useState<{ name: string; days: WorkDay[]; loading: boolean } | null>(null)
+  const viewWorkDays = async (id: string, name: string) => {
+    setWorkDaysPopup({ name, days: [], loading: true })
+    try {
+      const days = await adminService.motoboys.workDays(id)
+      setWorkDaysPopup({ name, days, loading: false })
+    } catch {
+      setWorkDaysPopup({ name, days: [], loading: false })
+    }
+  }
 
   const [motoboys, setMotoboys] = useState<Motoboy[]>([])
   const [loading, setLoading] = useState(true)
@@ -189,8 +231,6 @@ export default function AdminMotoboys() {
       name: m.name,
       phone: m.phone,
       password: '',
-      payment_frequency: m.payment_frequency ?? '',
-      payment_fixed_value: m.payment_fixed_value != null ? String(m.payment_fixed_value) : '',
     })
     setShowForm(true)
   }
@@ -202,8 +242,6 @@ export default function AdminMotoboys() {
         name: form.name,
         phone: form.phone,
         password: form.password,
-        payment_frequency: form.payment_frequency || null,
-        payment_fixed_value: form.payment_frequency && form.payment_fixed_value ? Number(form.payment_fixed_value) : null,
       }
       if (editingMotoboy) {
         await adminService.motoboys.update(editingMotoboy.id, { ...payload, active: editingMotoboy.active })
@@ -504,6 +542,105 @@ export default function AdminMotoboys() {
         </Card>
       )}
 
+      {showMotoboys && (
+        <Card className="p-4 mb-6">
+          <h2 className="font-bold mb-1">Pagamento de motoboy</h2>
+          <p className="text-xs text-son-silver-dim mb-4">
+            Escolha UM modelo pra toda a loja -- nunca os dois ao mesmo tempo, pra não misturar motoboy em regimes diferentes.
+          </p>
+          {payrollCfg ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={payrollCfgSaving}
+                  onClick={() => savePayrollCfg({ payment_model: 'comissao', payment_frequency: null, payment_fixed_value: null })}
+                  className={`py-3 rounded-2xl border text-sm font-medium transition-all ${
+                    payrollCfg.payment_model === 'comissao'
+                      ? 'sunset-bg text-white border-transparent'
+                      : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
+                  }`}
+                >
+                  Comissão (100% do frete)
+                </button>
+                <button
+                  type="button"
+                  disabled={payrollCfgSaving}
+                  onClick={() => {
+                    if (payrollCfgDraft.frequency && payrollCfgDraft.value) {
+                      savePayrollCfg({
+                        payment_model: 'fixo',
+                        payment_frequency: payrollCfgDraft.frequency,
+                        payment_fixed_value: Number(payrollCfgDraft.value),
+                      })
+                    } else {
+                      setPayrollCfg({ ...payrollCfg, payment_model: 'fixo' })
+                    }
+                  }}
+                  className={`py-3 rounded-2xl border text-sm font-medium transition-all ${
+                    payrollCfg.payment_model === 'fixo'
+                      ? 'sunset-bg text-white border-transparent'
+                      : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
+                  }`}
+                >
+                  Valor fixo periódico
+                </button>
+              </div>
+
+              {payrollCfg.payment_model === 'fixo' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    className="input-field text-sm"
+                    value={payrollCfgDraft.frequency}
+                    onChange={(e) => setPayrollCfgDraft({ ...payrollCfgDraft, frequency: e.target.value as PaymentFrequency })}
+                  >
+                    <option value="">Frequência</option>
+                    {PAYMENT_FREQUENCIES.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="input-field text-sm"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Valor (R$)"
+                    value={payrollCfgDraft.value}
+                    onChange={(e) => setPayrollCfgDraft({ ...payrollCfgDraft, value: e.target.value })}
+                    onBlur={() =>
+                      payrollCfgDraft.frequency &&
+                      payrollCfgDraft.value &&
+                      savePayrollCfg({ payment_model: 'fixo', payment_frequency: payrollCfgDraft.frequency, payment_fixed_value: Number(payrollCfgDraft.value) })
+                    }
+                  />
+                </div>
+              )}
+
+              <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={payrollCfg.usa_maquininha}
+                  disabled={payrollCfgSaving}
+                  onChange={(e) => savePayrollCfg({ usa_maquininha: e.target.checked })}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span className="text-xs text-son-silver-dim">
+                  <span className="block text-white font-semibold mb-0.5">Motoboy usa maquininha</span>
+                  Libera cobrança por cartão na entrega (terminal dinâmico/compartilhado, sem vínculo fixo por motoboy). Sem isso, motoboy só recebe em dinheiro, Pix ou entrega já paga.
+                </span>
+              </label>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-son-silver-dim">
+              <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+            </div>
+          )}
+          {payrollCfgError && <p className="text-xs text-red-400 mt-3">{payrollCfgError}</p>}
+        </Card>
+      )}
+
       <FreteSettingsCard />
 
       {(showMotoboys || showVendedores || showCozinha) ? (
@@ -562,9 +699,9 @@ export default function AdminMotoboys() {
                 <div className="min-w-0">
                   <p className="font-semibold text-white truncate">{m.name}</p>
                   <p className="text-xs text-son-silver-dim truncate">{m.phone}</p>
-                  {m.payment_frequency && (
+                  {payrollCfg?.payment_model === 'fixo' && payrollCfg.payment_frequency && (
                     <p className="text-xs text-son-silver-dim">
-                      {PAYMENT_FREQUENCIES.find((f) => f.value === m.payment_frequency)?.label}: {currency(m.payment_fixed_value ?? 0)}
+                      {PAYMENT_FREQUENCIES.find((f) => f.value === payrollCfg.payment_frequency)?.label}: {currency(payrollCfg.payment_fixed_value ?? 0)}
                     </p>
                   )}
                 </div>
@@ -578,13 +715,26 @@ export default function AdminMotoboys() {
                     <Eye className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => viewHistory('motoboy', m.id, m.name)}
+                    onClick={() => viewWorkDays(m.id, m.name)}
                     className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-son-silver-dim hover:text-white transition-colors"
-                    aria-label={`Histórico de pagamentos de ${m.name}`}
-                    title="Histórico de pagamentos"
+                    aria-label={`Dias trabalhados de ${m.name}`}
+                    title="Dias trabalhados"
                   >
-                    <Wallet className="w-4 h-4" />
+                    <Clock className="w-4 h-4" />
                   </button>
+                  {/* Histórico/Pagar comissão só fazem sentido no modelo antigo
+                     (comissão por entrega) -- no fixo, o pagamento é o ciclo
+                     periódico (sino/PayrollBell), não isso aqui. */}
+                  {payrollCfg?.payment_model === 'comissao' && (
+                    <button
+                      onClick={() => viewHistory('motoboy', m.id, m.name)}
+                      className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-son-silver-dim hover:text-white transition-colors"
+                      aria-label={`Histórico de pagamentos de ${m.name}`}
+                      title="Histórico de pagamentos"
+                    >
+                      <Wallet className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     onClick={() => openEditMotoboy(m)}
                     className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-son-silver-dim hover:text-white transition-colors"
@@ -592,13 +742,15 @@ export default function AdminMotoboys() {
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={() => openPay(m)}
-                    className="w-8 h-8 flex items-center justify-center rounded-full bg-son-pink/15 text-son-pink hover:bg-son-pink/25 transition-colors"
-                    aria-label={`Pagar ${m.name}`}
-                  >
-                    <Wallet className="w-4 h-4" />
-                  </button>
+                  {payrollCfg?.payment_model === 'comissao' && (
+                    <button
+                      onClick={() => openPay(m)}
+                      className="w-8 h-8 flex items-center justify-center rounded-full bg-son-pink/15 text-son-pink hover:bg-son-pink/25 transition-colors"
+                      aria-label={`Pagar ${m.name}`}
+                    >
+                      <Wallet className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     onClick={() => toggleActive(m)}
                     className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -761,39 +913,9 @@ export default function AdminMotoboys() {
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
               </div>
-              <div>
-                <label className="label">Recebe diária/semanal/quinzenal/mensal?</label>
-                <select
-                  className="input-field"
-                  value={form.payment_frequency}
-                  onChange={(e) => setForm({ ...form, payment_frequency: e.target.value as PaymentFrequency | '' })}
-                >
-                  <option value="">Não recebe valor fixo (só a taxa de entrega)</option>
-                  {PAYMENT_FREQUENCIES.map((f) => (
-                    <option key={f.value} value={f.value}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {form.payment_frequency && (
-                <div>
-                  <label className="label">
-                    Valor fixo por {PAYMENT_FREQUENCIES.find((f) => f.value === form.payment_frequency)?.label.toLowerCase()} (R$)
-                  </label>
-                  <input
-                    className="input-field"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.payment_fixed_value}
-                    onChange={(e) => setForm({ ...form, payment_fixed_value: e.target.value })}
-                  />
-                  <p className="text-xs text-son-silver-dim mt-1">
-                    Além disso, 100% da taxa de entrega de cada corrida é sempre dele — some no financeiro dele junto com o fixo.
-                  </p>
-                </div>
-              )}
+              <p className="text-xs text-son-silver-dim">
+                O modelo de pagamento (comissão ou valor fixo) agora é configurado uma vez pra toda a loja, no card acima -- não mais por motoboy.
+              </p>
               <button onClick={save} disabled={saving} className="btn-primary w-full mt-2">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                 Salvar
@@ -1080,6 +1202,41 @@ export default function AdminMotoboys() {
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        </div>
+      )}
+      {workDaysPopup && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setWorkDaysPopup(null)}
+        >
+          <div className="glass rounded-2xl p-6 max-w-sm w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-white">Dias trabalhados — {workDaysPopup.name}</h3>
+              <button onClick={() => setWorkDaysPopup(null)} className="text-son-silver-dim hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {workDaysPopup.loading ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="w-5 h-5 animate-spin text-son-pink" />
+              </div>
+            ) : workDaysPopup.days.length === 0 ? (
+              <p className="text-sm text-son-silver-dim text-center">Nenhum dia registrado ainda.</p>
+            ) : (
+              <>
+                <p className="text-xs text-son-silver-dim mb-3">
+                  {workDaysPopup.days.length} dia{workDaysPopup.days.length > 1 ? 's' : ''} nos últimos ~2 meses.
+                </p>
+                <ul className="divide-y divide-white/5">
+                  {workDaysPopup.days.map((d) => (
+                    <li key={d.work_date} className="py-2 text-sm text-son-silver">
+                      {new Date(`${d.work_date}T00:00:00`).toLocaleDateString('pt-BR')}
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
         </div>

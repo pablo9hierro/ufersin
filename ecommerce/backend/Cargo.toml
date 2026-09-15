@@ -12,6 +12,10 @@ rust-version = "1.88"
 [dependencies]
 axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
+# SSE real de comandas/mesas (Parte 5) -- só usa `sync` (BroadcastStream) pra
+# ligar tokio::sync::broadcast::Receiver ao Stream que axum::response::sse
+# espera, sem puxar futures_util inteiro por causa de um único adaptador.
+tokio-stream = { version = "0.1", features = ["sync"] }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "migrate", "json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -65,14 +65,26 @@ impl FromRequestParts<AppState> for AuthUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let header = parts
+        let header_token = parts
             .headers
             .get(axum::http::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "));
+        // Fallback pra `?token=` na query string -- só existe pro
+        // EventSource do SSE de comandas (`/api/pdv/comandas/stream`), que o
+        // browser não deixa mandar um header Authorization customizado.
+        // Qualquer chamada normal (fetch) sempre manda o header e nunca
+        // precisa disso.
+        let query_token = parts.uri.query().and_then(|q| {
+            q.split('&')
+                .find_map(|pair| pair.strip_prefix("token="))
+                .map(str::to_string)
+        });
+        let token = header_token
+            .map(str::to_string)
+            .or(query_token)
             .ok_or_else(|| AppError::Unauthorized("missing authorization header".to_string()))?;
-        let token = header
-            .strip_prefix("Bearer ")
-            .ok_or_else(|| AppError::Unauthorized("invalid authorization header".to_string()))?;
+        let token = token.as_str();
         let data = decode::<Claims>(
             token,
             &DecodingKey::from_secret(state.jwt_secret.as_bytes()),

@@ -106,6 +106,30 @@ export default function ComandasSection({ products }: { products: Product[] }) {
   }
   useEffect(load, [])
 
+  // Parte 5 -- SSE real: qualquer mutação de comanda em outra aba/dispositivo
+  // (abrir, fechar, item) chega aqui em tempo real; só usa o evento pra saber
+  // QUANDO rebuscar, nunca como fonte de verdade dos dados (sempre re-GET).
+  // Se a comanda aberta na tela foi a afetada, rebusca ela também.
+  useEffect(() => {
+    const es = pdvService.comandas.stream()
+    es.onmessage = (msg) => {
+      load()
+      try {
+        const ev = JSON.parse(msg.data) as { comanda_id?: string }
+        setOpenComanda((current) => {
+          if (current && ev.comanda_id === current.id) {
+            pdvService.comandas.get(current.id).then((c) => setOpenComanda(c)).catch(() => {})
+          }
+          return current
+        })
+      } catch {
+        /* evento sem payload útil -- o load() acima já cobre a lista */
+      }
+    }
+    return () => es.close()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const loadTables = () => {
     setTablesLoading(true)
     pdvService.restaurantTables

@@ -21,8 +21,10 @@ import {
   ServiceSchema,
   LucroSummarySchema,
   MotoboyPendingSchema,
+  MotoboyPayrollConfigSchema,
   MotoboySchema,
   MotoboySettlementSchema,
+  WorkDaySchema,
   OrderSchema,
   PageDecorationSchema,
   PayrollAlertSchema,
@@ -39,6 +41,7 @@ import {
   type CrmFilterCriteria,
   type DiscountType,
   type EmployeeConfig,
+  type MotoboyPayrollConfig,
   type PageDecorationElement,
   type PageKey,
   type PaymentFrequency,
@@ -123,6 +126,12 @@ export const adminEndpoint = {
     getPassword: async (id: string) => api.admin.motoboys.getPassword(id),
     pending: async (id: string) => validate(MotoboyPendingSchema, await api.admin.motoboys.pending(id), 'admin.motoboys.pending'),
     pay: async (id: string, paymentMethod: PaymentMethod) => validate(MotoboySettlementSchema, await api.admin.motoboys.pay(id, paymentMethod), 'admin.motoboys.pay'),
+    workDays: async (id: string) => validateList(WorkDaySchema, await api.admin.motoboys.workDays(id), 'admin.motoboys.workDays'),
+  },
+  motoboyPayrollConfig: {
+    get: async () => validate(MotoboyPayrollConfigSchema, await api.admin.motoboyPayrollConfig.get(), 'admin.motoboyPayrollConfig.get'),
+    update: async (payload: MotoboyPayrollConfig) =>
+      validate(MotoboyPayrollConfigSchema, await api.admin.motoboyPayrollConfig.update(payload), 'admin.motoboyPayrollConfig.update'),
   },
   vendedores: {
     list: async () => validateList(VendedorSchema, await api.admin.vendedores.list(), 'admin.vendedores.list'),

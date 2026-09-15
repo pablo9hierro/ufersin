@@ -71,4 +71,10 @@ pub struct AppState {
     /// desligado (require_feature já barra antes de qualquer chamada).
     pub jubilados_api_url: Arc<String>,
     pub jubilados_internal_key: Arc<String>,
+    /// Parte 5 (motoboy/comandas): SSE real pra comandas/mesas. Um canal
+    /// ÚNICO compartilhado por todo tenant (não um por tenant) -- o payload
+    /// leva `tenant_id` e cada assinante filtra client-side em
+    /// `routes::tables::comandas_stream`; volume de eventos é baixíssimo
+    /// (mutação de comanda), não justifica um HashMap<tenant_id, Sender>.
+    pub comanda_events: tokio::sync::broadcast::Sender<crate::routes::tables::ComandaEvent>,
 }

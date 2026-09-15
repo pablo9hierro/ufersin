@@ -3162,6 +3162,9 @@ export const localApi = {
       pay: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
       printKitchenTicket: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
       markKitchenReady: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
+      // SSE não existe no modo demo -- devolve um EventSource que nunca abre
+      // (a UI já trata onmessage/onerror sem quebrar sem stream real).
+      stream: () => new EventSource('data:text/event-stream,'),
     },
     kitchenComandas: {
       list: async () => [],
@@ -3356,6 +3359,14 @@ export const localApi = {
       getPassword: getMotoboyPassword,
       pending: motoboyPending,
       pay: payMotoboy,
+      workDays: async () => [],
+    },
+    // Parte 1 -- feature nova, Railway-only, sem simulação no modo demo.
+    motoboyPayrollConfig: {
+      get: async () => ({ payment_model: 'comissao' as const, payment_frequency: null, payment_fixed_value: null, usa_maquininha: false }),
+      update: async () => {
+        throw new ApiError(400, 'Config de pagamento de motoboy não está disponível no modo demo.')
+      },
     },
     vendedores: {
       list: adminListVendedores,
@@ -3468,10 +3479,14 @@ export const localApi = {
   payroll: {
     myPending: async () => [],
     confirm: async () => {},
+    myNext: async () => null,
   },
   motoboy: {
     orders: {
       list: motoboyListOrders,
+      chargePoint: async () => {
+        throw new ApiError(400, 'Cobrança por maquininha não está disponível no modo demo.')
+      },
       counts: async () => {
         const db = loadDb()
         const forMotoboy = (status: string, unassigned = false) =>
@@ -3506,5 +3521,6 @@ export const localApi = {
       logout: async () => {},
       notifyEnRoute: async () => {},
     },
+    workDays: async () => [],
   },
 }

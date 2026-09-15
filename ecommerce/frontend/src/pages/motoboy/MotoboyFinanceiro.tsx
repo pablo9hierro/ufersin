@@ -1,19 +1,33 @@
 import { useEffect, useState } from 'react'
-import { Clock, Loader2, MapPin, Package, Wallet } from 'lucide-react'
+import { Calendar, Clock, Loader2, MapPin, Package, Wallet } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import { motoboyService } from '../../services/motoboyService'
-import type { MotoboyFinanceiro as MotoboyFinanceiroData } from '../../types'
+import { payrollService } from '../../services/payrollService'
+import type { MotoboyFinanceiro as MotoboyFinanceiroData, PayrollAlertPreview, WorkDay } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
 }
 
+const FREQUENCY_LABEL: Record<string, string> = {
+  diaria: 'Diária',
+  semanal: 'Semanal',
+  quinzenal: 'Quinzenal',
+  mensal: 'Mensal',
+}
+
 export default function MotoboyFinanceiro() {
   const [data, setData] = useState<MotoboyFinanceiroData | null>(null)
   const [loading, setLoading] = useState(true)
+  // Parte 1/2 -- quando a loja está no modelo "fixo", mostra o próximo
+  // vencimento em vez de (e não mais somando com) a comissão por entrega.
+  const [nextPayment, setNextPayment] = useState<PayrollAlertPreview | null>(null)
+  const [workDays, setWorkDays] = useState<WorkDay[]>([])
 
   useEffect(() => {
     motoboyService.financeiro.get().then(setData).finally(() => setLoading(false))
+    payrollService.myNext().then(setNextPayment).catch(() => {})
+    motoboyService.workDays().then(setWorkDays).catch(() => {})
   }, [])
 
   if (loading) {
@@ -26,9 +40,30 @@ export default function MotoboyFinanceiro() {
 
   if (!data) return null
 
+  const daysThisMonth = workDays.filter((d) => d.work_date.slice(0, 7) === new Date().toISOString().slice(0, 7)).length
+
   return (
     <div>
       <h1 className="text-2xl font-black mb-6">Financeiro</h1>
+
+      {nextPayment && (
+        <Card className="p-5 mb-4">
+          <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
+            <Wallet className="w-3.5 h-3.5" /> Próximo pagamento ({FREQUENCY_LABEL[nextPayment.frequency] ?? nextPayment.frequency})
+          </div>
+          <p className="sunset-text font-black text-2xl">{currency(nextPayment.amount)}</p>
+          <p className="text-xs text-son-silver-dim mt-1">
+            Vencimento: {new Date(nextPayment.due_at).toLocaleDateString('pt-BR')}
+          </p>
+        </Card>
+      )}
+
+      <Card className="p-5 mb-4">
+        <div className="flex items-center gap-2 text-son-silver-dim text-xs mb-2">
+          <Calendar className="w-3.5 h-3.5" /> Dias trabalhados este mês
+        </div>
+        <p className="font-black text-2xl text-son-silver">{daysThisMonth}</p>
+      </Card>
 
       <div className="grid grid-cols-2 gap-4 mb-4">
         <Card className="p-5">

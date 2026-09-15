@@ -63,6 +63,35 @@ export const MotoboyPendingSchema = z.object({
 })
 export type MotoboyPending = z.infer<typeof MotoboyPendingSchema>
 
+// Parte 1 -- config global de pagamento (comissão XOR fixo), substitui os
+// campos por-motoboy antigos (payment_frequency/payment_fixed_value acima
+// continuam existindo só por histórico do cadastro individual).
+export const MotoboyPayrollModelSchema = z.enum(['comissao', 'fixo'])
+export type MotoboyPayrollModel = z.infer<typeof MotoboyPayrollModelSchema>
+
+export const MotoboyPayrollConfigSchema = z.object({
+  payment_model: MotoboyPayrollModelSchema,
+  payment_frequency: PaymentFrequencySchema.nullable().optional(),
+  payment_fixed_value: z.number().nullable().optional(),
+  usa_maquininha: z.boolean(),
+})
+export type MotoboyPayrollConfig = z.infer<typeof MotoboyPayrollConfigSchema>
+
+// Parte 2 -- "próximo pagamento" pro autoatendimento (motoboy/vendedor),
+// null quando o modelo é comissão ou não há fixo configurado.
+export const PayrollAlertPreviewSchema = z.object({
+  frequency: PaymentFrequencySchema,
+  amount: z.number(),
+  due_at: z.string(),
+})
+export type PayrollAlertPreview = z.infer<typeof PayrollAlertPreviewSchema>
+
+// Parte 3 -- dias trabalhados.
+export const WorkDaySchema = z.object({
+  work_date: z.string(),
+})
+export type WorkDay = z.infer<typeof WorkDaySchema>
+
 export const MotoboyRunSchema = z.object({
   id: z.string(),
   status: z.enum(['ativo', 'concluido']),

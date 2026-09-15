@@ -43,10 +43,13 @@ import type {
   Motoboy,
   MotoboyFinanceiro,
   MotoboyPending,
+  MotoboyPayrollConfig,
   MotoboyRun,
   MotoboySettlement,
   PayrollAlert,
+  PayrollAlertPreview,
   PayrollPayment,
+  WorkDay,
   PaymentFrequency,
   Order,
   PageDecoration,
@@ -911,6 +914,17 @@ const remoteApi = {
           p_token: adminToken(),
           p_motoboy_id: id,
           p_payment_method: paymentMethod,
+        }),
+      workDays: (id: string) => railwayAdmin<WorkDay[]>(`/api/admin/motoboy/${id}/work-days`),
+    },
+    // Parte 1 -- config GLOBAL de pagamento de motoboy (comissão XOR fixo) +
+    // maquininha, sempre no backend Rust (nunca RPC legada -- feature nova).
+    motoboyPayrollConfig: {
+      get: () => railwayAdmin<MotoboyPayrollConfig>('/api/admin/motoboy-payroll-config'),
+      update: (payload: MotoboyPayrollConfig) =>
+        railwayAdmin<MotoboyPayrollConfig>('/api/admin/motoboy-payroll-config', {
+          method: 'PUT',
+          body: JSON.stringify(payload),
         }),
     },
     vendedores: {
@@ -2057,6 +2071,11 @@ const remoteApi = {
         railwayAdmin<KitchenTicket>(`/api/pdv/comandas/${id}/print-kitchen-ticket`, { method: 'POST' }),
       markKitchenReady: (id: string) =>
         railwayAdmin<Comanda>(`/api/pdv/comandas/${id}/mark-kitchen-ready`, { method: 'POST' }),
+      /** SSE real (Parte 5) -- EventSource não deixa mandar um header
+       * Authorization customizado, então o token vai na query string (o
+       * backend só aceita esse fallback nesse endpoint específico de
+       * stream, ver auth.rs::AuthUser). */
+      stream: () => new EventSource(`${API_BASE}/api/pdv/comandas/stream?token=${encodeURIComponent(adminToken() ?? '')}`),
     },
     kitchenComandas: {
       list: () => railwayAdmin<Comanda[]>('/api/pdv/kitchen-comandas'),
@@ -2067,6 +2086,7 @@ const remoteApi = {
     myPending: () => request<PayrollPayment[]>('/api/payroll/my-pending', { token: staffToken() }),
     confirm: (id: string) =>
       request<void>(`/api/payroll/payments/${id}/confirm`, { method: 'POST', token: staffToken() }),
+    myNext: () => request<PayrollAlertPreview | null>('/api/payroll/my-next', { token: staffToken() }),
   },
   motoboy: {
     orders: {
@@ -2096,7 +2116,17 @@ const remoteApi = {
           method: 'POST',
           token: motoboyToken(),
         }),
+      // Parte 4 -- só funciona quando a loja ligou motoboy_usa_maquininha
+      // (backend recusa com 403 antes disso).
+      chargePoint: (orderId: string, posId: string) =>
+        request<{ id: string; status: string }>(`/api/motoboy/orders/${orderId}/point-charge`, {
+          method: 'POST',
+          body: JSON.stringify({ pos_id: posId }),
+          token: motoboyToken(),
+        }),
     },
+    // Parte 3 -- dias trabalhados (relatoriozinho simples).
+    workDays: () => request<WorkDay[]>('/api/motoboy/work-days', { token: motoboyToken() }),
     // Corrida ativa: sobrevive a troca de página/reload porque o estado
     // mora no banco (sunset.motoboy_runs), não no componente React — ver
     // supabase/sunset_motoboy_runs.sql.

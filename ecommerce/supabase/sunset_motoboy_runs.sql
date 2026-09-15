@@ -125,6 +125,19 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION sunset.motoboy_active_run(text) TO anon, authenticated;
 
+-- FIX DE CONCORRÊNCIA (bug real confirmado: sem lock nenhum, dois motoboys
+-- em duas abas podiam "iniciar entrega" do MESMO pedido ao mesmo tempo --
+-- ambas passavam pelo laço de validação antes de qualquer UPDATE acontecer,
+-- então as duas viam status='pedido_pronto'/motoboy_id IS NULL e nenhuma
+-- delas via erro). Mesmo padrão já correto usado no Rust em
+-- `tables.rs::open_comanda` (lock explícito antes de checar, condição
+-- repetida no UPDATE final):
+--   1. `SELECT ... FOR UPDATE` trava as orders envolvidas ANTES de checar
+--      disponibilidade -- a segunda transação concorrente bloqueia aqui até
+--      a primeira commitar, e então já vê o motoboy_id preenchido.
+--   2. `AND motoboy_id IS NULL AND status = 'pedido_pronto'` repetido no
+--      UPDATE final -- mesmo que o SELECT FOR UPDATE já garanta isso, nunca
+--      confia só na checagem anterior pra um UPDATE em massa.
 CREATE OR REPLACE FUNCTION sunset.motoboy_start_run(p_token text, p_order_ids text[])
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = sunset, public, extensions AS $$
 DECLARE
@@ -134,6 +147,7 @@ DECLARE
   v_order sunset.orders%ROWTYPE;
   v_distinct_ids text[];
   v_found_count int;
+  v_updated_count int;
 BEGIN
   IF p_order_ids IS NULL OR array_length(p_order_ids, 1) IS NULL THEN
     RAISE EXCEPTION 'select at least one order to start a run';
@@ -143,23 +157,31 @@ BEGIN
   END IF;
 
   SELECT array_agg(DISTINCT x) INTO v_distinct_ids FROM unnest(p_order_ids) AS x;
-  SELECT COUNT(*) INTO v_found_count FROM sunset.orders WHERE id = ANY(v_distinct_ids);
-  IF v_found_count <> array_length(v_distinct_ids, 1) THEN
-    RAISE EXCEPTION 'one or more order ids do not exist';
-  END IF;
 
-  FOR v_order IN SELECT * FROM sunset.orders WHERE id = ANY(v_distinct_ids) LOOP
+  -- Trava as linhas ANTES de qualquer checagem -- é isso que impede a
+  -- segunda transação concorrente de ler um estado já obsoleto.
+  FOR v_order IN
+    SELECT * FROM sunset.orders WHERE id = ANY(v_distinct_ids) ORDER BY id FOR UPDATE
+  LOOP
+    v_found_count := COALESCE(v_found_count, 0) + 1;
     IF v_order.delivery_type <> 'entrega' OR v_order.status <> 'pedido_pronto' OR v_order.motoboy_id IS NOT NULL THEN
       RAISE EXCEPTION 'order % is not available to start a delivery run', v_order.id;
     END IF;
   END LOOP;
+  IF COALESCE(v_found_count, 0) <> array_length(v_distinct_ids, 1) THEN
+    RAISE EXCEPTION 'one or more order ids do not exist';
+  END IF;
 
   v_sequence := sunset._optimize_route(v_distinct_ids);
 
   UPDATE sunset.orders
     SET motoboy_id = v_motoboy_id, status = 'em_rota_de_entrega',
         delivery_started_at = now(), updated_at = now()::text
-    WHERE id = ANY(p_order_ids);
+    WHERE id = ANY(p_order_ids) AND motoboy_id IS NULL AND status = 'pedido_pronto';
+  GET DIAGNOSTICS v_updated_count = ROW_COUNT;
+  IF v_updated_count <> array_length(p_order_ids, 1) THEN
+    RAISE EXCEPTION 'one or more orders were taken by another motoboy just now';
+  END IF;
 
   INSERT INTO sunset.motoboy_runs (id, motoboy_id, order_ids)
     VALUES (v_run_id, v_motoboy_id, v_sequence);

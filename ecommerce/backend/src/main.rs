@@ -250,6 +250,7 @@ async fn main() -> anyhow::Result<()> {
         login_limiter: Arc::new(rate_limit::LoginAttemptLimiter::default()),
         jubilados_api_url: Arc::new(jubilados_api_url),
         jubilados_internal_key: Arc::new(jubilados_internal_key),
+        comanda_events: tokio::sync::broadcast::channel(256).0,
     };
 
     // CORS_ORIGINS: comma-separated list of allowed frontend origins. Defaults
@@ -564,6 +565,9 @@ async fn main() -> anyhow::Result<()> {
             post(routes::pdv::replace_comanda_item),
         )
         .route("/api/pdv/comandas/{id}/pay", post(routes::pdv::pay_comanda))
+        // Parte 5 -- SSE real: evento por mutação de comanda (abrir/fechar/
+        // item), filtrado por tenant no próprio handler (canal único).
+        .route("/api/pdv/comandas/stream", get(routes::tables::comandas_stream))
         // Impressão térmica de comanda -> cozinha (Etapa 4). Não fecha a
         // comanda nem cria Order -- só marca itens como enviados.
         .route(
@@ -691,7 +695,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/admin/payroll/alerts", get(routes::payroll::admin_alerts))
         .route("/api/admin/payroll/payments", post(routes::payroll::report_payment))
         .route("/api/admin/payroll/history", get(routes::payroll::admin_history))
+        .route(
+            "/api/admin/motoboy-payroll-config",
+            get(routes::payroll::get_motoboy_payroll_config).put(routes::payroll::update_motoboy_payroll_config),
+        )
+        .route("/api/admin/motoboy/{id}/work-days", get(routes::payroll::admin_motoboy_work_days))
+        .route("/api/motoboy/work-days", get(routes::payroll::my_work_days))
         .route("/api/payroll/my-pending", get(routes::payroll::my_pending))
+        .route("/api/payroll/my-next", get(routes::payroll::my_next_payment))
         .route(
             "/api/payroll/payments/{id}/confirm",
             post(routes::payroll::confirm_payment),
@@ -1070,6 +1081,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/motoboy/orders/{id}/pix",
             post(routes::motoboy::create_motoboy_pix),
+        )
+        .route(
+            "/api/motoboy/orders/{id}/point-charge",
+            post(routes::motoboy::charge_motoboy_point),
         )
         .route("/api/motoboy/whatsapp/status", get(routes::motoboy::whatsapp_status))
         .route("/api/motoboy/whatsapp/connect", get(routes::motoboy::whatsapp_connect))

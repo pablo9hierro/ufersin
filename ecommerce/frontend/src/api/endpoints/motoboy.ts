@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { api } from '../../lib/api'
 import { validate, validateList } from '../validate'
-import { MotoboyFinanceiroSchema, MotoboyRunSchema, OrderSchema } from '../../types'
+import { MotoboyFinanceiroSchema, MotoboyRunSchema, OrderSchema, WorkDaySchema } from '../../types'
 
 const OrderCountsSchema = z.record(z.string(), z.number())
 
@@ -12,7 +12,9 @@ export const motoboyEndpoint = {
     list: async (status: string) => validateList(OrderSchema, await api.motoboy.orders.list(status), 'motoboy.orders.list'),
     counts: async () => validate(OrderCountsSchema, await api.motoboy.orders.counts(), 'motoboy.orders.counts'),
     createPix: async (orderId: string) => api.motoboy.orders.createPix(orderId),
+    chargePoint: async (orderId: string, posId: string) => api.motoboy.orders.chargePoint(orderId, posId),
   },
+  workDays: async () => validateList(WorkDaySchema, await api.motoboy.workDays(), 'motoboy.workDays'),
   runs: {
     active: async () => {
       const data = await api.motoboy.runs.active()
