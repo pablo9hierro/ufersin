@@ -72,7 +72,12 @@ function BannerCarousel() {
   const tenantConfig = useTenantConfig()
   const showPromos = hasPromoBanners(tenantConfig?.plano)
   const { data: siteSettings } = useSiteSettings()
-  const heroUrl = siteSettings?.hero_image_url ?? null
+  // Fallback pro campo multi-tenant já existente (landing_hero_image_url,
+  // seedado no seed.rs/tenantConfig) quando siteSettings (tabela Supabase
+  // legada de tenant único, sem filtro de tenant) não tiver hero -- sem
+  // isso, tenants Premium/Management (que não usam EssentialHeroCard)
+  // ficavam sem imagem de hero mesmo já tendo configurado o campo certo.
+  const heroUrl = siteSettings?.hero_image_url ?? tenantConfig?.landing_hero_image_url ?? null
   const carouselStyle = siteSettings?.carousel_style ?? 'atual'
   // Promoções: Management/Premium. Essential → EssentialHeroCard.
   const { data: activePromotions } = useActivePromotions({ enabled: showPromos })

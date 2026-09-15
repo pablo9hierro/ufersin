@@ -343,7 +343,7 @@ export default function App() {
           <Route path="/catalogo" element={<StyleAware ufersin={Uiux2Catalogo} burgerbite={Uiux3Catalogo} burgerhouse={Uiux4Catalogo} eletronica={EletronicaLoja} />} />
           <Route path="/produto/:id" element={<StyleAware ufersin={Uiux2ProdutoDetalhe} burgerbite={Uiux3ProdutoDetalhe} burgerhouse={Uiux4ProdutoDetalhe} />} />
           <Route path="/servico/:id" element={<StyleAware ufersin={Uiux2ServicoDetalhe} burgerbite={Uiux3ServicoDetalhe} burgerhouse={Uiux4ServicoDetalhe} />} />
-          <Route path="/servicos" element={<StyleAware ufersin={Uiux2ServicosCatalogo} burgerbite={Uiux3ServicosCatalogo} burgerhouse={Uiux4ServicosCatalogo} />} />
+          <Route path="/servicos" element={<StyleAware ufersin={Uiux2ServicosCatalogo} burgerbite={Uiux3ServicosCatalogo} burgerhouse={Uiux4ServicosCatalogo} eletronica={Uiux2ServicosCatalogo} />} />
           {/* Cart/checkout do ramo eletrônica reaproveita a tela genérica (ufersin) --
               real, funcional, sem inventar UI nova; não existe checkout próprio do
               vrtech pra migrar (o vrtech original nunca teve checkout de produto). */}

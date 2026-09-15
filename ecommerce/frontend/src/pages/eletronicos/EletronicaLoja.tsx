@@ -25,7 +25,7 @@ function currency(v: number) {
 
 export default function EletronicaLoja() {
   const tenantConfig = useTenantConfig()
-  const lojaNome = tenantConfig?.loja_nome || 'VR Tech'
+  const lojaNome = tenantConfig?.loja_nome || 'Resolutoo Assistência'
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [search, setSearch] = useState('')

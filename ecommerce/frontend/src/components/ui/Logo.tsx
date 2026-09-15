@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { brandName, isDemoModeActive } from '../../lib/demoMode'
 import UfersinMark from './UfersinMark'
+import DemoBrandMark from './DemoBrandMark'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 const SIZES = {
@@ -13,7 +14,7 @@ const SIZES = {
 export default function Logo({ size = 'md', className }: { size?: keyof typeof SIZES; className?: string }) {
   const tenantConfig = useTenantConfig()
   if (isDemoModeActive()) {
-    return <UfersinMark className={clsx('w-auto text-son-pink', SIZES[size], className)} />
+    return <DemoBrandMark className={clsx('w-auto', SIZES[size], className)} />
   }
   const name = brandName(tenantConfig?.loja_nome)
   if (name && name !== 'Minha loja') {

@@ -28,7 +28,7 @@ export default function Uiux3Landing() {
   const defaultSub =
     tenantConfig?.vertical === 'eletronicos'
       ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
-      : 'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.'
+      : 'Essa foto e esse texto são só exemplo — no seu painel você troca tudo pela cara da sua loja em minutos.'
   const headline = tenantConfig?.landing_headline?.trim() || name
   const sub = tenantConfig?.landing_sub?.trim() || defaultSub
   const essential = isEssentialStorefront(tenantConfig?.plano)

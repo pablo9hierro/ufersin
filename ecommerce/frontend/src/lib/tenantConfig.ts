@@ -190,7 +190,10 @@ const DEFAULT_CONFIG: TenantConfig = {
   tem_funcionarios: false,
   estilo_operacao: 'loja',
   atende_domicilio: false,
-  landing_hero_image_url: null,
+  // Demo mock (slug vazio, ver fetchTenantConfig) cai neste DEFAULT_CONFIG
+  // direto -- sem isso, o card Essential (EssentialHeroCard) ficava sem
+  // imagem nenhuma na vitrine da demo pública.
+  landing_hero_image_url: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1200&q=80',
   cart_fab_style: 'sacola',
   cart_fab_animate: false,
 }

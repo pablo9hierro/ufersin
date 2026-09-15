@@ -21,12 +21,12 @@ export default function EletronicaLogo({
   name?: string | null
 }) {
   const s = SIZES[size]
-  const [first, ...rest] = (name?.trim() || 'VR TECH').split(/\s+/)
+  const [first, ...rest] = (name?.trim() || 'RESOLUTOO').split(/\s+/)
   const restLabel = rest.length > 0 ? ` ${rest.join(' ')}` : ''
   return (
     <div className={`flex flex-col leading-none ${className}`}>
       <span className={`font-black tracking-tight ${s.word}`}>
-        <span className="bg-gradient-to-br from-[#ff4d42] to-[#e0211a] bg-clip-text text-transparent">{first}</span>
+        <span className="bg-gradient-to-br from-[#FF3D9A] to-[#7C3AED] bg-clip-text text-transparent">{first}</span>
         <span className={light ? 'text-[#0a0a0b]' : 'text-white'}>{restLabel}</span>
       </span>
       {showTagline && (

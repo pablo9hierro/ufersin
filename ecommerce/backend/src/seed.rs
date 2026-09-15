@@ -519,8 +519,16 @@ async fn seed_demo_eletronica_accessories(
 async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
     let (tenant_id, created) =
-        ensure_demo_tenant(&mut tx, "demo-eletronica", "Demo Eletrônica", "eletronicos", "plan_eletronica").await?;
+        ensure_demo_tenant(&mut tx, "demo-eletronica", "Resolutoo Assistência", "eletronicos", "plan_eletronica").await?;
     if !created {
+        // Backfill idempotente: tenant seedado antes desta rodada ainda tinha
+        // o nome antigo "Demo Eletrônica" -- não é literalmente "VR Tech",
+        // mas o dono pediu a marca "Resolutoo Assistência Técnica" nessa
+        // demo; sem isso, só tenant novo (nunca seedado) ganharia o nome novo.
+        sqlx::query("UPDATE tenants SET name = 'Resolutoo Assistência' WHERE id = $1 AND name = 'Demo Eletrônica'")
+            .bind(&tenant_id)
+            .execute(&mut *tx)
+            .await?;
         // Backfill idempotente: só insere se o tenant (já existente) ainda
         // não tem nenhum produto -- cobre exatamente o caso descrito acima
         // sem duplicar nada em quem já tiver os acessórios.
@@ -531,8 +539,11 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         if product_count == 0 {
             tracing::info!("demo-eletronica: catálogo de produtos vazio, aplicando backfill de acessórios");
             seed_demo_eletronica_accessories(&mut tx, &tenant_id).await?;
-            tx.commit().await?;
         }
+        // Commit sempre necessário aqui (não só no ramo de backfill de
+        // acessórios) -- senão o UPDATE de nome acima nunca persiste,
+        // já que o tx é descartado (rollback implícito) no `return`.
+        tx.commit().await?;
         tracing::info!("demo-eletronica already seeded, skipping the rest");
         return Ok(());
     }

@@ -41,10 +41,10 @@ export default function Uiux2Landing() {
   const closedMsg = storeStatus && closed ? closedStoreMessage(storeStatus) : ''
   const isEletronicos = tenantConfig?.vertical === 'eletronicos'
   const defaultBadge = isEletronicos ? 'Assistência técnica de confiança' : 'Feito na hora, todo dia'
-  const defaultHeadline = isEletronicos ? 'Seu aparelho no melhor cuidado' : 'Fome? A gente entrega em minutos'
+  const defaultHeadline = isEletronicos ? 'Seu aparelho no melhor cuidado' : 'Essa vitrine já é sua'
   const defaultSub = isEletronicos
     ? 'Reparo e manutenção de celulares e eletrônicos, com peça e garantia. Peça pelo site ou chama a gente no WhatsApp.'
-    : 'Lanches, bebidas e sobremesas feitos com carinho. Peça pelo site ou chama a gente no WhatsApp.'
+    : 'Essa foto e esse texto são só exemplo — no seu painel você troca tudo pela cara da sua loja em minutos.'
   const badge = tenantConfig?.landing_badge?.trim() || defaultBadge
   const headline = tenantConfig?.landing_headline?.trim() || defaultHeadline
   const sub = tenantConfig?.landing_sub?.trim() || defaultSub

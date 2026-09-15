@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from '../../lib/tenantRouter'
 import { ArrowLeft, Heart, History, LogIn, LogOut, Menu, Package, ShoppingBag, Store, Tag, UserPlus, X } from 'lucide-react'
 import { useCart } from '../../store/cart'
 import { useCustomerAuth } from '../../store/customerAuth'
-import UfersinMark from '../../components/ui/UfersinMark'
+import DemoBrandMark from '../../components/ui/DemoBrandMark'
 import CartFab from '../../components/CartFab'
 import AuthModal from './AuthModal'
 import { brandName, isDemoModeActive, storefrontAllowsCoupons } from '../../lib/demoMode'
@@ -132,7 +132,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 {tenantConfig?.logo_url ? (
                   <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0 mx-auto" />
                 ) : (
-                  showMark && <UfersinMark className="w-8 h-8 u2-accent mx-auto" />
+                  showMark && <DemoBrandMark className="w-8 h-8 mx-auto" />
                 )}
                 <span className="u2-gradient-text block w-full text-center leading-tight line-clamp-2 break-words">{name}</span>
               </Link>
@@ -148,7 +148,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               {tenantConfig?.logo_url ? (
                 <img src={tenantConfig.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
               ) : (
-                showMark && <UfersinMark className="w-8 h-8 u2-accent" />
+                showMark && <DemoBrandMark className="w-8 h-8" />
               )}
               <span className="u2-gradient-text truncate max-w-full text-center leading-tight">{name}</span>
             </Link>
