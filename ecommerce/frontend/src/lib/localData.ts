@@ -222,6 +222,11 @@ function seedDb(): LocalDb {
     { id: prodBatata, name: 'Batata Frita', description: 'Porção generosa, crocante por fora, macia por dentro', price: 16.9, quantity: 0, image_url: 'https://images.unsplash.com/photo-1481070555726-e2fe8357725c?w=800&q=80', category_id: catLanches, active: true, cost_price: 6.5, low_stock_threshold: 10 },
     { id: prodPudim, name: 'Pudim de Leite', description: 'Fatia individual de pudim caseiro', price: 9.9, quantity: 25, image_url: 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=800&q=80', category_id: catSobremesas, active: true, cost_price: 4.0, low_stock_threshold: 10 },
     { id: prodBrownie, name: 'Brownie com Sorvete', description: 'Brownie de chocolate com bola de sorvete', price: 12.9, quantity: 18, image_url: 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=800&q=80', category_id: catSobremesas, active: true, cost_price: 5.5, low_stock_threshold: 6 },
+    // Produto ERP Formulação de exemplo -- pra /admin/estoque (aba
+    // Produtos formulados) não abrir vazia; quantity/cost_price aqui
+    // simulam o resultado já calculado a partir da ficha técnica (pão +
+    // carne + queijo + molho, ver DEMO_INGREDIENTS em localApi.ts).
+    { id: uid(), name: 'Combo Burger da Casa', description: 'Hambúrguer montado com ficha técnica própria (ERP Formulação)', price: 29.9, quantity: 12, image_url: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=80', category_id: catLanches, active: true, cost_price: 9.4, low_stock_threshold: 5, origin_type: 'erp_formulation' },
   ]
 
   const motoboys: LocalMotoboy[] = [

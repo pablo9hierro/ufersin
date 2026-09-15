@@ -283,6 +283,15 @@ async function request<T>(
   // que "escreveu" só no vazio) -- bug real em produção, achado em auditoria.
   const isAssistantIaWrite = /^\/api\/admin\/assistant-ia\//.test(path)
   if (isSeededDemoTenant() && method !== 'GET' && method !== 'HEAD' && !isAssistantIaWrite) {
+    // PDV/checkout Pix precisa de um pix_copia_cola pro QRCodeSVG desenhar
+    // (ver AdminPdv.tsx) -- o simulateDemoWrite genérico devolve só id/
+    // timestamps, então o QR caía sempre no fallback "indisponível" nesses
+    // dois paths especificamente.
+    if (/\/(create-pix-payment|refresh-payment)(\?|$)/.test(path)) {
+      const fakeCopiaCola =
+        '00020126580014BR.GOV.BCB.PIX0136demo-resolutoo-0000-0000-000000000000520400005303986540510.005802BR5913Resolutoo Demo6009SAO PAULO62070503***6304ABCD'
+      return simulateDemoWrite<T>(JSON.stringify({ pix_copia_cola: fakeCopiaCola, pix_payment_id: `demo-${Date.now()}` }))
+    }
     return simulateDemoWrite<T>(rest.body)
   }
   let res: Response

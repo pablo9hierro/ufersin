@@ -1,6 +1,8 @@
 import { useAdminAuth } from '../store/adminAuth'
 import { API_BASE } from './api'
 import { ApiError } from './apiError'
+import { isDemoModeActive } from './demoMode'
+import { eletronicosLocalApi } from './eletronicosLocalApi'
 import type {
   ServiceRequestDto,
   ServiceOrderDto,
@@ -92,6 +94,9 @@ function token() {
 }
 
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (isDemoModeActive()) {
+    return eletronicosLocalApi(path, init) as Promise<T>
+  }
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -239,6 +244,7 @@ export const eletronicosAdmin = {
       >(`${BASE}/service-orders-closed`),
   },
   uploadMedia: async (file: Blob, filename: string): Promise<string> => {
+    if (isDemoModeActive()) return 'https://images.unsplash.com/photo-1592899677977-9c10ca588bbd?w=600'
     const form = new FormData()
     form.append('file', file, filename)
     const res = await fetch(`${API_BASE}${BASE}/upload`, {

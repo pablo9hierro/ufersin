@@ -117,6 +117,16 @@ const DEMO_SERVICES = [
   },
 ]
 
+// Estoque (insumos) da demo -- antes `ingredients.list()` sempre devolvia
+// `[]`, deixando /admin/estoque vazia mesmo tendo produto formulado (ver
+// PROD_FORMULADO em localData.ts). Só leitura, igual DEMO_SERVICES acima.
+const DEMO_INGREDIENTS = [
+  { id: 'demo-ing-1', name: 'Pão brioche', unit: 'un' as const, quantity: 40, cost_price: 1.2, low_stock_threshold: 10 },
+  { id: 'demo-ing-2', name: 'Carne (blend 180g)', unit: 'un' as const, quantity: 25, cost_price: 4.5, low_stock_threshold: 8 },
+  { id: 'demo-ing-3', name: 'Queijo cheddar', unit: 'g' as const, quantity: 3000, cost_price: 0.04, low_stock_threshold: 500 },
+  { id: 'demo-ing-4', name: 'Molho da casa', unit: 'ml' as const, quantity: 2000, cost_price: 0.02, low_stock_threshold: 300 },
+]
+
 const demoAssistantIa = {
   simulateMessage: async (phone: string, text: string, customerName?: string) => {
     const now = nowIso()
@@ -3321,7 +3331,7 @@ export const localApi = {
       },
     },
     ingredients: {
-      list: async () => [],
+      list: async () => DEMO_INGREDIENTS,
       create: async () => {
         throw new ApiError(400, 'ERP Formulação não está disponível no modo demonstração.')
       },
