@@ -56,7 +56,76 @@ roteamento).
 ---
 
 ## Parte 9 — Tenant real `demo-eletronica`
-Ver commits/relatório da sessão para o detalhamento de cada subitem
-(9.1 a 9.10) -- logo/marca, copy da vitrine, catálogo, Kanban, mapa de
-deslocamento, PDV, remoção da página Fiscal, status do WhatsApp na Conta,
-e performance de navegação do admin.
+
+### 9.1 — Vestígios de "VR Tech"
+Fallbacks hardcoded ('VR TECH') em `EletronicaLogo.tsx`, `EletronicaHome.tsx`
+e `EletronicaLoja.tsx`, e um ícone Cloudinary herdado do port
+(`EletronicaHome.tsx`/`EletronicaCatalogoServico.tsx`) trocados por
+"Resolutoo Assistência" e um SVG inline (data URI) na paleta Resolutoo.
+`seed.rs` renomeia o tenant (com backfill idempotente pro já seedado).
+
+### 9.2 — Ícone de casa
+Removido de `EletronicaAdminLayout.tsx`; a logo (já exibida ali) virou o
+próprio link clicável pro índice do painel.
+
+### 9.3 — Copy da vitrine
+Headline/subtítulo de `EletronicaHome.tsx` reescritos, mesmo layout.
+
+### 9.4 — Catálogo pobre
+Causa raiz real: `eletronicos.service_catalog_items` (lida por
+PDV/CatalogSearch e pela vitrine de reparo via
+`eletronicosAdmin.catalogItems.list()`) nunca foi seedada -- só a tabela
+genérica `services` (não usada por esses componentes) tinha os "~5
+serviços". Adicionados 14 itens de reparo em 6 marcas / 10 modelos, +4
+acessórios.
+
+### 9.5 — Kanban sem "Em diagnóstico"
+Statuses seedados nunca incluíam `aguardando_diagnostico`/
+`diagnostico_enviado` (os dois que caem na coluna "Em diagnóstico" em
+`EletronicaAdminDashboard.tsx::STATUS_GROUP`). Adicionados 2 requests
+nesses status + `eletronicos.service_diagnostics` preenchido pra eles e
+pro card "Em reparo", + `eletronicos.service_orders` com checklist
+parcial pro card em reparo.
+
+### 9.6 — Mapa de rastreio ao vivo (deslocamento) -- NÃO IMPLEMENTADO
+Investigado: `EletronicaServicoDeslocamento.tsx` é comprovadamente só um
+formulário de configuração (preço/km, endereço da loja) -- o próprio
+comentário original do arquivo já dizia "Gap disclosed: nada consome esse
+valor ainda". Não existe nenhum mapa nessa tela hoje; a afirmação do dono
+de que "já existe" não bate com o código. O componente de mapa real
+(`components/map/DeliveryTrackingMap.tsx`, usado em
+`pages/motoboy/MotoboyCorrida.tsx`) existe e funciona, mas é acoplado ao
+tipo `Order`/`orderService.trackDeliveryPosition` (rastreio via Supabase
+do ecommerce) -- reaproveitá-lo pro schema `eletronicos.service_requests`
+exigiria uma tabela/endpoint de posição próprios (trabalho de backend
+não-trivial). Não implementado nesta rodada por escopo/tempo -- ver
+relatório da sessão para a recomendação de próximo passo.
+
+### 9.7 — PDV não funcionava
+Investigado: o código de `EletronicaAdminPdv.tsx` e das rotas
+`/api/admin/eletronicos/pdv/*` no backend está correto -- os botões têm
+handlers, os endpoints existem. A causa real é a mesma da 9.4: o catálogo
+de reparo estava vazio, então `CatalogSearch` não tinha o que
+buscar/adicionar, e o carrinho nunca saía de vazio (por isso "Finalizar
+venda" parecia travado e os botões de pagamento, que só renderizam depois
+do checkout abrir, pareciam não existir). Além disso, o Pix sempre falhava
+("loja sem Mercado Pago conectado", real -- a demo não tem conta MP de
+verdade) -- mesmo tratamento da Parte 3 aplicado em `eletronicosAdminApi.ts`
+pra esse tenant seedado.
+
+### 9.8 — Página Fiscal removida
+Rota e item de menu removidos de `App.tsx`/`EletronicaAdminLayout.tsx`.
+
+### 9.9 — WhatsApp "conectado" na Conta
+`EletronicaAdminConta.tsx` passa um `api` fake (`DEMO_WHATSAPP_API`) pro
+mesmo `WhatsAppConnection` genérico quando `isSeededDemoTenant()`, sem UI
+nova.
+
+### 9.10 — Performance de navegação
+Investigado: `lazyWithReload.ts` não tinha nenhum prefetch -- cada rota é
+um chunk JS separado baixado só depois do clique. `tenantConfig` já era
+cacheado corretamente (fetch único no mount do layout, que não desmonta
+entre navegações). Fix: prefetch do chunk no hover/touch de cada item do
+menu (`EletronicaAdminLayout.tsx`). Não medido em produção nesta sessão
+(sem deploy) -- ganho real depende da latência de rede até o CDN de cada
+chunk.
