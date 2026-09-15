@@ -2,7 +2,7 @@
 import { Navigate, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { AtSign, CheckCircle2, CreditCard, Loader2, LogOut, Rocket, Store, Upload } from 'lucide-react'
-import { api, ApiError, type MeResponse, type TipoDocumento } from '../lib/api'
+import { api, ApiError, type EstiloOperacao, type MeResponse, type TipoDocumento } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated } from '../lib/authStore'
 import AddressField from '../components/AddressField'
 import EntregaTerceirizadaModoField from '../components/EntregaTerceirizadaModoField'
@@ -95,7 +95,8 @@ function applyMePrefill(me: MeResponse): {
   venderExternamente: boolean
   vendeMais18: boolean
   apenasRetirada: boolean
-  temMotoboyProprio: boolean
+  temFuncionarios: boolean
+  estiloOperacao: EstiloOperacao
   entregaTerceirizadaModo: 'manual' | 'automatico'
   ofereceServicos: boolean
   pagamentoNaRetirada: boolean
@@ -121,7 +122,8 @@ function applyMePrefill(me: MeResponse): {
     venderExternamente: me.vender_externamente !== false,
     vendeMais18: Boolean(me.vende_mais_18),
     apenasRetirada: Boolean(me.apenas_retirada),
-    temMotoboyProprio: Boolean(me.tem_motoboy_proprio),
+    temFuncionarios: Boolean(me.tem_funcionarios),
+    estiloOperacao: me.estilo_operacao === 'restaurante' ? 'restaurante' : 'loja',
     entregaTerceirizadaModo: me.entrega_terceirizada_modo === 'automatico' ? 'automatico' : 'manual',
     ofereceServicos: Boolean(me.oferece_servicos),
     pagamentoNaRetirada: Boolean(me.pagamento_na_retirada),
@@ -158,7 +160,8 @@ export default function Onboarding() {
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [vendeMais18, setVendeMais18] = useState(false)
   const [apenasRetirada, setApenasRetirada] = useState(false)
-  const [temMotoboyProprio, setTemMotoboyProprio] = useState(false)
+  const [temFuncionarios, setTemFuncionarios] = useState(false)
+  const [estiloOperacao, setEstiloOperacao] = useState<EstiloOperacao>('loja')
   const [entregaTerceirizadaModo, setEntregaTerceirizadaModo] = useState<'manual' | 'automatico'>('manual')
   const [ofereceServicos, setOfereceServicos] = useState(false)
   const [pagamentoNaRetirada, setPagamentoNaRetirada] = useState(false)
@@ -215,7 +218,8 @@ export default function Onboarding() {
         setVenderExternamente(pre.venderExternamente)
         setVendeMais18(pre.vendeMais18)
         setApenasRetirada(pre.apenasRetirada)
-        setTemMotoboyProprio(pre.temMotoboyProprio)
+        setTemFuncionarios(pre.temFuncionarios)
+        setEstiloOperacao(pre.estiloOperacao)
         setEntregaTerceirizadaModo(pre.entregaTerceirizadaModo)
         setOfereceServicos(pre.ofereceServicos)
         setPagamentoNaRetirada(pre.pagamentoNaRetirada)
@@ -391,8 +395,13 @@ export default function Onboarding() {
           vender_externamente: venderExternamente,
           vende_mais_18: vendeMais18,
           apenas_retirada: apenasRetirada,
-          tem_motoboy_proprio: !apenasRetirada && temMotoboyProprio,
-          entrega_terceirizada_modo: !apenasRetirada && !temMotoboyProprio ? entregaTerceirizadaModo : null,
+          tem_funcionarios: temFuncionarios,
+          estilo_operacao: temFuncionarios ? estiloOperacao : 'loja',
+          // Motoboy próprio deixou de ser pergunta daqui (agora é decidido em
+          // /admin/funcionarios, no admin da loja). O onboarding sempre trata
+          // a loja como "ainda sem motoboy próprio" — que é o default do banco
+          // — e por isso sempre oferece a escolha de entrega terceirizada.
+          entrega_terceirizada_modo: apenasRetirada ? null : entregaTerceirizadaModo,
           oferece_servicos: ofereceServicos,
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
@@ -416,8 +425,13 @@ export default function Onboarding() {
           vender_externamente: venderExternamente,
           vende_mais_18: vendeMais18,
           apenas_retirada: apenasRetirada,
-          tem_motoboy_proprio: !apenasRetirada && temMotoboyProprio,
-          entrega_terceirizada_modo: !apenasRetirada && !temMotoboyProprio ? entregaTerceirizadaModo : null,
+          tem_funcionarios: temFuncionarios,
+          estilo_operacao: temFuncionarios ? estiloOperacao : 'loja',
+          // Motoboy próprio deixou de ser pergunta daqui (agora é decidido em
+          // /admin/funcionarios, no admin da loja). O onboarding sempre trata
+          // a loja como "ainda sem motoboy próprio" — que é o default do banco
+          // — e por isso sempre oferece a escolha de entrega terceirizada.
+          entrega_terceirizada_modo: apenasRetirada ? null : entregaTerceirizadaModo,
           oferece_servicos: ofereceServicos,
           pagamento_na_retirada: pagamentoNaRetirada,
           entrega_somente_pix: entregaSomentePix,
@@ -731,21 +745,6 @@ export default function Onboarding() {
               </label>
 
               {!apenasRetirada && (
-                <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={temMotoboyProprio}
-                    onChange={(e) => setTemMotoboyProprio(e.target.checked)}
-                    className="w-4 h-4 mt-0.5"
-                  />
-                  <span className="text-xs text-uf-silver-dim">
-                    <span className="block text-uf-silver font-semibold mb-0.5">Tenho motoboy próprio para entrega</span>
-                    Se desmarcado, você escolhe abaixo como despacha a entrega terceirizada.
-                  </span>
-                </label>
-              )}
-
-              {!apenasRetirada && !temMotoboyProprio && (
                 <EntregaTerceirizadaModoField
                   vertical={vertical}
                   value={entregaTerceirizadaModo}
@@ -768,6 +767,49 @@ export default function Onboarding() {
             </>
           )}
 
+          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={temFuncionarios}
+              onChange={(e) => setTemFuncionarios(e.target.checked)}
+              className="w-4 h-4 mt-0.5"
+              data-testid="onboarding-tem-funcionarios"
+            />
+            <span className="text-xs text-uf-silver-dim">
+              <span className="block text-uf-silver font-semibold mb-0.5">
+                Sua loja vai ter funcionário (motoboy, vendedor/garçom, cozinha)?
+              </span>
+              Quais funcionários e como eles trabalham você configura depois, no painel da loja, em Funcionários.
+            </span>
+          </label>
+
+          {temFuncionarios && (
+            <div className="uf-glass rounded-xl px-3 py-2.5">
+              <p className="text-xs text-uf-silver font-semibold mb-2">
+                Sua loja funciona no estilo lanchonete/restaurante, ou estilo loja/adega/conveniência?
+              </p>
+              <div className="flex gap-2">
+                {([
+                  ['restaurante', 'Restaurante'],
+                  ['loja', 'Loja'],
+                ] as [EstiloOperacao, string][]).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setEstiloOperacao(value)}
+                    data-testid={`onboarding-estilo-${value}`}
+                    className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold border transition-colors ${
+                      estiloOperacao === value
+                        ? 'border-emerald-500/50 bg-emerald-500/10 text-uf-silver'
+                        : 'border-white/10 text-uf-silver-dim'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && <p className="error-msg">{error}</p>}
 

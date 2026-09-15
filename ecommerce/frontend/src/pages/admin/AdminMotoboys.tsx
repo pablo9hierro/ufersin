@@ -6,7 +6,23 @@ import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import type { CozinhaUser, Motoboy, PaymentFrequency, PaymentMethod, PayrollPayment, Vendedor } from '../../types'
+import type {
+  CozinhaUser,
+  EmployeeConfig,
+  ImpressaoModo,
+  Motoboy,
+  PaymentFrequency,
+  PaymentMethod,
+  PayrollPayment,
+  Vendedor,
+} from '../../types'
+
+const IMPRESSAO_OPTIONS: { value: ImpressaoModo; label: string }[] = [
+  { value: 'nenhuma', label: 'Nao imprimo comanda/pedido' },
+  { value: 'agente_local', label: 'Impressora termica (agente local)' },
+  { value: 'navegador', label: 'Imprimir pelo navegador' },
+  { value: 'ambos', label: 'Agente local e navegador' },
+]
 
 const PAYMENT_FREQUENCIES: { value: PaymentFrequency; label: string }[] = [
   { value: 'diaria', label: 'Diária' },
@@ -47,12 +63,43 @@ function currency(v: number) {
 export default function AdminMotoboys() {
   const { askConfirm, confirmDialogElement } = useConfirmDialog()
   const tenantConfig = useTenantConfig()
+  const restaurante = tenantConfig?.estilo_operacao === 'restaurante'
+  const vendedorLabel = restaurante ? 'Garçom' : 'Vendedor'
+  // Preferências de funcionário — moram na PLATAFORMA (subscribers), lidas e
+  // gravadas pelo proxy autenticado do backend da loja. Enquanto não chegam,
+  // cai no tenant-config público (cache de 5min) pra tela não piscar sem aba.
+  const [cfg, setCfg] = useState<EmployeeConfig | null>(null)
+  const [cfgSaving, setCfgSaving] = useState(false)
+  const [cfgError, setCfgError] = useState<string | null>(null)
+  useEffect(() => {
+    adminService.employeeConfig
+      .get()
+      .then(setCfg)
+      .catch(() => setCfgError('Não foi possível carregar as preferências de funcionários.'))
+  }, [])
+  const saveCfg = async (patch: Partial<EmployeeConfig>) => {
+    if (!cfg) return
+    const previous = cfg
+    const next = { ...cfg, ...patch }
+    setCfg(next)
+    setCfgSaving(true)
+    setCfgError(null)
+    try {
+      setCfg(await adminService.employeeConfig.update(next))
+    } catch (e) {
+      setCfg(previous)
+      setCfgError(e instanceof ApiError ? e.message : 'Não foi possível salvar as preferências.')
+    } finally {
+      setCfgSaving(false)
+    }
+  }
+
   // Só mostra a aba de cadastro de cada papel se a loja marcou precisar dele
-  // em /meu-plano (tem_motoboy_proprio / precisa_vendedor / precisa_tela_cozinha)
+  // aqui mesmo (tem_motoboy_proprio / precisa_vendedor / precisa_tela_cozinha)
   // — cadastrar um funcionário que a loja não pediu só confunde.
-  const showMotoboys = !!tenantConfig?.tem_motoboy_proprio
-  const showVendedores = !!tenantConfig?.precisa_vendedor
-  const showCozinha = !!tenantConfig?.precisa_tela_cozinha
+  const showMotoboys = cfg ? cfg.tem_motoboy_proprio : !!tenantConfig?.tem_motoboy_proprio
+  const showVendedores = cfg ? cfg.precisa_vendedor : !!tenantConfig?.precisa_vendedor
+  const showCozinha = cfg ? cfg.precisa_tela_cozinha : !!tenantConfig?.precisa_tela_cozinha
   const [tab, setTab] = useState<'motoboys' | 'vendedores' | 'cozinha'>('motoboys')
   useEffect(() => {
     if (tab === 'motoboys' && !showMotoboys) setTab(showVendedores ? 'vendedores' : 'cozinha')
@@ -324,7 +371,11 @@ export default function AdminMotoboys() {
     loadCozinhaUsers()
   }
 
-  const NEW_LABEL = { motoboys: 'Novo motoboy', vendedores: 'Novo vendedor', cozinha: 'Novo usuário de cozinha' } as const
+  const NEW_LABEL = {
+    motoboys: 'Novo motoboy',
+    vendedores: `Novo ${vendedorLabel.toLowerCase()}`,
+    cozinha: 'Novo usuário de cozinha',
+  } as const
 
   return (
     <div>
@@ -339,6 +390,119 @@ export default function AdminMotoboys() {
           </button>
         )}
       </div>
+
+      {tenantConfig?.tem_funcionarios && (
+        <Card className="p-4 mb-6">
+          <h2 className="font-bold mb-1">Preferências de funcionários</h2>
+          <p className="text-xs text-son-silver-dim mb-4">
+            Define quais funcionários sua loja usa e como eles trabalham. Salva sozinho a cada mudança.
+          </p>
+          {cfg ? (
+            <div className="space-y-3">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cfg.tem_motoboy_proprio}
+                  disabled={cfgSaving}
+                  onChange={(e) => saveCfg({ tem_motoboy_proprio: e.target.checked })}
+                  className="w-4 h-4 mt-0.5"
+                  data-testid="cfg-tem-motoboy-proprio"
+                />
+                <span className="text-xs text-son-silver-dim">
+                  <span className="block text-white font-semibold mb-0.5">Tenho motoboy próprio</span>
+                  Pedidos prontos caem na fila do motoboy em vez de você chamar um entregador terceiro.
+                </span>
+              </label>
+
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cfg.precisa_vendedor}
+                  disabled={cfgSaving}
+                  onChange={(e) => saveCfg({ precisa_vendedor: e.target.checked })}
+                  className="w-4 h-4 mt-0.5"
+                  data-testid="cfg-precisa-vendedor"
+                />
+                <span className="text-xs text-son-silver-dim">
+                  <span className="block text-white font-semibold mb-0.5">Tenho {vendedorLabel.toLowerCase()}</span>
+                  Libera o cadastro e o login separado pra bater venda no PDV.
+                </span>
+              </label>
+
+              {restaurante && (
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cfg.precisa_tela_cozinha}
+                    disabled={cfgSaving}
+                    onChange={(e) => saveCfg({ precisa_tela_cozinha: e.target.checked })}
+                    className="w-4 h-4 mt-0.5"
+                    data-testid="cfg-precisa-tela-cozinha"
+                  />
+                  <span className="text-xs text-son-silver-dim">
+                    <span className="block text-white font-semibold mb-0.5">Tenho cozinha</span>
+                    Pedidos passam pela tela de Cozinha, onde a equipe avança o status.
+                  </span>
+                </label>
+              )}
+
+              <label className="block">
+                <span className="block text-xs text-white font-semibold mb-1">Impressão de comanda/pedido</span>
+                <select
+                  value={cfg.impressao_modo}
+                  disabled={cfgSaving}
+                  onChange={(e) => saveCfg({ impressao_modo: e.target.value as ImpressaoModo })}
+                  className="input-field text-sm"
+                  data-testid="cfg-impressao-modo"
+                >
+                  {IMPRESSAO_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {restaurante && (
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cfg.usa_mesas}
+                    disabled={cfgSaving}
+                    onChange={(e) => saveCfg({ usa_mesas: e.target.checked })}
+                    className="w-4 h-4 mt-0.5"
+                    data-testid="cfg-usa-mesas"
+                  />
+                  <span className="text-xs text-son-silver-dim">
+                    <span className="block text-white font-semibold mb-0.5">Cadastro mesas com número</span>
+                    O pedido passa a ser amarrado à mesa, além do nome do cliente.
+                  </span>
+                </label>
+              )}
+
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cfg.point_terminal_fixo}
+                  disabled={cfgSaving}
+                  onChange={(e) => saveCfg({ point_terminal_fixo: e.target.checked })}
+                  className="w-4 h-4 mt-0.5"
+                  data-testid="cfg-point-terminal-fixo"
+                />
+                <span className="text-xs text-son-silver-dim">
+                  <span className="block text-white font-semibold mb-0.5">Terminal Point fixo por funcionário</span>
+                  Cada funcionário cobra sempre na mesma maquininha, em vez de escolher na hora.
+                </span>
+              </label>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-son-silver-dim">
+              <Loader2 className="w-4 h-4 animate-spin" /> Carregando preferências...
+            </div>
+          )}
+          {cfgError && <p className="text-xs text-red-400 mt-3">{cfgError}</p>}
+        </Card>
+      )}
 
       <FreteSettingsCard />
 
@@ -361,7 +525,7 @@ export default function AdminMotoboys() {
                 tab === 'vendedores' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
               }`}
             >
-              <Store className="w-3.5 h-3.5" /> Vendedores
+              <Store className="w-3.5 h-3.5" /> {restaurante ? 'Garçons' : 'Vendedores'}
             </button>
           )}
           {showCozinha && (
@@ -377,7 +541,7 @@ export default function AdminMotoboys() {
         </div>
       ) : (
         <p className="text-sm text-son-silver-dim mb-6">
-          Marque em Meu Plano se precisa de motoboy próprio, vendedor ou tela de cozinha pra liberar o cadastro aqui.
+          Marque acima, em Preferências de funcionários, quem sua loja tem pra liberar o cadastro aqui.
         </p>
       )}
 

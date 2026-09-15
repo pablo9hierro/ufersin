@@ -67,6 +67,11 @@ export interface TenantConfig {
   tem_motoboy_proprio: boolean
   /** Loja vai precisar de conta de usuário vendedor (PDV). */
   precisa_vendedor: boolean
+  /** Guarda-chuva do onboarding: a loja tem funcionário. Sem isso, o admin da
+   * loja nem mostra a seção de preferências de funcionário. */
+  tem_funcionarios: boolean
+  /** 'restaurante' (garçom/cozinha/mesas) | 'loja' (vendedor). */
+  estilo_operacao: 'restaurante' | 'loja'
   /** Quando `oferece_servicos`, também atende a domicílio (além de presencial
    * na loja) — libera geolocalização no checkout de serviço (vitrine + Assistente IA). */
   atende_domicilio: boolean
@@ -182,6 +187,8 @@ const DEFAULT_CONFIG: TenantConfig = {
   precisa_tela_cozinha: false,
   tem_motoboy_proprio: false,
   precisa_vendedor: false,
+  tem_funcionarios: false,
+  estilo_operacao: 'loja',
   atende_domicilio: false,
   landing_hero_image_url: null,
   cart_fab_style: 'sacola',
@@ -415,6 +422,8 @@ function mapTenantPayload(slug: string, data: Partial<TenantConfig>): TenantConf
     precisa_tela_cozinha: Boolean(data.precisa_tela_cozinha),
     tem_motoboy_proprio: Boolean(data.tem_motoboy_proprio),
     precisa_vendedor: Boolean(data.precisa_vendedor),
+    tem_funcionarios: Boolean(data.tem_funcionarios),
+    estilo_operacao: data.estilo_operacao === 'restaurante' ? 'restaurante' : 'loja',
     atende_domicilio: Boolean(data.oferece_servicos) && Boolean(data.atende_domicilio),
     landing_hero_image_url: data.landing_hero_image_url ? String(data.landing_hero_image_url) : null,
     cart_fab_style: fab,

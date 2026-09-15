@@ -24,6 +24,7 @@ import type {
   CrmCustomer,
   CrmFilterCriteria,
   CrmSegment,
+  EmployeeConfig,
   EvolutionConnect,
   EvolutionStatus,
   FinanceiroSummary,
@@ -1005,6 +1006,16 @@ const remoteApi = {
           }),
         }),
       delete: (id: string) => railwayAdmin<void>(`/api/admin/cozinha-users/${id}`, { method: 'DELETE' }),
+    },
+    /** Preferências de funcionário — os dados moram na PLATAFORMA
+     * (subscribers); o backend da loja só faz proxy autenticado. */
+    employeeConfig: {
+      get: () => railwayAdmin<EmployeeConfig>('/api/admin/employee-config'),
+      update: (payload: EmployeeConfig) =>
+        railwayAdmin<EmployeeConfig>('/api/admin/employee-config', {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        }),
     },
     payroll: {
       alerts: () => railwayAdmin<PayrollAlert[]>('/api/admin/payroll/alerts'),

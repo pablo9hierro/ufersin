@@ -2,6 +2,7 @@ pub mod assinatura;
 pub mod assistant_ia;
 pub mod auth;
 pub mod contratos;
+pub mod internal;
 pub mod me;
 pub mod onboarding;
 pub mod plans;

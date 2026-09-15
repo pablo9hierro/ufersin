@@ -24,6 +24,7 @@ import {
   ApiError,
   type BillingCycle,
   type CancelReasonCode,
+  type EstiloOperacao,
   type MeResponse,
 } from '../lib/api'
 import { authStore, useAuthReady, useIsAuthenticated, useSession } from '../lib/authStore'
@@ -160,12 +161,13 @@ export default function MeuPlano() {
   const [temMotoboyProprio, setTemMotoboyProprio] = useState(false)
   const [entregaTerceirizadaModo, setEntregaTerceirizadaModo] = useState<'manual' | 'automatico'>('manual')
   const [precisaVendedor, setPrecisaVendedor] = useState(false)
-  /** Estado próprio (não derivado) pra dar play/pause real ao "não tenho
-   * funcionários": marcar trava e zera os três abaixo; desmarcar só destrava
-   * — sem isso o checkbox nunca "descheca" (a condição derivada continua
-   * batendo assim que os três ficam false, então o clique de desmarcar não
-   * tinha efeito visual nenhum). */
-  const [nenhumFuncionario, setNenhumFuncionario] = useState(false)
+  /** Guarda-chuva editável aqui. Os três booleanos acima (motoboy próprio /
+   * vendedor / cozinha) viraram SÓ LEITURA nesta tela: quem os edita agora é
+   * o admin da loja em /admin/funcionarios — aqui eles continuam sendo lidos
+   * porque ainda mandam no gating de pagamento na entrega, no campo de
+   * entrega terceirizada e no link de login de funcionário. */
+  const [temFuncionarios, setTemFuncionarios] = useState(false)
+  const [estiloOperacao, setEstiloOperacao] = useState<EstiloOperacao>('loja')
   const [pagamentoManual, setPagamentoManual] = useState(false)
   const [venderExternamente, setVenderExternamente] = useState(true)
   const [hasCredenciais, setHasCredenciais] = useState(false)
@@ -244,7 +246,8 @@ export default function MeuPlano() {
         setTemMotoboyProprio(!!m.tem_motoboy_proprio)
         setEntregaTerceirizadaModo(m.entrega_terceirizada_modo === 'automatico' ? 'automatico' : 'manual')
         setPrecisaVendedor(!!m.precisa_vendedor)
-        setNenhumFuncionario(!m.tem_motoboy_proprio && !m.precisa_vendedor && !m.precisa_tela_cozinha)
+        setTemFuncionarios(!!m.tem_funcionarios)
+        setEstiloOperacao(m.estilo_operacao === 'restaurante' ? 'restaurante' : 'loja')
         setColetaGratis(!!m.coleta_gratis)
         setEntregaReparadoGratis(!!m.entrega_reparado_gratis)
         setPagamentoNaRetirada(!!m.pagamento_na_retirada)
@@ -783,11 +786,13 @@ export default function MeuPlano() {
       oferece_servicos: me.vertical === 'eletronicos' ? true : ofereceServicos,
       // Só faz sentido atender a domicílio pra quem oferece serviço.
       atende_domicilio: (me.vertical === 'eletronicos' ? true : ofereceServicos) && atendeDomicilio,
-      // Eletrônica não tem conceito de cozinha (não é F&B).
-      precisa_tela_cozinha: me.vertical === 'eletronicos' ? false : precisaTelaCozinha,
-      tem_motoboy_proprio: !apenasRetirada && temMotoboyProprio,
+      // precisa_tela_cozinha / tem_motoboy_proprio / precisa_vendedor NÃO são
+      // mais mandados daqui — o admin da loja é o dono desses três agora
+      // (/admin/funcionarios -> /api/admin/employee-config). Omitidos, o
+      // backend preserva (COALESCE) o valor atual.
       entrega_terceirizada_modo: !apenasRetirada && !temMotoboyProprio ? entregaTerceirizadaModo : null,
-      precisa_vendedor: precisaVendedor,
+      tem_funcionarios: temFuncionarios,
+      estilo_operacao: temFuncionarios ? estiloOperacao : 'loja',
       // Pagar na retirada não depende de motoboy (é o cliente vindo na loja);
       // pagar na entrega só é seguro com motoboy próprio (terceiro/99pop não
       // carrega maquininha/troco da loja) — loja com entrega e sem motoboy
@@ -1186,94 +1191,52 @@ export default function MeuPlano() {
                   <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={nenhumFuncionario}
-                      onChange={(e) => {
-                        const checked = e.target.checked
-                        setNenhumFuncionario(checked)
-                        if (checked) {
-                          setTemMotoboyProprio(false)
-                          setPrecisaVendedor(false)
-                          setPrecisaTelaCozinha(false)
-                        }
-                      }}
+                      checked={temFuncionarios}
+                      onChange={(e) => setTemFuncionarios(e.target.checked)}
                       className="w-4 h-4 mt-0.5"
-                      data-testid="pref-nenhum-funcionario"
+                      data-testid="pref-tem-funcionarios"
                     />
                     <span className="text-xs text-uf-silver-dim">
-                      <span className="block text-uf-silver font-semibold mb-0.5">Não tenho funcionários</span>
-                      Tudo será administrado no painel da loja. Marcar aqui desmarca e trava os checkboxes abaixo.
+                      <span className="block text-uf-silver font-semibold mb-0.5">
+                        Sua loja vai ter funcionário (motoboy, vendedor/garçom, cozinha)?
+                      </span>
+                      Quais funcionários e como eles trabalham você configura no painel da loja, em Funcionários.
                     </span>
                   </label>
-                  {(() => {
-                    const nenhum = nenhumFuncionario
-                    const tooltip = nenhum ? 'Desmarque "Não tenho funcionários" pra liberar esta opção.' : undefined
-                    return (
-                      <>
-                        <label
-                          className={`uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 ${nenhum ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                          title={tooltip}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={precisaVendedor}
-                            disabled={nenhum}
-                            onChange={(e) => setPrecisaVendedor(e.target.checked)}
-                            className="w-4 h-4 mt-0.5"
-                            data-testid="pref-precisa-vendedor"
-                          />
-                          <span className="text-xs text-uf-silver-dim">
-                            <span className="block text-uf-silver font-semibold mb-0.5">Tenho vendedor/garçom (PDV)</span>
-                            Libera a tela de cadastro de funcionário e o login separado de vendedor pra bater venda no PDV.
-                          </span>
-                        </label>
-                        {me.vertical !== 'eletronicos' && (
-                          <label
-                            className={`uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 ${nenhum ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                            title={tooltip}
+                  {temFuncionarios && (
+                    <div className="uf-glass rounded-xl px-3 py-2.5">
+                      <p className="text-xs text-uf-silver font-semibold mb-2">
+                        Sua loja funciona no estilo lanchonete/restaurante, ou estilo loja/adega/conveniência?
+                      </p>
+                      <div className="flex gap-2">
+                        {([
+                          ['restaurante', 'Restaurante'],
+                          ['loja', 'Loja'],
+                        ] as [EstiloOperacao, string][]).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setEstiloOperacao(value)}
+                            data-testid={`pref-estilo-${value}`}
+                            className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold border transition-colors ${
+                              estiloOperacao === value
+                                ? 'border-emerald-500/50 bg-emerald-500/10 text-uf-silver'
+                                : 'border-white/10 text-uf-silver-dim'
+                            }`}
                           >
-                            <input
-                              type="checkbox"
-                              checked={precisaTelaCozinha}
-                              disabled={nenhum}
-                              onChange={(e) => setPrecisaTelaCozinha(e.target.checked)}
-                              className="w-4 h-4 mt-0.5"
-                              data-testid="pref-precisa-tela-cozinha"
-                            />
-                            <span className="text-xs text-uf-silver-dim">
-                              <span className="block text-uf-silver font-semibold mb-0.5">Tenho usuário de cozinha</span>
-                              Pedidos deixam de cair em Pedidos e passam direto pra tela de Cozinha, onde a equipe avança o status.
-                            </span>
-                          </label>
-                        )}
-                        {!apenasRetirada && (
-                          <label
-                            className={`uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 ${nenhum ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                            title={tooltip}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={temMotoboyProprio}
-                              disabled={nenhum}
-                              onChange={(e) => setTemMotoboyProprio(e.target.checked)}
-                              className="w-4 h-4 mt-0.5"
-                              data-testid="pref-tem-motoboy-proprio"
-                            />
-                            <span className="text-xs text-uf-silver-dim">
-                              <span className="block text-uf-silver font-semibold mb-0.5">Tenho motoboy próprio para entrega</span>
-                              Pedidos prontos caem na fila do motoboy. Se desmarcado, você chama um motoboy/99pop terceiro e o card do pedido mostra a localização do cliente.
-                            </span>
-                          </label>
-                        )}
-                        {!apenasRetirada && !temMotoboyProprio && (
-                          <EntregaTerceirizadaModoField
-                            vertical={me.vertical}
-                            value={entregaTerceirizadaModo}
-                            onChange={setEntregaTerceirizadaModo}
-                          />
-                        )}
-                      </>
-                    )
-                  })()}
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!apenasRetirada && !temMotoboyProprio && (
+                    <EntregaTerceirizadaModoField
+                      vertical={me.vertical}
+                      value={entregaTerceirizadaModo}
+                      onChange={setEntregaTerceirizadaModo}
+                    />
+                  )}
                   </>
                   )}
                   <button type="submit" disabled={saving} className="btn-primary w-full py-3" data-testid="salvar-preferencias">
@@ -1761,6 +1724,8 @@ function mapFieldsToMe(prev: MeResponse, fields: Parameters<typeof api.editarOnb
   if (fields.precisa_tela_cozinha != null) patch.precisa_tela_cozinha = fields.precisa_tela_cozinha
   if (fields.tem_motoboy_proprio != null) patch.tem_motoboy_proprio = fields.tem_motoboy_proprio
   if (fields.precisa_vendedor != null) patch.precisa_vendedor = fields.precisa_vendedor
+  if (fields.tem_funcionarios != null) patch.tem_funcionarios = fields.tem_funcionarios
+  if (fields.estilo_operacao != null) patch.estilo_operacao = fields.estilo_operacao
   if (fields.atende_domicilio != null) patch.atende_domicilio = fields.atende_domicilio
   return { ...prev, ...patch }
 }

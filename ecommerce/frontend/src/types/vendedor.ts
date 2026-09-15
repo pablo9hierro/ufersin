@@ -22,6 +22,22 @@ export const CozinhaUserSchema = z.object({
 })
 export type CozinhaUser = z.infer<typeof CozinhaUserSchema>
 
+/** Preferências de funcionário da loja. Os dados moram na PLATAFORMA
+ * (tabela `subscribers`); o backend da loja só faz proxy autenticado em
+ * /api/admin/employee-config. */
+export const ImpressaoModoSchema = z.enum(['nenhuma', 'agente_local', 'navegador', 'ambos'])
+export type ImpressaoModo = z.infer<typeof ImpressaoModoSchema>
+
+export const EmployeeConfigSchema = z.object({
+  tem_motoboy_proprio: z.boolean(),
+  precisa_vendedor: z.boolean(),
+  precisa_tela_cozinha: z.boolean(),
+  impressao_modo: ImpressaoModoSchema,
+  usa_mesas: z.boolean(),
+  point_terminal_fixo: z.boolean(),
+})
+export type EmployeeConfig = z.infer<typeof EmployeeConfigSchema>
+
 export const PdvSaleItemInputSchema = z.object({
   product_id: z.string().optional(),
   service_id: z.string().optional(),

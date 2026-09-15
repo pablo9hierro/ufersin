@@ -65,6 +65,16 @@ pub struct OnboardingInput {
     /// Loja vai precisar de conta de usuário vendedor (PDV).
     #[serde(default)]
     pub precisa_vendedor: bool,
+    /// Guarda-chuva perguntado no onboarding: a loja vai ter funcionário
+    /// (motoboy/vendedor/garçom/cozinha). QUAIS deles é decidido depois no
+    /// admin da loja (/admin/funcionarios, ver routes/internal.rs) — os três
+    /// booleanos acima não são mais editados pela plataforma.
+    #[serde(default)]
+    pub tem_funcionarios: bool,
+    /// "restaurante" | "loja" — decide rótulo (garçom x vendedor) e quais
+    /// preferências de funcionário aparecem no admin da loja.
+    #[serde(default = "default_estilo_operacao")]
+    pub estilo_operacao: String,
     /// "manual" | "automatico" (Uber Direct) -- só relevante quando não tem
     /// motoboy próprio. Cobre entrega de pedidos e, no ramo eletrônica,
     /// coleta/entrega de aparelho em reparo.
@@ -108,6 +118,14 @@ fn default_layout_style() -> String {
 }
 fn default_vertical() -> String {
     "ecommerce".to_string()
+}
+fn default_estilo_operacao() -> String {
+    "loja".to_string()
+}
+/// Normaliza o que veio do formulário — qualquer coisa fora do CHECK da
+/// migration 0039 vira o padrão em vez de estourar erro de banco.
+fn normalize_estilo_operacao(s: &str) -> String {
+    if s == "restaurante" { "restaurante".to_string() } else { "loja".to_string() }
 }
 
 #[derive(Debug, Serialize)]
@@ -278,7 +296,8 @@ pub async fn onboarding(
          entrega_somente_pix = $25, pagamento_manual = $26, vertical = $27, \
          coleta_gratis = $28, entrega_reparado_gratis = $29, oferece_servicos = $30, \
          precisa_tela_cozinha = $31, tem_motoboy_proprio = $32, precisa_vendedor = $33, \
-         atende_domicilio = $34, entrega_terceirizada_modo = $35, updated_at = now() \
+         atende_domicilio = $34, entrega_terceirizada_modo = $35, \
+         tem_funcionarios = $36, estilo_operacao = $37, updated_at = now() \
          WHERE id = $10",
     )
     .bind(&parsed.tenant_id)
@@ -320,6 +339,8 @@ pub async fn onboarding(
     .bind(body.precisa_vendedor)
     .bind(body.oferece_servicos && body.atende_domicilio)
     .bind(&body.entrega_terceirizada_modo)
+    .bind(body.tem_funcionarios)
+    .bind(normalize_estilo_operacao(&body.estilo_operacao))
     .execute(&state.pool)
     .await?;
 
@@ -520,6 +541,13 @@ pub struct EditOnboardingInput {
     pub tem_motoboy_proprio: Option<bool>,
     #[serde(default)]
     pub precisa_vendedor: Option<bool>,
+    /// Guarda-chuva de /meu-plano (ver OnboardingInput). Os três booleanos
+    /// acima continuam aceitos aqui só por compatibilidade com clientes
+    /// antigos — quem os edita hoje é o admin da loja (routes/internal.rs).
+    #[serde(default)]
+    pub tem_funcionarios: Option<bool>,
+    #[serde(default)]
+    pub estilo_operacao: Option<String>,
     #[serde(default)]
     pub landing_hero_image_url: Option<String>,
     #[serde(default)]
@@ -675,6 +703,8 @@ pub async fn editar_onboarding(
            WHEN COALESCE($34, oferece_servicos) = false THEN false \
            ELSE COALESCE($38, atende_domicilio) END, \
          entrega_terceirizada_modo = COALESCE($39, entrega_terceirizada_modo), \
+         tem_funcionarios = COALESCE($40, tem_funcionarios), \
+         estilo_operacao = COALESCE($41, estilo_operacao), \
          onboarding_status = CASE \
            WHEN onboarding_status = 'aguardando_onboarding' THEN 'provisionado' \
            ELSE onboarding_status END, \
@@ -729,6 +759,8 @@ pub async fn editar_onboarding(
     .bind(body.precisa_vendedor)
     .bind(body.atende_domicilio)
     .bind(&body.entrega_terceirizada_modo)
+    .bind(body.tem_funcionarios)
+    .bind(body.estilo_operacao.as_deref().map(normalize_estilo_operacao))
     .execute(&state.pool)
     .await?;
 
@@ -1177,6 +1209,12 @@ pub struct TenantConfigResponse {
     pub precisa_tela_cozinha: bool,
     pub tem_motoboy_proprio: bool,
     pub precisa_vendedor: bool,
+    /// Guarda-chuva (migration 0039) — o admin da loja só mostra a seção de
+    /// preferências de funcionário quando isto é true, e usa `estilo_operacao`
+    /// pra decidir rótulo (garçom x vendedor) e o que aparece.
+    pub tem_funcionarios: bool,
+    /// "restaurante" | "loja".
+    pub estilo_operacao: String,
     pub landing_hero_image_url: Option<String>,
     pub cart_fab_style: String,
     pub cart_fab_animate: bool,
@@ -1217,6 +1255,8 @@ struct TenantConfigRow {
     precisa_tela_cozinha: bool,
     tem_motoboy_proprio: bool,
     precisa_vendedor: bool,
+    tem_funcionarios: bool,
+    estilo_operacao: String,
     landing_hero_image_url: Option<String>,
     cart_fab_style: String,
     cart_fab_animate: bool,
@@ -1250,7 +1290,7 @@ pub async fn tenant_config(
          COALESCE(oferece_servicos, false) as oferece_servicos, \
          COALESCE(precisa_tela_cozinha, false) as precisa_tela_cozinha, \
          COALESCE(tem_motoboy_proprio, false) as tem_motoboy_proprio, \
-         COALESCE(precisa_vendedor, false) as precisa_vendedor, landing_hero_image_url, \
+         COALESCE(precisa_vendedor, false) as precisa_vendedor,          COALESCE(tem_funcionarios, false) as tem_funcionarios,          COALESCE(estilo_operacao, 'loja') as estilo_operacao, landing_hero_image_url, \
          COALESCE(cart_fab_style, 'sacola') as cart_fab_style, \
          COALESCE(cart_fab_animate, false) as cart_fab_animate, \
          COALESCE(atende_domicilio, false) as atende_domicilio \
@@ -1303,6 +1343,8 @@ pub async fn tenant_config(
         precisa_tela_cozinha: row.precisa_tela_cozinha,
         tem_motoboy_proprio: row.tem_motoboy_proprio,
         precisa_vendedor: row.precisa_vendedor,
+        tem_funcionarios: row.tem_funcionarios,
+        estilo_operacao: row.estilo_operacao,
         landing_hero_image_url: row.landing_hero_image_url,
         cart_fab_style: match row.cart_fab_style.as_str() {
             "cart_icon" => "cart_icon".to_string(),

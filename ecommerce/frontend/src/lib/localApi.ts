@@ -3353,6 +3353,19 @@ export const localApi = {
       update: async () => { throw new ApiError(400, 'Cozinha não está disponível no modo demo.') },
       delete: async () => {},
     },
+    employeeConfig: {
+      // Config de funcionário mora na plataforma — o modo demo não tem
+      // plataforma, então devolve tudo desligado e recusa gravar.
+      get: async () => ({
+        tem_motoboy_proprio: false,
+        precisa_vendedor: false,
+        precisa_tela_cozinha: false,
+        impressao_modo: 'nenhuma' as const,
+        usa_mesas: false,
+        point_terminal_fixo: false,
+      }),
+      update: async () => { throw new ApiError(400, 'Preferências de funcionário não estão disponíveis no modo demo.') },
+    },
     payroll: {
       alerts: async () => [],
       reportPayment: async () => { throw new ApiError(400, 'Pagamento de funcionário não está disponível no modo demo.') },

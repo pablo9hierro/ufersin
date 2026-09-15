@@ -75,6 +75,16 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Caminho inverso: autoriza o motor de e-commerce a chamar
+    // /internal/tenant-employee-config aqui (config de funcionários editada
+    // no admin da loja) -- ver routes/internal.rs.
+    let platform_internal_key = env_trimmed("PLATFORM_INTERNAL_KEY");
+    if platform_internal_key.is_empty() {
+        tracing::warn!(
+            "PLATFORM_INTERNAL_KEY not set — /internal/tenant-employee-config vai rejeitar toda requisição"
+        );
+    }
+
     // Módulo fiscal Jubilados (.NET separado) -- ver
     // routes/onboarding.rs::sync_fiscal_config.
     let jubilados_api_url = env_trimmed("JUBILADOS_API_URL");
@@ -173,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
         back_url: Arc::new(back_url),
         ecommerce_internal_url: Arc::new(ecommerce_internal_url),
         ecommerce_internal_key: Arc::new(ecommerce_internal_key),
+        platform_internal_key: Arc::new(platform_internal_key),
         jubilados_api_url: Arc::new(jubilados_api_url),
         jubilados_internal_key: Arc::new(jubilados_internal_key),
         pandadoc,
@@ -281,6 +292,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/superadmin/mercadopago/oauth/start", post(mercadopago_oauth::oauth_start_platform))
         .route("/api/superadmin/mercadopago/oauth/disconnect", post(mercadopago_oauth::oauth_disconnect_platform))
         .route("/api/public/tenant-config/{slug}", get(routes::onboarding::tenant_config))
+        .route(
+            "/internal/tenant-employee-config",
+            get(routes::internal::get_tenant_employee_config)
+                .put(routes::internal::put_tenant_employee_config),
+        )
         .route("/api/public/contratos/catalog", get(routes::contratos::catalog))
         .route(
             "/api/public/contratos/accept-checkout",

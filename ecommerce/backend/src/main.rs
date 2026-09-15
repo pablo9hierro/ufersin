@@ -131,6 +131,16 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Caminho inverso: ESTE backend chamando a plataforma pra ler/gravar a
+    // config de funcionários do lojista — ver routes/employee_config.rs.
+    let platform_internal_url = env_trimmed("PLATFORM_INTERNAL_URL");
+    let platform_internal_key = env_trimmed("PLATFORM_INTERNAL_KEY");
+    if platform_internal_url.is_empty() || platform_internal_key.is_empty() {
+        tracing::warn!(
+            "PLATFORM_INTERNAL_URL/PLATFORM_INTERNAL_KEY not set — /api/admin/employee-config vai falhar até serem configurados"
+        );
+    }
+
     // Módulo fiscal Jubilados (.NET, backend separado) — emissão de NF-e/
     // NFC-e. Vazio = require_feature(Feature::EmissaoFiscal) já barra as
     // rotas antes de qualquer chamada precisar dessas vars.
@@ -233,6 +243,8 @@ async fn main() -> anyhow::Result<()> {
         supabase_url: Arc::new(supabase_url),
         supabase_service_key: Arc::new(supabase_service_key),
         internal_api_key: Arc::new(internal_api_key),
+        platform_internal_url: Arc::new(platform_internal_url),
+        platform_internal_key: Arc::new(platform_internal_key),
         whatsapp_connect_cache: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         mercadopago_webhook_secret: Arc::new(mercadopago_webhook_secret),
         login_limiter: Arc::new(rate_limit::LoginAttemptLimiter::default()),
@@ -642,6 +654,11 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/api/admin/cozinha-users",
             get(routes::admin::list_cozinha_users).post(routes::admin::create_cozinha_user),
+        )
+        .route(
+            "/api/admin/employee-config",
+            get(routes::employee_config::get_employee_config)
+                .put(routes::employee_config::update_employee_config),
         )
         .route("/api/admin/payroll/alerts", get(routes::payroll::admin_alerts))
         .route("/api/admin/payroll/payments", post(routes::payroll::report_payment))

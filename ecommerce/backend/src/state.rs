@@ -37,6 +37,13 @@ pub struct AppState {
     /// backend) a chamar POST /internal/provision-tenant — nunca chega ao
     /// navegador, é uma chamada backend-a-backend só.
     pub internal_api_key: Arc<String>,
+    /// Caminho INVERSO: base URL + chave pra ESTE backend chamar a
+    /// plataforma (`/internal/tenant-employee-config`), onde mora a
+    /// configuração de funcionários da loja (tabela `subscribers`). Ver
+    /// routes/employee_config.rs. Vazio = /api/admin/employee-config
+    /// responde erro até ser configurado.
+    pub platform_internal_url: Arc<String>,
+    pub platform_internal_key: Arc<String>,
     /// Cache curto (por instance name) da última resposta de
     /// `whatsapp::connect` — várias abas/dispositivos abertos na tela
     /// "Reconecte o WhatsApp" (cada um com seu próprio poll de 4s/25s, ver

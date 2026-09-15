@@ -8,6 +8,7 @@ import {
   BgSettingsSchema,
   CategorySchema,
   CozinhaUserSchema,
+  EmployeeConfigSchema,
   CouponGrantSchema,
   CouponSchema,
   CrmCampanhaCouponSchema,
@@ -36,6 +37,7 @@ import {
   type CarouselStyle,
   type CrmFilterCriteria,
   type DiscountType,
+  type EmployeeConfig,
   type PageDecorationElement,
   type PageKey,
   type PaymentFrequency,
@@ -155,6 +157,11 @@ export const adminEndpoint = {
     update: async (id: string, payload: { name: string; phone: string; active: boolean; password?: string }) =>
       validate(CozinhaUserSchema, await api.admin.cozinhaUsers.update(id, payload), 'admin.cozinhaUsers.update'),
     delete: async (id: string) => api.admin.cozinhaUsers.delete(id),
+  },
+  employeeConfig: {
+    get: async () => validate(EmployeeConfigSchema, await api.admin.employeeConfig.get(), 'admin.employeeConfig.get'),
+    update: async (payload: EmployeeConfig) =>
+      validate(EmployeeConfigSchema, await api.admin.employeeConfig.update(payload), 'admin.employeeConfig.update'),
   },
   payroll: {
     alerts: async () => validateList(PayrollAlertSchema, await api.admin.payroll.alerts(), 'admin.payroll.alerts'),

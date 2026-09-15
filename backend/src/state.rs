@@ -33,6 +33,11 @@ pub struct AppState {
     /// navegador; é uma chamada backend-a-backend.
     pub ecommerce_internal_url: Arc<String>,
     pub ecommerce_internal_key: Arc<String>,
+    /// Chave que autoriza o motor de e-commerce a chamar DE VOLTA a
+    /// plataforma (`/internal/tenant-employee-config`): o admin da loja
+    /// edita a config de funcionários, que mora em `subscribers` aqui.
+    /// Ver routes/internal.rs. Nunca chega ao navegador.
+    pub platform_internal_key: Arc<String>,
     /// Base URL + chave do módulo fiscal Jubilados (.NET separado,
     /// `pablo9hierro/ouvir`) -- usado só pra criar/atualizar a Empresa
     /// quando o lojista preenche Meu Plano -> Financeiro -> Fiscal. Nunca

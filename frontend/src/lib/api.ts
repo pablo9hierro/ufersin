@@ -54,6 +54,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 /** Ramo do negócio. Cada um tem sua própria escada de planos, seu painel e
  * sua vitrine -- um assinante nunca enxerga o do outro. */
 export type Vertical = 'ecommerce' | 'eletronicos'
+/** Estilo de operação da loja — decide rótulos e preferências de funcionário. */
+export type EstiloOperacao = 'restaurante' | 'loja'
 
 /** Códigos de plano. `eletronica` é o único do ramo de assistência técnica;
  * os outros três formam a escada do ecommerce (ver `plan_code_allowed` no
@@ -278,6 +280,10 @@ export interface MeResponse {
   tem_motoboy_proprio: boolean
   /** Store will need a vendedor (PDV) staff account. */
   precisa_vendedor: boolean
+  /** Guarda-chuva: a loja tem funcionário. QUAIS deles é decidido no admin da loja. */
+  tem_funcionarios: boolean
+  /** 'restaurante' | 'loja' — rótulo (garçom x vendedor) e o que aparece no admin. */
+  estilo_operacao: EstiloOperacao
   /** Essential: rectangular hero image on landing (Management+ uses promo banners). */
   landing_hero_image_url: string | null
   cart_fab_style: 'sacola' | 'cart_icon'
@@ -447,6 +453,8 @@ export interface OnboardingInput {
   tem_motoboy_proprio?: boolean
   entrega_terceirizada_modo?: 'manual' | 'automatico' | null
   precisa_vendedor?: boolean
+  tem_funcionarios?: boolean
+  estilo_operacao?: EstiloOperacao
   atende_domicilio?: boolean
   whatsapp_habilitado: boolean
   forma_pagamento?: FormaPagamento
@@ -496,6 +504,8 @@ export interface EditOnboardingInput {
   tem_motoboy_proprio?: boolean
   entrega_terceirizada_modo?: 'manual' | 'automatico' | null
   precisa_vendedor?: boolean
+  tem_funcionarios?: boolean
+  estilo_operacao?: EstiloOperacao
   atende_domicilio?: boolean
   landing_hero_image_url?: string
   cart_fab_style?: 'sacola' | 'cart_icon'
