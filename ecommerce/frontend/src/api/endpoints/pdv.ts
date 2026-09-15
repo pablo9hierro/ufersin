@@ -3,8 +3,10 @@ import { validate, validateList } from '../validate'
 import {
   ComandaHistoryEntrySchema,
   ComandaSchema,
+  EmployeeConfigSchema,
   OrderSchema,
   ProductSchema,
+  RestaurantTableSchema,
   VendedorRelatorioSchema,
   type PaymentMethod,
   type PdvSaleItemInput,
@@ -49,6 +51,12 @@ export const pdvEndpoint = {
   notifyCardCharge: async (orderId: string, whatsapp: string, linkUrl?: string, checkoutUrl?: string) =>
     api.pdv.notifyCardCharge(orderId, whatsapp, linkUrl, checkoutUrl),
   relatorio: async () => validate(VendedorRelatorioSchema, await api.pdv.relatorio(), 'pdv.relatorio'),
+  employeeConfig: async () => validate(EmployeeConfigSchema, await api.pdv.employeeConfig(), 'pdv.employeeConfig'),
+  restaurantTables: {
+    list: async () => validateList(RestaurantTableSchema, await api.pdv.restaurantTables.list(), 'pdv.restaurantTables.list'),
+    openComanda: async (id: string) =>
+      validate(ComandaSchema, await api.pdv.restaurantTables.openComanda(id), 'pdv.restaurantTables.openComanda'),
+  },
   comandas: {
     list: async () => validateList(ComandaSchema, await api.pdv.comandas.list(), 'pdv.comandas.list'),
     create: async (label: string) => validate(ComandaSchema, await api.pdv.comandas.create(label), 'pdv.comandas.create'),

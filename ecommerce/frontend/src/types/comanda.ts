@@ -25,6 +25,17 @@ export const ComandaSchema = z.object({
 })
 export type Comanda = z.infer<typeof ComandaSchema>
 
+/** Mesa de restaurante (Parte 3, `tenantConfig.usa_mesas`). Abrir a comanda
+ * de uma mesa gera um código automático -- comanda avulsa (sem mesa)
+ * continua com nome livre, sem relação com isto. */
+export const RestaurantTableSchema = z.object({
+  id: z.string(),
+  numero: z.string(),
+  status: z.enum(['livre', 'ocupada']),
+  comanda_id: z.string().nullable(),
+})
+export type RestaurantTable = z.infer<typeof RestaurantTableSchema>
+
 export const ComandaHistoryEntrySchema = z.object({
   id: z.string(),
   employee_role: z.string(),

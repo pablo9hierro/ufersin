@@ -3139,6 +3139,18 @@ export const localApi = {
     notifyPixCharge: async () => {},
     notifyCardCharge: async () => {},
     relatorio: vendedorRelatorio,
+    employeeConfig: async () => ({
+      tem_motoboy_proprio: false,
+      precisa_vendedor: false,
+      precisa_tela_cozinha: false,
+      impressao_modo: 'nenhuma' as const,
+      usa_mesas: false,
+      point_terminal_fixo: false,
+    }),
+    restaurantTables: {
+      list: async () => [],
+      openComanda: async () => { throw new ApiError(400, 'Mesas não estão disponíveis no modo demo.') },
+    },
     comandas: {
       list: async () => [],
       create: async () => { throw new ApiError(400, 'Comandas não estão disponíveis no modo demo.') },
@@ -3365,6 +3377,13 @@ export const localApi = {
         point_terminal_fixo: false,
       }),
       update: async () => { throw new ApiError(400, 'Preferências de funcionário não estão disponíveis no modo demo.') },
+    },
+    // Mesas (Parte 3) -- feature Railway-only, sem simulação no modo demo.
+    restaurantTables: {
+      list: async () => [],
+      create: async () => { throw new ApiError(400, 'Mesas não estão disponíveis no modo demo.') },
+      update: async () => { throw new ApiError(400, 'Mesas não estão disponíveis no modo demo.') },
+      delete: async () => {},
     },
     payroll: {
       alerts: async () => [],

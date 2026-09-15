@@ -43,6 +43,46 @@ pub async fn enable_beta(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+/// Parte 5: quem pode usar qual POS. Fail-open por padrão -- sem
+/// `point_terminal_fixo` ligado (`subscribers.point_terminal_fixo`, lido via
+/// proxy da plataforma em `employee_config::fetch`), qualquer funcionário
+/// autenticado do tenant pode usar qualquer POS do tenant: quem cobrou já
+/// fica registrado via employee_id/employee_role no JWT, não precisa de
+/// vínculo explícito. Só quando o lojista liga essa preferência o vínculo em
+/// `mp_point_employee_pos` volta a valer (comportamento antigo, fail-closed).
+/// Admin sempre pode usar qualquer POS, nos dois modos.
+async fn check_pos_access(
+    state: &AppState,
+    claims: &crate::auth::Claims,
+    employee: &EmployeeRef,
+    pos_id: &str,
+) -> Result<(), AppError> {
+    if employee.role == "admin" {
+        return Ok(());
+    }
+    // ponytail: uma chamada de rede pra plataforma por cobrança não-admin --
+    // aceitável hoje (Point Order não é um endpoint de alto volume); otimizar
+    // com cache/campo local só se isso virar gargalo medido de verdade.
+    let terminal_fixo = crate::routes::employee_config::fetch(state, &claims.tenant_id).await?.point_terminal_fixo;
+    if !terminal_fixo {
+        return Ok(());
+    }
+    let allowed: Vec<(String,)> = sqlx::query_as(
+        "SELECT pos_id FROM mp_point_employee_pos WHERE tenant_id = $1 AND employee_role = $2 AND employee_id = $3",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&employee.role)
+    .bind(&employee.id)
+    .fetch_all(&state.pool)
+    .await?;
+    let allowed_ids: Vec<String> = allowed.into_iter().map(|(p,)| p).collect();
+    if employee_can_use_pos(employee, &allowed_ids, pos_id) {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden("Você não tem permissão para usar este caixa (POS).".to_string()))
+    }
+}
+
 async fn access_token(state: &AppState, tenant_id: &str) -> Result<(String, tenant::TenantPayment), AppError> {
     let payment = tenant::load_tenant_payment(&state.pool, tenant_id).await?;
     let token = payment.mp_access_token().map(str::to_string).ok_or_else(|| {
@@ -491,24 +531,9 @@ pub async fn create_order(
     };
 
     // Nunca confia no pos_id do frontend pra autorização -- revalida
-    // employee -> POS permitido (admin sempre passa).
+    // employee -> POS permitido (admin sempre passa, ver check_pos_access).
     let employee = EmployeeRef { role: claims.role.clone(), id: claims.sub.clone() };
-    if employee.role != "admin" {
-        let allowed: Vec<(String,)> = sqlx::query_as(
-            "SELECT pos_id FROM mp_point_employee_pos WHERE tenant_id = $1 AND employee_role = $2 AND employee_id = $3",
-        )
-        .bind(&claims.tenant_id)
-        .bind(&employee.role)
-        .bind(&employee.id)
-        .fetch_all(&state.pool)
-        .await?;
-        let allowed_ids: Vec<String> = allowed.into_iter().map(|(p,)| p).collect();
-        if !employee_can_use_pos(&employee, &allowed_ids, &input.pos_id) {
-            return Err(AppError::Forbidden(
-                "Você não tem permissão para usar este caixa (POS).".to_string(),
-            ));
-        }
-    }
+    check_pos_access(&state, &claims, &employee, &input.pos_id).await?;
 
     let (token, _payment) = access_token(&state, &claims.tenant_id).await?;
 
@@ -675,20 +700,7 @@ pub async fn charge_order_point(
     };
 
     let employee = EmployeeRef { role: claims.role.clone(), id: claims.sub.clone() };
-    if employee.role != "admin" {
-        let allowed: Vec<(String,)> = sqlx::query_as(
-            "SELECT pos_id FROM mp_point_employee_pos WHERE tenant_id = $1 AND employee_role = $2 AND employee_id = $3",
-        )
-        .bind(&claims.tenant_id)
-        .bind(&employee.role)
-        .bind(&employee.id)
-        .fetch_all(&state.pool)
-        .await?;
-        let allowed_ids: Vec<String> = allowed.into_iter().map(|(p,)| p).collect();
-        if !employee_can_use_pos(&employee, &allowed_ids, &input.pos_id) {
-            return Err(AppError::Forbidden("Você não tem permissão para usar este caixa (POS).".to_string()));
-        }
-    }
+    check_pos_access(&state, &claims, &employee, &input.pos_id).await?;
 
     let (token, _payment) = access_token(&state, &claims.tenant_id).await?;
 

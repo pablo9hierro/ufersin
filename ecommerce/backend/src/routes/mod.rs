@@ -15,4 +15,5 @@ pub mod point_webhooks;
 pub mod payroll;
 pub mod pdv;
 pub mod public;
+pub mod tables;
 pub mod webhooks;

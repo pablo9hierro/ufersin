@@ -13,7 +13,7 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::AdminUser;
+use crate::auth::{AdminUser, PdvUser};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -62,12 +62,12 @@ async fn parse(resp: reqwest::Response) -> Result<Json<EmployeeConfig>, AppError
         .map_err(|e| AppError::Internal(format!("resposta inválida da plataforma: {e}")))
 }
 
-pub async fn get_employee_config(
-    State(state): State<AppState>,
-    AdminUser(claims): AdminUser,
-) -> Result<Json<EmployeeConfig>, AppError> {
-    let url = platform_url(&state)?;
-    let slug = tenant_slug(&state, &claims.tenant_id).await?;
+/// Núcleo do GET -- reaproveitado pelo handler admin, pelo handler PDV
+/// abaixo, e por quem só precisa LER um campo (`point::check_pos_access`,
+/// Parte 5), sem duplicar a resolução de slug + chamada à plataforma.
+pub async fn fetch(state: &AppState, tenant_id: &str) -> Result<EmployeeConfig, AppError> {
+    let url = platform_url(state)?;
+    let slug = tenant_slug(state, tenant_id).await?;
     let resp = state
         .http
         .get(&url)
@@ -76,7 +76,25 @@ pub async fn get_employee_config(
         .send()
         .await
         .map_err(|e| AppError::Internal(format!("plataforma inacessível: {e}")))?;
-    parse(resp).await
+    let Json(cfg) = parse(resp).await?;
+    Ok(cfg)
+}
+
+pub async fn get_employee_config(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<EmployeeConfig>, AppError> {
+    fetch(&state, &claims.tenant_id).await.map(Json)
+}
+
+/// Mesma leitura, mas liberada pra qualquer PDV (admin OU vendedor) -- só
+/// pra front decidir se mostra a grade de mesas (`usa_mesas`) em
+/// `ComandasSection.tsx`. Escrita (PUT) continua AdminUser-only acima.
+pub async fn get_employee_config_pdv(
+    State(state): State<AppState>,
+    PdvUser(claims): PdvUser,
+) -> Result<Json<EmployeeConfig>, AppError> {
+    fetch(&state, &claims.tenant_id).await.map(Json)
 }
 
 pub async fn update_employee_config(

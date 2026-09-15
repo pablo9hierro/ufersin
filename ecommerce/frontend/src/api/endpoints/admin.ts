@@ -9,6 +9,7 @@ import {
   CategorySchema,
   CozinhaUserSchema,
   EmployeeConfigSchema,
+  RestaurantTableSchema,
   CouponGrantSchema,
   CouponSchema,
   CrmCampanhaCouponSchema,
@@ -162,6 +163,14 @@ export const adminEndpoint = {
     get: async () => validate(EmployeeConfigSchema, await api.admin.employeeConfig.get(), 'admin.employeeConfig.get'),
     update: async (payload: EmployeeConfig) =>
       validate(EmployeeConfigSchema, await api.admin.employeeConfig.update(payload), 'admin.employeeConfig.update'),
+  },
+  restaurantTables: {
+    list: async () => validateList(RestaurantTableSchema, await api.admin.restaurantTables.list(), 'admin.restaurantTables.list'),
+    create: async (numero: string) =>
+      validate(RestaurantTableSchema, await api.admin.restaurantTables.create(numero), 'admin.restaurantTables.create'),
+    update: async (id: string, numero: string) =>
+      validate(RestaurantTableSchema, await api.admin.restaurantTables.update(id, numero), 'admin.restaurantTables.update'),
+    delete: async (id: string) => api.admin.restaurantTables.delete(id),
   },
   payroll: {
     alerts: async () => validateList(PayrollAlertSchema, await api.admin.payroll.alerts(), 'admin.payroll.alerts'),

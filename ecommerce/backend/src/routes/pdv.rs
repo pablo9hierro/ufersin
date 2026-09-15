@@ -497,7 +497,7 @@ pub async fn relatorio(
 // create_sale_core) -- mesmo estoque/Pix/relatório de sempre, sem duplicar
 // nada.
 
-async fn load_comanda_dto(
+pub(crate) async fn load_comanda_dto(
     tx: &mut sqlx::PgTransaction<'_>,
     tenant_id: &str,
     comanda_id: &str,
@@ -848,6 +848,17 @@ pub async fn pay_comanda(
         .bind(&id)
         .execute(&mut *tx)
         .await?;
+    // Se essa comanda tinha mesa vinculada (Parte 3, usa_mesas), libera a
+    // mesa na MESMA transação do fechamento -- nunca deixa mesa presa
+    // "ocupada" apontando pra uma comanda já fechada.
+    sqlx::query(
+        "UPDATE restaurant_tables SET status = 'livre', comanda_id = NULL, updated_at = now() \
+         WHERE tenant_id = $1 AND comanda_id = $2",
+    )
+    .bind(&claims.tenant_id)
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
     add_comanda_history(
         &mut tx, &claims.tenant_id, &id, &claims.role, &claims.sub, "COMMAND_FINALIZED", None,
         None, Some(serde_json::json!({ "order_id": dto.id })), None,

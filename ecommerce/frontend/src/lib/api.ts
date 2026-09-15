@@ -25,6 +25,7 @@ import type {
   CrmFilterCriteria,
   CrmSegment,
   EmployeeConfig,
+  RestaurantTable,
   EvolutionConnect,
   EvolutionStatus,
   FinanceiroSummary,
@@ -1017,6 +1018,19 @@ const remoteApi = {
           body: JSON.stringify(payload),
         }),
     },
+    /** Cadastro de mesas (Parte 3, usa_mesas) -- abrir/fechar comanda numa
+     * mesa é ação de PDV (ver `pdv.restaurantTables.openComanda` abaixo). */
+    restaurantTables: {
+      list: () => railwayAdmin<RestaurantTable[]>('/api/admin/restaurant-tables'),
+      create: (numero: string) =>
+        railwayAdmin<RestaurantTable>('/api/admin/restaurant-tables', { method: 'POST', body: JSON.stringify({ numero }) }),
+      update: (id: string, numero: string) =>
+        railwayAdmin<RestaurantTable>(`/api/admin/restaurant-tables/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ numero }),
+        }),
+      delete: (id: string) => railwayAdmin<void>(`/api/admin/restaurant-tables/${id}`, { method: 'DELETE' }),
+    },
     payroll: {
       alerts: () => railwayAdmin<PayrollAlert[]>('/api/admin/payroll/alerts'),
       reportPayment: (employeeRole: 'motoboy' | 'vendedor', employeeId: string, paymentMethod: string) =>
@@ -1990,6 +2004,15 @@ const remoteApi = {
       isRailwayAdminJwt()
         ? railwayAdmin<VendedorRelatorio>('/api/pdv/relatorio')
         : rpc<VendedorRelatorio>('vendedor_relatorio', { p_token: adminToken() }),
+    /** Só leitura -- usada pra decidir se mostra a grade de mesas
+     * (`usa_mesas`) em `ComandasSection.tsx`. Escrita continua admin-only
+     * em `admin.employeeConfig`. */
+    employeeConfig: () => railwayAdmin<EmployeeConfig>('/api/pdv/employee-config'),
+    restaurantTables: {
+      list: () => railwayAdmin<RestaurantTable[]>('/api/pdv/restaurant-tables'),
+      openComanda: (id: string) =>
+        railwayAdmin<Comanda>(`/api/pdv/restaurant-tables/${id}/open-comanda`, { method: 'POST' }),
+    },
     comandas: {
       list: () => railwayAdmin<Comanda[]>('/api/pdv/comandas'),
       create: (label: string) =>

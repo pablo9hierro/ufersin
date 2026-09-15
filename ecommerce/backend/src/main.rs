@@ -564,6 +564,15 @@ async fn main() -> anyhow::Result<()> {
             post(routes::pdv::replace_comanda_item),
         )
         .route("/api/pdv/comandas/{id}/pay", post(routes::pdv::pay_comanda))
+        // Mesas (Parte 3, usa_mesas) -- cadastro é admin-only mais abaixo em
+        // /api/admin/restaurant-tables; abrir comanda numa mesa é ação de
+        // qualquer PDV (admin ou vendedor/garçom).
+        .route("/api/pdv/restaurant-tables", get(routes::tables::list_tables_pdv))
+        .route(
+            "/api/pdv/restaurant-tables/{id}/open-comanda",
+            post(routes::tables::open_comanda),
+        )
+        .route("/api/pdv/employee-config", get(routes::employee_config::get_employee_config_pdv))
         // Cliente deslogado que esqueceu a senha — dispara o código de 3
         // dígitos por WhatsApp (Evolution API só é alcançável daqui).
         .route(
@@ -659,6 +668,14 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/employee-config",
             get(routes::employee_config::get_employee_config)
                 .put(routes::employee_config::update_employee_config),
+        )
+        .route(
+            "/api/admin/restaurant-tables",
+            get(routes::tables::list_tables).post(routes::tables::create_table),
+        )
+        .route(
+            "/api/admin/restaurant-tables/{id}",
+            put(routes::tables::update_table).delete(routes::tables::delete_table),
         )
         .route("/api/admin/payroll/alerts", get(routes::payroll::admin_alerts))
         .route("/api/admin/payroll/payments", post(routes::payroll::report_payment))

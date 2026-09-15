@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Loader2, Plus, QrCode, Search, Trash2, X } from 'lucide-react'
+import { Loader2, Plus, QrCode, Search, Settings, Trash2, X } from 'lucide-react'
 import { ApiError } from '../../lib/apiError'
 import { pdvService } from '../../services/pdvService'
+import { adminService } from '../../services/adminService'
 import { orderService } from '../../services/orderService'
 import { filterPdvProducts } from '../../lib/pdvHelpers'
 import { tenantHasOnlinePix } from '../../lib/tenantConfig'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
-import type { Comanda, Order, PaymentMethod, Product } from '../../types'
+import type { Comanda, Order, PaymentMethod, Product, RestaurantTable } from '../../types'
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -27,16 +28,61 @@ export default function ComandasSection({ products }: { products: Product[] }) {
   const [error, setError] = useState<string | null>(null)
   const [openComanda, setOpenComanda] = useState<Comanda | null>(null)
 
+  // Mesas (Parte 3) -- só quando a loja liga `usa_mesas` (preferência de
+  // funcionários, /admin/funcionarios). O dado não está na TenantConfig
+  // pública, então lê de `/api/pdv/employee-config` (proxy pra plataforma,
+  // liberado tanto pra admin quanto vendedor/garçom).
+  const [usaMesas, setUsaMesas] = useState(false)
+  const [tables, setTables] = useState<RestaurantTable[]>([])
+  const [tablesLoading, setTablesLoading] = useState(false)
+  const [tableError, setTableError] = useState<string | null>(null)
+  const [showTablesAdmin, setShowTablesAdmin] = useState(false)
+  const [openingTableId, setOpeningTableId] = useState<string | null>(null)
+
   const load = () => {
     setLoading(true)
     pdvService.comandas.list().then(setComandas).catch(() => {}).finally(() => setLoading(false))
   }
   useEffect(load, [])
 
+  const loadTables = () => {
+    setTablesLoading(true)
+    pdvService.restaurantTables
+      .list()
+      .then(setTables)
+      .catch(() => {})
+      .finally(() => setTablesLoading(false))
+  }
+
+  useEffect(() => {
+    pdvService
+      .employeeConfig()
+      .then((cfg) => {
+        setUsaMesas(cfg.usa_mesas)
+        if (cfg.usa_mesas) loadTables()
+      })
+      .catch(() => {})
+  }, [])
+
+  const openTable = async (table: RestaurantTable) => {
+    setTableError(null)
+    setOpeningTableId(table.id)
+    try {
+      const c = await pdvService.restaurantTables.openComanda(table.id)
+      loadTables()
+      load()
+      setOpenComanda(c)
+    } catch (err) {
+      setTableError(err instanceof ApiError ? err.message : 'Não foi possível abrir a mesa.')
+    } finally {
+      setOpeningTableId(null)
+    }
+  }
+
   const createComanda = async () => {
     setError(null)
     if (!newLabel.trim()) {
-      setError('Diga o nome do dono da comanda ou o número da mesa.')
+      setError('Diga o nome do dono da comanda.')
       return
     }
     setCreating(true)
@@ -57,10 +103,61 @@ export default function ComandasSection({ products }: { products: Product[] }) {
     <div className="mt-8">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-bold text-white">Comandas</h2>
-        <button type="button" onClick={() => setShowNewForm(true)} className="btn-primary text-sm py-2 px-4">
-          <Plus className="w-4 h-4" /> Criar comanda
-        </button>
+        <div className="flex items-center gap-2">
+          {usaMesas && (
+            <button
+              type="button"
+              onClick={() => setShowTablesAdmin(true)}
+              className="btn-secondary text-sm py-2 px-3"
+              title="Gerenciar mesas"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
+          <button type="button" onClick={() => setShowNewForm(true)} className="btn-primary text-sm py-2 px-4">
+            <Plus className="w-4 h-4" /> Comanda avulsa
+          </button>
+        </div>
       </div>
+
+      {usaMesas && (
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-son-silver-dim mb-2">Mesas</h3>
+          {tablesLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-4 h-4 animate-spin text-son-pink" />
+            </div>
+          ) : tables.length === 0 ? (
+            <p className="text-sm text-son-silver-dim">Nenhuma mesa cadastrada ainda.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {tables.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={openingTableId === t.id}
+                  onClick={() => openTable(t)}
+                  className={`rounded-2xl p-4 text-center border transition-colors ${
+                    t.status === 'ocupada'
+                      ? 'bg-son-pink/10 border-son-pink/40 text-white'
+                      : 'bg-son-surface border-white/5 text-son-silver hover:border-son-pink/30'
+                  }`}
+                >
+                  {openingTableId === t.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                  ) : (
+                    <>
+                      <p className="font-bold">Mesa {t.numero}</p>
+                      <p className="text-xs mt-0.5">{t.status === 'ocupada' ? 'Ocupada' : 'Livre'}</p>
+                    </>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          {tableError && <p className="error-msg mt-2">{tableError}</p>}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-8">
@@ -94,7 +191,7 @@ export default function ComandasSection({ products }: { products: Product[] }) {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <label className="label">Nome do cliente ou número da mesa</label>
+            <label className="label">Nome do cliente</label>
             <input className="input-field" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} autoFocus />
             {error && <p className="error-msg mt-2">{error}</p>}
             <button type="button" onClick={createComanda} disabled={creating} className="btn-primary w-full mt-4">
@@ -117,9 +214,137 @@ export default function ComandasSection({ products }: { products: Product[] }) {
           onClosed={() => {
             setOpenComanda(null)
             setComandas((prev) => prev.filter((c) => c.id !== openComanda.id))
+            if (usaMesas) loadTables()
           }}
         />
       )}
+
+      {showTablesAdmin && (
+        <TablesAdminDialog
+          tables={tables}
+          onClose={() => setShowTablesAdmin(false)}
+          onChange={loadTables}
+        />
+      )}
+    </div>
+  )
+}
+
+/** CRUD de cadastro de mesa -- só admin de fato consegue salvar (backend
+ * recusa POST/PUT/DELETE de vendedor com 403); abrir o dialog não tem custo
+ * pra quem não pode usar, o erro do backend já é claro. */
+function TablesAdminDialog({
+  tables,
+  onClose,
+  onChange,
+}: {
+  tables: RestaurantTable[]
+  onClose: () => void
+  onChange: () => void
+}) {
+  const [newNumero, setNewNumero] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [editing, setEditing] = useState<{ id: string; numero: string } | null>(null)
+
+  const create = async () => {
+    if (!newNumero.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      await adminService.restaurantTables.create(newNumero.trim())
+      setNewNumero('')
+      onChange()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível criar a mesa.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const save = async (id: string, numero: string) => {
+    if (!numero.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      await adminService.restaurantTables.update(id, numero.trim())
+      setEditing(null)
+      onChange()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível salvar a mesa.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async (id: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await adminService.restaurantTables.delete(id)
+      onChange()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Não foi possível remover a mesa.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="glass rounded-2xl p-6 max-w-sm w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-white">Gerenciar mesas</h3>
+          <button onClick={onClose} className="text-son-silver-dim hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-2 mb-4">
+          {tables.map((t) =>
+            editing?.id === t.id ? (
+              <div key={t.id} className="flex items-center gap-2">
+                <input
+                  className="input-field flex-1"
+                  value={editing.numero}
+                  onChange={(e) => setEditing({ id: t.id, numero: e.target.value })}
+                  autoFocus
+                />
+                <button type="button" disabled={busy} onClick={() => save(t.id, editing.numero)} className="btn-primary py-2 px-3 text-sm">
+                  Salvar
+                </button>
+              </div>
+            ) : (
+              <div key={t.id} className="flex items-center justify-between bg-son-surface-light rounded-xl px-3 py-2">
+                <span className="text-sm text-white">
+                  Mesa {t.numero} {t.status === 'ocupada' && <span className="text-son-pink text-xs">(ocupada)</span>}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setEditing({ id: t.id, numero: t.numero })} className="text-xs text-son-silver-dim hover:text-white">
+                    editar
+                  </button>
+                  <button type="button" disabled={busy || t.status === 'ocupada'} onClick={() => remove(t.id)} className="text-son-silver-dim hover:text-son-pink disabled:opacity-30">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ),
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            className="input-field flex-1"
+            placeholder="Número da mesa"
+            value={newNumero}
+            onChange={(e) => setNewNumero(e.target.value)}
+          />
+          <button type="button" disabled={busy} onClick={create} className="btn-primary py-2 px-3 text-sm">
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+        {error && <p className="error-msg mt-2">{error}</p>}
+      </div>
     </div>
   )
 }
