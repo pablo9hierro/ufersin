@@ -544,9 +544,25 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
             tracing::info!("demo-eletronica: catálogo de produtos vazio, aplicando backfill de acessórios");
             seed_demo_eletronica_accessories(&mut tx, &tenant_id).await?;
         }
-        // Commit sempre necessário aqui (não só no ramo de backfill de
-        // acessórios) -- senão o UPDATE de nome acima nunca persiste,
-        // já que o tx é descartado (rollback implícito) no `return`.
+        // Backfill idempotente (Parte 10): tenant pré-existente nunca rodou
+        // o bloco de service_requests/diagnósticos/agenda porque `!created`
+        // cortava tudo antes de chegar lá -- Kanban ao vivo ficava sem os
+        // status novos (aguardando_diagnostico/diagnostico_enviado/em_entrega)
+        // mesmo com o código já escrito, já que o tenant tinha sido criado
+        // numa rodada anterior a essas mudanças. Gate por "sem nenhum
+        // service_request" pra não duplicar em quem já tiver os cards.
+        let (request_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM eletronicos.service_requests WHERE tenant_id = $1")
+                .bind(&tenant_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if request_count == 0 {
+            tracing::info!("demo-eletronica: sem service_requests, aplicando backfill do Kanban/agenda");
+            seed_demo_eletronica_requests(&mut tx, &tenant_id).await?;
+        }
+        // Commit sempre necessário aqui (não só nos ramos de backfill) --
+        // senão o UPDATE de nome acima nunca persiste, já que o tx é
+        // descartado (rollback implícito) no `return`.
         tx.commit().await?;
         tracing::info!("demo-eletronica already seeded, skipping the rest");
         return Ok(());
@@ -758,6 +774,25 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
 
     seed_demo_eletronica_accessories(&mut tx, &tenant_id).await?;
 
+    seed_demo_eletronica_requests(&mut tx, &tenant_id).await?;
+
+    tx.commit().await?;
+    tracing::info!("demo-eletronica seeded");
+    Ok(())
+}
+
+/// Solicitações de serviço + diagnósticos/ordem/agenda pro tenant
+/// `demo-eletronica`. Extraído pra função própria (Parte 10) porque o
+/// tenant já existia em produção antes desta rodada -- `!created` em
+/// `seed_demo_eletronica` cortava tudo isso antes de rodar, então o Kanban
+/// ao vivo nunca ganhava os status novos (aguardando_diagnostico/
+/// diagnostico_enviado/em_entrega) mesmo depois do código já ter sido
+/// escrito. Chamado tanto na criação quanto como backfill idempotente
+/// (gated por `service_requests` vazio) no ramo de tenant pré-existente.
+async fn seed_demo_eletronica_requests(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: &str,
+) -> anyhow::Result<()> {
     // Solicitações de serviço cobrindo todo status do Kanban do painel --
     // Parte 9.5: faltavam "aguardando_diagnostico"/"diagnostico_enviado"
     // (os dois status que caem na coluna "Em diagnóstico", ver
@@ -787,7 +822,7 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, '[\"pix\", \"dinheiro\"]'::jsonb) \
              RETURNING id::text",
         )
-        .bind(&tenant_id)
+        .bind(tenant_id)
         .bind(name)
         .bind(phone)
         .bind(format!("{}@example.com", name.to_lowercase().replace(' ', ".")))
@@ -795,7 +830,7 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         .bind(problem)
         .bind(status)
         .bind(quote)
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await?;
         request_ids.insert(status, request_id);
     }
@@ -819,8 +854,8 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
           'Av. Epitácio Pessoa', '1200', 'Tambaú', 'João Pessoa', 'PB', -7.1035, -34.8291, \
           '[\"pix\", \"dinheiro\"]'::jsonb)",
     )
-    .bind(&tenant_id)
-    .execute(&mut *tx)
+    .bind(tenant_id)
+    .execute(&mut **tx)
     .await?;
 
     // Diagnóstico preenchido pros 3 cards que passam pela etapa de
@@ -839,14 +874,14 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
              VALUES ($1::uuid, $2, $3::uuid, $4::jsonb, $5, $6, $7, $8)",
         )
         .bind(Uuid::new_v4().to_string())
-        .bind(&tenant_id)
+        .bind(tenant_id)
         .bind(request_id)
         .bind(serde_json::json!([{"id": "demo-troca-tela", "repair_type": "Troca de tela", "price": quote_confirmed.unwrap_or(99.9)}]))
         .bind(notes)
         .bind(quote_confirmed)
         .bind(&Vec::<String>::new())
         .bind(finalized)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     }
 
@@ -859,7 +894,7 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
              VALUES ($1::uuid, $2, $3::uuid, $4::jsonb, $5)",
         )
         .bind(Uuid::new_v4().to_string())
-        .bind(&tenant_id)
+        .bind(tenant_id)
         .bind(request_id)
         .bind(serde_json::json!([
             {"id": "abertura", "label": "Abertura do aparelho", "done": true},
@@ -869,7 +904,7 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
             {"id": "limpeza", "label": "Limpeza e fechamento", "done": false},
         ]))
         .bind("90 dias")
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     }
 
@@ -896,18 +931,71 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
               $8, NULL, 'admin', 'service')",
         )
         .bind(&id)
-        .bind(&tenant_id)
+        .bind(tenant_id)
         .bind(reason)
         .bind(name)
         .bind(phone)
         .bind(days_offset.to_string())
         .bind(hour.to_string())
         .bind(status)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     }
 
-    tx.commit().await?;
-    tracing::info!("demo-eletronica seeded");
+    // Histórico de vendas (item 6) — EletronicaVendasTab.tsx reaproveita
+    // adminService.orders.list() (a mesma tabela `orders`/`order_items` do
+    // ecommerce, não `service_requests`), e nunca tinha nenhum pedido
+    // seedado pra demo-eletronica -- aba sempre aparecia vazia. Reusa os
+    // acessórios já seedados (seed_demo_eletronica_accessories) como itens.
+    let products: Vec<(String, String, f64)> =
+        sqlx::query_as("SELECT id, name, price FROM products WHERE tenant_id = $1 ORDER BY name LIMIT 8")
+            .bind(tenant_id)
+            .fetch_all(&mut **tx)
+            .await?;
+    if !products.is_empty() {
+        let customer_id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO customers (id, tenant_id, name, whatsapp) VALUES ($1, $2, 'Cliente Balcão', '5583999993322')")
+            .bind(&customer_id)
+            .bind(tenant_id)
+            .execute(&mut **tx)
+            .await?;
+        // (índice do produto, dias atrás, quantidade)
+        let sales: [(usize, i64, i64); 7] =
+            [(0, 1, 1), (1, 4, 2), (2, 6, 1), (3, 10, 1), (4, 14, 3), (5, 21, 1), (0, 28, 2)];
+        for (product_idx, days_ago, quantity) in sales {
+            let (product_id, product_name, price) = &products[product_idx % products.len()];
+            let order_id = Uuid::new_v4().to_string();
+            let total = price * quantity as f64;
+            sqlx::query(
+                "INSERT INTO orders (id, tenant_id, customer_id, customer_name, customer_whatsapp, delivery_type, \
+                 neighborhood, address, payment_method, payment_status, status, shipping_price, total, created_at, updated_at) \
+                 VALUES ($1, $2, $3, 'Cliente Balcão', '5583999993322', 'retirada', 'Centro', 'Retirada na loja', \
+                 'pix', 'pago', 'concluido', 0.0, $4, \
+                 (NOW() - ($5 || ' days')::interval)::text, (NOW() - ($5 || ' days')::interval)::text)",
+            )
+            .bind(&order_id)
+            .bind(tenant_id)
+            .bind(&customer_id)
+            .bind(total)
+            .bind(days_ago.to_string())
+            .execute(&mut **tx)
+            .await?;
+
+            sqlx::query(
+                "INSERT INTO order_items (id, tenant_id, order_id, product_id, product_name, unit_price, quantity) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(tenant_id)
+            .bind(&order_id)
+            .bind(product_id)
+            .bind(product_name)
+            .bind(price)
+            .bind(quantity)
+            .execute(&mut **tx)
+            .await?;
+        }
+    }
+
     Ok(())
 }
