@@ -5,7 +5,6 @@ import Navbar from '../components/landing/Navbar'
 import Hero from '../components/landing/Hero'
 import Features from '../components/landing/Features'
 import FiveInOne from '../components/landing/FiveInOne'
-import SystemsShowcase from '../components/landing/SystemsShowcase'
 import Pricing from '../components/landing/Pricing'
 import HowItWorks from '../components/landing/HowItWorks'
 import Demo from '../components/landing/Demo'
@@ -96,7 +95,6 @@ export default function Landing() {
         <Navbar />
         <Hero />
         <Features />
-        <SystemsShowcase />
         <FiveInOne />
         <Pricing />
         <HowItWorks />

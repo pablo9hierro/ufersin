@@ -7,6 +7,13 @@ import type { AppointmentDto } from './eletronicosApi'
 // entre reloads/telas. Cobre só os endpoints hoje alcançáveis a partir do
 // mock (Template Zap e Agenda, compartilhados com o admin de ecommerce —
 // ver App.tsx rotas /admin/template e /admin/agendamentos).
+//
+// isDemoModeActive() só liga pros 4 planos do mock ecommerce (Rodoletas —
+// ver PlanoCode em demoMode.ts e DemoEntrar.tsx: a vertical eletrônicos usa
+// SEMPRE o tenant real seedado demo-eletronica, nunca esse mock). Por isso
+// os templates abaixo são genéricos de loja (pedido/entrega/pagamento) —
+// antes tinham conteúdo de assistência técnica (orçamento/reparo/agenda),
+// que não fazia sentido nenhum pra quem está vendo a demo de uma loja.
 
 const now = () => new Date()
 const iso = (d: Date) => d.toISOString()
@@ -14,41 +21,41 @@ const iso = (d: Date) => d.toISOString()
 let templates: EletronicaTemplate[] = [
   {
     id: 'tpl-1',
-    template_key: 'orcamento_pronto',
-    section: 'orçamento',
-    label: 'Orçamento pronto',
-    description: 'Enviado quando o orçamento fica pronto pro cliente aprovar.',
-    content: 'Olá {{cliente}}! Seu orçamento pra {{aparelho}} ficou pronto: {{valor}}. Pode confirmar por aqui? 😊',
-    required_variables: ['cliente', 'aparelho', 'valor'],
-    available_variables: ['cliente', 'aparelho', 'valor', 'loja'],
+    template_key: 'pedido_confirmado',
+    section: 'pedido',
+    label: 'Pedido confirmado',
+    description: 'Enviado assim que o pedido é confirmado pelo cliente.',
+    content: 'Olá {{cliente}}! Seu pedido #{{pedido}} foi confirmado, valor {{valor}}. Já estamos preparando 😊',
+    required_variables: ['cliente', 'pedido', 'valor'],
+    available_variables: ['cliente', 'pedido', 'valor', 'loja'],
     editable: true,
     enabled: true,
     sort_order: 1,
   },
   {
     id: 'tpl-2',
-    template_key: 'reparo_pronto',
-    section: 'reparo',
-    label: 'Reparo pronto (Pronto)',
-    description: 'Avisa que o aparelho está pronto pra retirada/entrega.',
-    content: 'Boa notícia, {{cliente}}! Seu {{aparelho}} já está pronto. Vamos combinar a retirada ou entrega?',
-    required_variables: ['cliente', 'aparelho'],
-    available_variables: ['cliente', 'aparelho', 'loja'],
+    template_key: 'pedido_saiu_entrega',
+    section: 'entrega',
+    label: 'Pedido saiu pra entrega',
+    description: 'Avisa que o pedido saiu da loja a caminho do cliente.',
+    content: 'Boa notícia, {{cliente}}! Seu pedido #{{pedido}} já saiu pra entrega. Chega em instantes 🛵',
+    required_variables: ['cliente', 'pedido'],
+    available_variables: ['cliente', 'pedido', 'loja'],
     editable: true,
     enabled: true,
     sort_order: 2,
   },
   {
     id: 'tpl-3',
-    template_key: 'agendamento_confirmado',
-    section: 'agenda',
-    label: 'Agendamento confirmado',
-    description: 'Confirma data/horário do agendamento.',
-    content: 'Agendamento confirmado pra {{data}} às {{hora}}. Te esperamos!',
-    required_variables: ['data', 'hora'],
-    available_variables: ['data', 'hora', 'cliente', 'loja'],
+    template_key: 'pagamento_aprovado',
+    section: 'pagamento',
+    label: 'Pagamento aprovado',
+    description: 'Confirma que o pagamento do pedido caiu.',
+    content: 'Pagamento de {{valor}} aprovado pro pedido #{{pedido}}. Obrigado pela compra, {{cliente}}!',
+    required_variables: ['valor', 'pedido'],
+    available_variables: ['valor', 'pedido', 'cliente', 'loja'],
     editable: true,
-    enabled: false,
+    enabled: true,
     sort_order: 3,
   },
 ]

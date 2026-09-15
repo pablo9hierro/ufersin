@@ -93,6 +93,89 @@ function token() {
   return useAdminAuth.getState().token ?? undefined
 }
 
+// Item 3 (auditoria de demo): PDV do tenant real demo-eletronica ficava
+// bloqueado inteiro -- não só o Pix (já coberto abaixo), mas createSale/
+// addItem/addPayment/confirmPayment também são escritas reais e o backend
+// corretamente as rejeita ("demo é somente leitura", ver DEMO_TENANT_SLUGS
+// em tenant.rs -- proposital, não mexer). Sem simular a venda inteira
+// client-side, o fluxo nunca saía do primeiro passo (createSale). Mesmo
+// espírito de eletronicosLocalApi.ts (mock em memória, não persiste entre
+// reloads), mas escopado a isSeededDemoTenant() em vez de isDemoModeActive()
+// -- é o tenant real seedado, não o mock do Rodoletas.
+const demoSales = new Map<string, PdvSaleDetail>()
+
+function demoSaleDetail(id: string): PdvSaleDetail {
+  const existing = demoSales.get(id)
+  if (existing) return existing
+  const created: PdvSaleDetail = { sale: { id, status: 'aberta', total_value: 0, notes: null }, items: [], payments: [] }
+  demoSales.set(id, created)
+  return created
+}
+
+function recomputeSaleTotal(detail: PdvSaleDetail) {
+  detail.sale.total_value = detail.items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0)
+}
+
+function pdvSalesSim<T>(path: string, init: RequestInit): T | undefined {
+  const method = (init.method ?? 'GET').toUpperCase()
+  const body = typeof init.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {}
+
+  const createMatch = /^\/pdv\/sales$/.test(path)
+  if (createMatch && method === 'POST') {
+    const id = `demo-sale-${Date.now()}`
+    const detail = demoSaleDetail(id)
+    return { id: detail.sale.id, status: detail.sale.status, total_value: detail.sale.total_value } as T
+  }
+
+  const itemsMatch = path.match(/^\/pdv\/sales\/([^/]+)\/items$/)
+  if (itemsMatch && method === 'POST') {
+    const detail = demoSaleDetail(itemsMatch[1])
+    detail.items.push({
+      id: `demo-item-${Date.now()}-${detail.items.length}`,
+      label: (body.label as string) ?? 'Item',
+      quantity: (body.quantity as number) ?? 1,
+      unit_price: (body.unit_price as number) ?? 0,
+    })
+    recomputeSaleTotal(detail)
+    return detail as T
+  }
+
+  const paymentsMatch = path.match(/^\/pdv\/sales\/([^/]+)\/payments$/)
+  if (paymentsMatch && method === 'POST') {
+    const detail = demoSaleDetail(paymentsMatch[1])
+    detail.payments.push({
+      id: `demo-payment-${Date.now()}-${detail.payments.length}`,
+      method: (body.method as string) ?? 'dinheiro',
+      amount: (body.amount as number) ?? 0,
+      status: 'pendente',
+      installments: (body.installments as number) ?? null,
+      change_amount: (body.change_amount as number) ?? null,
+      mp_payment_id: (body.mp_payment_id as string) ?? null,
+    })
+    return detail as T
+  }
+
+  const confirmMatch = path.match(/^\/pdv\/sales\/([^/]+)\/payments\/([^/]+)\/confirm$/)
+  if (confirmMatch && method === 'POST') {
+    const detail = demoSaleDetail(confirmMatch[1])
+    const payment = detail.payments.find((p) => p.id === confirmMatch[2])
+    if (payment) payment.status = 'confirmado'
+    const paid = detail.payments.filter((p) => p.status === 'confirmado').reduce((s, p) => s + p.amount, 0)
+    if (paid >= detail.sale.total_value) detail.sale.status = 'concluida'
+    return detail as T
+  }
+
+  const getMatch = path.match(/^\/pdv\/sales\/([^/]+)$/)
+  if (getMatch && method === 'GET') {
+    return demoSaleDetail(getMatch[1]) as T
+  }
+  if (getMatch && method === 'DELETE') {
+    demoSales.delete(getMatch[1])
+    return undefined as T
+  }
+  return undefined
+}
+
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (isDemoModeActive()) {
     return eletronicosLocalApi(path, init) as Promise<T>
@@ -102,7 +185,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   // pra conectar uma conta MP real nessa demo) e o fluxo parava aí sem
   // deixar claro que era só o Pix que estava bloqueado. Mesmo tratamento
   // da Parte 3 (QR fake), restrito só a /api/admin/pdv/pix* e só pra este
-  // tenant seedado -- criar/listar venda continua no backend de verdade.
+  // tenant seedado.
   if (isSeededDemoTenant() && /^\/api\/admin\/pdv\/pix/.test(path)) {
     if (/\/status$/.test(path)) return simulateDemoWrite<T>(JSON.stringify({ status: 'approved' }))
     const fakeCopiaCola =
@@ -110,6 +193,13 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
     return simulateDemoWrite<T>(
       JSON.stringify({ payment_id: `demo-${Date.now()}`, qr_code: fakeCopiaCola, qr_code_base64: '' }),
     )
+  }
+  // Item 3: venda inteira (criar/itens/pagamentos/confirmar) simulada em
+  // memória pro mesmo tenant seedado -- ver pdvSalesSim acima.
+  if (isSeededDemoTenant() && path.startsWith(`${BASE}/pdv/sales`)) {
+    const relative = path.slice(BASE.length)
+    const simulated = pdvSalesSim<T>(relative, init)
+    if (simulated !== undefined || init.method === 'DELETE') return simulated as T
   }
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,

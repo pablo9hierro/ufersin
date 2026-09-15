@@ -7,25 +7,25 @@ const SYSTEMS = [
     icon: Store,
     name: 'Plataforma de loja virtual',
     example: 'Nuvemshop, Tray, Loja Integrada',
-    price: 'R$ 119 – 449/mês',
+    price: 'R$ 59 – 449/mês',
   },
   {
     icon: FileText,
     name: 'Emissão de nota fiscal (NF-e/NFC-e)',
     example: 'Bling, Tiny, Omie',
-    price: 'R$ 89 – 199/mês',
+    price: 'R$ 48 – 199/mês',
   },
   {
     icon: MessageCircle,
     name: 'Atendimento com IA no WhatsApp',
     example: 'Plataformas de chatbot com IA real',
-    price: 'R$ 300 – 800/mês',
+    price: 'R$ 150 – 600/mês',
   },
   {
     icon: Store,
     name: 'PDV + controle de estoque',
     example: 'Sistemas de PDV avulsos',
-    price: 'R$ 99 – 150/mês',
+    price: 'R$ 50 – 100/mês',
   },
 ]
 
@@ -79,7 +79,7 @@ export default function FiveInOne() {
             </div>
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
               <p className="font-bold flex items-center gap-1.5"><X className="w-4 h-4 text-red-400" /> Total (4 painéis separados)</p>
-              <p className="font-mono font-bold text-red-400">R$ 607 – 1.598/mês</p>
+              <p className="font-mono font-bold text-red-400">R$ 307 – 1.348/mês</p>
             </div>
           </motion.div>
 
