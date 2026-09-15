@@ -560,14 +560,23 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         // status novos (aguardando_diagnostico/diagnostico_enviado/em_entrega)
         // mesmo com o código já escrito, já que o tenant tinha sido criado
         // numa rodada anterior a essas mudanças. Gate por "sem nenhum
-        // service_request" pra não duplicar em quem já tiver os cards.
-        let (request_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM eletronicos.service_requests WHERE tenant_id = $1")
-                .bind(&tenant_id)
-                .fetch_one(&mut *tx)
-                .await?;
-        if request_count == 0 {
-            tracing::info!("demo-eletronica: sem service_requests, aplicando backfill do Kanban/agenda");
+        // service_request" NÃO funciona aqui -- esse tenant já nasceu com 8
+        // requests (os status originais, antes de aguardando_diagnostico/
+        // diagnostico_enviado/em_entrega existirem), então a contagem nunca
+        // bate zero e o backfill nunca rodava de verdade (achado rodando em
+        // produção: log confirmou "already seeded, skipping the rest" sem
+        // a linha de backfill logo abaixo). Gate correto: falta o status
+        // mais novo ('em_entrega', o card de deslocamento) -- e o próprio
+        // seed_demo_eletronica_requests é per-status idempotente (só insere
+        // quem ainda não existe), então repetir a chamada é seguro.
+        let missing_em_entrega: bool = !sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM eletronicos.service_requests WHERE tenant_id = $1 AND status = 'em_entrega')",
+        )
+        .bind(&tenant_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if missing_em_entrega {
+            tracing::info!("demo-eletronica: sem card de deslocamento (em_entrega), aplicando backfill do Kanban/agenda");
             seed_demo_eletronica_requests(&mut tx, &tenant_id).await?;
         }
         // Commit sempre necessário aqui (não só nos ramos de backfill) --
@@ -823,25 +832,43 @@ async fn seed_demo_eletronica_requests(
     // request_id por status -- statuses são únicos dentro do array acima,
     // então dá pra usar como chave pra ligar diagnóstico/ordem de serviço
     // ao request certo logo depois.
+    // Por-status idempotente (Parte 10): esta função também roda como
+    // backfill num tenant que JÁ tinha alguns desses status desde a seed
+    // original (achado em produção: demo-eletronica nasceu com os 8 status
+    // "originais", então um gate por COUNT(*)==0 nunca disparava e o
+    // backfill nunca rodava de verdade) -- pula o insert de quem já existe
+    // em vez de duplicar, mas ainda popula request_ids pra diagnóstico/OS
+    // conseguirem linkar no request certo.
     let mut request_ids: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
     for (status, name, phone, model, problem, quote) in requests {
-        let (request_id,): (String,) = sqlx::query_as(
-            "INSERT INTO eletronicos.service_requests \
-             (tenant_id, customer_name, customer_phone, customer_email, phone_model, problem_description, \
-              status, quote_value, self_pickup, payment_methods) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, '[\"pix\", \"dinheiro\"]'::jsonb) \
-             RETURNING id::text",
-        )
-        .bind(tenant_id)
-        .bind(name)
-        .bind(phone)
-        .bind(format!("{}@example.com", name.to_lowercase().replace(' ', ".")))
-        .bind(model)
-        .bind(problem)
-        .bind(status)
-        .bind(quote)
-        .fetch_one(&mut **tx)
-        .await?;
+        let existing: Option<(String,)> =
+            sqlx::query_as("SELECT id::text FROM eletronicos.service_requests WHERE tenant_id = $1 AND status = $2 LIMIT 1")
+                .bind(tenant_id)
+                .bind(status)
+                .fetch_optional(&mut **tx)
+                .await?;
+        let request_id = if let Some((id,)) = existing {
+            id
+        } else {
+            let (id,): (String,) = sqlx::query_as(
+                "INSERT INTO eletronicos.service_requests \
+                 (tenant_id, customer_name, customer_phone, customer_email, phone_model, problem_description, \
+                  status, quote_value, self_pickup, payment_methods) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, '[\"pix\", \"dinheiro\"]'::jsonb) \
+                 RETURNING id::text",
+            )
+            .bind(tenant_id)
+            .bind(name)
+            .bind(phone)
+            .bind(format!("{}@example.com", name.to_lowercase().replace(' ', ".")))
+            .bind(model)
+            .bind(problem)
+            .bind(status)
+            .bind(quote)
+            .fetch_one(&mut **tx)
+            .await?;
+            id
+        };
         request_ids.insert(status, request_id);
     }
 
@@ -854,19 +881,27 @@ async fn seed_demo_eletronica_requests(
     // mapa cai no fallback já existente em resolve_driver_location()
     // (posição fixa da loja, is_live=false) -- mostra o trajeto loja->
     // cliente com um ponto real, não anima sozinho.
-    sqlx::query(
-        "INSERT INTO eletronicos.service_requests \
-         (tenant_id, customer_name, customer_phone, customer_email, phone_model, problem_description, \
-          status, quote_value, self_pickup, address_street, address_number, address_neighborhood, \
-          address_city, address_state, address_lat, address_lng, payment_methods) \
-         VALUES ($1, 'Camila Ferreira', '83988870000', 'camila.ferreira@example.com', 'iPhone 12 Pro', \
-          'Troca de tela concluída, aparelho a caminho', 'em_entrega', 349.9, false, \
-          'Av. Epitácio Pessoa', '1200', 'Tambaú', 'João Pessoa', 'PB', -7.1035, -34.8291, \
-          '[\"pix\", \"dinheiro\"]'::jsonb)",
+    let has_em_entrega: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM eletronicos.service_requests WHERE tenant_id = $1 AND status = 'em_entrega')",
     )
     .bind(tenant_id)
-    .execute(&mut **tx)
+    .fetch_one(&mut **tx)
     .await?;
+    if !has_em_entrega {
+        sqlx::query(
+            "INSERT INTO eletronicos.service_requests \
+             (tenant_id, customer_name, customer_phone, customer_email, phone_model, problem_description, \
+              status, quote_value, self_pickup, address_street, address_number, address_neighborhood, \
+              address_city, address_state, address_lat, address_lng, payment_methods) \
+             VALUES ($1, 'Camila Ferreira', '83988870000', 'camila.ferreira@example.com', 'iPhone 12 Pro', \
+              'Troca de tela concluída, aparelho a caminho', 'em_entrega', 349.9, false, \
+              'Av. Epitácio Pessoa', '1200', 'Tambaú', 'João Pessoa', 'PB', -7.1035, -34.8291, \
+              '[\"pix\", \"dinheiro\"]'::jsonb)",
+        )
+        .bind(tenant_id)
+        .execute(&mut **tx)
+        .await?;
+    }
 
     // Diagnóstico preenchido pros 3 cards que passam pela etapa de
     // diagnóstico/reparo (Parte 9.5) -- sem isso, EletronicaDiagnosticSection
@@ -878,6 +913,15 @@ async fn seed_demo_eletronica_requests(
     ];
     for (status, notes, quote_confirmed, finalized) in diagnostics {
         let Some(request_id) = request_ids.get(status) else { continue };
+        let already: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM eletronicos.service_diagnostics WHERE service_request_id = $1::uuid)",
+        )
+        .bind(request_id)
+        .fetch_one(&mut **tx)
+        .await?;
+        if already {
+            continue;
+        }
         sqlx::query(
             "INSERT INTO eletronicos.service_diagnostics \
              (id, tenant_id, service_request_id, services_selected, notes, quote_confirmed, media_urls, finalized) \
@@ -898,7 +942,15 @@ async fn seed_demo_eletronica_requests(
     // Ordem de serviço com checklist preenchido pro card "Em reparo"
     // (in_progress) -- EletronicaServiceOrderPanel.tsx lê isso, sem seed
     // ficava em branco mesmo com o card na coluna certa.
-    if let Some(request_id) = request_ids.get("in_progress") {
+    let has_service_order: bool = if let Some(request_id) = request_ids.get("in_progress") {
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM eletronicos.service_orders WHERE request_id = $1::uuid)")
+            .bind(request_id)
+            .fetch_one(&mut **tx)
+            .await?
+    } else {
+        true
+    };
+    if let (Some(request_id), false) = (request_ids.get("in_progress"), has_service_order) {
         sqlx::query(
             "INSERT INTO eletronicos.service_orders (id, tenant_id, request_id, checklist, warranty) \
              VALUES ($1::uuid, $2, $3::uuid, $4::jsonb, $5)",
@@ -923,33 +975,42 @@ async fn seed_demo_eletronica_requests(
     // não de `service_appointments` (tabela legada, sem leitor nenhum na UI
     // atual) — sem isso a agenda da demo aparecia sempre vazia. Passado,
     // hoje e futuro, em status variados, com starts_at/ends_at de 1h.
-    let appointments: [(&str, &str, &str, &str, i64, u32); 5] = [
-        ("Maria Silva", "83988887777", "Consulta de diagnóstico", "agendado", 0, 10),
-        ("João Souza", "83988886666", "Retirada de aparelho", "agendado", 1, 14),
-        ("Carla Dias", "83988883333", "Troca de tela", "agendado", 2, 11),
-        ("Ana Costa", "83988885555", "Orçamento presencial", "concluido", -5, 9),
-        ("Pedro Lima", "83988884444", "Reagendado", "cancelado", 5, 16),
-    ];
-    for (name, phone, reason, status, days_offset, hour) in appointments {
-        let id = Uuid::new_v4().to_string();
-        sqlx::query(
-            "INSERT INTO eletronicos.appointments \
-             (id, tenant_id, service_label, customer_name, customer_phone, starts_at, ends_at, status, notes, created_by, appointment_type) \
-             VALUES ($1::uuid, $2, $3, $4, $5, \
-              date_trunc('day', NOW()) + ($6 || ' days')::interval + ($7 || ' hours')::interval, \
-              date_trunc('day', NOW()) + ($6 || ' days')::interval + ($7 || ' hours')::interval + interval '1 hour', \
-              $8, NULL, 'admin', 'service')",
-        )
-        .bind(&id)
+    // Gate por contagem (não têm status pra checar individualmente como os
+    // service_requests acima, mas essa tabela é exclusiva desse bloco, sem
+    // seed mais antiga que já tenha inserido nela).
+    let (appointment_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM eletronicos.appointments WHERE tenant_id = $1")
         .bind(tenant_id)
-        .bind(reason)
-        .bind(name)
-        .bind(phone)
-        .bind(days_offset.to_string())
-        .bind(hour.to_string())
-        .bind(status)
-        .execute(&mut **tx)
+        .fetch_one(&mut **tx)
         .await?;
+    if appointment_count == 0 {
+        let appointments: [(&str, &str, &str, &str, i64, u32); 5] = [
+            ("Maria Silva", "83988887777", "Consulta de diagnóstico", "agendado", 0, 10),
+            ("João Souza", "83988886666", "Retirada de aparelho", "agendado", 1, 14),
+            ("Carla Dias", "83988883333", "Troca de tela", "agendado", 2, 11),
+            ("Ana Costa", "83988885555", "Orçamento presencial", "concluido", -5, 9),
+            ("Pedro Lima", "83988884444", "Reagendado", "cancelado", 5, 16),
+        ];
+        for (name, phone, reason, status, days_offset, hour) in appointments {
+            let id = Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT INTO eletronicos.appointments \
+                 (id, tenant_id, service_label, customer_name, customer_phone, starts_at, ends_at, status, notes, created_by, appointment_type) \
+                 VALUES ($1::uuid, $2, $3, $4, $5, \
+                  date_trunc('day', NOW()) + ($6 || ' days')::interval + ($7 || ' hours')::interval, \
+                  date_trunc('day', NOW()) + ($6 || ' days')::interval + ($7 || ' hours')::interval + interval '1 hour', \
+                  $8, NULL, 'admin', 'service')",
+            )
+            .bind(&id)
+            .bind(tenant_id)
+            .bind(reason)
+            .bind(name)
+            .bind(phone)
+            .bind(days_offset.to_string())
+            .bind(hour.to_string())
+            .bind(status)
+            .execute(&mut **tx)
+            .await?;
+        }
     }
 
     // Histórico de vendas (item 6) — EletronicaVendasTab.tsx reaproveita
@@ -957,11 +1018,18 @@ async fn seed_demo_eletronica_requests(
     // ecommerce, não `service_requests`), e nunca tinha nenhum pedido
     // seedado pra demo-eletronica -- aba sempre aparecia vazia. Reusa os
     // acessórios já seedados (seed_demo_eletronica_accessories) como itens.
-    let products: Vec<(String, String, f64)> =
+    let (order_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM orders WHERE tenant_id = $1")
+        .bind(tenant_id)
+        .fetch_one(&mut **tx)
+        .await?;
+    let products: Vec<(String, String, f64)> = if order_count > 0 {
+        Vec::new()
+    } else {
         sqlx::query_as("SELECT id, name, price FROM products WHERE tenant_id = $1 ORDER BY name LIMIT 8")
             .bind(tenant_id)
             .fetch_all(&mut **tx)
-            .await?;
+            .await?
+    };
     if !products.is_empty() {
         let customer_id = Uuid::new_v4().to_string();
         sqlx::query("INSERT INTO customers (id, tenant_id, name, whatsapp) VALUES ($1, $2, 'Cliente Balcão', '5583999993322')")
