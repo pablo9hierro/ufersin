@@ -118,8 +118,7 @@ function dayAgenda() {
  */
 export async function eletronicosLocalApi(path: string, init: RequestInit = {}): Promise<unknown> {
   const method = (init.method || 'GET').toUpperCase()
-  const [pathname, query] = path.split('?')
-  const params = new URLSearchParams(query || '')
+  const [pathname] = path.split('?')
 
   // Templates
   if (pathname === '/api/admin/eletronicos/templates' && method === 'GET') return templates

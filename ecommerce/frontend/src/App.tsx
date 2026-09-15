@@ -42,7 +42,6 @@ const AdminProdutosServicos = lazyWithReload(() => import('./pages/admin/AdminPr
 const AdminMotoboys = lazyWithReload(() => import('./pages/admin/AdminMotoboys'))
 const AdminFrete = lazyWithReload(() => import('./pages/admin/AdminFrete'))
 const AdminEntregasTerceirizadas = lazyWithReload(() => import('./pages/admin/AdminEntregasTerceirizadas'))
-const AdminFiscal = lazyWithReload(() => import('./pages/admin/AdminFiscal'))
 const AdminFiscalEmitir = lazyWithReload(() => import('./pages/admin/AdminFiscalEmitir'))
 const AdminFiscalInutilizar = lazyWithReload(() => import('./pages/admin/AdminFiscalInutilizar'))
 const AdminFiscalCce = lazyWithReload(() => import('./pages/admin/AdminFiscalCce'))
