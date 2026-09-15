@@ -1,7 +1,7 @@
 import { useAdminAuth } from '../store/adminAuth'
 import { API_BASE } from './api'
 import { ApiError } from './apiError'
-import { isDemoModeActive } from './demoMode'
+import { isDemoModeActive, isSeededDemoTenant, simulateDemoWrite } from './demoMode'
 import { eletronicosLocalApi } from './eletronicosLocalApi'
 import type {
   ServiceRequestDto,
@@ -96,6 +96,20 @@ function token() {
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (isDemoModeActive()) {
     return eletronicosLocalApi(path, init) as Promise<T>
+  }
+  // Tenant real demo-eletronica (Parte 9.7): PDV de assistência técnica
+  // sempre falhava no Pix ("loja sem Mercado Pago conectado" -- não dá
+  // pra conectar uma conta MP real nessa demo) e o fluxo parava aí sem
+  // deixar claro que era só o Pix que estava bloqueado. Mesmo tratamento
+  // da Parte 3 (QR fake), restrito só a /api/admin/pdv/pix* e só pra este
+  // tenant seedado -- criar/listar venda continua no backend de verdade.
+  if (isSeededDemoTenant() && /^\/api\/admin\/pdv\/pix/.test(path)) {
+    if (/\/status$/.test(path)) return simulateDemoWrite<T>(JSON.stringify({ status: 'approved' }))
+    const fakeCopiaCola =
+      '00020126580014BR.GOV.BCB.PIX0136demo-resolutoo-0000-0000-000000000000520400005303986540510.005802BR5913Resolutoo Demo6009SAO PAULO62070503***6304ABCD'
+    return simulateDemoWrite<T>(
+      JSON.stringify({ payment_id: `demo-${Date.now()}`, qr_code: fakeCopiaCola, qr_code_base64: '' }),
+    )
   }
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,

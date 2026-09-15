@@ -3,7 +3,19 @@ import { Loader2, MessageCircle } from 'lucide-react'
 import { adminService } from '../../services/adminService'
 import WhatsAppConnection from '../../components/ui/WhatsAppConnection'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
+import { isSeededDemoTenant } from '../../lib/demoMode'
 import { classifyWaHistoryError, formatWaEventLabel, formatWaEventTime, type WaHistoryEvent } from '../../lib/whatsappHistory'
+
+// Tenant real demo-eletronica: sem WhatsApp de verdade conectado, a tela
+// mostrava "Desconectado" pra sempre -- pedido do dono foi simular
+// "conectado" com um número de exemplo, reaproveitando o MESMO
+// WhatsAppConnection genérico (sem UI nova), só trocando o `api` por um
+// fake que sempre devolve estado 'open'.
+const DEMO_WHATSAPP_API = {
+  status: async () => ({ state: 'open', number: '5583999998888' }),
+  connect: async () => ({}),
+  logout: async () => {},
+}
 
 // src/app/dashboard/conta/page.tsx do vrtech só tem <WhatsAppPanel/> (nada
 // de horário de funcionamento -- isso não existe na página real, não
@@ -17,13 +29,21 @@ import { classifyWaHistoryError, formatWaEventLabel, formatWaEventTime, type WaH
 
 export default function EletronicaAdminConta() {
   const tenantConfig = useTenantConfig()
-  const whatsappHabilitado = tenantConfig?.whatsapp_habilitado === true
+  const isDemo = isSeededDemoTenant()
+  const whatsappHabilitado = isDemo || tenantConfig?.whatsapp_habilitado === true
+  const whatsappApi = isDemo ? DEMO_WHATSAPP_API : adminService.whatsapp
   const [waEvents, setWaEvents] = useState<WaHistoryEvent[]>([])
   const [waEventsError, setWaEventsError] = useState<string | null>(null)
   const [waEventsLoading, setWaEventsLoading] = useState(false)
 
   const loadWaEvents = () => {
     if (!whatsappHabilitado) return
+    if (isDemo) {
+      setWaEvents([
+        { id: 'demo-wa-1', event_type: 'connected', previous_state: 'close', new_state: 'open', created_at: new Date().toISOString() },
+      ])
+      return
+    }
     setWaEventsError(null)
     setWaEventsLoading(true)
     adminService.whatsapp
@@ -56,7 +76,7 @@ export default function EletronicaAdminConta() {
           </h2>
           <p className="text-[#d4d4d8]/60 text-sm mb-4">Conecte o número da loja pra disparar as notificações automáticas.</p>
           <div className="flex flex-col lg:flex-row gap-6 items-start">
-            <WhatsAppConnection api={adminService.whatsapp} onConnected={loadWaEvents} onDisconnected={loadWaEvents} />
+            <WhatsAppConnection api={whatsappApi} onConnected={loadWaEvents} onDisconnected={loadWaEvents} />
             <div className="flex-1 min-w-0 max-w-md bg-[#161618] border border-white/5 rounded-2xl p-5">
               <p className="font-semibold text-white text-sm mb-3">Histórico de conexões</p>
               {waEventsLoading && (

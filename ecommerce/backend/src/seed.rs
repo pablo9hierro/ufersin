@@ -490,12 +490,16 @@ async fn seed_demo_eletronica_accessories(
         .bind(tenant_id)
         .execute(&mut **tx)
         .await?;
-    let accessories: [(&str, &str, f64, i64); 5] = [
+    let accessories: [(&str, &str, f64, i64); 9] = [
         ("Capinha iPhone 13", "Silicone premium, várias cores", 39.9, 30),
         ("Película de vidro", "Proteção 9H anti-risco", 19.9, 50),
         ("Carregador USB-C 20W", "Carregamento rápido original", 79.9, 25),
         ("Fone Bluetooth TWS", "Cancelamento de ruído, estojo carregador", 129.9, 15),
         ("Cabo USB-C 1m", "Reforçado, trançado em nylon", 24.9, 40),
+        ("Power bank 10000mAh", "Carrega o celular 2-3x, saída dupla USB", 99.9, 20),
+        ("Suporte veicular magnético", "Fixação no ar-condicionado, imã reforçado", 34.9, 35),
+        ("Adaptador OTG USB-C", "Conecta pendrive/mouse no celular", 29.9, 25),
+        ("Mochila para notebook", "Compartimento acolchoado até 15,6\"", 149.9, 10),
     ];
     for (name, description, price, quantity) in accessories {
         sqlx::query(
@@ -647,11 +651,13 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
     // service_catalog_categories.slug são únicos GLOBALMENTE (não por
     // tenant, achado testando: colidia com o tenant single-tenant legado
     // que já usa celular/samsung/xiaomi/etc), não só dentro do tenant.
-    let brands: [(&str, &str, &str); 4] = [
+    let brands: [(&str, &str, &str); 6] = [
         ("Apple", "demo-apple", "demo-celular"),
         ("Samsung", "demo-samsung", "demo-celular"),
         ("Xiaomi", "demo-xiaomi", "demo-celular"),
+        ("Motorola", "demo-motorola", "demo-celular"),
         ("Dell", "demo-dell", "demo-notebook"),
+        ("Lenovo", "demo-lenovo", "demo-notebook"),
     ];
     let mut brand_ids = Vec::new();
     for (name, slug, device_slug) in brands {
@@ -671,13 +677,17 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
     }
     let brand_id = |slug: &str| brand_ids.iter().find(|(s, _)| *s == slug).map(|(_, id)| id.clone()).unwrap();
 
-    let models: [(&str, &str); 6] = [
+    let models: [(&str, &str); 10] = [
         ("iPhone 13", "demo-apple"),
         ("iPhone 14", "demo-apple"),
         ("Galaxy S21", "demo-samsung"),
         ("Galaxy A54", "demo-samsung"),
         ("Redmi Note 12", "demo-xiaomi"),
+        ("Redmi Note 13", "demo-xiaomi"),
+        ("Moto G84", "demo-motorola"),
+        ("Moto Edge 40", "demo-motorola"),
         ("Inspiron 15", "demo-dell"),
+        ("IdeaPad 3", "demo-lenovo"),
     ];
     for (name, brand_slug) in models {
         sqlx::query("INSERT INTO eletronicos.catalog_models (id, tenant_id, brand_id, name) VALUES ($1, $2, $3, $4)")
@@ -690,12 +700,59 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
     }
     let _ = &device_type_ids; // reservado pra quando service_catalog_categories.device_type_id virar obrigatório
 
+    // Catálogo de serviços de reparo por marca (eletronicos.service_catalog_items
+    // -- é isto, não a tabela genérica `services`, que o PDV/CatalogSearch e a
+    // vitrine de assistência técnica leem via eletronicosAdmin.catalogItems).
+    // Achado nesta rodada: antes NUNCA foi seedado, então PDV/catálogo público
+    // apareciam vazios pra reparo (só produtos/acessórios apareciam) -- causa
+    // raiz real da Parte 9.7 ("PDV não funciona": nada pra buscar/adicionar).
+    let catalog_items: [(&str, &str, &str, f64, f64, i32); 14] = [
+        ("demo-apple", "Troca de tela", "Tela original ou compatível com garantia", 349.9, 140.0, 60),
+        ("demo-apple", "Troca de bateria", "Bateria nova, restaura autonomia original", 189.9, 70.0, 45),
+        ("demo-apple", "Troca de conector de carga", "Resolve carregamento lento ou intermitente", 159.9, 50.0, 50),
+        ("demo-apple", "Reparo de câmera", "Troca do módulo de câmera traseira/frontal", 229.9, 90.0, 60),
+        ("demo-samsung", "Troca de tela", "Tela AMOLED original ou compatível", 299.9, 120.0, 60),
+        ("demo-samsung", "Troca de bateria", "Bateria nova com garantia de 90 dias", 149.9, 55.0, 40),
+        ("demo-samsung", "Troca de conector de carga", "Substituição do conector USB-C danificado", 129.9, 40.0, 45),
+        ("demo-samsung", "Reparo de placa (curto)", "Diagnóstico e reparo de curto na placa lógica", 279.0, 100.0, 120),
+        ("demo-xiaomi", "Troca de tela", "Tela original ou compatível com garantia", 259.9, 100.0, 60),
+        ("demo-xiaomi", "Troca de bateria", "Bateria nova, restaura autonomia original", 129.9, 45.0, 40),
+        ("demo-motorola", "Troca de tela", "Tela original ou compatível com garantia", 219.9, 85.0, 60),
+        ("demo-motorola", "Troca de conector de carga", "Resolve carregamento lento ou intermitente", 119.9, 35.0, 45),
+        ("demo-dell", "Limpeza interna e pasta térmica", "Remoção de poeira/oxidação, troca de pasta térmica", 129.9, 30.0, 90),
+        ("demo-lenovo", "Troca de tela", "Tela de notebook original ou compatível", 449.9, 200.0, 90),
+    ];
+    for (i, (brand_slug, repair_type, description, price, cost_price, duration_minutes)) in catalog_items.into_iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO eletronicos.service_catalog_items \
+             (id, tenant_id, category_id, repair_type, description, price, cost_price, duration_minutes, active, sort_order) \
+             VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8, true, $9)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&tenant_id)
+        .bind(brand_id(brand_slug))
+        .bind(repair_type)
+        .bind(description)
+        .bind(price)
+        .bind(cost_price)
+        .bind(duration_minutes)
+        .bind(i as i32)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     seed_demo_eletronica_accessories(&mut tx, &tenant_id).await?;
 
-    // Solicitações de serviço cobrindo todo status do Kanban do painel
-    let requests: [(&str, &str, &str, &str, &str, Option<f64>); 8] = [
+    // Solicitações de serviço cobrindo todo status do Kanban do painel --
+    // Parte 9.5: faltavam "aguardando_diagnostico"/"diagnostico_enviado"
+    // (os dois status que caem na coluna "Em diagnóstico", ver
+    // STATUS_GROUP em EletronicaAdminDashboard.tsx) -- com os 8 status
+    // originais essa coluna sempre ficava vazia na demo.
+    let requests: [(&str, &str, &str, &str, &str, Option<f64>); 10] = [
         ("pending", "Maria Silva", "83988887777", "iPhone 12", "Tela trincada, não toca em uma parte", None),
         ("accepted", "João Souza", "83988886666", "Samsung A54", "Não liga mais", Some(150.0)),
+        ("aguardando_diagnostico", "Rafael Nunes", "83988879999", "iPhone 14", "Molhou, não liga mais", None),
+        ("diagnostico_enviado", "Larissa Prado", "83988878888", "Galaxy S21", "Tela piscando após queda", Some(220.0)),
         ("in_progress", "Ana Costa", "83988885555", "Motorola G60", "Bateria viciada, desliga sozinho", Some(99.9)),
         ("em_pagamento", "Pedro Lima", "83988884444", "iPhone 13", "Conector de carga solto", Some(129.9)),
         ("completed", "Carla Dias", "83988883333", "Xiaomi Redmi Note 11", "Tela com manchas", Some(189.9)),
@@ -703,12 +760,17 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         ("finished", "Fernanda Melo", "83988881111", "Samsung S21", "Não carrega", Some(99.9)),
         ("rejected", "Diego Rocha", "83988880000", "iPhone 8", "Aparelho furtado — sem nota fiscal", None),
     ];
+    // request_id por status -- statuses são únicos dentro do array acima,
+    // então dá pra usar como chave pra ligar diagnóstico/ordem de serviço
+    // ao request certo logo depois.
+    let mut request_ids: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
     for (status, name, phone, model, problem, quote) in requests {
-        sqlx::query(
+        let (request_id,): (String,) = sqlx::query_as(
             "INSERT INTO eletronicos.service_requests \
              (tenant_id, customer_name, customer_phone, customer_email, phone_model, problem_description, \
               status, quote_value, self_pickup, payment_methods) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, '[\"pix\", \"dinheiro\"]'::jsonb)",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, '[\"pix\", \"dinheiro\"]'::jsonb) \
+             RETURNING id::text",
         )
         .bind(&tenant_id)
         .bind(name)
@@ -718,6 +780,57 @@ async fn seed_demo_eletronica(pool: &PgPool) -> anyhow::Result<()> {
         .bind(problem)
         .bind(status)
         .bind(quote)
+        .fetch_one(&mut *tx)
+        .await?;
+        request_ids.insert(status, request_id);
+    }
+
+    // Diagnóstico preenchido pros 3 cards que passam pela etapa de
+    // diagnóstico/reparo (Parte 9.5) -- sem isso, EletronicaDiagnosticSection
+    // abria em branco pros cards das colunas "Em diagnóstico"/"Em reparo".
+    let diagnostics: [(&str, &str, Option<f64>, bool); 3] = [
+        ("aguardando_diagnostico", "Aparelho oxidado pelo contato com água -- aguardando abertura e limpeza da placa pra confirmar extensão do dano.", None, false),
+        ("diagnostico_enviado", "Tela com manchas de pressão e falha intermitente no touch após queda -- orçamento já enviado, aguardando aprovação do cliente.", Some(220.0), true),
+        ("in_progress", "Bateria com inchaço leve e degradação de capacidade -- troca de bateria original aprovada, aparelho em reparo.", Some(99.9), true),
+    ];
+    for (status, notes, quote_confirmed, finalized) in diagnostics {
+        let Some(request_id) = request_ids.get(status) else { continue };
+        sqlx::query(
+            "INSERT INTO eletronicos.service_diagnostics \
+             (id, tenant_id, service_request_id, services_selected, notes, quote_confirmed, media_urls, finalized) \
+             VALUES ($1::uuid, $2, $3::uuid, $4::jsonb, $5, $6, $7, $8)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&tenant_id)
+        .bind(request_id)
+        .bind(serde_json::json!([{"id": "demo-troca-tela", "repair_type": "Troca de tela", "price": quote_confirmed.unwrap_or(99.9)}]))
+        .bind(notes)
+        .bind(quote_confirmed)
+        .bind(&Vec::<String>::new())
+        .bind(finalized)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    // Ordem de serviço com checklist preenchido pro card "Em reparo"
+    // (in_progress) -- EletronicaServiceOrderPanel.tsx lê isso, sem seed
+    // ficava em branco mesmo com o card na coluna certa.
+    if let Some(request_id) = request_ids.get("in_progress") {
+        sqlx::query(
+            "INSERT INTO eletronicos.service_orders (id, tenant_id, request_id, checklist, warranty) \
+             VALUES ($1::uuid, $2, $3::uuid, $4::jsonb, $5)",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&tenant_id)
+        .bind(request_id)
+        .bind(serde_json::json!([
+            {"id": "abertura", "label": "Abertura do aparelho", "done": true},
+            {"id": "diagnostico", "label": "Diagnóstico confirmado", "done": true},
+            {"id": "troca_peca", "label": "Troca da bateria", "done": true},
+            {"id": "teste", "label": "Teste de carga e funcionamento", "done": false},
+            {"id": "limpeza", "label": "Limpeza e fechamento", "done": false},
+        ]))
+        .bind("90 dias")
         .execute(&mut *tx)
         .await?;
     }

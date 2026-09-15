@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Link, Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { Boxes, CalendarDays, ClipboardList, FileText, Home, LogOut, MessageCircle, MessageSquare, Package, ShoppingCart, Truck, UserCog, Wallet } from 'lucide-react'
+import { Boxes, CalendarDays, ClipboardList, LogOut, MessageCircle, MessageSquare, Package, ShoppingCart, Truck, UserCog, Wallet } from 'lucide-react'
 import { useAdminAuth, detectAdminTenantMismatch } from '../../store/adminAuth'
 import { resetTenantConfigCache, resolveTenantSlug, withTenantSearch } from '../../lib/tenantConfig'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
@@ -23,7 +23,6 @@ const NAV_ITEMS = [
   { to: 'servicodeslocamento', label: 'Serviço de deslocamento', icon: Truck },
   { to: 'relatorios', label: 'Relatórios', icon: Wallet },
   { to: 'template-zap', label: 'Template Zap', icon: MessageSquare },
-  { to: 'fiscal', label: 'Fiscal', icon: FileText },
   { to: 'conta', label: 'Conta', icon: UserCog },
 ]
 
@@ -96,16 +95,13 @@ export default function EletronicaAdminLayout() {
     <div className="min-h-screen bg-[#0a0a0b] md:flex">
       <aside className="hidden md:flex md:flex-col w-56 shrink-0 bg-[#161618] border-r border-white/5 min-h-screen sticky top-0">
         <div className="px-5 py-5 border-b border-white/5">
-          <div className="flex items-center gap-2">
-            <Link
-              to={`/admin-eletronica${withTenantSearch()}`}
-              title="Início"
-              className="text-[#d4d4d8]/70 hover:text-white transition-colors"
-            >
-              <Home className="w-4 h-4" />
-            </Link>
+          <Link
+            to={`/admin-eletronica${withTenantSearch()}`}
+            title="Início"
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+          >
             <EletronicaLogo size="sm" name={tenantConfig?.loja_nome} />
-          </div>
+          </Link>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
@@ -137,16 +133,13 @@ export default function EletronicaAdminLayout() {
       </aside>
 
       <header className="md:hidden bg-[#161618] border-b border-white/5 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-2">
-          <Link
-            to={`/admin-eletronica${withTenantSearch()}`}
-            title="Início"
-            className="text-[#d4d4d8]/70 hover:text-white transition-colors"
-          >
-            <Home className="w-4 h-4" />
-          </Link>
+        <Link
+          to={`/admin-eletronica${withTenantSearch()}`}
+          title="Início"
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        >
           <EletronicaLogo size="sm" name={tenantConfig?.loja_nome} />
-        </div>
+        </Link>
         <button type="button" onClick={handleLogout} className="flex items-center gap-1.5 text-[#d4d4d8]/70 hover:text-[#e0211a] text-sm transition-colors">
           <LogOut className="w-4 h-4" />
           Sair

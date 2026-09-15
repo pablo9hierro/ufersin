@@ -374,7 +374,6 @@ export default function App() {
             <Route path="servicodeslocamento" element={<EletronicaServicoDeslocamento />} />
             <Route path="relatorios" element={<EletronicaRelatorios />} />
             <Route path="template-zap" element={<EletronicaAdminTemplates />} />
-            <Route path="fiscal" element={<AdminFiscal />} />
             <Route path="conta" element={<EletronicaAdminConta />} />
           </Route>
           <Route path="/funcionarios/login" element={<FuncionarioLogin />} />

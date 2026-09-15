@@ -90,19 +90,19 @@ export default function EletronicaHome() {
           Assistência técnica premium
         </span>
         <h1 className="text-4xl sm:text-6xl font-black leading-tight mb-4">
-          Conserto de celular
+          Assistência técnica
           <br />
-          com <span className="text-[#e0211a]">rapidez</span>, <span className="text-[#e0211a]">qualidade</span> e{' '}
+          com <span className="text-[#e0211a]">rapidez</span>, <span className="text-[#e0211a]">confiança</span> e{' '}
           <span className="text-[#e0211a]">garantia</span>
         </h1>
         <p
           data-cms-editable="text:hero-desc"
           data-cms-label="Descrição do topo"
-          data-cms-default="Buscamos, consertamos e devolvemos seu aparelho no seu endereço. Peça um orçamento gratuito agora mesmo."
+          data-cms-default="Diagnosticamos, consertamos com peça de qualidade e devolvemos no seu endereço. Peça um orçamento gratuito agora mesmo."
           className="text-[#d4d4d8]/70 max-w-xl mx-auto mb-8"
         >
           {tenantConfig?.landing_texts?.['hero-desc']?.trim() ||
-            'Buscamos, consertamos e devolvemos seu aparelho no seu endereço. Peça um orçamento gratuito agora mesmo.'}
+            'Diagnosticamos, consertamos com peça de qualidade e devolvemos no seu endereço. Peça um orçamento gratuito agora mesmo.'}
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
