@@ -10,7 +10,6 @@ import {
   Cloud,
   FileEdit,
   FileText,
-  Home,
   Loader2,
   LogOut,
   MailCheck,
@@ -665,16 +664,13 @@ export default function AdminLayout() {
       <aside className="hidden md:flex md:flex-col w-56 shrink-0 bg-son-surface border-r border-white/5 min-h-screen sticky top-0">
         <div className="px-5 py-5 border-b border-white/5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Link
-                to={tenantConfig?.precisa_tela_cozinha ? '/admin/cozinha' : '/admin/pedidos'}
-                title="Início"
-                className="text-son-silver-dim hover:text-white transition-colors"
-              >
-                <Home className="w-4 h-4" />
-              </Link>
+            <Link
+              to={tenantConfig?.precisa_tela_cozinha ? '/admin/cozinha' : '/admin/pedidos'}
+              title="Início"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
               <Logo size="sm" />
-            </div>
+            </Link>
             {!demo && <PayrollBell mode="admin" />}
           </div>
           {lojaLabel ? <p className="text-xs font-semibold text-white mt-2 truncate">{lojaLabel}</p> : null}
@@ -747,16 +743,13 @@ export default function AdminLayout() {
       <div className="flex-1 min-w-0">
         {previewMode ? null : (
         <header className="md:hidden bg-son-surface border-b border-white/5 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-2">
-            <Link
-              to={tenantConfig?.precisa_tela_cozinha ? '/admin/cozinha' : '/admin/pedidos'}
-              title="Início"
-              className="text-son-silver-dim hover:text-white transition-colors"
-            >
-              <Home className="w-4 h-4" />
-            </Link>
+          <Link
+            to={tenantConfig?.precisa_tela_cozinha ? '/admin/cozinha' : '/admin/pedidos'}
+            title="Início"
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+          >
             <Logo size="sm" />
-          </div>
+          </Link>
           <div className="flex items-center gap-2">
             {!demo && <PayrollBell mode="admin" />}
             <button onClick={handleLogout} className="flex items-center gap-1.5 text-son-silver-dim hover:text-son-pink text-sm">

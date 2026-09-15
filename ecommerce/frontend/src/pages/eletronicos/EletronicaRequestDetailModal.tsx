@@ -15,12 +15,14 @@ import {
   X,
 } from 'lucide-react'
 import { eletronicosAdmin } from '../../lib/eletronicosAdminApi'
-import type { ServiceRequestDto } from '../../lib/eletronicosApi'
+import { fetchDriverLocation, type ServiceRequestDto } from '../../lib/eletronicosApi'
 import EletronicaDiagnosticSection from './EletronicaDiagnosticSection'
 import EletronicaServiceOrderPanel, { isServiceOrderStatus } from './EletronicaServiceOrderPanel'
 import PatternLockInput from '../../components/PatternLockInput'
 import DeliveryDispatchControl from '../../components/admin/DeliveryDispatchControl'
+import LiveTrackingMap from '../../components/eletronicos/LiveTrackingMap'
 import { ADMIN_DELIVERY_STATUS_LABEL, labelDeliveryStatus } from '../../lib/deliveryStatus'
+import { resolveTenantSlug } from '../../lib/tenantConfig'
 
 // Port 1:1 (adaptado) de src/components/RequestDetailModal.tsx do vrtech --
 // mesmo STATUS_LABELS/getAdvanceConfig (fluxo guiado single/choice em vez
@@ -241,6 +243,27 @@ export default function EletronicaRequestDetailModal({
   const [saved, setSaved] = useState(false)
   const [osState, setOsState] = useState({ closed: false, hasUpdate: false })
   const osCompleted = osState.closed
+
+  // Mapa de rastreio (item 4 da auditoria de demo): já existia só na tela do
+  // cliente (EletronicaConsultar.tsx) -- admin não tinha visibilidade
+  // nenhuma do trajeto durante deslocamento. Mesmo gate/hook dali.
+  const showLiveMap =
+    (status === 'em_busca' || status === 'em_entrega') &&
+    !request.self_pickup && request.address_lat != null && request.address_lng != null
+  const [driverLoc, setDriverLoc] = useState<{ lat: number; lng: number } | null>(null)
+  useEffect(() => {
+    if (!showLiveMap) return
+    const slug = resolveTenantSlug()
+    if (!slug) return
+    const poll = () => {
+      fetchDriverLocation(slug)
+        .then((loc) => setDriverLoc(loc))
+        .catch(() => {})
+    }
+    poll()
+    const id = setInterval(poll, 15_000)
+    return () => clearInterval(id)
+  }, [showLiveMap])
 
   const [selectedMethods, setSelectedMethods] = useState<string[]>((request.payment_methods ?? []).map((p) => p.method))
   const [methodValues, setMethodValues] = useState<Record<string, string>>(
@@ -548,6 +571,10 @@ export default function EletronicaRequestDetailModal({
                 />
               )}
 
+              {showLiveMap && (
+                <LiveTrackingMap destLat={request.address_lat!} destLng={request.address_lng!} driver={driverLoc} heightClassName="h-[14rem]" />
+              )}
+
               <div className="border border-white/10 rounded-xl overflow-hidden">
                 <button
                   type="button"
@@ -626,6 +653,9 @@ export default function EletronicaRequestDetailModal({
                 dispatchLabel="Chamar entrega do reparo"
                 labelStatus={(s) => labelDeliveryStatus(ADMIN_DELIVERY_STATUS_LABEL, s)}
               />
+              {showLiveMap && (
+                <LiveTrackingMap destLat={request.address_lat!} destLng={request.address_lng!} driver={driverLoc} heightClassName="h-[14rem]" />
+              )}
             </section>
           )}
 

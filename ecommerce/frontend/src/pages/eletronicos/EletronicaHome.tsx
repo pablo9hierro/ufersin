@@ -19,24 +19,9 @@ import EletronicaCarrinhoFlutuante from './EletronicaCarrinhoFlutuante'
 // Fallback quando o tenant não tem logo_url configurado -- antes apontava
 // pra um asset Cloudinary herdado do port do vrtech-jp.vercel.app (ícone
 // "VR"), vestígio visível pro usuário final que o dono quer eliminado.
-// SVG inline (data URI) na paleta Resolutoo com um símbolo de chave de
-// fenda/conserto, sem depender de nenhum asset externo.
-const LOGO_FALLBACK =
-  'data:image/svg+xml,' +
-  encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-      <defs>
-        <linearGradient id="g" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stop-color="#FF3D9A"/>
-          <stop offset="1" stop-color="#7C3AED"/>
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="44" height="44" rx="14" fill="url(#g)"/>
-      <path d="M31 14l3 3-11 11-3-3z" fill="white"/>
-      <path d="M15 30l3 3-4 4-4-1 1-4z" fill="white"/>
-      <path d="M27 12l5-2 6 6-2 5-3-1-1-3-3-1z" fill="white" fill-opacity="0.85"/>
-    </svg>`,
-  )
+// Marca real da assistência técnica (assets/brand/logo-eletronica.svg,
+// commit 3a91589), servida como arquivo estático em public/brand/.
+const LOGO_FALLBACK = '/brand/logo-eletronica.svg'
 
 // Port 1:1 de src/app/page.tsx do vrtech -- mesma landing de marketing
 // (Hero + Serviços + Diferenciais + Footer), mesmo texto, mesmas cores.

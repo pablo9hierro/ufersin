@@ -701,7 +701,8 @@ function seedDb(): LocalDb {
     customerFavorites,
     pricePerKm: 1.5,
     maxKm: null,
-    heroImageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1200&q=80',
+    // Arte real de marca (assets/brand/hero-ecommerce.svg, commit 3a91589).
+    heroImageUrl: '/brand/hero-ecommerce.svg',
     // Fundo padrão da demo é liso (a cor do tom escolhido na paleta
     // white-label, ver DemoPaletteSwitcher) -- a cena pôr-do-sol/palmeiras
     // é específica da marca Sunset. Continua editável pelo admin em

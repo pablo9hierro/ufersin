@@ -250,6 +250,14 @@ async fn seed_demo_ecommerce(pool: &PgPool) -> anyhow::Result<()> {
     let (tenant_id, created) =
         ensure_demo_tenant(&mut tx, "demo-ecommerce", "Demo Ecommerce", "ecommerce", "plan_premium").await?;
     if !created {
+        // Backfill idempotente (item 5): tenant já existia com o hero antigo
+        // (Unsplash) de uma rodada anterior a essa arte de marca -- sem isso
+        // só um tenant novo (nunca seedado) ganharia o hero-ecommerce.svg.
+        sqlx::query("UPDATE tenants SET landing_hero_image_url = '/brand/hero-ecommerce.svg' WHERE id = $1")
+            .bind(&tenant_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
         tracing::info!("demo-ecommerce already seeded, skipping");
         return Ok(());
     }
@@ -257,10 +265,12 @@ async fn seed_demo_ecommerce(pool: &PgPool) -> anyhow::Result<()> {
 
     // Hero da vitrine pública -- sem isso a landing da demo nascia sem banner
     // (comportamento correto pra lojista real que nunca configurou nada, mas
-    // passa impressão de produto quebrado numa vitrine de vendas).
+    // passa impressão de produto quebrado numa vitrine de vendas). Arte real
+    // de marca (assets/brand/hero-ecommerce.svg, commit 3a91589), servida
+    // como path público pelo frontend.
     sqlx::query("UPDATE tenants SET landing_hero_image_url = $2 WHERE id = $1")
         .bind(&tenant_id)
-        .bind("https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1600&q=80")
+        .bind("/brand/hero-ecommerce.svg")
         .execute(&mut *tx)
         .await?;
 
