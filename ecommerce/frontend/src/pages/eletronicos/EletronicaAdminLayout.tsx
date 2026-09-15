@@ -13,18 +13,34 @@ import BillingGate from '../../components/admin/BillingGate'
 // mesmos 9 itens, mesmos ícones, mesma ordem. AdminLink (Next Link) vira
 // NavLink do react-router; auth reaproveita o mesmo login/JWT de /admin
 // (o backend não distingue vertical no JWT, já tenant-scoped).
+//
+// `preload`: cada item guarda o MESMO import() dinâmico que App.tsx usa
+// pra montar o lazyWithReload da rota (module cache do Vite/ESM é
+// compartilhado por specifier -- chamar import() aqui de novo não duplica
+// o download, só antecipa). Parte 9.10: sem isso, o clique num item de
+// menu só dispara o download do chunk DEPOIS do clique -- a percepção de
+// lentidão era o tempo de rede do chunk, sem prefetch nenhum no hover
+// (confirmado lendo lazyWithReload.ts, que não tinha nenhum mecanismo de
+// preload). Chamado no onMouseEnter/onTouchStart do link, uma vez só.
 const NAV_ITEMS = [
-  { to: '', label: 'Solicitações', icon: ClipboardList },
-  { to: 'chat', label: 'Chat', icon: MessageCircle },
-  { to: 'pdv', label: 'PDV', icon: ShoppingCart },
-  { to: 'agenda', label: 'Agenda', icon: CalendarDays },
-  { to: 'produtos', label: 'Produtos/Serviços', icon: Package },
-  { to: 'estoque', label: 'Estoque', icon: Boxes },
-  { to: 'servicodeslocamento', label: 'Serviço de deslocamento', icon: Truck },
-  { to: 'relatorios', label: 'Relatórios', icon: Wallet },
-  { to: 'template-zap', label: 'Template Zap', icon: MessageSquare },
-  { to: 'conta', label: 'Conta', icon: UserCog },
+  { to: '', label: 'Solicitações', icon: ClipboardList, preload: () => import('./EletronicaAdminDashboard') },
+  { to: 'chat', label: 'Chat', icon: MessageCircle, preload: () => import('../admin/AdminChat') },
+  { to: 'pdv', label: 'PDV', icon: ShoppingCart, preload: () => import('./EletronicaAdminPdv') },
+  { to: 'agenda', label: 'Agenda', icon: CalendarDays, preload: () => import('./EletronicaAdminAgenda') },
+  { to: 'produtos', label: 'Produtos/Serviços', icon: Package, preload: () => import('./EletronicaAdminEstoque') },
+  { to: 'estoque', label: 'Estoque', icon: Boxes, preload: () => import('./EletronicaEstoquePage') },
+  { to: 'servicodeslocamento', label: 'Serviço de deslocamento', icon: Truck, preload: () => import('./EletronicaServicoDeslocamento') },
+  { to: 'relatorios', label: 'Relatórios', icon: Wallet, preload: () => import('./EletronicaRelatorios') },
+  { to: 'template-zap', label: 'Template Zap', icon: MessageSquare, preload: () => import('./EletronicaAdminTemplates') },
+  { to: 'conta', label: 'Conta', icon: UserCog, preload: () => import('./EletronicaAdminConta') },
 ]
+
+const preloaded = new Set<string>()
+function preloadOnce(to: string, preload: () => Promise<unknown>) {
+  if (preloaded.has(to)) return
+  preloaded.add(to)
+  preload().catch(() => preloaded.delete(to))
+}
 
 export default function EletronicaAdminLayout() {
   const { token, tenantSlug, logout } = useAdminAuth()
@@ -104,11 +120,13 @@ export default function EletronicaAdminLayout() {
           </Link>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+          {NAV_ITEMS.map(({ to, label, icon: Icon, preload }) => (
             <NavLink
               key={to}
               to={`/admin-eletronica${to ? `/${to}` : ''}${withTenantSearch()}`}
               end={to === ''}
+              onMouseEnter={() => preloadOnce(to, preload)}
+              onTouchStart={() => preloadOnce(to, preload)}
               className={({ isActive }) =>
                 `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
                   isActive ? 'bg-[#e0211a] text-white' : 'text-[#d4d4d8]/70 hover:bg-[#232327] hover:text-white'
@@ -146,11 +164,12 @@ export default function EletronicaAdminLayout() {
         </button>
       </header>
       <nav className="md:hidden flex gap-2 overflow-x-auto px-4 py-3 bg-[#0a0a0b] border-b border-white/5 sticky top-[65px] z-10">
-        {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+        {NAV_ITEMS.map(({ to, label, icon: Icon, preload }) => (
           <NavLink
             key={to}
             to={`/admin-eletronica${to ? `/${to}` : ''}${withTenantSearch()}`}
             end={to === ''}
+            onTouchStart={() => preloadOnce(to, preload)}
             className={({ isActive }) =>
               `shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                 isActive ? 'bg-[#e0211a] text-white' : 'bg-[#161618] border border-white/5 text-[#d4d4d8] hover:bg-[#232327]'
