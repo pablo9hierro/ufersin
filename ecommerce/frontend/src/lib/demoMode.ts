@@ -127,9 +127,14 @@ export function hasPromoBanners(tenantPlano?: PlanoCode | null): boolean {
 }
 
 /** Starter/Essential: card de imagem do hero (landing_hero_image_url), sem
- * promo admin -- mesma vitrine simplificada pros dois planos de entrada. */
+ * promo admin -- mesma vitrine simplificada pros dois planos de entrada.
+ * Tenants demo seedados (`demo-ecommerce`/`demo-eletronica`) são sempre
+ * sintetizados com `plano: 'premium'` (ver PREVIEW_TENANT_CONFIG em
+ * tenantConfig.ts) pra destravar o resto do painel/admin na demo -- isso
+ * também cortava o card de Hero de propósito (nunca era essa a intenção,
+ * só um efeito colateral), então força o card aqui mesmo sendo "premium". */
 export function isEssentialStorefront(tenantPlano?: PlanoCode | null): boolean {
-  return !hasPromoBanners(tenantPlano)
+  return !hasPromoBanners(tenantPlano) || isSeededDemoTenant()
 }
 
 /** Cupons (checkout + /cliente/cupons): Management/Premium. Starter/Essential não geram cupons. */

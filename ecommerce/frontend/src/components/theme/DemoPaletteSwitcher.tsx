@@ -33,7 +33,11 @@ export default function DemoPaletteSwitcher() {
   const { color1, color2, setColors, reset } = useTenantColor()
 
   return (
-    <div className="fixed bottom-5 right-5 z-[60]">
+    // burgerbite(uiux3)/burgerhouse(uiux4) têm barra de navegação fixa no
+    // rodapé (mobile) -- bottom-5 sozinho ficava por cima dela. bottom-20
+    // no mobile abre espaço suficiente pra não sobrepor; sm:bottom-5
+    // porque a partir do breakpoint sm essas barras já não existem.
+    <div className="fixed bottom-20 right-5 sm:bottom-5 z-[60]">
       {open && (
         <div className="rounded-2xl mb-3 w-[min(90vw,320px)] p-5 bg-son-surface border border-black/10 shadow-xl text-son-silver max-h-[80vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
