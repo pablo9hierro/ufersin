@@ -289,11 +289,17 @@ pub(crate) async fn create_sale_core(
         let valido = match f.destinatario_documento_tipo.as_deref() {
             Some("cpf") => crate::fiscal::validation::valid_cpf(doc),
             Some("cnpj") => crate::fiscal::validation::valid_cnpj(doc),
-            _ => false,
+            // Sem documento nenhum = consumidor anônimo (NFC-e sem CPF/CNPJ na
+            // nota) -- só é permitido abaixo do valor de identificação
+            // obrigatória; acima disso já foi barrado no `identificacao_obrigatoria`
+            // check antes deste bloco, então chegar aqui sem doc só é possível
+            // quando a venda está abaixo do limiar.
+            None => !identificacao_obrigatoria,
+            Some(_) => false,
         };
         if !valido {
             return Err(AppError::BadRequest(
-                "documento do destinatário (CPF/CNPJ) inválido ou ausente pra emissão de nota fiscal".to_string(),
+                "documento do destinatário (CPF/CNPJ) inválido pra emissão de nota fiscal".to_string(),
             ));
         }
     }
