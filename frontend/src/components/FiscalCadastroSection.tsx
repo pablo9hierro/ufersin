@@ -15,7 +15,16 @@ import {
   type FiscalProfile,
   type FiscalProfileInput,
   type FiscalStateOption,
+  type FiscalTogglesConfig,
 } from '../lib/api'
+
+const EMPTY_TOGGLES: FiscalTogglesConfig = {
+  emitir_produto: false,
+  emitir_servico: false,
+  codigo_servico_municipal: '',
+  aliquota_iss: null,
+  regime_especial_tributacao: '',
+}
 
 // Mesma regra de formato de ecommerce/backend fiscal/validation.rs --
 // duplicada aqui pra UX (backend sempre revalida).
@@ -85,12 +94,25 @@ const EMPTY: FiscalConfigInput = {
 /** Meu Plano -> Financeiro -> Fiscal: cadastro da empresa pra emissão de
  * NF-e/NFC-e (módulo Jubilados). Sem GET de leitura ainda -- primeira
  * versão só grava; reabrir a tela pede pra preencher de novo (nunca perde o
- * já salvo no banco, só não pré-popula o formulário). */
-export default function FiscalCadastroSection() {
+ * já salvo no banco, só não pré-popula o formulário).
+ *
+ * `ofereceServicos`: mesmo sinal já usado em MeuPlano.tsx (vertical
+ * eletrônicos, ou ecommerce Essential+ que ligou venda de serviço) -- só
+ * quando true faz sentido mostrar o checkbox de nota fiscal de serviço
+ * (Starter não vende serviço, não faz sentido pra ele). */
+export default function FiscalCadastroSection({ ofereceServicos = false }: { ofereceServicos?: boolean }) {
   const [form, setForm] = useState<FiscalConfigInput>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
+
+  // Toggles reais e independentes -- desligar não apaga nada no banco, só
+  // esconde a área correspondente (aqui e no admin da loja/PDV) até religar.
+  const [toggles, setToggles] = useState<FiscalTogglesConfig>(EMPTY_TOGGLES)
+  const [togglesLoading, setTogglesLoading] = useState(true)
+  const [togglesSaving, setTogglesSaving] = useState(false)
+  const [togglesSaved, setTogglesSaved] = useState(false)
+  const [togglesError, setTogglesError] = useState<string | null>(null)
 
   const [states, setStates] = useState<FiscalStateOption[]>([])
   const [cities, setCities] = useState<FiscalCityOption[]>([])
@@ -138,6 +160,30 @@ export default function FiscalCadastroSection() {
   useEffect(() => {
     api.fiscalStates().then(setStates).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    api
+      .getFiscalToggles()
+      .then((t) => setToggles({ ...EMPTY_TOGGLES, ...t }))
+      .catch(() => {})
+      .finally(() => setTogglesLoading(false))
+  }, [])
+
+  const saveToggles = async () => {
+    setTogglesError(null)
+    setTogglesSaved(false)
+    setTogglesSaving(true)
+    try {
+      await api.salvarFiscalToggles(toggles)
+      setTogglesSaved(true)
+    } catch (e) {
+      setTogglesError(
+        e instanceof ApiError ? e.message : 'Não foi possível salvar essa configuração.'
+      )
+    } finally {
+      setTogglesSaving(false)
+    }
+  }
 
   // Consulta se a empresa (nova ou já existente no Jubilados, linkada pelo
   // mesmo CNPJ) já tem certificado salvo -- cobre o caso de reaproveitar
@@ -455,6 +501,36 @@ export default function FiscalCadastroSection() {
     <p className="text-[11px] font-bold uppercase tracking-wide text-uf-silver-dim/70 mb-2">{text}</p>
   )
 
+  const toggleProduto = async (checked: boolean) => {
+    const next = { ...toggles, emitir_produto: checked }
+    setToggles(next)
+    setTogglesError(null)
+    setTogglesSaving(true)
+    try {
+      await api.salvarFiscalToggles(next)
+    } catch (e) {
+      setToggles(toggles) // reverte se não salvou
+      setTogglesError(e instanceof ApiError ? e.message : 'Não foi possível salvar essa configuração.')
+    } finally {
+      setTogglesSaving(false)
+    }
+  }
+
+  const toggleServico = async (checked: boolean) => {
+    const next = { ...toggles, emitir_servico: checked }
+    setToggles(next)
+    setTogglesError(null)
+    setTogglesSaving(true)
+    try {
+      await api.salvarFiscalToggles(next)
+    } catch (e) {
+      setToggles(toggles)
+      setTogglesError(e instanceof ApiError ? e.message : 'Não foi possível salvar essa configuração.')
+    } finally {
+      setTogglesSaving(false)
+    }
+  }
+
   return (
     <div className="uf-glass rounded-2xl p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -468,6 +544,31 @@ export default function FiscalCadastroSection() {
         )}
       </div>
 
+      <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={toggles.emitir_produto}
+          disabled={togglesLoading || togglesSaving}
+          onChange={(e) => toggleProduto(e.target.checked)}
+          className="w-4 h-4 mt-0.5"
+        />
+        <span className="text-sm">
+          <span className="block font-semibold">Emitir nota fiscal</span>
+          <span className="block text-xs text-uf-silver-dim mt-0.5">
+            Desligado, sua loja vende sem nota fiscal — nada some do que você já cadastrou aqui, é só desativado.
+            Religue quando quiser voltar a emitir.
+          </span>
+        </span>
+      </label>
+      {togglesError && <p className="error-msg">{togglesError}</p>}
+
+      {!toggles.emitir_produto && !togglesLoading ? (
+        <p className="text-sm text-uf-silver-dim uf-glass rounded-xl p-4">
+          Emissão de nota fiscal de produto desligada. Marque a caixa acima pra ver e configurar os dados fiscais da
+          empresa.
+        </p>
+      ) : (
+      <>
       {/* Certificado digital — primeiro porque é o que assina a nota, mas só
        * pode ser enviado depois que a empresa existe no Jubilados (savedId). */}
       <div>
@@ -1025,6 +1126,86 @@ export default function FiscalCadastroSection() {
         Salvar dados fiscais
       </button>
       {error && <p className="error-msg">{error}</p>}
+      </>
+      )}
+
+      {ofereceServicos && (
+        <>
+          <div className="border-t border-white/10" />
+          <label className="uf-glass rounded-xl px-3 py-2.5 flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={toggles.emitir_servico}
+              disabled={togglesLoading || togglesSaving}
+              onChange={(e) => toggleServico(e.target.checked)}
+              className="w-4 h-4 mt-0.5"
+            />
+            <span className="text-sm">
+              <span className="block font-semibold">Emitir nota fiscal de serviço</span>
+              <span className="block text-xs text-uf-silver-dim mt-0.5">
+                Pra ordens de serviço/atendimento (NFS-e) — separado da nota de produto acima. Desligar esconde essa
+                área sem apagar nada; religue quando quiser.
+              </span>
+            </span>
+          </label>
+
+          {toggles.emitir_servico && (
+            <div className="uf-glass rounded-xl p-4 space-y-3">
+              {sectionTitle('Dados fiscais de serviço')}
+              <p className="text-xs text-uf-silver-dim">
+                Esses dados são específicos de nota de serviço (NFS-e) — CNPJ, endereço e certificado já cadastrados
+                acima em "Empresa" são reaproveitados, não precisa repetir.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="label">Código de serviço municipal</label>
+                  <input
+                    className="input-field"
+                    value={toggles.codigo_servico_municipal ?? ''}
+                    onChange={(e) => setToggles((t) => ({ ...t, codigo_servico_municipal: e.target.value }))}
+                    placeholder="Consulte a prefeitura do seu município"
+                  />
+                </div>
+                <div>
+                  <label className="label">Alíquota ISS (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input-field"
+                    value={toggles.aliquota_iss ?? ''}
+                    onChange={(e) =>
+                      setToggles((t) => ({ ...t, aliquota_iss: e.target.value === '' ? null : Number(e.target.value) }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="label">Regime especial de tributação</label>
+                  <input
+                    className="input-field"
+                    value={toggles.regime_especial_tributacao ?? ''}
+                    onChange={(e) => setToggles((t) => ({ ...t, regime_especial_tributacao: e.target.value }))}
+                    placeholder="ex: Simples Nacional, MEI…"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={saveToggles}
+                disabled={togglesSaving}
+                className="btn-secondary w-full py-2.5 flex items-center justify-center gap-2"
+              >
+                {togglesSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salvar dados de serviço
+              </button>
+              {togglesSaved && <p className="text-xs text-emerald-400">Salvo.</p>}
+              <p className="text-[10px] text-uf-silver-dim/70">
+                A emissão automática de NFS-e (chamada à prefeitura) ainda não está disponível — por enquanto isso
+                guarda o cadastro pra quando esse módulo for lançado.
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

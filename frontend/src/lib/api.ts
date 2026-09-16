@@ -398,6 +398,14 @@ export interface FiscalConfigInput {
   ambiente: 'homologacao' | 'producao'
 }
 
+export interface FiscalTogglesConfig {
+  emitir_produto: boolean
+  emitir_servico: boolean
+  codigo_servico_municipal?: string | null
+  aliquota_iss?: number | null
+  regime_especial_tributacao?: string | null
+}
+
 export interface FiscalStateOption {
   uf: string
   nome: string
@@ -711,6 +719,9 @@ export const api = {
     }),
   getFiscal: () =>
     request<(FiscalConfigInput & { jubilados_empresa_id: string }) | null>('/api/onboarding/fiscal'),
+  getFiscalToggles: () => request<FiscalTogglesConfig>('/api/onboarding/fiscal/toggles'),
+  salvarFiscalToggles: (input: FiscalTogglesConfig) =>
+    request<void>('/api/onboarding/fiscal/toggles', { method: 'PUT', body: JSON.stringify(input) }),
   getDeliveryStatus: () => request<DeliveryStatus>('/api/onboarding/delivery'),
   conectarUberDirect: (input: UberDirectInput) =>
     request<DeliveryStatus>('/api/onboarding/delivery', { method: 'POST', body: JSON.stringify(input) }),

@@ -1139,6 +1139,10 @@ async fn main() -> anyhow::Result<()> {
             post(routes::internal::sync_fiscal_config),
         )
         .route(
+            "/internal/fiscal-toggles",
+            get(routes::internal::get_fiscal_toggles),
+        )
+        .route(
             "/internal/sync-delivery-credentials",
             post(routes::internal::sync_delivery_credentials),
         )

@@ -1640,7 +1640,9 @@ export default function MeuPlano() {
               <p className="text-xs text-uf-silver-dim">Emissão de NF-e/NFC-e nas vendas.</p>
             </div>
           )}
-          {tab === 'integracoes' && hasActiveSub && <FiscalCadastroSection />}
+          {tab === 'integracoes' && hasActiveSub && (
+            <FiscalCadastroSection ofereceServicos={me?.vertical === 'eletronicos' || ofereceServicos} />
+          )}
 
           {tab === 'integracoes' && hasActiveSub && (
             <div className="mt-8 mb-3">

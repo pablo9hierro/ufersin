@@ -1,4 +1,4 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -490,6 +490,66 @@ pub async fn sync_fiscal_config(
     .await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FiscalTogglesQuery {
+    pub tenant_slug: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FiscalTogglesOutput {
+    pub emitir_produto: bool,
+    pub emitir_servico: bool,
+    pub codigo_servico_municipal: Option<String>,
+    pub aliquota_iss: Option<f64>,
+    pub regime_especial_tributacao: Option<String>,
+}
+
+/// Leitura pro `backend` (plataforma) pré-popular os 2 checkboxes de
+/// `/meu-plano/integracoes` -- espelha exatamente o que `sync_fiscal_config`
+/// grava. Tenant sem `tenant_fiscal_settings` ainda (nunca salvou nada
+/// fiscal) devolve os dois toggles como `false`, nunca erro.
+pub async fn get_fiscal_toggles(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(q): Query<FiscalTogglesQuery>,
+) -> Result<Json<FiscalTogglesOutput>, AppError> {
+    InternalAuth::check(&headers, &state)?;
+    let slug = q.tenant_slug.trim().to_lowercase();
+    let row: Option<(String,)> = sqlx::query_as("SELECT id FROM tenants WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((tenant_id,)) = row else {
+        return Err(AppError::NotFound("tenant not found".to_string()));
+    };
+
+    let settings: Option<(bool, bool)> = sqlx::query_as(
+        "SELECT emitir_produto, emitir_servico FROM tenant_fiscal_settings WHERE tenant_id = $1",
+    )
+    .bind(&tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (emitir_produto, emitir_servico) = settings.unwrap_or((false, false));
+
+    let servico: Option<(Option<String>, Option<f64>, Option<String>)> = sqlx::query_as(
+        "SELECT codigo_servico_municipal, aliquota_iss, regime_especial_tributacao \
+         FROM tenant_fiscal_servico_settings WHERE tenant_id = $1",
+    )
+    .bind(&tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (codigo_servico_municipal, aliquota_iss, regime_especial_tributacao) =
+        servico.unwrap_or((None, None, None));
+
+    Ok(Json(FiscalTogglesOutput {
+        emitir_produto,
+        emitir_servico,
+        codigo_servico_municipal,
+        aliquota_iss,
+        regime_especial_tributacao,
+    }))
 }
 
 #[derive(Debug, Deserialize)]

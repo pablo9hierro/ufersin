@@ -1,4 +1,4 @@
-use axum::{extract::Path, extract::State, Json};
+use axum::{extract::Path, extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthSubscriber;
@@ -2409,4 +2409,138 @@ async fn sync_fiscal_config(state: &AppState, slug: &str, empresa_id: &str, ambi
         return Err(AppError::Internal(format!("sync-fiscal-config failed: {status} {text}")));
     }
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FiscalTogglesInput {
+    pub emitir_produto: bool,
+    pub emitir_servico: bool,
+    #[serde(default)]
+    pub codigo_servico_municipal: Option<String>,
+    #[serde(default)]
+    pub aliquota_iss: Option<f64>,
+    #[serde(default)]
+    pub regime_especial_tributacao: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FiscalTogglesOutput {
+    pub emitir_produto: bool,
+    pub emitir_servico: bool,
+    pub codigo_servico_municipal: Option<String>,
+    pub aliquota_iss: Option<f64>,
+    pub regime_especial_tributacao: Option<String>,
+}
+
+const EMPTY_FISCAL_TOGGLES: FiscalTogglesOutput = FiscalTogglesOutput {
+    emitir_produto: false,
+    emitir_servico: false,
+    codigo_servico_municipal: None,
+    aliquota_iss: None,
+    regime_especial_tributacao: None,
+};
+
+/// Lê os 2 toggles reais direto do ecommerce-api pra pré-popular os
+/// checkboxes de `/meu-plano/integracoes` -- tenant que nunca configurou
+/// nada fiscal (ou ainda não existe como tenant provisionado) recebe os 2
+/// como `false`, nunca erro (loja nova/recém-assinada vê os checkboxes
+/// desmarcados, não uma tela quebrada).
+pub async fn get_fiscal_toggles(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<FiscalTogglesOutput>, AppError> {
+    let row: Option<(Option<String>,)> = sqlx::query_as("SELECT slug FROM subscribers WHERE id = $1")
+        .bind(&claims.sub)
+        .fetch_optional(&state.pool)
+        .await?;
+    let slug = row.and_then(|(s,)| s).unwrap_or_default();
+    let slug = slug.trim();
+    if slug.is_empty() || state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Ok(Json(EMPTY_FISCAL_TOGGLES));
+    }
+    let url = format!(
+        "{}/internal/fiscal-toggles?tenant_slug={}",
+        state.ecommerce_internal_url.trim_end_matches('/'),
+        urlencoding::encode(slug)
+    );
+    let resp = state
+        .http
+        .get(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-toggles unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        // Tenant ainda não provisionado no ecommerce-api (ex: onboarding
+        // não terminou) -- não é erro pro lojista, só não tem nada ligado.
+        return Ok(Json(EMPTY_FISCAL_TOGGLES));
+    }
+    let out: FiscalTogglesOutput = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("fiscal-toggles parse: {e}")))?;
+    Ok(Json(out))
+}
+
+/// Salva os 2 toggles (independente do formulário pesado de cadastro da
+/// empresa, que exige CNPJ/endereço/etc obrigatórios) -- exige que a
+/// empresa já tenha sido cadastrada uma vez (tem que existir
+/// `jubilados_empresa_id`), senão não há em cima do quê ligar/desligar
+/// emissão.
+pub async fn salvar_fiscal_toggles(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<FiscalTogglesInput>,
+) -> Result<StatusCode, AppError> {
+    let row: Option<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT slug, jubilados_empresa_id::text, fiscal_ambiente FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (slug_opt, empresa_id_opt, ambiente_opt) =
+        row.ok_or_else(|| AppError::NotFound("assinante não encontrado".to_string()))?;
+    let slug = slug_opt.unwrap_or_default();
+    let Some(empresa_id) = empresa_id_opt else {
+        return Err(AppError::BadRequest(
+            "salve os dados da empresa antes de ativar a emissão fiscal".to_string(),
+        ));
+    };
+    let ambiente = ambiente_opt.unwrap_or_else(|| "homologacao".to_string());
+
+    if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
+        return Err(AppError::Internal(
+            "módulo fiscal não configurado neste ambiente".to_string(),
+        ));
+    }
+    let url = format!(
+        "{}/internal/sync-fiscal-config",
+        state.ecommerce_internal_url.trim_end_matches('/')
+    );
+    let resp = state
+        .http
+        .post(&url)
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "tenant_slug": slug,
+            "jubilados_empresa_id": empresa_id,
+            "ambiente": ambiente,
+            "cfop_padrao_saida": null,
+            "auto_emitir": false,
+            "emitir_produto": body.emitir_produto,
+            "emitir_servico": body.emitir_servico,
+            "codigo_servico_municipal": body.codigo_servico_municipal,
+            "aliquota_iss": body.aliquota_iss,
+            "regime_especial_tributacao": body.regime_especial_tributacao,
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("sync-fiscal-config unreachable: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Internal(format!("sync-fiscal-config failed: {status} {text}")));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
