@@ -12,7 +12,7 @@ import PromoCarousel from '../components/PromoCarousel'
 import EssentialHeroCard from '../../components/landing/EssentialHeroCard'
 import StoreHoursToggle from '../../components/landing/StoreHoursToggle'
 import ShareButton from '../../components/landing/ShareButton'
-import { isEssentialStorefront } from '../../lib/demoMode'
+import { isEssentialStorefront, isDemoModeActive } from '../../lib/demoMode'
 
 // Os 3 temas de layout hoje (ufersin/burgerbite/burgerhouse) nasceram pra
 // food-delivery — sem tema dedicado pro ramo eletrônicos ainda, então o
@@ -140,6 +140,9 @@ export default function Uiux2Landing() {
                 )
               })}
             </div>
+            {isDemoModeActive() && (
+              <p className="text-xs u2-dim mb-6 -mt-4">Esses destaques também são exemplo — troque pelos da sua loja no painel.</p>
+            )}
 
             <div className="flex flex-col gap-3 text-sm u2-oncanvas-dim">
               {tenantMapsHref(tenantConfig) && (

@@ -6,7 +6,7 @@ import { useTenantConfig } from '../../hooks/useTenantConfig'
 import { tenantFullAddress, tenantMapsHref, tenantShareLinks } from '../../lib/tenantConfig'
 import { closedStoreMessage, getStoreOpenState } from '../../lib/storeHours'
 import { useCustomerAuth } from '../../store/customerAuth'
-import { brandName, isEssentialStorefront } from '../../lib/demoMode'
+import { brandName, isEssentialStorefront, isDemoModeActive } from '../../lib/demoMode'
 import Shell from '../components/Shell'
 import AuthModal from '../components/AuthModal'
 import PromoCarousel from '../components/PromoCarousel'
@@ -119,6 +119,9 @@ export default function Uiux3Landing() {
               )
             })}
           </div>
+          {isDemoModeActive() && (
+            <p className="text-xs u3-dim mb-6 -mt-4">Esses destaques também são exemplo — troque pelos da sua loja no painel.</p>
+          )}
 
           <div className="flex flex-col gap-3 text-sm u3-dim">
             {tenantMapsHref(tenantConfig) && (

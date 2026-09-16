@@ -12,7 +12,7 @@ import PromoCarousel from '../components/PromoCarousel'
 import EssentialHeroCard from '../../components/landing/EssentialHeroCard'
 import StoreHoursToggle from '../../components/landing/StoreHoursToggle'
 import ShareButton from '../../components/landing/ShareButton'
-import { isEssentialStorefront } from '../../lib/demoMode'
+import { isEssentialStorefront, isDemoModeActive } from '../../lib/demoMode'
 
 export default function Uiux4Landing() {
   const navigate = useNavigate()
@@ -111,6 +111,9 @@ export default function Uiux4Landing() {
               )
             })}
           </div>
+          {isDemoModeActive() && (
+            <p className="text-xs u4-dim mb-6 -mt-4">Esses destaques também são exemplo — troque pelos da sua loja no painel.</p>
+          )}
 
           <div className="flex flex-wrap items-center justify-center gap-2.5 text-sm u4-dim">
             {tenantMapsHref(tenantConfig) && (

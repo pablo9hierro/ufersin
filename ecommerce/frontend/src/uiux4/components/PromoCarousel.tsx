@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '../../lib/tenantRouter'
 import { useSiteSettings } from '../../hooks/useSiteSettings'
 import { useActivePromotions } from '../../hooks/usePromotions'
-import { brandName, hasPromoBanners } from '../../lib/demoMode'
+import { brandName, hasPromoBanners, isDemoModeActive } from '../../lib/demoMode'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
 
 const SWIPE_THRESHOLD = 40
@@ -114,6 +114,9 @@ export default function PromoCarousel() {
             />
           ))}
         </div>
+      )}
+      {isDemoModeActive() && (
+        <p className="text-xs text-center u4-dim mt-2">Banners de exemplo — crie os seus no painel.</p>
       )}
     </div>
   )
