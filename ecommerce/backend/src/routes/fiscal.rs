@@ -273,6 +273,59 @@ fn cfop_permitido_no_perfil(default_cfop: Option<&str>, allowed_cfops: &[String]
     default_cfop == Some(cfop) || allowed_cfops.iter().any(|c| c == cfop)
 }
 
+/// `{ emitir_produto, emitir_servico }` -- os 2 toggles reais que ligam/
+/// desligam a área fiscal correspondente. Público pro admin do ecommerce
+/// decidir se renderiza `FiscalFields`/`FiscalServicoFields`/o toggle do
+/// PDV, sem precisar duplicar a leitura de `tenant_fiscal_settings` no
+/// front (mesmo padrão de `/api/pdv/employee-config`).
+#[derive(Debug, Serialize)]
+pub struct FiscalStatusDto {
+    pub emitir_produto: bool,
+    pub emitir_servico: bool,
+}
+
+pub async fn get_status(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<FiscalStatusDto>, AppError> {
+    let row: Option<(bool, bool)> = sqlx::query_as(
+        "SELECT emitir_produto, emitir_servico FROM tenant_fiscal_settings WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (emitir_produto, emitir_servico) = row.unwrap_or((false, false));
+    Ok(Json(FiscalStatusDto { emitir_produto, emitir_servico }))
+}
+
+/// Cadastro fiscal de serviço (NFS-e) -- só leitura aqui: quem edita é a
+/// plataforma (Meu Plano → Integrações → `FiscalServicoCadastroSection`),
+/// este backend só espelha via `sync_fiscal_config` (mesmo padrão do resto
+/// do cadastro fiscal, que também não é editável direto no ecommerce).
+#[derive(Debug, Serialize)]
+pub struct FiscalServicoSettingsDto {
+    pub codigo_servico_municipal: Option<String>,
+    pub aliquota_iss: Option<f64>,
+    pub regime_especial_tributacao: Option<String>,
+    pub enabled: bool,
+}
+
+pub async fn get_servico_settings(
+    State(state): State<AppState>,
+    AdminUser(claims): AdminUser,
+) -> Result<Json<FiscalServicoSettingsDto>, AppError> {
+    let row: Option<(Option<String>, Option<f64>, Option<String>, bool)> = sqlx::query_as(
+        "SELECT codigo_servico_municipal, aliquota_iss, regime_especial_tributacao, enabled \
+         FROM tenant_fiscal_servico_settings WHERE tenant_id = $1",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (codigo_servico_municipal, aliquota_iss, regime_especial_tributacao, enabled) =
+        row.unwrap_or((None, None, None, false));
+    Ok(Json(FiscalServicoSettingsDto { codigo_servico_municipal, aliquota_iss, regime_especial_tributacao, enabled }))
+}
+
 pub async fn update_product_fiscal(
     State(state): State<AppState>,
     AdminUser(claims): AdminUser,
@@ -280,6 +333,17 @@ pub async fn update_product_fiscal(
     Json(body): Json<UpdateProductFiscalInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_beta(&state.pool, &claims.tenant_id).await?;
+    let (emitir_produto,): (bool,) = sqlx::query_as(
+        "SELECT COALESCE((SELECT emitir_produto FROM tenant_fiscal_settings WHERE tenant_id = $1), false)",
+    )
+    .bind(&claims.tenant_id)
+    .fetch_one(&state.pool)
+    .await?;
+    if !emitir_produto {
+        return Err(AppError::BadRequest(
+            "emissão de nota fiscal de produto está desligada -- ligue o toggle em Meu Plano → Integrações antes de editar dados fiscais".to_string(),
+        ));
+    }
     validate_cfop_against_profile(&state.pool, &claims.tenant_id, body.fiscal_profile_id.as_deref(), body.cfop.as_deref())
         .await?;
     let updated = sqlx::query(

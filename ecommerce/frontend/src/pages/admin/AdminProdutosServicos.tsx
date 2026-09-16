@@ -5,6 +5,7 @@ import Card from '../../components/ui/Card'
 import CategorySelectField from '../../components/admin/CategorySelectField'
 import UnitAwareQuantityInput from '../../components/admin/UnitAwareQuantityInput'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
+import FiscalServicoFields from '../../components/admin/FiscalServicoFields'
 import { ApiError } from '../../lib/apiError'
 import { adminService } from '../../services/adminService'
 import { useTenantConfig } from '../../hooks/useTenantConfig'
@@ -35,6 +36,18 @@ export default function AdminProdutosServicos() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  const [emitirServico, setEmitirServico] = useState(false)
+  const [servicoFiscal, setServicoFiscal] = useState<{ codigo_servico_municipal: string | null; aliquota_iss: number | null } | null>(null)
+
+  useEffect(() => {
+    if (!ofereceServicos) return
+    adminService.fiscal.getStatus().then((s) => setEmitirServico(s.emitir_servico)).catch(() => setEmitirServico(false))
+  }, [ofereceServicos])
+
+  useEffect(() => {
+    if (!emitirServico) return
+    adminService.fiscal.getServicoSettings().then(setServicoFiscal).catch(() => setServicoFiscal(null))
+  }, [emitirServico])
 
   const load = async () => {
     setLoading(true)
@@ -463,6 +476,13 @@ export default function AdminProdutosServicos() {
                   />
                 </div>
               </div>
+
+              {emitirServico && (
+                <FiscalServicoFields
+                  codigoServicoMunicipal={servicoFiscal?.codigo_servico_municipal ?? null}
+                  aliquotaIss={servicoFiscal?.aliquota_iss ?? null}
+                />
+              )}
 
               {error && <p className="error-msg">{error}</p>}
               <button onClick={save} disabled={saving} className="btn-primary w-full mt-2">

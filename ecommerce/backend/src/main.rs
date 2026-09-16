@@ -768,6 +768,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/fiscal/settings",
             get(routes::fiscal::get_settings).put(routes::fiscal::update_settings),
         )
+        .route("/api/admin/fiscal/status", get(routes::fiscal::get_status))
+        .route("/api/admin/fiscal/servico-settings", get(routes::fiscal::get_servico_settings))
         .route(
             "/api/admin/fiscal/classificacao-tributaria",
             get(routes::fiscal::classificacao_tributaria),

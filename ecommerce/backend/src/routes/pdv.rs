@@ -269,6 +269,20 @@ pub(crate) async fn create_sale_core(
             crate::fiscal::validation::IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE
         )));
     }
+    if input.fiscal.as_ref().map(|f| f.emitir_nota_fiscal) == Some(true) {
+        let toggles: Option<(bool, bool)> = sqlx::query_as(
+            "SELECT emitir_produto, emitir_servico FROM tenant_fiscal_settings WHERE tenant_id = $1",
+        )
+        .bind(&claims.tenant_id)
+        .fetch_optional(&state.pool)
+        .await?;
+        let (emitir_produto, emitir_servico) = toggles.unwrap_or((false, false));
+        if !emitir_produto && !emitir_servico {
+            return Err(AppError::BadRequest(
+                "emissão de nota fiscal está desligada -- ligue o toggle correspondente em Meu Plano → Integrações antes de emitir no PDV".to_string(),
+            ));
+        }
+    }
     let fiscal = input.fiscal.as_ref().filter(|f| f.emitir_nota_fiscal);
     if let Some(f) = fiscal {
         let doc = f.destinatario_documento.as_deref().unwrap_or("").trim();

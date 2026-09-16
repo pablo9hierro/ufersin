@@ -249,6 +249,8 @@ export const adminEndpoint = {
     cancel: async (orderId: string) => api.admin.delivery.cancel(orderId),
   },
   fiscal: {
+    getStatus: async () => api.admin.fiscal.getStatus(),
+    getServicoSettings: async () => api.admin.fiscal.getServicoSettings(),
     getSettings: async () => api.admin.fiscal.getSettings(),
     updateSettings: async (payload: {
       jubilados_empresa_id?: string | null

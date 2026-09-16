@@ -382,13 +382,30 @@ pub struct SyncFiscalConfigInput {
     pub cfop_padrao_saida: Option<String>,
     #[serde(default)]
     pub auto_emitir: bool,
+    /// Toggles reais e independentes (antes disso o `enabled` da tabela era
+    /// forçado pra `true` sozinho ao salvar o cadastro -- não tem mais
+    /// emissão implícita, quem liga é o lojista na plataforma).
+    #[serde(default)]
+    pub emitir_produto: bool,
+    #[serde(default)]
+    pub emitir_servico: bool,
+    /// Cadastro fiscal de serviço (NFS-e) -- só enviado quando a loja vende
+    /// serviço e marcou o checkbox correspondente.
+    #[serde(default)]
+    pub codigo_servico_municipal: Option<String>,
+    #[serde(default)]
+    pub aliquota_iss: Option<f64>,
+    #[serde(default)]
+    pub regime_especial_tributacao: Option<String>,
 }
 
 /// Resolutoo (ufersin/backend) chama depois de garantir a `Empresa` no
 /// Jubilados (criar/atualizar CNPJ/certificado etc.) -- aqui só guardamos o
-/// `jubilados_empresa_id` resultante e o ambiente, pra este backend saber
-/// pra quem/como emitir. Liga a feature `emissao_fiscal` junto, mesmo
-/// padrão de `sync_delivery_settings` acima.
+/// `jubilados_empresa_id` resultante, o ambiente e os 2 toggles reais de
+/// emissão (produto/serviço), pra este backend saber pra quem/como emitir.
+/// A feature `emissao_fiscal` (beta gate de acesso ao módulo) continua
+/// ligada aqui, mas ela é um conceito diferente dos 2 toggles: dá acesso ao
+/// módulo, não liga a emissão sozinha -- isso quem decide é o toggle.
 pub async fn sync_fiscal_config(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -414,14 +431,17 @@ pub async fn sync_fiscal_config(
 
     sqlx::query(
         "INSERT INTO tenant_fiscal_settings \
-           (tenant_id, jubilados_empresa_id, ambiente, cfop_padrao_saida, auto_emitir, enabled) \
-         VALUES ($1, $2, $3, $4, $5, true) \
+           (tenant_id, jubilados_empresa_id, ambiente, cfop_padrao_saida, auto_emitir, \
+            emitir_produto, emitir_servico, enabled) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $6) \
          ON CONFLICT (tenant_id) DO UPDATE SET \
            jubilados_empresa_id = EXCLUDED.jubilados_empresa_id, \
            ambiente = EXCLUDED.ambiente, \
            cfop_padrao_saida = EXCLUDED.cfop_padrao_saida, \
            auto_emitir = EXCLUDED.auto_emitir, \
-           enabled = true, \
+           emitir_produto = EXCLUDED.emitir_produto, \
+           emitir_servico = EXCLUDED.emitir_servico, \
+           enabled = EXCLUDED.emitir_produto, \
            updated_at = now()::text",
     )
     .bind(&tenant_id)
@@ -429,8 +449,35 @@ pub async fn sync_fiscal_config(
     .bind(&input.ambiente)
     .bind(&input.cfop_padrao_saida)
     .bind(input.auto_emitir)
+    .bind(input.emitir_produto)
+    .bind(input.emitir_servico)
     .execute(&state.pool)
     .await?;
+
+    if input.emitir_servico
+        || input.codigo_servico_municipal.is_some()
+        || input.aliquota_iss.is_some()
+        || input.regime_especial_tributacao.is_some()
+    {
+        sqlx::query(
+            "INSERT INTO tenant_fiscal_servico_settings \
+               (tenant_id, codigo_servico_municipal, aliquota_iss, regime_especial_tributacao, enabled) \
+             VALUES ($1, $2, $3, $4, $5) \
+             ON CONFLICT (tenant_id) DO UPDATE SET \
+               codigo_servico_municipal = EXCLUDED.codigo_servico_municipal, \
+               aliquota_iss = EXCLUDED.aliquota_iss, \
+               regime_especial_tributacao = EXCLUDED.regime_especial_tributacao, \
+               enabled = EXCLUDED.enabled, \
+               updated_at = now()::text",
+        )
+        .bind(&tenant_id)
+        .bind(&input.codigo_servico_municipal)
+        .bind(input.aliquota_iss)
+        .bind(&input.regime_especial_tributacao)
+        .bind(input.emitir_servico)
+        .execute(&state.pool)
+        .await?;
+    }
 
     sqlx::query(
         "INSERT INTO feature_flags (id, tenant_id, feature_code, enabled) \

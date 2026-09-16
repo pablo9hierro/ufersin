@@ -137,6 +137,10 @@ export default function AdminPdv() {
   const [notaProfileMode, setNotaProfileMode] = useState<'automatico' | 'manual'>('automatico')
   const [notaProfileId, setNotaProfileId] = useState('')
   const [fiscalProfiles, setFiscalProfiles] = useState<FiscalProfile[]>([])
+  // Toggles reais da loja -- com os dois desligados o PDV volta a se
+  // comportar como uma loja que nunca configurou fiscal (sem toggle, sem
+  // DocumentoInput), sem apagar nada do que já foi cadastrado.
+  const [fiscalDisponivel, setFiscalDisponivel] = useState(false)
   // "Link de cobrança": captura WhatsApp do cliente + deixa escolher 1 ou 2
   // formas (link de pagamento hospedado pela MP e/ou nosso checkout com
   // campo de cartão) antes de mandar — só cria a venda (pendente) quando
@@ -248,6 +252,13 @@ export default function AdminPdv() {
     if (!notaAtiva || fiscalProfiles.length > 0) return
     adminService.fiscal.profiles.list().then(setFiscalProfiles).catch(() => {})
   }, [notaAtiva, fiscalProfiles.length])
+
+  useEffect(() => {
+    adminService.fiscal
+      .getStatus()
+      .then((s) => setFiscalDisponivel(s.emitir_produto || s.emitir_servico))
+      .catch(() => setFiscalDisponivel(false))
+  }, [])
 
   const addToCart = (item: PdvItem, qty = 1) => {
     const key = cartKey(item.kind, item.id)
@@ -879,6 +890,7 @@ export default function AdminPdv() {
             </div>
           </div>
 
+          {fiscalDisponivel && (
           <div className="mb-3 rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
             <label className="flex items-center justify-between gap-2 cursor-pointer">
               <span className="text-sm font-semibold">Emitir nota fiscal?</span>
@@ -954,6 +966,7 @@ export default function AdminPdv() {
               </div>
             )}
           </div>
+          )}
 
           <div className="mb-3">
             <label className="label">Forma de pagamento</label>

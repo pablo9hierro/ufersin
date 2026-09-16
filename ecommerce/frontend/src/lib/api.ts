@@ -1404,6 +1404,18 @@ const remoteApi = {
         railwayAdmin<{ ok: boolean }>(`/api/admin/orders/${orderId}/delivery/cancel`, { method: 'POST' }),
     },
     fiscal: {
+      // Os 2 toggles reais ("emitir nota fiscal (produto)" / "...de
+      // serviço") -- controla se a área fiscal correspondente aparece no
+      // admin do ecommerce (cadastro de produto/serviço, PDV). Ligados na
+      // plataforma (Meu Plano → Integrações), nunca aqui.
+      getStatus: () => railwayAdmin<{ emitir_produto: boolean; emitir_servico: boolean }>('/api/admin/fiscal/status'),
+      getServicoSettings: () =>
+        railwayAdmin<{
+          codigo_servico_municipal: string | null
+          aliquota_iss: number | null
+          regime_especial_tributacao: string | null
+          enabled: boolean
+        }>('/api/admin/fiscal/servico-settings'),
       getSettings: () => railwayAdmin<FiscalSettings>('/api/admin/fiscal/settings'),
       updateSettings: (payload: {
         jubilados_empresa_id?: string | null

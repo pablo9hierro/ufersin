@@ -3216,6 +3216,10 @@ export const localApi = {
       },
     },
     fiscal: {
+      getStatus: async () => ({ emitir_produto: false, emitir_servico: false }),
+      getServicoSettings: async () => {
+        throw new ApiError(403, 'recurso não está disponível no modo demonstração')
+      },
       getSettings: async () => {
         throw new ApiError(403, 'recurso não está disponível no modo demonstração')
       },

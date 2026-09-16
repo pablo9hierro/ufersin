@@ -88,6 +88,9 @@ export default function AdminProdutos() {
   // sobrescreve), diferente do dialog "Atualizar estoque" acima. Só pra
   // produto manual (`origin_type !== 'erp_formulation'`).
   const [stockEntryProduct, setStockEntryProduct] = useState<Product | null>(null)
+  // Toggle "emitir nota fiscal (produto)" -- liga/desliga a área fiscal
+  // inteira do cadastro sem apagar nada já preenchido no produto.
+  const [emitirProduto, setEmitirProduto] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -100,6 +103,9 @@ export default function AdminProdutos() {
   }
 
   useEffect(load, [])
+  useEffect(() => {
+    adminService.fiscal.getStatus().then((s) => setEmitirProduto(s.emitir_produto)).catch(() => setEmitirProduto(false))
+  }, [])
 
   useEffect(() => {
     const refresh = () => setXmlPending(countIncompleteNfeDrafts())
@@ -628,8 +634,12 @@ export default function AdminProdutos() {
                   }
                 }}
               />
-              <FiscalFields value={fiscal} onChange={(patch) => setFiscal({ ...fiscal, ...patch })} />
-              {fiscalError && <p className="error-msg">{fiscalError}</p>}
+              {emitirProduto && (
+                <>
+                  <FiscalFields value={fiscal} onChange={(patch) => setFiscal({ ...fiscal, ...patch })} />
+                  {fiscalError && <p className="error-msg">{fiscalError}</p>}
+                </>
+              )}
               <div>
                 <label className="label flex items-center gap-1.5">
                   <Barcode className="w-3.5 h-3.5" /> Código de barras
