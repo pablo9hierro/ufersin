@@ -129,3 +129,102 @@ entre navegações). Fix: prefetch do chunk no hover/touch de cada item do
 menu (`EletronicaAdminLayout.tsx`). Não medido em produção nesta sessão
 (sem deploy) -- ganho real depende da latência de rede até o CDN de cada
 chunk.
+
+---
+
+## Rodada 2026-09-16 — crash-loop do backend + fechamento da checklist
+
+### CRÍTICO — `ecommerce-api` em crash-loop desde a rodada anterior
+Causa por que "quase nada" das correções acima apareciam ao vivo, mesmo
+com commits certos no `main`: o backend nunca conseguia terminar o boot.
+Dois bugs reais, em cadeia, ambos só visíveis rodando de verdade (nenhum
+`cargo check`/`tsc` local pega isso):
+
+1. `seed.rs` gravava em `tenants.landing_hero_image_url` (3 lugares) --
+   coluna que **nunca existiu** no Postgres do `ecommerce-api`. Foi
+   confundida com uma coluna homônima da PLATAFORMA (`subscribers`,
+   `backend/migrations/0016`), um banco completamente separado. Todo boot
+   falhava no seed, em loop. Fix: `ecommerce/backend/migrations/0069_*.sql`
+   (`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS landing_hero_image_url`).
+2. Depois de corrigir (1), o backfill do Kanban de `demo-eletronica`
+   quebrava tentando inserir status (`aguardando_diagnostico`,
+   `diagnostico_enviado`) que o frontend já tratava como reais
+   (`EletronicaAdminDashboard.tsx`) mas a `CHECK constraint` da tabela
+   (migration `0022`) nunca foi atualizada pra permitir -- drift antigo,
+   só exposto agora. Fix: `0070_service_requests_status_diagnostico.sql`.
+
+Também descoberto nesse processo: `railway redeploy` **não** pega commits
+novos neste projeto (fica preso no último deployment conhecido) -- é
+preciso `railway up` rodado da **raiz** do monorepo (nunca de dentro de
+`ecommerce/backend`, senão o path relativo do Root Directory do serviço
+quebra o build: `no such file or directory: ecommerce`).
+
+Confirmado ao vivo, direto no Postgres, depois do deploy estabilizar:
+`demo-eletronica` tem os 11 status do Kanban com card cada, e 7 vendas
+seedadas.
+
+### Hero da vitrine real nunca aparecia (causa raiz diferente da rodada
+anterior, essa sim resolvida)
+`demo-ecommerce`/`demo-eletronica` são tenants reais mas SEM assinatura na
+plataforma -- `tenantConfig.ts::PREVIEW_TENANT_CONFIG` sintetiza os dois
+com `plano: 'premium'` fixo (efeito colateral pra destravar outras partes
+do painel). Isso zerava `isEssentialStorefront()`, que é o gate que decide
+se o card de Hero (`EssentialHeroCard`) aparece nos 3 temas
+(`uiux2/3/4/pages/Landing.tsx`) -- o campo `landing_hero_image_url` até
+tinha valor, mas o componente nunca renderizava. Fix:
+`isEssentialStorefront()` (`demoMode.ts`) agora também libera pra
+`isSeededDemoTenant()`. `DEFAULT_CONFIG.landing_hero_image_url` trocado do
+Unsplash genérico pra `/brand/hero-ecommerce.svg` (arte própria).
+
+### Bug visual — botão de paleta sobrepondo a barra de navegação
+`DemoPaletteSwitcher.tsx` usava `bottom-5` fixo; nos temas
+burgerbite/burgerhouse (barra de navegação fixa no rodapé mobile), o botão
+ficava por cima. Fix: `bottom-20 right-5 sm:bottom-5`.
+
+### OTP mockado — bug real: login era literalmente impossível na demo
+`localApi.ts::customerRequestLoginCode` gerava código de 6 dígitos, mas os
+4 modais de auth (`CustomerAuthModal.tsx` + `uiux2/3/4/AuthModal.tsx`,
+usados em login/cadastro/checkout) têm input de 4 dígitos
+(`maxlength=4`) -- o código gerado nunca cabia, ninguém conseguia logar
+na demo. Fix: código fixo `0000` (`DEMO_LOGIN_CODE`), com aviso na tela
+("Modo demonstração... use o código 0000").
+
+### Copy "isso é exemplo" estendida
+Antes só o hero avisava. Adicionado aviso curto nos destaques (cards tipo
+"Entrega rápida"/"Pague com Pix") e nos banners de promoção
+(`PromoCarousel.tsx`), nos 3 temas.
+
+### Agendamento mockado no mock ecommerce — investigado, não é aplicável
+Confirmado (grep + leitura de `App.tsx::StyleAware`): a vertical
+`eletronicos` (única com agendamento de serviço) nunca é roteada pelo mock
+genérico de ecommerce (4 planos) -- só existe no tenant real
+`demo-eletronica`, que já tem agenda seedada (Parte 9). Não havia feature
+nenhuma pra mockar aqui; documentado em vez de inventado.
+
+### Verificação AO VIVO (Playwright real, produção, `pauloferro`) — 2026-09-16
+**Veredito: aprovado com ressalvas.** Testado de verdade (screenshots reais
+em `C:\Users\pablo\AppData\Local\Temp\claude\...\scratchpad\`, não descrito
+de memória): as 4 demos mock (vitrine/login/checkout/admin/vendedor/
+motoboy) e a demo real de eletrônica (vitrine + Kanban/PDV/Agenda/
+Templates/Conta/Vendas do admin). Confirmado ao vivo: login com código
+`0000` funcionando nos 4 planos (token real gravado em `localStorage`),
+avisos de "exemplo" visíveis, botão de paleta sem sobreposição em
+burgerbite/burgerhouse, todas as 6 telas do admin de eletrônica com dado
+real e sem erro de console.
+
+Dois bugs novos encontrados nesse teste, ambos **P2** (não bloqueantes):
+- **Vitrine de `demo-eletronica` dispara 401 direto no Supabase**
+  (`GET .../rest/v1/page_decorations?...`) -- feature de "decoração de
+  página" falhando silenciosamente pra esse tenant (RLS/anon key não
+  configurada, ou feature não aplicável). Vitrine funciona visualmente
+  mesmo assim. Não corrigido nesta rodada -- fica pra próxima.
+- **URL sem o prefixo `/loja`** (`resolutoo.com/demo-entrar?...` em vez de
+  `resolutoo.com/loja/demo-entrar?...`) dá página em branco. Nenhum link
+  real do site usa a forma errada (confirmado no código), então não afeta
+  usuário normal -- só uma armadilha se alguém compartilhar a URL sem o
+  prefixo.
+
+Não testado nesta rodada (fora do escopo do pedido, não é bug conhecido):
+cadastro (registro) separado do login, finalização de pagamento Pix até o
+fim nas demos mock, viewport desktop completo de toda tela, Assistente de
+IA no WhatsApp.
