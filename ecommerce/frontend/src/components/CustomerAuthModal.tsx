@@ -4,6 +4,8 @@ import Logo from './ui/Logo'
 import { ApiError } from '../lib/apiError'
 import { authService } from '../services/authService'
 import { useCustomerAuth, isCustomerSessionFresh } from '../store/customerAuth'
+import { isDemoModeActive } from '../lib/demoMode'
+import { DEMO_LOGIN_CODE } from '../lib/localApi'
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, '')
@@ -123,7 +125,9 @@ export default function CustomerAuthModal({
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-son-silver-dim text-center">
-              Mandamos um código de 4 dígitos pro WhatsApp {whatsapp}. Vale por 10 minutos.
+              {isDemoModeActive()
+                ? `Modo demonstração: não enviamos WhatsApp de verdade, use o código ${DEMO_LOGIN_CODE}.`
+                : `Mandamos um código de 4 dígitos pro WhatsApp ${whatsapp}. Vale por 10 minutos.`}
             </p>
             <div>
               <label className="label">Código</label>

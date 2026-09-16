@@ -893,6 +893,13 @@ async function customerResetPassword(whatsapp: string, code: string, newPassword
   saveDb(db)
 }
 
+/** Código fixo da demo -- combina com o hint mostrado nos 4 modais de auth
+ * (CustomerAuthModal + uiux2/3/4/components/AuthModal.tsx), que também têm
+ * maxLength=4. Antes disso o código era aleatório de 6 dígitos, incompatível
+ * com o input de 4 dígitos da UI: ninguém conseguia logar na demo sem abrir
+ * o console pra copiar os 2 dígitos que sobravam. */
+export const DEMO_LOGIN_CODE = '0000'
+
 // Login único (cadastro+login viram a mesma coisa): nome+whatsapp+OTP —
 // mesmo padrão de código do reset acima, reaproveitando customerPasswordResets.
 async function customerRequestLoginCode(whatsapp: string, name: string): Promise<void> {
@@ -905,16 +912,15 @@ async function customerRequestLoginCode(whatsapp: string, name: string): Promise
   }
   const customerId = c.id
   db.customerPasswordResets = db.customerPasswordResets ?? []
-  const code = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
   db.customerPasswordResets.push({
     id: uid(),
     customerId,
-    code,
+    code: DEMO_LOGIN_CODE,
     expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
     used: false,
   })
   saveDb(db)
-  console.info(`[demo] WhatsApp para ${whatsapp}: seu código de acesso é ${code}`)
+  console.info(`[demo] WhatsApp para ${whatsapp}: seu código de acesso é ${DEMO_LOGIN_CODE}`)
 }
 
 async function customerVerifyLoginCode(whatsapp: string, code: string): Promise<CustomerAuthResult> {
