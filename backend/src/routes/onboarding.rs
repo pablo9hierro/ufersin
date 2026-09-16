@@ -2423,7 +2423,7 @@ pub struct FiscalTogglesInput {
     pub regime_especial_tributacao: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FiscalTogglesOutput {
     pub emitir_produto: bool,
     pub emitir_servico: bool,
