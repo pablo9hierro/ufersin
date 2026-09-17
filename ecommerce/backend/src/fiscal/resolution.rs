@@ -159,8 +159,24 @@ pub fn resolve(
         profile.and_then(|p| p.cclass_trib.as_deref()),
         true,
     )?;
-    let cst = resolve_field("CST", overrides.cst.as_deref(), profile.and_then(|p| p.cst.as_deref()), false)?;
-    let csosn = resolve_field("CSOSN", overrides.csosn.as_deref(), profile.and_then(|p| p.csosn.as_deref()), false)?;
+    // CST e CSOSN sao mutuamente exclusivos (dependem do CRT da empresa) --
+    // resolver cada um separadamente (override cst + fallback pro csosn do
+    // PERFIL, por exemplo) deixava as duas preenchidas ao mesmo tempo sempre
+    // que o produto so tinha override pra um dos dois lados, e a SEFAZ
+    // rejeita com "Informado CSOSN para emissor que nao e do Simples
+    // Nacional" quando o CRT da empresa nao bate com a presenca de CSOSN.
+    // Resolve como PAR: se o produto tem override pra qualquer um dos dois
+    // (mesmo so um lado), usa o par do produto inteiro; senao usa o par do
+    // perfil inteiro -- nunca mistura as duas origens.
+    let produto_define_regime = non_empty(overrides.cst.as_deref()).is_some()
+        || non_empty(overrides.csosn.as_deref()).is_some();
+    let (cst_raw, csosn_raw) = if produto_define_regime {
+        (overrides.cst.as_deref(), overrides.csosn.as_deref())
+    } else {
+        (profile.and_then(|p| p.cst.as_deref()), profile.and_then(|p| p.csosn.as_deref()))
+    };
+    let cst = non_empty(cst_raw).map(|v| FieldSource { value: v, origem: if produto_define_regime { "override" } else { "perfil" } });
+    let csosn = non_empty(csosn_raw).map(|v| FieldSource { value: v, origem: if produto_define_regime { "override" } else { "perfil" } });
     if cst.is_none() && csosn.is_none() {
         return Err(FiscalResolutionError::CampoObrigatorioAusente("CST/CSOSN"));
     }
