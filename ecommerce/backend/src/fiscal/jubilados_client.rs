@@ -34,6 +34,13 @@ pub struct FreightInfo {
     pub modalidade: String,
     /// "01"=dinheiro,"03"=cartão crédito,"04"=cartão débito,"15"=boleto,"17"=pix,"99"=outros
     pub forma_pagamento: String,
+    /// Grupo `card` (NT 2025.001, rejeição 391/392) -- obrigatório em UFs que
+    /// ativaram a validação quando forma_pagamento é cartão/PIX integrado.
+    /// Bandeira/código de autorização reais da Mercado Pago (migration 0072
+    /// de orders); `None` quando pagamento não foi cartão ou dados ainda não
+    /// chegaram do gateway.
+    pub card_brand: Option<String>,
+    pub card_authorization_code: Option<String>,
 }
 
 pub struct JubiladosClient {
@@ -166,6 +173,8 @@ impl JubiladosClient {
                     valor_frete: frete.valor,
                     modalidade_frete: frete.modalidade.clone(),
                     forma_pagamento: frete.forma_pagamento.clone(),
+                    card_brand: frete.card_brand.clone(),
+                    card_authorization_code: frete.card_authorization_code.clone(),
                 };
                 let resp = self
                     .http
@@ -193,6 +202,8 @@ impl JubiladosClient {
                     ambiente: ambiente_code.to_string(),
                     informacao_complementar: Some(format!("Pedido Resolutoo #{order_reference}")),
                     valor_frete: frete.valor,
+                    card_brand: frete.card_brand.clone(),
+                    card_authorization_code: frete.card_authorization_code.clone(),
                 };
                 let resp = self
                     .http
@@ -579,6 +590,8 @@ struct EmitirNFeRequest {
     valor_frete: f64,
     modalidade_frete: String,
     forma_pagamento: String,
+    card_brand: Option<String>,
+    card_authorization_code: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -591,6 +604,8 @@ struct EmitirNFCeRequest {
     ambiente: String,
     informacao_complementar: Option<String>,
     valor_frete: f64,
+    card_brand: Option<String>,
+    card_authorization_code: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

@@ -262,11 +262,17 @@ pub(crate) async fn create_sale_core(
     // o comportamento de sempre (nenhuma dessas colunas é preenchida) --
     // EXCETO acima do valor de identificação obrigatória (regra de
     // negócio explícita: vendas de R$500+ exigem CPF/CNPJ do comprador).
-    let identificacao_obrigatoria = total >= crate::fiscal::validation::IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE;
+    let uf_origem: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT uf_origem FROM tenant_fiscal_settings WHERE tenant_id = $1")
+            .bind(&claims.tenant_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let limiar_identificacao =
+        crate::fiscal::limiar_identificacao::limiar_para_uf(uf_origem.and_then(|(uf,)| uf).as_deref());
+    let identificacao_obrigatoria = total >= limiar_identificacao;
     if identificacao_obrigatoria && input.fiscal.as_ref().map(|f| f.emitir_nota_fiscal) != Some(true) {
         return Err(AppError::BadRequest(format!(
-            "vendas a partir de R$ {:.2} exigem identificação do comprador (CPF/CNPJ)",
-            crate::fiscal::validation::IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE
+            "vendas a partir de R$ {limiar_identificacao:.2} exigem identificação do comprador (CPF/CNPJ)"
         )));
     }
     if input.fiscal.as_ref().map(|f| f.emitir_nota_fiscal) == Some(true) {

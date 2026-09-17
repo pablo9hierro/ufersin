@@ -61,6 +61,22 @@ pub struct MpPointOrderResult {
     pub id: String,
     #[serde(default)]
     pub status: Option<String>,
+    #[serde(default)]
+    pub transactions: Option<MpPointTransactions>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MpPointTransactions {
+    #[serde(default)]
+    pub payments: Vec<MpPointPayment>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MpPointPayment {
+    /// `payment_id` real (recurso `/v1/payments/{id}`) -- é ele, não o id da
+    /// Order, que carrega bandeira/código de autorização pro grupo `card`
+    /// fiscal (via `mercadopago_link::fetch_payment_details`).
+    pub id: String,
 }
 
 /// `GET /users/{user_id}/stores/search` -- lista as lojas físicas já

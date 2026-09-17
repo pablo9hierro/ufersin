@@ -104,6 +104,9 @@ struct MpPaymentResponse {
     id: Option<serde_json::Value>,
     status: Option<String>,
     status_detail: Option<String>,
+    /// Presente quando aprovado por cartão -- exigido no grupo `card` do XML
+    /// fiscal (NT 2025.001, cAut) quando o pagamento é integrado.
+    authorization_code: Option<String>,
 }
 
 pub struct CardChargeResult {
@@ -112,6 +115,7 @@ pub struct CardChargeResult {
     /// Pago — quem chama decide o que fazer com cada um).
     pub status: String,
     pub status_detail: Option<String>,
+    pub authorization_code: Option<String>,
 }
 
 /// Cobrança de cartão via `POST /v1/payments` com um `card_token` já
@@ -174,6 +178,7 @@ pub async fn create_card_payment(
         payment_id,
         status: parsed.status.unwrap_or_else(|| "pending".to_string()),
         status_detail: parsed.status_detail,
+        authorization_code: parsed.authorization_code,
     })
 }
 
@@ -183,6 +188,7 @@ struct MpPaymentDetailsResponse {
     external_reference: Option<String>,
     payment_type_id: Option<String>,
     payment_method_id: Option<String>,
+    authorization_code: Option<String>,
 }
 
 pub struct PaymentDetails {
@@ -198,6 +204,11 @@ pub struct PaymentDetails {
     /// PDV pode acabar sendo paga via Pix lá dentro, e o pedido precisa
     /// refletir o que realmente aconteceu, não a intenção original.
     pub payment_method: Option<&'static str>,
+    /// Bandeira/método MP ("master", "visa", "elo", "pix"...) -- vai pro
+    /// grupo `card` da NFC-e (tBand) quando pagamento integrado.
+    pub payment_method_id: Option<String>,
+    /// Código de autorização da operadora -- grupo `card` (cAut).
+    pub authorization_code: Option<String>,
 }
 
 fn map_payment_method(payment_type_id: Option<&str>, payment_method_id: Option<&str>) -> Option<&'static str> {
@@ -245,5 +256,7 @@ pub async fn fetch_payment_details(
         status: parsed.status.unwrap_or_else(|| "pending".to_string()),
         external_reference: parsed.external_reference,
         payment_method,
+        payment_method_id: parsed.payment_method_id,
+        authorization_code: parsed.authorization_code,
     })
 }

@@ -40,7 +40,13 @@ fn order_freight_info(order: &crate::models::OrderRow) -> FreightInfo {
     }
     .to_string();
     let modalidade = if order.delivery_type == "retirada" { "9" } else { "0" }.to_string();
-    FreightInfo { valor: order.shipping_price, modalidade, forma_pagamento }
+    FreightInfo {
+        valor: order.shipping_price,
+        modalidade,
+        forma_pagamento,
+        card_brand: order.card_brand.clone(),
+        card_authorization_code: order.card_authorization_code.clone(),
+    }
 }
 
 fn client(state: &AppState) -> Result<JubiladosClient, AppError> {

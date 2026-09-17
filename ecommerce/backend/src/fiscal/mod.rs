@@ -9,6 +9,7 @@
 //! fala com o Jubilados, só este backend.
 
 pub mod jubilados_client;
+pub mod limiar_identificacao;
 pub mod resolution;
 pub mod validation;
 

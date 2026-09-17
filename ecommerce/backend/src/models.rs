@@ -510,6 +510,10 @@ pub struct OrderRow {
     pub card_payment_charge_id: Option<String>,
     pub card_type: Option<String>,
     pub card_installments: Option<i64>,
+    /// Bandeira/código de autorização reais devolvidos pela Mercado Pago
+    /// (migration 0072) -- vão pro grupo `card` da NFC-e (NT 2025.001).
+    pub card_brand: Option<String>,
+    pub card_authorization_code: Option<String>,
     // Contexto fiscal da venda (migration 0058) -- mesmo cuidado do
     // comentário acima: sem declarar aqui, sqlx::FromRow ignora essas
     // colunas silenciosamente e a resolução fiscal nunca veria o
@@ -581,6 +585,8 @@ pub struct OrderDto {
     pub card_payment_charge_id: Option<String>,
     pub card_type: Option<String>,
     pub card_installments: Option<i64>,
+    pub card_brand: Option<String>,
+    pub card_authorization_code: Option<String>,
     pub items: Vec<OrderItemDto>,
 }
 
@@ -633,6 +639,8 @@ impl OrderDto {
             card_payment_charge_id: row.card_payment_charge_id,
             card_type: row.card_type,
             card_installments: row.card_installments,
+            card_brand: row.card_brand,
+            card_authorization_code: row.card_authorization_code,
             items,
         }
     }

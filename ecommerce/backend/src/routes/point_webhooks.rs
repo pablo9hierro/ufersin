@@ -46,15 +46,15 @@ pub async fn mercadopago_point_webhook(
     // Nunca confia no corpo do webhook como status final -- rebusca a Order
     // de verdade na Mercado Pago antes de gravar qualquer coisa (mesmo
     // princípio do webhook de Pix, `fetch_payment_details`).
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT id, tenant_id FROM mp_point_orders WHERE mp_order_id = $1",
+    let row: Option<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, tenant_id, order_id FROM mp_point_orders WHERE mp_order_id = $1",
     )
     .bind(mp_order_id)
     .fetch_optional(&state.pool)
     .await
     .ok()
     .flatten();
-    let Some((local_id, tenant_id)) = row else {
+    let Some((local_id, tenant_id, order_id)) = row else {
         return Json(serde_json::json!({ "ok": true }));
     };
 
@@ -75,6 +75,29 @@ pub async fn mercadopago_point_webhook(
         .bind(&local_id)
         .execute(&state.pool)
         .await;
+
+    // Bandeira/código de autorização pro grupo `card` fiscal (NT 2025.001) --
+    // só existem quando o pagamento de fato aprovou; busca o payment_id real
+    // dentro da Order (não é o mesmo id da Order) e consulta os detalhes.
+    if status.as_str() == "approved" {
+        if let (Some(order_id), Some(payment_id)) = (
+            &order_id,
+            real.transactions.as_ref().and_then(|t| t.payments.first()).map(|p| p.id.as_str()),
+        ) {
+            if let Ok(details) = crate::mercadopago_link::fetch_payment_details(&state, token, payment_id).await {
+                let _ = sqlx::query(
+                    "UPDATE orders SET card_brand = $1, card_authorization_code = $2, updated_at = now()::text \
+                     WHERE tenant_id = $3 AND id = $4",
+                )
+                .bind(&details.payment_method_id)
+                .bind(&details.authorization_code)
+                .bind(&tenant_id)
+                .bind(order_id)
+                .execute(&state.pool)
+                .await;
+            }
+        }
+    }
 
     Json(serde_json::json!({ "ok": true }))
 }

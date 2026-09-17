@@ -411,14 +411,19 @@ pub async fn create_assistant_order(
     let delivery_type = if shipping_price > 0.0 { "entrega" } else { "balcao" };
     let order_total = total + shipping_price;
 
-    // Regra de negocio explicita (nao e exigencia da SEFAZ): vendas a
-    // partir de R$500 exigem identificacao do comprador (CPF/CNPJ) --
-    // mesma regra do PDV/checkout (fiscal/validation.rs).
-    let identificacao_obrigatoria = order_total >= crate::fiscal::validation::IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE;
+    // Limiar varia por UF na legislação real (fiscal/limiar_identificacao.rs)
+    // -- mesma regra do PDV/checkout.
+    let uf_origem: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT uf_origem FROM tenant_fiscal_settings WHERE tenant_id = $1")
+            .bind(&store.id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let limiar_identificacao =
+        crate::fiscal::limiar_identificacao::limiar_para_uf(uf_origem.and_then(|(uf,)| uf).as_deref());
+    let identificacao_obrigatoria = order_total >= limiar_identificacao;
     if identificacao_obrigatoria && input.fiscal.as_ref().map(|f| f.emitir_nota_fiscal) != Some(true) {
         return Err(AppError::BadRequest(format!(
-            "vendas a partir de R$ {:.2} exigem identificação do comprador (CPF/CNPJ) -- pergunte ao cliente antes de fechar o pedido",
-            crate::fiscal::validation::IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE
+            "vendas a partir de R$ {limiar_identificacao:.2} exigem identificação do comprador (CPF/CNPJ) -- pergunte ao cliente antes de fechar o pedido"
         )));
     }
     let fiscal = input.fiscal.as_ref().filter(|f| f.emitir_nota_fiscal);
@@ -1060,10 +1065,13 @@ pub async fn create_card_payment(
     let approved = charge.status.eq_ignore_ascii_case("approved");
     sqlx::query(
         "UPDATE orders SET card_payment_mode = 'transparente', card_payment_charge_id = $1, \
-         payment_status = CASE WHEN $2 THEN 'pago' ELSE payment_status END, updated_at = now()::text \
-         WHERE tenant_id = $3 AND id = $4",
+         card_brand = $2, card_authorization_code = $3, \
+         payment_status = CASE WHEN $4 THEN 'pago' ELSE payment_status END, updated_at = now()::text \
+         WHERE tenant_id = $5 AND id = $6",
     )
     .bind(&charge.payment_id)
+    .bind(&input.payment_method_id)
+    .bind(&charge.authorization_code)
     .bind(approved)
     .bind(&store.id)
     .bind(&id)
