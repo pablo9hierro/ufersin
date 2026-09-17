@@ -26,6 +26,14 @@ const EMPTY_TOGGLES: FiscalTogglesConfig = {
   regime_especial_tributacao: '',
 }
 
+// CRT (Código de Regime Tributário) tem que bater com regime_tributario --
+// Jubilados decide CSOSN (Simples) vs CST (Presumido/Real) olhando só o
+// CRT, nunca a string. CRT solto do <select> deixava emissão inteira quebrada
+// pra quem não é Simples Nacional (ficava sempre CRT=1 default).
+function crtForRegime(regime: FiscalConfigInput['regime_tributario']): number {
+  return regime === 'simples_nacional' ? 1 : 3
+}
+
 // Mesma regra de formato de ecommerce/backend fiscal/validation.rs --
 // duplicada aqui pra UX (backend sempre revalida).
 function isValidCfopFormat(v: string): boolean {
@@ -230,7 +238,7 @@ export default function FiscalCadastroSection({ ofereceServicos = false }: { ofe
       .then((existing) => {
         if (!existing) return
         const { jubilados_empresa_id, ...config } = existing
-        setForm(config)
+        setForm({ ...config, crt: crtForRegime(config.regime_tributario) })
         setSavedId(jubilados_empresa_id)
       })
       .catch(() => {})
@@ -813,7 +821,10 @@ export default function FiscalCadastroSection({ ofereceServicos = false }: { ofe
             <select
               className="input-field"
               value={form.regime_tributario}
-              onChange={(e) => set('regime_tributario', e.target.value as FiscalConfigInput['regime_tributario'])}
+              onChange={(e) => {
+                const regime = e.target.value as FiscalConfigInput['regime_tributario']
+                setForm((f) => ({ ...f, regime_tributario: regime, crt: crtForRegime(regime) }))
+              }}
             >
               <option value="simples_nacional">Simples Nacional</option>
               <option value="lucro_presumido">Lucro Presumido</option>

@@ -421,7 +421,11 @@ export default function AdminPdv() {
   const finalizeSale = async () => {
     if (cartLines.length === 0) return
     setFinalizeError(null)
-    if (notaAtiva && !isValidDocumento(notaDocTipo, notaDocValor)) {
+    // Documento só é obrigatório acima do limiar (identificacaoObrigatoria) --
+    // abaixo dele o backend já aceita anônimo (commit 8120680); só valida
+    // formato aqui se o lojista digitou algo mesmo sem ser exigido.
+    const notaDocPreenchido = notaDocValor.trim().length > 0
+    if (notaAtiva && (identificacaoObrigatoria || notaDocPreenchido) && !isValidDocumento(notaDocTipo, notaDocValor)) {
       setFinalizeError(
         identificacaoObrigatoria
           ? `Vendas a partir de R$ ${IDENTIFICACAO_OBRIGATORIA_A_PARTIR_DE},00 exigem identificação do comprador — informe um ${notaDocTipo.toUpperCase()} válido.`
