@@ -1737,6 +1737,104 @@ struct EmpresaCertificadoInfo {
     certificado_validade: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(rename = "certificadoSalvo")]
     certificado_salvo: bool,
+    /// Mesma resposta `GET /api/empresa/{id}` já traz isso -- reaproveitado
+    /// aqui pra também expor o status do CSC sem round-trip extra.
+    #[serde(rename = "cscSalvo", default)]
+    csc_salvo: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CscStatus {
+    pub salvo: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CscInput {
+    pub csc_id: String,
+    pub csc_token: String,
+}
+
+/// CSC (Código de Segurança do Contribuinte) — só exigido pra NFC-e (venda
+/// de balcão pro consumidor final), diferente do certificado (exigido pra
+/// qualquer emissão). É único por empresa/UF, gerado pelo próprio lojista
+/// no portal da SEFAZ do seu estado (nunca um valor genérico/compartilhado
+/// — cada CNPJ tem o seu). Mesmo contrato do certificado: nunca fica salvo
+/// aqui, só repassado pro Jubilados.
+pub async fn salvar_csc(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+    Json(body): Json<CscInput>,
+) -> Result<Json<CscStatus>, AppError> {
+    if state.jubilados_api_url.is_empty() || state.jubilados_internal_key.is_empty() {
+        return Err(AppError::Internal(
+            "módulo fiscal não configurado neste ambiente (JUBILADOS_API_URL/JUBILADOS_INTERNAL_KEY)".to_string(),
+        ));
+    }
+    let empresa_id: Option<(String,)> = sqlx::query_as(
+        "SELECT jubilados_empresa_id::text FROM subscribers WHERE id = $1 AND jubilados_empresa_id IS NOT NULL",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let (empresa_id,) = empresa_id
+        .ok_or_else(|| AppError::BadRequest("salve os dados fiscais da empresa antes de enviar o CSC".to_string()))?;
+
+    if body.csc_id.trim().is_empty() || body.csc_token.trim().is_empty() {
+        return Err(AppError::BadRequest("CSC ID e CSC Token são obrigatórios".to_string()));
+    }
+
+    let base = state.jubilados_api_url.trim_end_matches('/');
+    let resp = state
+        .http
+        .put(format!("{base}/api/empresa/{empresa_id}/csc"))
+        .header("x-internal-key", state.jubilados_internal_key.as_str())
+        .json(&serde_json::json!({
+            "cscId": body.csc_id.trim(),
+            "cscToken": body.csc_token.trim(),
+        }))
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("jubilados csc request failed: {e}")))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        return Err(AppError::Internal(format!("jubilados recusou o CSC: {status}")));
+    }
+    Ok(Json(CscStatus { salvo: true }))
+}
+
+/// Espelha `get_certificado_status`, só que pro CSC.
+pub async fn get_csc_status(
+    State(state): State<AppState>,
+    AuthSubscriber(claims): AuthSubscriber,
+) -> Result<Json<CscStatus>, AppError> {
+    let row: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT jubilados_empresa_id::text FROM subscribers WHERE id = $1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.pool)
+    .await?;
+    let Some(empresa_id) = row.and_then(|(id,)| id) else {
+        return Ok(Json(CscStatus { salvo: false }));
+    };
+    if state.jubilados_api_url.is_empty() || state.jubilados_internal_key.is_empty() {
+        return Err(AppError::Internal("módulo fiscal não configurado neste ambiente".to_string()));
+    }
+    let base = state.jubilados_api_url.trim_end_matches('/');
+    let resp = state
+        .http
+        .get(format!("{base}/api/empresa/{empresa_id}"))
+        .header("x-internal-key", state.jubilados_internal_key.as_str())
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("jubilados empresa request failed: {e}")))?;
+    if !resp.status().is_success() {
+        return Ok(Json(CscStatus { salvo: false }));
+    }
+    let parsed: EmpresaCertificadoInfo = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("jubilados empresa parse failed: {e}")))?;
+    Ok(Json(CscStatus { salvo: parsed.csc_salvo }))
 }
 
 /// Consulta se a empresa já tem certificado salvo no Jubilados sem precisar
@@ -2385,10 +2483,40 @@ async fn sync_fiscal_config(state: &AppState, slug: &str, empresa_id: &str, ambi
     if state.ecommerce_internal_url.is_empty() || state.ecommerce_internal_key.is_empty() {
         return Ok(());
     }
-    let url = format!(
-        "{}/internal/sync-fiscal-config",
-        state.ecommerce_internal_url.trim_end_matches('/')
-    );
+    let base = state.ecommerce_internal_url.trim_end_matches('/');
+
+    // Lê os toggles/cadastro de serviço ATUAIS antes de sincronizar --
+    // sem isso, todo "Salvar dados fiscais" (formulário pesado de empresa)
+    // resetava emitir_produto/emitir_servico pra `false` de volta (payload
+    // abaixo nunca os incluía, e o INSERT ON CONFLICT do lado do
+    // ecommerce-api sobrescreve com o que vier aqui) -- bug real: o
+    // lojista ligava o toggle, editava qualquer outro campo da empresa, e
+    // a área fiscal sumia sozinha nas próximas telas sem ele ter mexido no
+    // checkbox. Preserva o que já estava salvo.
+    let current = state
+        .http
+        .get(format!("{base}/internal/fiscal-toggles"))
+        .query(&[("tenant_slug", slug)])
+        .header("x-internal-key", state.ecommerce_internal_key.as_str())
+        .send()
+        .await
+        .ok();
+    let (emitir_produto, emitir_servico, codigo_servico_municipal, aliquota_iss, regime_especial_tributacao) =
+        match current {
+            Some(r) if r.status().is_success() => {
+                let v: serde_json::Value = r.json().await.unwrap_or_default();
+                (
+                    v.get("emitir_produto").and_then(|x| x.as_bool()).unwrap_or(false),
+                    v.get("emitir_servico").and_then(|x| x.as_bool()).unwrap_or(false),
+                    v.get("codigo_servico_municipal").and_then(|x| x.as_str()).map(str::to_string),
+                    v.get("aliquota_iss").and_then(|x| x.as_f64()),
+                    v.get("regime_especial_tributacao").and_then(|x| x.as_str()).map(str::to_string),
+                )
+            }
+            _ => (false, false, None, None, None),
+        };
+
+    let url = format!("{base}/internal/sync-fiscal-config");
     let resp = state
         .http
         .post(&url)
@@ -2399,6 +2527,11 @@ async fn sync_fiscal_config(state: &AppState, slug: &str, empresa_id: &str, ambi
             "jubilados_empresa_id": empresa_id,
             "ambiente": ambiente,
             "auto_emitir": false,
+            "emitir_produto": emitir_produto,
+            "emitir_servico": emitir_servico,
+            "codigo_servico_municipal": codigo_servico_municipal,
+            "aliquota_iss": aliquota_iss,
+            "regime_especial_tributacao": regime_especial_tributacao,
         }))
         .send()
         .await
