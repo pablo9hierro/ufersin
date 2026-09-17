@@ -125,6 +125,16 @@ export default function FiscalCadastroSection({ ofereceServicos = false }: { ofe
   const [certError, setCertError] = useState<string | null>(null)
   const [certStatus, setCertStatus] = useState<CertificadoStatus | null>(null)
 
+  // CSC (Código de Segurança do Contribuinte) -- só exigido pra NFC-e
+  // (venda de balcão pro consumidor final); diferente do certificado, que
+  // vale pra qualquer emissão. Único por empresa/UF, gerado pelo lojista no
+  // portal da SEFAZ do próprio estado -- nunca um valor genérico.
+  const [cscId, setCscId] = useState('')
+  const [cscToken, setCscToken] = useState('')
+  const [cscSaving, setCscSaving] = useState(false)
+  const [cscError, setCscError] = useState<string | null>(null)
+  const [cscSalvo, setCscSalvo] = useState(false)
+
   const [cepLooking, setCepLooking] = useState(false)
   const [cepError, setCepError] = useState<string | null>(null)
 
@@ -192,7 +202,23 @@ export default function FiscalCadastroSection({ ofereceServicos = false }: { ofe
   useEffect(() => {
     if (!savedId) return
     api.getCertificadoStatus().then(setCertStatus).catch(() => {})
+    api.getCscStatus().then((s) => setCscSalvo(s.salvo)).catch(() => {})
   }, [savedId])
+
+  const salvarCsc = async () => {
+    setCscError(null)
+    setCscSaving(true)
+    try {
+      const status = await api.salvarCsc(cscId.trim(), cscToken.trim())
+      setCscSalvo(status.salvo)
+      setCscId('')
+      setCscToken('')
+    } catch (e) {
+      setCscError(e instanceof ApiError ? e.message : 'Não foi possível salvar o CSC.')
+    } finally {
+      setCscSaving(false)
+    }
+  }
 
   // Carrega o que já foi salvo antes -- sem isso, reabrir a tela sempre
   // parecia "em branco" mesmo pra quem já tinha cadastrado a empresa, e a
@@ -620,6 +646,58 @@ export default function FiscalCadastroSection({ ofereceServicos = false }: { ofe
         <p className="text-[10px] text-uf-silver-dim/70 flex items-center gap-1 mt-2">
           <ShieldCheck className="w-3 h-3" /> Nunca fica salvo aqui: é validado e repassado direto pro emissor.
         </p>
+      </div>
+
+      {/* CSC (Código de Segurança do Contribuinte) -- só exigido pra NFC-e
+       * (venda de balcão pro consumidor final), diferente do certificado
+       * (exigido pra qualquer emissão). Único por empresa/UF -- o lojista
+       * gera no portal da SEFAZ do próprio estado, nunca um valor genérico
+       * nem compartilhado entre lojas. Sem isso, NFC-e (mas não NF-e) falha
+       * com "Empresa não possui CSC configurado". */}
+      <div>
+        {sectionTitle('CSC — Código de Segurança do Contribuinte (só pra NFC-e)')}
+        <div className={!savedId ? 'opacity-50 pointer-events-none' : undefined}>
+          {!savedId && (
+            <p className="text-xs text-uf-silver-dim mb-2">
+              Salve os dados da empresa acima pra liberar o cadastro do CSC.
+            </p>
+          )}
+          {cscSalvo && (
+            <p className="text-sm text-uf-silver flex items-center gap-1.5 mb-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              CSC já cadastrado — envie de novo só se a SEFAZ gerar um código diferente.
+            </p>
+          )}
+          <p className="text-xs text-uf-silver-dim mb-2">
+            Gerado no portal de NFC-e da SEFAZ do seu estado (credenciamento como emissor de NFC-e) — é único pra
+            essa empresa, não é um valor genérico.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">CSC ID *</label>
+              <input className="input-field" value={cscId} onChange={(e) => setCscId(e.target.value)} placeholder="ex: 1" />
+            </div>
+            <div>
+              <label className="label">CSC Token *</label>
+              <input
+                type="password"
+                className="input-field"
+                value={cscToken}
+                onChange={(e) => setCscToken(e.target.value)}
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={salvarCsc}
+            disabled={cscSaving || !cscId.trim() || !cscToken.trim()}
+            className="btn-secondary w-full py-2.5 mt-2 flex items-center justify-center gap-2"
+          >
+            {cscSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Salvar CSC
+          </button>
+          {cscError && <p className="error-msg mt-1">{cscError}</p>}
+        </div>
       </div>
 
       <div className="border-t border-white/10" />

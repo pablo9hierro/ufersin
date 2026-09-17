@@ -760,6 +760,12 @@ export const api = {
     return request<CertificadoStatus>('/api/onboarding/fiscal/certificado', { method: 'POST', body: form })
   },
   getCertificadoStatus: () => request<CertificadoStatus | null>('/api/onboarding/fiscal/certificado/status'),
+  getCscStatus: () => request<{ salvo: boolean }>('/api/onboarding/fiscal/csc'),
+  salvarCsc: (csc_id: string, csc_token: string) =>
+    request<{ salvo: boolean }>('/api/onboarding/fiscal/csc', {
+      method: 'POST',
+      body: JSON.stringify({ csc_id, csc_token }),
+    }),
   mercadoPagoOAuthStart: () =>
     request<{ authorize_url: string }>('/api/mercadopago/oauth/start', { method: 'POST' }),
   mercadoPagoOAuthDisconnect: () =>

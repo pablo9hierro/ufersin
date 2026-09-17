@@ -251,6 +251,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/onboarding/fiscal/certificado", post(routes::onboarding::upload_certificado))
         .route("/api/onboarding/fiscal/certificado/status", get(routes::onboarding::get_certificado_status))
         .route(
+            "/api/onboarding/fiscal/csc",
+            post(routes::onboarding::salvar_csc).get(routes::onboarding::get_csc_status),
+        )
+        .route(
             "/api/onboarding/fiscal/toggles",
             get(routes::onboarding::get_fiscal_toggles).put(routes::onboarding::salvar_fiscal_toggles),
         )
