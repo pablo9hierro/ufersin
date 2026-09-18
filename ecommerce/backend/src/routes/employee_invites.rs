@@ -177,8 +177,24 @@ fn is_past(text_timestamp: &str) -> bool {
 pub struct CompleteInviteInput {
     pub code: String,
     pub name: String,
-    pub phone: String,
+    pub cpf: String,
     pub password: String,
+}
+
+/// Validação padrão de CPF (dígitos verificadores, módulo 11) -- rejeita
+/// também sequências repetidas (111.111.111-11 etc.), que passariam no
+/// cálculo mas nunca são CPF real.
+fn is_valid_cpf(raw: &str) -> bool {
+    let digits: Vec<u32> = raw.chars().filter_map(|c| c.to_digit(10)).collect();
+    if digits.len() != 11 || digits.iter().all(|&d| d == digits[0]) {
+        return false;
+    }
+    let check = |len: usize| -> u32 {
+        let sum: u32 = digits[..len].iter().enumerate().map(|(i, d)| d * (len as u32 + 1 - i as u32)).sum();
+        let rem = (sum * 10) % 11;
+        if rem == 10 { 0 } else { rem }
+    };
+    check(9) == digits[9] && check(10) == digits[10]
 }
 
 #[derive(Debug, Serialize)]
@@ -202,21 +218,28 @@ pub async fn complete_invite(
     if input.password.len() < 6 {
         return Err(AppError::BadRequest("senha deve ter no mínimo 6 caracteres".to_string()));
     }
-    let phone = digits_only(&input.phone);
-    if phone.len() < 8 {
-        return Err(AppError::BadRequest("telefone inválido".to_string()));
+    if input.name.trim().chars().count() < 15 {
+        return Err(AppError::BadRequest("informe o nome completo (mínimo 15 caracteres)".to_string()));
     }
+    if !is_valid_cpf(&input.cpf) {
+        return Err(AppError::BadRequest("CPF inválido".to_string()));
+    }
+    let cpf = digits_only(&input.cpf);
 
     let mut tx = state.pool.begin().await?;
-    let invite: Option<(String, String, String, String, String, i32, i32)> = sqlx::query_as(
-        "SELECT id, tenant_id, role, code, expires_at, attempts, max_attempts \
+    // O telefone já veio do próprio lojista ao gerar o convite
+    // (target_phone) -- o funcionário chegou aqui pelo link mandado NESSE
+    // WhatsApp, então pedir o número de novo no formulário é redundante e
+    // só abre espaço pra ele digitar um número diferente por engano.
+    let invite: Option<(String, String, String, String, String, i32, i32, String)> = sqlx::query_as(
+        "SELECT id, tenant_id, role, code, expires_at, attempts, max_attempts, target_phone \
          FROM employee_invites WHERE token = $1 AND used_at IS NULL FOR UPDATE",
     )
     .bind(&token)
     .fetch_optional(&mut *tx)
     .await?;
 
-    let Some((invite_id, tenant_id, role, real_code, expires_at, attempts, max_attempts)) = invite else {
+    let Some((invite_id, tenant_id, role, real_code, expires_at, attempts, max_attempts, phone)) = invite else {
         return Err(AppError::Unauthorized("convite inválido ou já usado".to_string()));
     };
     if is_past(&expires_at) {
@@ -244,14 +267,15 @@ pub async fn complete_invite(
 
     let insert_result = if role == "motoboy" {
         sqlx::query(
-            "INSERT INTO motoboys (id, tenant_id, name, phone, password_hash, active) \
-             VALUES ($1, $2, $3, $4, $5, 1)",
+            "INSERT INTO motoboys (id, tenant_id, name, phone, password_hash, active, cpf) \
+             VALUES ($1, $2, $3, $4, $5, 1, $6)",
         )
         .bind(&employee_id)
         .bind(&tenant_id)
         .bind(input.name.trim())
         .bind(&phone)
         .bind(&hash)
+        .bind(&cpf)
         .execute(&mut *tx)
         .await
     } else {
@@ -259,14 +283,15 @@ pub async fn complete_invite(
         // (routes/admin.rs), padrão inicial até o lojista ajustar depois.
         sqlx::query(
             "INSERT INTO vendedores \
-             (id, tenant_id, name, phone, password_hash, active, commission_active, commission_percent) \
-             VALUES ($1, $2, $3, $4, $5, 1, 1, 1.0)",
+             (id, tenant_id, name, phone, password_hash, active, commission_active, commission_percent, cpf) \
+             VALUES ($1, $2, $3, $4, $5, 1, 1, 1.0, $6)",
         )
         .bind(&employee_id)
         .bind(&tenant_id)
         .bind(input.name.trim())
         .bind(&phone)
         .bind(&hash)
+        .bind(&cpf)
         .execute(&mut *tx)
         .await
     };

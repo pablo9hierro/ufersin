@@ -172,12 +172,22 @@ async fn main() -> anyhow::Result<()> {
     // transition fallback (the schema's old name) so this same binary keeps
     // working whether it's deployed before or after the live rename — safe
     // to drop once the rename is confirmed stable.
+    //
+    // "resolutoo" is where the legacy Postgres RPC functions actually live in
+    // production today (motoboy_start_run, motoboy_active_run, etc. -- see
+    // supabase/*.sql) -- confirmed via pg_proc that this production DB has
+    // ZERO functions under "sunset" (only tables/apps that were never
+    // migrated off "sunset" still use it, e.g. a demo tenant). Missing this
+    // caused every unqualified RPC call (`SELECT motoboy_start_run(...)`) to
+    // fail with "function ... does not exist" -- a real, silent, critical bug
+    // that blocked every motoboy from starting a delivery, not something
+    // introduced by the invite feature.
     let connect_options = PgConnectOptions::from_str(&database_url)?;
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .after_connect(|conn, _meta| {
             Box::pin(async move {
-                sqlx::query("SET search_path TO loja, sunset, public")
+                sqlx::query("SET search_path TO loja, resolutoo, sunset, public")
                     .execute(conn)
                     .await?;
                 Ok(())
