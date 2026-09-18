@@ -3383,7 +3383,13 @@ export const localApi = {
     },
     // Parte 1 -- feature nova, Railway-only, sem simulação no modo demo.
     motoboyPayrollConfig: {
-      get: async () => ({ payment_model: 'comissao' as const, payment_frequency: null, payment_fixed_value: null, usa_maquininha: false }),
+      get: async () => ({
+        payment_model: 'comissao' as const,
+        payment_frequency: null,
+        payment_fixed_value: null,
+        usa_maquininha: false,
+        vendedor_usa_maquininha: false,
+      }),
       update: async () => {
         throw new ApiError(400, 'Config de pagamento de motoboy não está disponível no modo demo.')
       },

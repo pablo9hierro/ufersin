@@ -74,6 +74,7 @@ export const MotoboyPayrollConfigSchema = z.object({
   payment_frequency: PaymentFrequencySchema.nullable().optional(),
   payment_fixed_value: z.number().nullable().optional(),
   usa_maquininha: z.boolean(),
+  vendedor_usa_maquininha: z.boolean(),
 })
 export type MotoboyPayrollConfig = z.infer<typeof MotoboyPayrollConfigSchema>
 

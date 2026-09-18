@@ -603,137 +603,36 @@ export default function AdminMotoboys() {
         </Card>
       )}
 
-      {showMotoboys && (
-        <Card className="p-4 mb-6">
-          <h2 className="font-bold mb-1">Pagamento de motoboy</h2>
-          <p className="text-xs text-son-silver-dim mb-4">
-            Escolha UM modelo pra toda a loja -- nunca os dois ao mesmo tempo, pra não misturar motoboy em regimes diferentes.
-          </p>
-          {payrollCfg ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={payrollCfgSaving}
-                  onClick={() => savePayrollCfg({ payment_model: 'comissao', payment_frequency: null, payment_fixed_value: null })}
-                  className={`py-3 rounded-2xl border text-sm font-medium transition-all ${
-                    payrollCfg.payment_model === 'comissao'
-                      ? 'sunset-bg text-white border-transparent'
-                      : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
-                  }`}
-                >
-                  Comissão (100% do frete)
-                </button>
-                <button
-                  type="button"
-                  disabled={payrollCfgSaving}
-                  onClick={() => {
-                    if (payrollCfgDraft.frequency && payrollCfgDraft.value) {
-                      savePayrollCfg({
-                        payment_model: 'fixo',
-                        payment_frequency: payrollCfgDraft.frequency,
-                        payment_fixed_value: Number(payrollCfgDraft.value),
-                      })
-                    } else {
-                      setPayrollCfg({ ...payrollCfg, payment_model: 'fixo' })
-                    }
-                  }}
-                  className={`py-3 rounded-2xl border text-sm font-medium transition-all ${
-                    payrollCfg.payment_model === 'fixo'
-                      ? 'sunset-bg text-white border-transparent'
-                      : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
-                  }`}
-                >
-                  Valor fixo periódico
-                </button>
-              </div>
-
-              {payrollCfg.payment_model === 'fixo' && (
-                <div className="grid grid-cols-2 gap-2">
-                  <select
-                    className="input-field text-sm"
-                    value={payrollCfgDraft.frequency}
-                    onChange={(e) => setPayrollCfgDraft({ ...payrollCfgDraft, frequency: e.target.value as PaymentFrequency })}
-                  >
-                    <option value="">Frequência</option>
-                    {PAYMENT_FREQUENCIES.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className="input-field text-sm"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="Valor (R$)"
-                    value={payrollCfgDraft.value}
-                    onChange={(e) => setPayrollCfgDraft({ ...payrollCfgDraft, value: e.target.value })}
-                    onBlur={() =>
-                      payrollCfgDraft.frequency &&
-                      payrollCfgDraft.value &&
-                      savePayrollCfg({ payment_model: 'fixo', payment_frequency: payrollCfgDraft.frequency, payment_fixed_value: Number(payrollCfgDraft.value) })
-                    }
-                  />
-                </div>
-              )}
-
-              <label className="flex items-start gap-2.5 cursor-pointer pt-1">
-                <input
-                  type="checkbox"
-                  checked={payrollCfg.usa_maquininha}
-                  disabled={payrollCfgSaving}
-                  onChange={(e) => savePayrollCfg({ usa_maquininha: e.target.checked })}
-                  className="w-4 h-4 mt-0.5"
-                />
-                <span className="text-xs text-son-silver-dim">
-                  <span className="block text-white font-semibold mb-0.5">Motoboy usa maquininha</span>
-                  Libera cobrança por cartão na entrega (terminal dinâmico/compartilhado, sem vínculo fixo por motoboy). Sem isso, motoboy só recebe em dinheiro, Pix ou entrega já paga.
-                </span>
-              </label>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-son-silver-dim">
-              <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
-            </div>
-          )}
-          {payrollCfgError && <p className="text-xs text-red-400 mt-3">{payrollCfgError}</p>}
-        </Card>
-      )}
-
-      <FreteSettingsCard />
-
       {(showMotoboys || showVendedores || showCozinha) ? (
-        <div className="flex gap-2 mb-6">
+        <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: `repeat(${[showMotoboys, showVendedores, showCozinha].filter(Boolean).length}, minmax(0, 1fr))` }}>
           {showMotoboys && (
             <button
               onClick={() => setTab('motoboys')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+              className={`flex flex-col items-center justify-center gap-1.5 py-5 rounded-2xl text-base font-bold transition-colors ${
                 tab === 'motoboys' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
               }`}
             >
-              <Truck className="w-3.5 h-3.5" /> Motoboys
+              <Truck className="w-6 h-6" /> Motoboys
             </button>
           )}
           {showVendedores && (
             <button
               onClick={() => setTab('vendedores')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+              className={`flex flex-col items-center justify-center gap-1.5 py-5 rounded-2xl text-base font-bold transition-colors ${
                 tab === 'vendedores' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
               }`}
             >
-              <Store className="w-3.5 h-3.5" /> {restaurante ? 'Garçons' : 'Vendedores'}
+              <Store className="w-6 h-6" /> {restaurante ? 'Garçons' : 'Vendedores'}
             </button>
           )}
           {showCozinha && (
             <button
               onClick={() => setTab('cozinha')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+              className={`flex flex-col items-center justify-center gap-1.5 py-5 rounded-2xl text-base font-bold transition-colors ${
                 tab === 'cozinha' ? 'sunset-bg text-white' : 'bg-son-surface border border-white/5 text-son-silver-dim'
               }`}
             >
-              <ChefHat className="w-3.5 h-3.5" /> Cozinha
+              <ChefHat className="w-6 h-6" /> Cozinha
             </button>
           )}
         </div>
@@ -741,6 +640,141 @@ export default function AdminMotoboys() {
         <p className="text-sm text-son-silver-dim mb-6">
           Marque acima, em Preferências de funcionários, quem sua loja tem pra liberar o cadastro aqui.
         </p>
+      )}
+
+      {tab === 'motoboys' && showMotoboys && (
+        <>
+          <Card className="p-4 mb-6">
+            <h2 className="font-bold mb-1">Pagamento de motoboy</h2>
+            <p className="text-xs text-son-silver-dim mb-4">
+              Escolha UM modelo pra toda a loja -- nunca os dois ao mesmo tempo, pra não misturar motoboy em regimes diferentes.
+            </p>
+            {payrollCfg ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={payrollCfgSaving}
+                    onClick={() => savePayrollCfg({ payment_model: 'comissao', payment_frequency: null, payment_fixed_value: null })}
+                    className={`py-3 rounded-2xl border text-sm font-medium transition-all ${
+                      payrollCfg.payment_model === 'comissao'
+                        ? 'sunset-bg text-white border-transparent'
+                        : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
+                    }`}
+                  >
+                    Comissão (100% do frete)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={payrollCfgSaving}
+                    onClick={() => {
+                      if (payrollCfgDraft.frequency && payrollCfgDraft.value) {
+                        savePayrollCfg({
+                          payment_model: 'fixo',
+                          payment_frequency: payrollCfgDraft.frequency,
+                          payment_fixed_value: Number(payrollCfgDraft.value),
+                        })
+                      } else {
+                        setPayrollCfg({ ...payrollCfg, payment_model: 'fixo' })
+                      }
+                    }}
+                    className={`py-3 rounded-2xl border text-sm font-medium transition-all ${
+                      payrollCfg.payment_model === 'fixo'
+                        ? 'sunset-bg text-white border-transparent'
+                        : 'bg-son-surface border-white/10 text-son-silver hover:border-son-pink/30'
+                    }`}
+                  >
+                    Valor fixo periódico
+                  </button>
+                </div>
+
+                {payrollCfg.payment_model === 'fixo' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      className="input-field text-sm"
+                      value={payrollCfgDraft.frequency}
+                      onChange={(e) => setPayrollCfgDraft({ ...payrollCfgDraft, frequency: e.target.value as PaymentFrequency })}
+                    >
+                      <option value="">Frequência</option>
+                      {PAYMENT_FREQUENCIES.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="input-field text-sm"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Valor (R$)"
+                      value={payrollCfgDraft.value}
+                      onChange={(e) => setPayrollCfgDraft({ ...payrollCfgDraft, value: e.target.value })}
+                      onBlur={() =>
+                        payrollCfgDraft.frequency &&
+                        payrollCfgDraft.value &&
+                        savePayrollCfg({ payment_model: 'fixo', payment_frequency: payrollCfgDraft.frequency, payment_fixed_value: Number(payrollCfgDraft.value) })
+                      }
+                    />
+                  </div>
+                )}
+
+                <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={payrollCfg.usa_maquininha}
+                    disabled={payrollCfgSaving}
+                    onChange={(e) => savePayrollCfg({ usa_maquininha: e.target.checked })}
+                    className="w-4 h-4 mt-0.5"
+                  />
+                  <span className="text-xs text-son-silver-dim">
+                    <span className="block text-white font-semibold mb-0.5">Motoboy usa maquininha</span>
+                    Libera cobrança por cartão na entrega (terminal dinâmico/compartilhado, sem vínculo fixo por motoboy). Sem isso, motoboy só recebe em dinheiro, Pix ou entrega já paga.
+                  </span>
+                </label>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-son-silver-dim">
+                <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+              </div>
+            )}
+            {payrollCfgError && <p className="text-xs text-red-400 mt-3">{payrollCfgError}</p>}
+          </Card>
+
+          <FreteSettingsCard />
+        </>
+      )}
+
+      {tab === 'vendedores' && showVendedores && (
+        <Card className="p-4 mb-6">
+          <h2 className="font-bold mb-1">Pagamento por cartão</h2>
+          <p className="text-xs text-son-silver-dim mb-4">
+            Define se {vendedorLabel.toLowerCase()} pode cobrar por cartão na maquininha. Se o terminal é fixo por
+            funcionário ou dinâmico/compartilhado é definido uma vez pra loja toda em Preferências de funcionários (Terminal
+            Point fixo por funcionário) -- quando dinâmico, qualquer funcionário liberado aqui usa qualquer maquininha
+            disponível na hora, sem vínculo fixo.
+          </p>
+          {payrollCfg ? (
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={payrollCfg.vendedor_usa_maquininha}
+                disabled={payrollCfgSaving}
+                onChange={(e) => savePayrollCfg({ vendedor_usa_maquininha: e.target.checked })}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span className="text-xs text-son-silver-dim">
+                <span className="block text-white font-semibold mb-0.5">{vendedorLabel} usa maquininha</span>
+                Libera cobrança por cartão pelo {vendedorLabel.toLowerCase()} no PDV.
+              </span>
+            </label>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-son-silver-dim">
+              <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+            </div>
+          )}
+          {payrollCfgError && <p className="text-xs text-red-400 mt-3">{payrollCfgError}</p>}
+        </Card>
       )}
 
       {tab === 'motoboys' && showMotoboys &&

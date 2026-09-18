@@ -32,6 +32,7 @@ pub struct MotoboyPayrollConfig {
     pub payment_frequency: Option<String>,
     pub payment_fixed_value: Option<f64>,
     pub usa_maquininha: bool,
+    pub vendedor_usa_maquininha: bool,
 }
 
 impl Default for MotoboyPayrollConfig {
@@ -41,13 +42,14 @@ impl Default for MotoboyPayrollConfig {
             payment_frequency: None,
             payment_fixed_value: None,
             usa_maquininha: false,
+            vendedor_usa_maquininha: false,
         }
     }
 }
 
 pub async fn load_motoboy_payroll_config(pool: &sqlx::PgPool, tenant_id: &str) -> Result<MotoboyPayrollConfig, AppError> {
     let row: Option<MotoboyPayrollConfig> = sqlx::query_as(
-        "SELECT payment_model, payment_frequency, payment_fixed_value, usa_maquininha \
+        "SELECT payment_model, payment_frequency, payment_fixed_value, usa_maquininha, vendedor_usa_maquininha \
          FROM motoboy_payroll_config WHERE tenant_id = $1",
     )
     .bind(tenant_id)
@@ -72,6 +74,8 @@ pub struct UpdateMotoboyPayrollConfigInput {
     pub payment_fixed_value: Option<f64>,
     #[serde(default)]
     pub usa_maquininha: bool,
+    #[serde(default)]
+    pub vendedor_usa_maquininha: bool,
 }
 
 pub async fn update_motoboy_payroll_config(
@@ -97,11 +101,12 @@ pub async fn update_motoboy_payroll_config(
     };
 
     sqlx::query(
-        "INSERT INTO motoboy_payroll_config (tenant_id, payment_model, payment_frequency, payment_fixed_value, usa_maquininha) \
-         VALUES ($1, $2, $3, $4, $5) \
+        "INSERT INTO motoboy_payroll_config (tenant_id, payment_model, payment_frequency, payment_fixed_value, usa_maquininha, vendedor_usa_maquininha) \
+         VALUES ($1, $2, $3, $4, $5, $6) \
          ON CONFLICT (tenant_id) DO UPDATE SET \
            payment_model = EXCLUDED.payment_model, payment_frequency = EXCLUDED.payment_frequency, \
            payment_fixed_value = EXCLUDED.payment_fixed_value, usa_maquininha = EXCLUDED.usa_maquininha, \
+           vendedor_usa_maquininha = EXCLUDED.vendedor_usa_maquininha, \
            updated_at = now()",
     )
     .bind(&claims.tenant_id)
@@ -109,6 +114,7 @@ pub async fn update_motoboy_payroll_config(
     .bind(&frequency)
     .bind(fixed_value)
     .bind(input.usa_maquininha)
+    .bind(input.vendedor_usa_maquininha)
     .execute(&state.pool)
     .await?;
 
@@ -117,6 +123,7 @@ pub async fn update_motoboy_payroll_config(
         payment_frequency: frequency,
         payment_fixed_value: fixed_value,
         usa_maquininha: input.usa_maquininha,
+        vendedor_usa_maquininha: input.vendedor_usa_maquininha,
     }))
 }
 
