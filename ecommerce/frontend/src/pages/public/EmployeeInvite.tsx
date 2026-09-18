@@ -7,12 +7,26 @@ import { api } from '../../lib/api'
 import { useMotoboyAuth } from '../../store/motoboyAuth'
 import { useVendedorAuth } from '../../store/vendedorAuth'
 
-function formatPhone(value: string) {
-  const digits = value.replace(/\D/g, '')
-  if (digits.length <= 2) return `(${digits}`
-  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
-  if (digits.length <= 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
+function formatCpf(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 11)
+  if (digits.length <= 3) return digits
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
+}
+
+function isValidCpf(raw: string) {
+  const d = raw.replace(/\D/g, '')
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false
+  const check = (len: number) => {
+    const sum = d
+      .slice(0, len)
+      .split('')
+      .reduce((acc, digit, i) => acc + Number(digit) * (len + 1 - i), 0)
+    const rem = (sum * 10) % 11
+    return rem === 10 ? 0 : rem
+  }
+  return check(9) === Number(d[9]) && check(10) === Number(d[10])
 }
 
 /** Auto-cadastro de motoboy/vendedor via convite (link+código recebido por
@@ -29,7 +43,7 @@ export default function EmployeeInvite() {
 
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
+  const [cpf, setCpf] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,9 +68,12 @@ export default function EmployeeInvite() {
     e.preventDefault()
     if (!token) return
     setError(null)
-    const digits = phone.replace(/\D/g, '')
-    if (digits.length < 10) {
-      setError('Informe um WhatsApp válido.')
+    if (name.trim().length < 15) {
+      setError('Informe seu nome completo.')
+      return
+    }
+    if (!isValidCpf(cpf)) {
+      setError('CPF inválido.')
       return
     }
     if (password.length < 6) {
@@ -65,7 +82,7 @@ export default function EmployeeInvite() {
     }
     setSubmitting(true)
     try {
-      const res = await api.employeeInvite.complete(token, { code, name, phone: digits, password })
+      const res = await api.employeeInvite.complete(token, { code, name: name.trim(), cpf: cpf.replace(/\D/g, ''), password })
       if (res.role === 'motoboy') {
         motoboyLogin(res.token, res.name)
         navigate('/funcionarios/motoboy')
@@ -128,17 +145,24 @@ export default function EmployeeInvite() {
             />
           </div>
           <div>
-            <label className="label">Seu nome</label>
-            <input className="input-field" value={name} onChange={(e) => setName(e.target.value)} required />
+            <label className="label">Nome completo</label>
+            <input
+              className="input-field"
+              placeholder="Nome e sobrenome"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              minLength={15}
+            />
           </div>
           <div>
-            <label className="label">Seu WhatsApp</label>
+            <label className="label">CPF</label>
             <input
               className="input-field"
               inputMode="numeric"
-              placeholder="(83) 99999-9999"
-              value={phone}
-              onChange={(e) => setPhone(formatPhone(e.target.value))}
+              placeholder="000.000.000-00"
+              value={cpf}
+              onChange={(e) => setCpf(formatCpf(e.target.value))}
               required
             />
           </div>

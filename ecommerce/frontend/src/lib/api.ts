@@ -2132,7 +2132,7 @@ const remoteApi = {
       request<{ role: 'motoboy' | 'vendedor'; tenant_slug: string; expired: boolean }>(
         `/api/public/employee-invites/${token}`
       ),
-    complete: (token: string, payload: { code: string; name: string; phone: string; password: string }) =>
+    complete: (token: string, payload: { code: string; name: string; cpf: string; password: string }) =>
       request<{ token: string; name: string; tenant_slug: string; role: 'motoboy' | 'vendedor' }>(
         `/api/public/employee-invites/${token}/complete`,
         { method: 'POST', body: JSON.stringify(payload) }

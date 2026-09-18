@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, Loader2, PartyPopper, X } from 'lucide-react'
+import { Bell, Loader2, PartyPopper, Wallet, X } from 'lucide-react'
 import { adminService } from '../../services/adminService'
 import { payrollService } from '../../services/payrollService'
 import type { PayrollAlert, PayrollPayment } from '../../types'
@@ -14,6 +14,17 @@ interface EmployeeNotification {
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
+}
+
+function relativeTime(iso: string) {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const min = Math.floor(diffMs / 60000)
+  if (min < 1) return 'agora'
+  if (min < 60) return `${min}min`
+  const h = Math.floor(min / 60)
+  if (h < 24) return `${h}h`
+  const d = Math.floor(h / 24)
+  return `${d}d`
 }
 
 /** Sino de notificação de pagamento fixo (motoboy/vendedor) — "admin" mostra
@@ -98,70 +109,92 @@ export default function PayrollBell({ mode }: { mode: 'admin' | 'staff' }) {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto glass rounded-2xl p-3 z-50 border border-white/10">
-            <p className="text-xs font-semibold text-son-silver-dim uppercase tracking-wide px-1 mb-2">
-              {mode === 'admin' ? 'Pagamentos de funcionário' : 'Meus pagamentos'}
-            </p>
-            {mode === 'admin' &&
-              (alerts.length === 0 ? (
-                <p className="text-xs text-son-silver-dim px-1 py-4 text-center">Nada pendente.</p>
-              ) : (
-                alerts.map((a) => (
-                  <button
-                    key={`${a.employee_role}-${a.employee_id}`}
-                    onClick={() => {
-                      if (!a.payment_id) {
-                        setReporting(a)
-                        setPaymentMethod('pix')
-                      }
-                      setOpen(false)
-                    }}
-                    disabled={!!a.payment_id}
-                    className="w-full text-left px-2 py-2 rounded-xl hover:bg-white/5 disabled:opacity-60 disabled:hover:bg-transparent"
-                  >
-                    <p className="text-sm text-white font-medium">
-                      {a.name} <span className="text-son-silver-dim text-xs">({a.employee_role})</span>
-                    </p>
-                    <p className="text-xs text-son-gold">{currency(a.amount)}</p>
-                    <p className="text-xs text-son-silver-dim">
-                      {a.payment_id ? 'Aguardando confirmação do funcionário' : 'Faltam ≤2 dias para o pagamento — clique pra informar que pagou'}
-                    </p>
-                  </button>
-                ))
-              ))}
-            {mode === 'staff' &&
-              (pending.length === 0 ? (
-                <p className="text-xs text-son-silver-dim px-1 py-4 text-center">Nada pendente.</p>
-              ) : (
-                pending.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => {
-                      setConfirming(p)
-                      setOpen(false)
-                    }}
-                    className="w-full text-left px-2 py-2 rounded-xl hover:bg-white/5"
-                  >
-                    <p className="text-sm text-white font-medium">{currency(p.amount)}</p>
-                    <p className="text-xs text-son-silver-dim">
-                      Loja informou pagamento via {p.payment_method} — clique pra confirmar recebimento
-                    </p>
-                  </button>
-                ))
-              ))}
-            {notifications.length > 0 && (
-              <>
-                <p className="text-xs font-semibold text-son-silver-dim uppercase tracking-wide px-1 mt-3 mb-2">
-                  Avisos
-                </p>
-                {notifications.map((n) => (
-                  <div key={n.id} className="flex gap-2 px-2 py-2 rounded-xl">
-                    <PartyPopper className="w-4 h-4 text-son-gold shrink-0 mt-0.5" />
-                    <p className="text-sm text-white">{n.message}</p>
+          <div className="absolute right-0 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] glass rounded-2xl z-50 border border-white/10 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+              <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                <Bell className="w-4 h-4 text-son-pink" /> Notificações
+              </h3>
+              <button onClick={() => setOpen(false)} className="text-son-silver-dim hover:text-white p-1 -m-1">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[26rem] overflow-y-auto divide-y divide-white/5">
+              {mode === 'admin' &&
+                (alerts.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <Wallet className="w-7 h-7 mx-auto mb-2 text-son-silver-dim opacity-30" />
+                    <p className="text-xs text-son-silver-dim">Nenhum pagamento de funcionário pendente.</p>
                   </div>
+                ) : (
+                  alerts.map((a) => (
+                    <button
+                      key={`${a.employee_role}-${a.employee_id}`}
+                      onClick={() => {
+                        if (!a.payment_id) {
+                          setReporting(a)
+                          setPaymentMethod('pix')
+                        }
+                        setOpen(false)
+                      }}
+                      disabled={!!a.payment_id}
+                      className="w-full flex items-start gap-3 text-left px-4 py-3 hover:bg-white/5 disabled:opacity-60 disabled:hover:bg-transparent transition-colors"
+                    >
+                      <span className="shrink-0 w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center">
+                        <Wallet className="w-4 h-4 text-amber-400" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm text-white font-medium truncate">
+                          {a.name} <span className="text-son-silver-dim text-xs font-normal">({a.employee_role})</span>
+                        </span>
+                        <span className="block text-xs text-son-gold font-semibold mt-0.5">{currency(a.amount)}</span>
+                        <span className="block text-xs text-son-silver-dim mt-0.5">
+                          {a.payment_id ? 'Aguardando confirmação do funcionário' : 'Faltam ≤2 dias — toque pra informar que pagou'}
+                        </span>
+                      </span>
+                    </button>
+                  ))
                 ))}
-              </>
-            )}
+              {mode === 'staff' &&
+                (pending.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <Wallet className="w-7 h-7 mx-auto mb-2 text-son-silver-dim opacity-30" />
+                    <p className="text-xs text-son-silver-dim">Nenhum pagamento pendente.</p>
+                  </div>
+                ) : (
+                  pending.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        setConfirming(p)
+                        setOpen(false)
+                      }}
+                      className="w-full flex items-start gap-3 text-left px-4 py-3 hover:bg-white/5 transition-colors"
+                    >
+                      <span className="shrink-0 w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center">
+                        <Wallet className="w-4 h-4 text-amber-400" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm text-white font-semibold">{currency(p.amount)}</span>
+                        <span className="block text-xs text-son-silver-dim mt-0.5">
+                          Loja informou pagamento via {p.payment_method} — toque pra confirmar recebimento
+                        </span>
+                      </span>
+                    </button>
+                  ))
+                ))}
+              {notifications.map((n) => (
+                <div key={n.id} className="flex items-start gap-3 px-4 py-3">
+                  <span className="shrink-0 w-8 h-8 rounded-full bg-son-gold/15 flex items-center justify-center">
+                    <PartyPopper className="w-4 h-4 text-son-gold" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm text-white">{n.message}</span>
+                    <span className="block text-xs text-son-silver-dim mt-0.5">{relativeTime(n.created_at)}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </>
       )}
