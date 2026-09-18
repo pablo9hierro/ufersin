@@ -45,8 +45,12 @@ fn build_invite_message(role: &str, slug: &str, token: &str, code: &str) -> (Str
     let papel = if role == "motoboy" { "motoboy" } else { "vendedor" };
     // Mesmo padrão de base hardcoded já usado pra outros links públicos
     // (ver `routes::public::sitemap`) -- não existe campo de config
-    // `frontend_url` no AppState hoje.
-    let url = format!("https://resolutoo.com/convite-funcionario/{token}");
+    // `frontend_url` no AppState hoje. `/loja` é obrigatório: o motor de
+    // e-commerce (onde essa rota React vive) é embutido sob esse prefixo no
+    // build da plataforma (ver ufersin/frontend/scripts/embed-loja-demo.sh,
+    // base=/loja/) -- sem o prefixo o link cai na landing Rodoletas (raiz do
+    // domínio), não no app real, e a tela fica em branco.
+    let url = format!("https://resolutoo.com/loja/convite-funcionario/{token}");
     let msg = format!(
         "Você foi convidado(a) pra trabalhar como {papel} na loja *{slug}*!\n\n\
          Pra completar seu cadastro, acesse:\n{url}\n\n\
