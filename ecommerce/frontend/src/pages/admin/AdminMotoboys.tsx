@@ -987,13 +987,14 @@ export default function AdminMotoboys() {
             <div className="space-y-3">
               <div>
                 <label className="label">Nome</label>
-                <input className="input-field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                <input className="input-field" autoComplete="off" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </div>
               <div>
                 <label className="label">WhatsApp (login do motoboy)</label>
                 <input
                   className="input-field"
                   inputMode="numeric"
+                  autoComplete="off"
                   placeholder="(83) 99999-9999"
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })}
@@ -1004,6 +1005,7 @@ export default function AdminMotoboys() {
                 <input
                   className="input-field"
                   type="password"
+                  autoComplete="new-password"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
@@ -1037,6 +1039,7 @@ export default function AdminMotoboys() {
                 <label className="label">Nome</label>
                 <input
                   className="input-field"
+                  autoComplete="off"
                   value={vendedorForm.name}
                   onChange={(e) => setVendedorForm({ ...vendedorForm, name: e.target.value })}
                 />
@@ -1046,6 +1049,7 @@ export default function AdminMotoboys() {
                 <input
                   className="input-field"
                   inputMode="numeric"
+                  autoComplete="off"
                   placeholder="(83) 99999-9999"
                   value={vendedorForm.phone}
                   onChange={(e) => setVendedorForm({ ...vendedorForm, phone: formatPhone(e.target.value) })}
@@ -1056,6 +1060,7 @@ export default function AdminMotoboys() {
                 <input
                   className="input-field"
                   type="password"
+                  autoComplete="new-password"
                   value={vendedorForm.password}
                   onChange={(e) => setVendedorForm({ ...vendedorForm, password: e.target.value })}
                 />
@@ -1138,6 +1143,7 @@ export default function AdminMotoboys() {
                 <label className="label">Nome</label>
                 <input
                   className="input-field"
+                  autoComplete="off"
                   value={cozinhaForm.name}
                   onChange={(e) => setCozinhaForm({ ...cozinhaForm, name: e.target.value })}
                 />
@@ -1147,6 +1153,7 @@ export default function AdminMotoboys() {
                 <input
                   className="input-field"
                   inputMode="numeric"
+                  autoComplete="off"
                   placeholder="(83) 99999-9999"
                   value={cozinhaForm.phone}
                   onChange={(e) => setCozinhaForm({ ...cozinhaForm, phone: formatPhone(e.target.value) })}
@@ -1157,6 +1164,7 @@ export default function AdminMotoboys() {
                 <input
                   className="input-field"
                   type="password"
+                  autoComplete="new-password"
                   value={cozinhaForm.password}
                   onChange={(e) => setCozinhaForm({ ...cozinhaForm, password: e.target.value })}
                 />
@@ -1255,6 +1263,7 @@ export default function AdminMotoboys() {
                 <input
                   className="input-field mb-4"
                   inputMode="numeric"
+                  autoComplete="off"
                   placeholder="(83) 99999-9999"
                   value={invitePhone}
                   onChange={(e) => setInvitePhone(e.target.value)}
