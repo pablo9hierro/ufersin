@@ -67,14 +67,19 @@ pub async fn start_run(
         None
     };
 
+    // Schema-qualificado explicitamente (não confia só no search_path da
+    // pool) -- essa chamada crua via sqlx passa pelo pooler em modo
+    // transação, que não garante persistir um `SET search_path` entre
+    // conexões físicas reaproveitadas; unqualified já causou "function does
+    // not exist" em produção mesmo com o schema certo no search_path.
     let run: serde_json::Value = match precomputed {
-        Some(ordered) => sqlx::query_scalar("SELECT motoboy_start_run($1, $2, $3)")
+        Some(ordered) => sqlx::query_scalar("SELECT resolutoo.motoboy_start_run($1, $2, $3)")
             .bind(token)
             .bind(&input.order_ids)
             .bind(&ordered)
             .fetch_one(&state.pool)
             .await?,
-        None => sqlx::query_scalar("SELECT motoboy_start_run($1, $2)")
+        None => sqlx::query_scalar("SELECT resolutoo.motoboy_start_run($1, $2)")
             .bind(token)
             .bind(&input.order_ids)
             .fetch_one(&state.pool)
