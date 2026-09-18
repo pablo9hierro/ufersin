@@ -75,9 +75,16 @@ pub async fn create_invite(
     if input.role != "motoboy" && input.role != "vendedor" {
         return Err(AppError::BadRequest("role deve ser motoboy ou vendedor".to_string()));
     }
-    let phone = digits_only(&input.target_phone);
+    let mut phone = digits_only(&input.target_phone);
     if phone.len() < 8 {
         return Err(AppError::BadRequest("telefone inválido".to_string()));
+    }
+    // Evolution API espera DDI+DDD+número (ex: 5527999998888). Números
+    // digitados sem o 55 (caso comum de copiar/colar local) precisam do
+    // prefixo, senão o envio falha silenciosamente (whatsapp::notify é
+    // fire-and-forget e só loga um warn, nunca propaga erro pra cá).
+    if phone.len() <= 11 {
+        phone = format!("55{phone}");
     }
 
     let tenant = tenant::load_tenant(&state.pool, &claims.tenant_id).await?;
@@ -121,8 +128,7 @@ pub async fn create_invite(
     let (invite_url, whatsapp_message) = build_invite_message(&input.role, &slug.0, &token, &code);
 
     let enviado = if input.auto_enviar {
-        crate::whatsapp::notify(&state, &tenant.whatsapp_instance, &phone, &whatsapp_message);
-        true
+        crate::whatsapp::notify_sequential(&state, &tenant.whatsapp_instance, &phone, &whatsapp_message).await
     } else {
         false
     };

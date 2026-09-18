@@ -58,10 +58,13 @@ pub fn notify(state: &AppState, instance: &str, phone: &str, message: &str) {
 /// requisição. `await` simples entre as duas chamadas já resolve isso sem
 /// precisar de fila externa (Redis etc.) — só duas requisições HTTP em
 /// sequência.
-pub async fn notify_sequential(state: &AppState, instance: &str, phone: &str, message: &str) {
+/// Retorna se o envio de fato deu certo (status 2xx da Evolution API) --
+/// use quando o chamador precisa informar sucesso/falha real pro usuário,
+/// ao contrário de `notify()` que é fire-and-forget e não tem como avisar.
+pub async fn notify_sequential(state: &AppState, instance: &str, phone: &str, message: &str) -> bool {
     if state.evolution_api_url.is_empty() || state.evolution_api_key.is_empty() || instance.is_empty() {
         tracing::info!("[whatsapp not configured] to {}: {}", phone, message);
-        return;
+        return false;
     }
     let url = format!(
         "{}/message/sendText/{instance}",
@@ -77,18 +80,20 @@ pub async fn notify_sequential(state: &AppState, instance: &str, phone: &str, me
         .await;
 
     match result {
-        Ok(resp) if !resp.status().is_success() => {
+        Ok(resp) if resp.status().is_success() => true,
+        Ok(resp) => {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             tracing::warn!(
                 "evolution api returned non-success status {} for phone {}: {}",
                 status, phone, body
             );
+            false
         }
         Err(e) => {
             tracing::warn!("failed to reach evolution api for phone {}: {}", phone, e);
+            false
         }
-        _ => {}
     }
 }
 
