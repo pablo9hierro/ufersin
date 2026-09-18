@@ -3495,11 +3495,26 @@ export const localApi = {
     onboardingGate: {
       get: async () => ({ onboarding_hours_done: true }),
     },
+    employeeInvites: {
+      create: async () => {
+        throw new ApiError(400, 'Convite de funcionário não está disponível no modo demo.')
+      },
+    },
+    employeeNotifications: async () => [],
   },
   payroll: {
     myPending: async () => [],
     confirm: async () => {},
     myNext: async () => null,
+  },
+  staffEmployeeNotifications: async () => [],
+  employeeInvite: {
+    status: async () => {
+      throw new ApiError(404, 'Convite não disponível no modo demo.')
+    },
+    complete: async () => {
+      throw new ApiError(404, 'Convite não disponível no modo demo.')
+    },
   },
   motoboy: {
     orders: {
