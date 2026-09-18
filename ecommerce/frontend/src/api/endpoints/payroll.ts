@@ -1,6 +1,13 @@
+import { z } from 'zod'
 import { api } from '../../lib/api'
 import { validate, validateList } from '../validate'
 import { PayrollAlertPreviewSchema, PayrollPaymentSchema } from '../../types'
+
+const EmployeeNotificationSchema = z.object({
+  id: z.string(),
+  message: z.string(),
+  created_at: z.string(),
+})
 
 // Autoatendimento (motoboy ou vendedor logado) — pagamentos fixos que o
 // admin já reportou e ainda aguardam minha confirmação.
@@ -13,4 +20,8 @@ export const payrollEndpoint = {
     const data = await api.payroll.myNext()
     return data ? validate(PayrollAlertPreviewSchema, data, 'payroll.myNext') : null
   },
+  // Avisos de convite (boas-vindas, log de cadastro) -- isolado do fluxo de
+  // OTP de cliente, mesmo espírito de myPending acima.
+  myNotifications: async () =>
+    validateList(EmployeeNotificationSchema, await api.staffEmployeeNotifications(), 'payroll.myNotifications'),
 }

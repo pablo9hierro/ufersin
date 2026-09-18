@@ -5,6 +5,7 @@ pub mod delivery_webhooks;
 pub mod demo;
 pub mod eletronicos;
 pub mod employee_config;
+pub mod employee_invites;
 pub mod eletronicos_delivery;
 pub mod fiscal;
 pub mod fiscal_profiles;

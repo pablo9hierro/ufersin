@@ -1042,6 +1042,18 @@ const remoteApi = {
           body: JSON.stringify(payload),
         }),
     },
+    /** Auto-cadastro de motoboy/vendedor via convite (link+código por
+     * WhatsApp) — isolado de propósito do OTP de cliente, nunca reusa
+     * `consultationOtp`/`customerAuth`. */
+    employeeInvites: {
+      create: (payload: { role: 'motoboy' | 'vendedor'; target_phone: string; auto_enviar: boolean }) =>
+        railwayAdmin<{ token: string; code: string; invite_url: string; whatsapp_message: string; enviado: boolean }>(
+          '/api/admin/employee-invites',
+          { method: 'POST', body: JSON.stringify(payload) }
+        ),
+    },
+    employeeNotifications: () =>
+      railwayAdmin<{ id: string; message: string; created_at: string }[]>('/api/admin/employee-notifications'),
     /** Cadastro de mesas (Parte 3, usa_mesas) -- abrir/fechar comanda numa
      * mesa é ação de PDV (ver `pdv.restaurantTables.openComanda` abaixo). */
     restaurantTables: {
@@ -2108,6 +2120,23 @@ const remoteApi = {
     confirm: (id: string) =>
       request<void>(`/api/payroll/payments/${id}/confirm`, { method: 'POST', token: staffToken() }),
     myNext: () => request<PayrollAlertPreview | null>('/api/payroll/my-next', { token: staffToken() }),
+  },
+  staffEmployeeNotifications: () =>
+    request<{ id: string; message: string; created_at: string }[]>('/api/staff/employee-notifications', {
+      token: staffToken(),
+    }),
+  // Auto-cadastro de motoboy/vendedor via convite -- sem auth (o funcionário
+  // ainda não tem conta). Isolado do fluxo de OTP de cliente.
+  employeeInvite: {
+    status: (token: string) =>
+      request<{ role: 'motoboy' | 'vendedor'; tenant_slug: string; expired: boolean }>(
+        `/api/public/employee-invites/${token}`
+      ),
+    complete: (token: string, payload: { code: string; name: string; phone: string; password: string }) =>
+      request<{ token: string; name: string; tenant_slug: string; role: 'motoboy' | 'vendedor' }>(
+        `/api/public/employee-invites/${token}/complete`,
+        { method: 'POST', body: JSON.stringify(payload) }
+      ),
   },
   motoboy: {
     orders: {

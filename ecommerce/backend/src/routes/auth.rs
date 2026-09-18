@@ -22,7 +22,7 @@ fn normalize_slug(raw: Option<&str>) -> Option<String> {
 /// específicas nunca encontram a sessão e sempre voltam vazio/erro.
 /// `token` (o próprio JWT) vira a PK -- único e imprevisível o bastante pra
 /// servir de session token também, `expires_at` já casa com os 7 dias do JWT.
-async fn mirror_legacy_session(
+pub(crate) async fn mirror_legacy_session(
     pool: &sqlx::PgPool,
     token: &str,
     tenant_id: &str,

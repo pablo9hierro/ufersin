@@ -327,6 +327,14 @@ async fn main() -> anyhow::Result<()> {
             post(routes::public::estimate_delivery),
         )
         .route(
+            "/api/public/employee-invites/{token}",
+            get(routes::employee_invites::get_invite_public),
+        )
+        .route(
+            "/api/public/employee-invites/{token}/complete",
+            post(routes::employee_invites::complete_invite),
+        )
+        .route(
             "/api/public/catalog/{slug}/appointments",
             post(routes::public::create_appointment),
         )
@@ -683,6 +691,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/admin/employee-config",
             get(routes::employee_config::get_employee_config)
                 .put(routes::employee_config::update_employee_config),
+        )
+        .route(
+            "/api/admin/employee-invites",
+            post(routes::employee_invites::create_invite),
+        )
+        .route(
+            "/api/admin/employee-notifications",
+            get(routes::employee_invites::admin_notifications),
+        )
+        .route(
+            "/api/staff/employee-notifications",
+            get(routes::employee_invites::staff_notifications),
         )
         .route(
             "/api/admin/restaurant-tables",

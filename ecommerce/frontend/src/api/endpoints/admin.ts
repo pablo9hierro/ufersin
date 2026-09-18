@@ -1,6 +1,19 @@
 import { z } from 'zod'
 import { api, type FiscalProfileUpsertPayload } from '../../lib/api'
 import { validate, validateList } from '../validate'
+
+const EmployeeInviteResultSchema = z.object({
+  token: z.string(),
+  code: z.string(),
+  invite_url: z.string(),
+  whatsapp_message: z.string(),
+  enviado: z.boolean(),
+})
+const EmployeeNotificationSchema = z.object({
+  id: z.string(),
+  message: z.string(),
+  created_at: z.string(),
+})
 import {
   AppointmentSchema,
   MessageTemplateSchema,
@@ -173,6 +186,14 @@ export const adminEndpoint = {
     update: async (payload: EmployeeConfig) =>
       validate(EmployeeConfigSchema, await api.admin.employeeConfig.update(payload), 'admin.employeeConfig.update'),
   },
+  /** Auto-cadastro de motoboy/vendedor via convite (link+código por
+   * WhatsApp) -- isolado de propósito do OTP de cliente. */
+  employeeInvites: {
+    create: async (payload: { role: 'motoboy' | 'vendedor'; target_phone: string; auto_enviar: boolean }) =>
+      validate(EmployeeInviteResultSchema, await api.admin.employeeInvites.create(payload), 'admin.employeeInvites.create'),
+  },
+  employeeNotifications: async () =>
+    validateList(EmployeeNotificationSchema, await api.admin.employeeNotifications(), 'admin.employeeNotifications'),
   restaurantTables: {
     list: async () => validateList(RestaurantTableSchema, await api.admin.restaurantTables.list(), 'admin.restaurantTables.list'),
     create: async (numero: string) =>

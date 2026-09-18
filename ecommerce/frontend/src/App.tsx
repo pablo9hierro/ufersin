@@ -32,6 +32,7 @@ const CozinhaLayout = lazyWithReload(() => import('./components/layout/CozinhaLa
 // three full CMS themes, leaflet checkout maps, or every admin screen.
 const AdminLogin = lazyWithReload(() => import('./pages/admin/AdminLogin'))
 const FuncionarioLogin = lazyWithReload(() => import('./pages/admin/FuncionarioLogin'))
+const EmployeeInvite = lazyWithReload(() => import('./pages/public/EmployeeInvite'))
 const AdminPedidos = lazyWithReload(() => import('./pages/admin/AdminPedidos'))
 const AdminPdv = lazyWithReload(() => import('./pages/admin/AdminPdv'))
 const AdminProdutos = lazyWithReload(() => import('./pages/admin/AdminProdutos'))
@@ -376,6 +377,7 @@ export default function App() {
             <Route path="conta" element={<EletronicaAdminConta />} />
           </Route>
           <Route path="/funcionarios/login" element={<FuncionarioLogin />} />
+          <Route path="/convite-funcionario/:token" element={<EmployeeInvite />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="/admin/pedidos" replace />} />
             <Route path="pedidos" element={<AdminPedidos />} />

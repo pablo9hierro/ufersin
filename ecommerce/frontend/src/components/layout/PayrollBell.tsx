@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Bell, Loader2, X } from 'lucide-react'
+import { Bell, Loader2, PartyPopper, X } from 'lucide-react'
 import { adminService } from '../../services/adminService'
 import { payrollService } from '../../services/payrollService'
 import type { PayrollAlert, PayrollPayment } from '../../types'
 
 const POLL_MS = 60_000
+
+interface EmployeeNotification {
+  id: string
+  message: string
+  created_at: string
+}
 
 function currency(v: number) {
   return `R$ ${v.toFixed(2).replace('.', ',')}`
@@ -18,6 +24,7 @@ export default function PayrollBell({ mode }: { mode: 'admin' | 'staff' }) {
   const [open, setOpen] = useState(false)
   const [alerts, setAlerts] = useState<PayrollAlert[]>([])
   const [pending, setPending] = useState<PayrollPayment[]>([])
+  const [notifications, setNotifications] = useState<EmployeeNotification[]>([])
   const [reporting, setReporting] = useState<PayrollAlert | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'cartao' | 'dinheiro'>('pix')
   const [confirming, setConfirming] = useState<PayrollPayment | null>(null)
@@ -27,8 +34,10 @@ export default function PayrollBell({ mode }: { mode: 'admin' | 'staff' }) {
   const load = () => {
     if (mode === 'admin') {
       adminService.payroll.alerts().then(setAlerts).catch(() => {})
+      adminService.employeeNotifications().then(setNotifications).catch(() => {})
     } else {
       payrollService.myPending().then(setPending).catch(() => {})
+      payrollService.myNotifications().then(setNotifications).catch(() => {})
     }
   }
 
@@ -39,7 +48,7 @@ export default function PayrollBell({ mode }: { mode: 'admin' | 'staff' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
-  const count = mode === 'admin' ? alerts.length : pending.length
+  const count = (mode === 'admin' ? alerts.length : pending.length) + notifications.length
 
   const confirmReportPayment = async () => {
     if (!reporting) return
@@ -140,6 +149,19 @@ export default function PayrollBell({ mode }: { mode: 'admin' | 'staff' }) {
                   </button>
                 ))
               ))}
+            {notifications.length > 0 && (
+              <>
+                <p className="text-xs font-semibold text-son-silver-dim uppercase tracking-wide px-1 mt-3 mb-2">
+                  Avisos
+                </p>
+                {notifications.map((n) => (
+                  <div key={n.id} className="flex gap-2 px-2 py-2 rounded-xl">
+                    <PartyPopper className="w-4 h-4 text-son-gold shrink-0 mt-0.5" />
+                    <p className="text-sm text-white">{n.message}</p>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </>
       )}

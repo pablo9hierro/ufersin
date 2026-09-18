@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChefHat, Clock, Eye, Loader2, Pencil, Plus, Store, Trash2, Truck, Wallet, X } from 'lucide-react'
+import { ChefHat, Check, Clock, Copy, Eye, Loader2, MessageCircle, Pencil, Plus, Store, Trash2, Truck, Wallet, X } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import FreteSettingsCard from '../../components/admin/FreteSettingsCard'
 import { useConfirmDialog } from '../../components/admin/useConfirmDialog'
@@ -171,6 +171,56 @@ export default function AdminMotoboys() {
       setHistoryPopup({ name, entries: [], loading: false })
     }
   }
+  // Auto-cadastro via convite (link+código por WhatsApp) -- isolado do
+  // fluxo de OTP de cliente, nunca reusa aquele mecanismo.
+  const [inviteModal, setInviteModal] = useState<{ role: 'motoboy' | 'vendedor' } | null>(null)
+  const [invitePhone, setInvitePhone] = useState('')
+  const [inviteAutoEnviar, setInviteAutoEnviar] = useState(true)
+  const [inviteSending, setInviteSending] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteResult, setInviteResult] = useState<{ invite_url: string; code: string; whatsapp_message: string; enviado: boolean } | null>(null)
+  const [inviteCopied, setInviteCopied] = useState(false)
+
+  const openInvite = (role: 'motoboy' | 'vendedor') => {
+    setInviteModal({ role })
+    setInvitePhone('')
+    setInviteAutoEnviar(true)
+    setInviteError(null)
+    setInviteResult(null)
+    setInviteCopied(false)
+  }
+
+  const sendInvite = async () => {
+    if (!inviteModal) return
+    const digits = invitePhone.replace(/\D/g, '')
+    if (digits.length < 10) {
+      setInviteError('Informe um WhatsApp válido.')
+      return
+    }
+    setInviteSending(true)
+    setInviteError(null)
+    try {
+      const result = await adminService.employeeInvites.create({
+        role: inviteModal.role,
+        target_phone: digits,
+        auto_enviar: inviteAutoEnviar,
+      })
+      setInviteResult(result)
+    } catch {
+      setInviteError('Não foi possível gerar o convite.')
+    } finally {
+      setInviteSending(false)
+    }
+  }
+
+  const copyInviteMessage = () => {
+    if (!inviteResult) return
+    navigator.clipboard.writeText(inviteResult.whatsapp_message).then(() => {
+      setInviteCopied(true)
+      setTimeout(() => setInviteCopied(false), 2000)
+    })
+  }
+
   const viewPassword = async (kind: 'motoboy' | 'vendedor', id: string, name: string) => {
     setPasswordPopup({ name, password: null, loading: true })
     try {
@@ -420,12 +470,23 @@ export default function AdminMotoboys() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-black">Cadastrar funcionários</h1>
         {(showMotoboys || showVendedores || showCozinha) && (
-          <button
-            onClick={() => (tab === 'motoboys' ? openNewMotoboy() : tab === 'vendedores' ? openNewVendedor() : openNewCozinha())}
-            className="btn-primary text-sm py-2 px-4"
-          >
-            <Plus className="w-4 h-4" /> {NEW_LABEL[tab]}
-          </button>
+          <div className="flex items-center gap-2">
+            {(tab === 'motoboys' || tab === 'vendedores') && (
+              <button
+                onClick={() => openInvite(tab === 'motoboys' ? 'motoboy' : 'vendedor')}
+                className="btn-secondary text-sm py-2 px-4"
+                title="Gera um link + código pro funcionário se cadastrar sozinho"
+              >
+                <MessageCircle className="w-4 h-4" /> Convidar por WhatsApp
+              </button>
+            )}
+            <button
+              onClick={() => (tab === 'motoboys' ? openNewMotoboy() : tab === 'vendedores' ? openNewVendedor() : openNewCozinha())}
+              className="btn-primary text-sm py-2 px-4"
+            >
+              <Plus className="w-4 h-4" /> {NEW_LABEL[tab]}
+            </button>
+          </div>
         )}
       </div>
 
@@ -1136,6 +1197,76 @@ export default function AdminMotoboys() {
         </div>
       )}
 
+      {inviteModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setInviteModal(null)}
+        >
+          <div className="glass rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-white">
+                Convidar {inviteModal.role === 'motoboy' ? 'motoboy' : 'vendedor'}
+              </h3>
+              <button onClick={() => setInviteModal(null)} className="text-son-silver-dim hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {!inviteResult ? (
+              <>
+                <p className="text-xs text-son-silver-dim mb-4">
+                  O funcionário recebe um link + código pra completar o próprio cadastro.
+                </p>
+                <label className="label">WhatsApp do funcionário</label>
+                <input
+                  className="input-field mb-4"
+                  inputMode="numeric"
+                  placeholder="(83) 99999-9999"
+                  value={invitePhone}
+                  onChange={(e) => setInvitePhone(e.target.value)}
+                  autoFocus
+                />
+                <label className="flex items-center gap-2 mb-4 text-sm text-son-silver cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={inviteAutoEnviar}
+                    onChange={(e) => setInviteAutoEnviar(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  Enviar automaticamente por WhatsApp
+                </label>
+                {inviteError && <p className="error-msg mb-3">{inviteError}</p>}
+                <button onClick={sendInvite} disabled={inviteSending} className="btn-primary w-full">
+                  {inviteSending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Gerar convite
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-son-silver-dim mb-3">
+                  {inviteResult.enviado
+                    ? 'Mensagem enviada pelo WhatsApp da loja. Você também pode copiar e mandar manualmente:'
+                    : 'Copie a mensagem abaixo e mande pelo WhatsApp:'}
+                </p>
+                <div className="bg-son-surface-light rounded-xl p-3 text-sm text-white whitespace-pre-wrap mb-3">
+                  {inviteResult.whatsapp_message}
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs text-son-silver-dim">Código:</p>
+                  <p className="font-mono text-lg tracking-wide text-son-gold">{inviteResult.code}</p>
+                </div>
+                <button onClick={copyInviteMessage} className="btn-secondary w-full mb-2">
+                  {inviteCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {inviteCopied ? 'Copiado!' : 'Copiar mensagem'}
+                </button>
+                <button onClick={() => setInviteModal(null)} className="btn-primary w-full">
+                  Fechar
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {passwordPopup && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
