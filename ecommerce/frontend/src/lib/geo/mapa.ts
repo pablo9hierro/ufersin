@@ -3,15 +3,16 @@ import type L from 'leaflet'
 // Tiles do mapa escuro (navegação com rotação por bússola). CARTO dark_all
 // (usado antes) passou a exigir API key própria -- toda tile vinha com selo
 // "API KEY REQUIRED" atravessado, confirmado ao vivo (curl direto na URL).
-// Esri Dark Gray Canvas: genuinamente escuro (mesmo raciocínio de evitar o
-// "auto dark theme" do Chrome reprocessando tile clara -- ver texto antigo
-// abaixo, ainda válido), sem marca d'água, sem chave, já traz nome de rua
-// embutido na própria tile em zoom de bairro.
-export const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-export const TILE_ATTR = 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, (c) OpenStreetMap contributors, and the GIS user community'
-// Zoom nativo máximo da Esri pra esse basemap -- além disso ela devolve
-// tile borrada/escalada, não teste além sem confirmar.
-export const TILE_MAX_ZOOM = 16
+// Esri Dark Gray Canvas (usado depois) tem cobertura detalhada só em
+// EUA/Europa -- fora disso (Brasil inteiro incluso) devolve tile placeholder
+// "Map data not yet available", confirmado ao vivo com motoboy real em
+// produção (João Pessoa e Espírito Santo, ambos sem cobertura). Trocado pra
+// OpenStreetMap padrão: cobertura mundial de verdade, sem chave, sem
+// pegadinha de região -- perde o tema escuro (é claro), mas o motoboy
+// precisa ver rua de verdade antes de precisar de estética.
+export const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+export const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+export const TILE_MAX_ZOOM = 19
 
 // Centro usado quando o usuário nega o GPS (loja, José Américo de Almeida,
 // João Pessoa - PB — mesma coordenada de sunset.shipping_settings).
