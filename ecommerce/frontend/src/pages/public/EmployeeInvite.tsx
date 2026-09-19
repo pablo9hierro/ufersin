@@ -59,6 +59,7 @@ export default function EmployeeInvite() {
           return
         }
         setRole(res.role)
+        if (res.target_name) setName(res.target_name)
         setStatus('ready')
       })
       .catch(() => setStatus('invalid'))

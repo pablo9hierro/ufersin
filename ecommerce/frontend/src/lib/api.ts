@@ -1046,7 +1046,7 @@ const remoteApi = {
      * WhatsApp) — isolado de propósito do OTP de cliente, nunca reusa
      * `consultationOtp`/`customerAuth`. */
     employeeInvites: {
-      create: (payload: { role: 'motoboy' | 'vendedor'; target_phone: string; auto_enviar: boolean }) =>
+      create: (payload: { role: 'motoboy' | 'vendedor'; name: string; target_phone: string; auto_enviar: boolean }) =>
         railwayAdmin<{ token: string; code: string; invite_url: string; whatsapp_message: string; enviado: boolean }>(
           '/api/admin/employee-invites',
           { method: 'POST', body: JSON.stringify(payload) }
@@ -2129,7 +2129,7 @@ const remoteApi = {
   // ainda não tem conta). Isolado do fluxo de OTP de cliente.
   employeeInvite: {
     status: (token: string) =>
-      request<{ role: 'motoboy' | 'vendedor'; tenant_slug: string; expired: boolean }>(
+      request<{ role: 'motoboy' | 'vendedor'; tenant_slug: string; target_name: string; expired: boolean }>(
         `/api/public/employee-invites/${token}`
       ),
     complete: (token: string, payload: { code: string; name: string; cpf: string; password: string }) =>

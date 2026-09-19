@@ -107,9 +107,14 @@ export default function PayrollBell({ mode }: { mode: 'admin' | 'staff' }) {
       </button>
 
       {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] glass rounded-2xl z-50 border border-white/10 shadow-2xl overflow-hidden">
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="glass rounded-2xl w-full max-w-sm border border-white/10 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <h3 className="font-bold text-white text-sm flex items-center gap-2">
                 <Bell className="w-4 h-4 text-son-pink" /> Notificações
@@ -196,7 +201,7 @@ export default function PayrollBell({ mode }: { mode: 'admin' | 'staff' }) {
               ))}
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {reporting && (

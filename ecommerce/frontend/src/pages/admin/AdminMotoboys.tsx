@@ -174,6 +174,7 @@ export default function AdminMotoboys() {
   // Auto-cadastro via convite (link+código por WhatsApp) -- isolado do
   // fluxo de OTP de cliente, nunca reusa aquele mecanismo.
   const [inviteModal, setInviteModal] = useState<{ role: 'motoboy' | 'vendedor' } | null>(null)
+  const [inviteName, setInviteName] = useState('')
   const [invitePhone, setInvitePhone] = useState('')
   const [inviteAutoEnviar, setInviteAutoEnviar] = useState(true)
   const [inviteSending, setInviteSending] = useState(false)
@@ -183,6 +184,7 @@ export default function AdminMotoboys() {
 
   const openInvite = (role: 'motoboy' | 'vendedor') => {
     setInviteModal({ role })
+    setInviteName('')
     setInvitePhone('')
     setInviteAutoEnviar(true)
     setInviteError(null)
@@ -197,11 +199,16 @@ export default function AdminMotoboys() {
       setInviteError('Informe um WhatsApp válido.')
       return
     }
+    if (!inviteName.trim()) {
+      setInviteError('Informe o nome.')
+      return
+    }
     setInviteSending(true)
     setInviteError(null)
     try {
       const result = await adminService.employeeInvites.create({
         role: inviteModal.role,
+        name: inviteName.trim(),
         target_phone: digits,
         auto_enviar: inviteAutoEnviar,
       })
@@ -270,11 +277,6 @@ export default function AdminMotoboys() {
     loadCozinhaUsers()
   }, [])
 
-  const openNewMotoboy = () => {
-    setEditingMotoboy(null)
-    setForm(EMPTY_MOTOBOY_FORM)
-    setShowForm(true)
-  }
   const openEditMotoboy = (m: Motoboy) => {
     setEditingMotoboy(m)
     setForm({
@@ -348,11 +350,6 @@ export default function AdminMotoboys() {
     }
   }
 
-  const openNewVendedor = () => {
-    setEditingVendedor(null)
-    setVendedorForm(EMPTY_VENDEDOR_FORM)
-    setShowVendedorForm(true)
-  }
   const openEditVendedor = (v: Vendedor) => {
     setEditingVendedor(v)
     setVendedorForm({
@@ -471,21 +468,19 @@ export default function AdminMotoboys() {
         <h1 className="text-2xl font-black">Cadastrar funcionários</h1>
         {(showMotoboys || showVendedores || showCozinha) && (
           <div className="flex items-center gap-2">
-            {(tab === 'motoboys' || tab === 'vendedores') && (
+            {tab === 'motoboys' || tab === 'vendedores' ? (
               <button
                 onClick={() => openInvite(tab === 'motoboys' ? 'motoboy' : 'vendedor')}
-                className="btn-secondary text-sm py-2 px-4"
-                title="Gera um link + código pro funcionário se cadastrar sozinho"
+                className="btn-primary text-sm py-2 px-4"
+                title="Manda nome + WhatsApp; a senha quem escolhe é o funcionário"
               >
-                <MessageCircle className="w-4 h-4" /> Convidar por WhatsApp
+                <MessageCircle className="w-4 h-4" /> {NEW_LABEL[tab]}
+              </button>
+            ) : (
+              <button onClick={openNewCozinha} className="btn-primary text-sm py-2 px-4">
+                <Plus className="w-4 h-4" /> {NEW_LABEL[tab]}
               </button>
             )}
-            <button
-              onClick={() => (tab === 'motoboys' ? openNewMotoboy() : tab === 'vendedores' ? openNewVendedor() : openNewCozinha())}
-              className="btn-primary text-sm py-2 px-4"
-            >
-              <Plus className="w-4 h-4" /> {NEW_LABEL[tab]}
-            </button>
           </div>
         )}
       </div>
@@ -1257,8 +1252,17 @@ export default function AdminMotoboys() {
             {!inviteResult ? (
               <>
                 <p className="text-xs text-son-silver-dim mb-4">
-                  O funcionário recebe um link + código pra completar o próprio cadastro.
+                  O funcionário recebe um link + código pra completar o próprio cadastro -- ele escolhe a própria senha.
                 </p>
+                <label className="label">Nome</label>
+                <input
+                  className="input-field mb-4"
+                  autoComplete="off"
+                  placeholder="Nome do funcionário"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                  autoFocus
+                />
                 <label className="label">WhatsApp do funcionário</label>
                 <input
                   className="input-field mb-4"
@@ -1267,7 +1271,6 @@ export default function AdminMotoboys() {
                   placeholder="(83) 99999-9999"
                   value={invitePhone}
                   onChange={(e) => setInvitePhone(e.target.value)}
-                  autoFocus
                 />
                 <label className="flex items-center gap-2 mb-4 text-sm text-son-silver cursor-pointer">
                   <input

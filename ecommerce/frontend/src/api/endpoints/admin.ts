@@ -189,7 +189,7 @@ export const adminEndpoint = {
   /** Auto-cadastro de motoboy/vendedor via convite (link+código por
    * WhatsApp) -- isolado de propósito do OTP de cliente. */
   employeeInvites: {
-    create: async (payload: { role: 'motoboy' | 'vendedor'; target_phone: string; auto_enviar: boolean }) =>
+    create: async (payload: { role: 'motoboy' | 'vendedor'; name: string; target_phone: string; auto_enviar: boolean }) =>
       validate(EmployeeInviteResultSchema, await api.admin.employeeInvites.create(payload), 'admin.employeeInvites.create'),
   },
   employeeNotifications: async () =>
