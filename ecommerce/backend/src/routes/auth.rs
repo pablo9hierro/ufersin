@@ -30,7 +30,7 @@ pub(crate) async fn mirror_legacy_session(
     subject_id: &str,
 ) {
     if let Err(e) = sqlx::query(
-        "INSERT INTO sessions (token, tenant_id, role, subject_id) VALUES ($1, $2, $3, $4) \
+        "INSERT INTO loja.sessions (token, tenant_id, role, subject_id) VALUES ($1, $2, $3, $4) \
          ON CONFLICT (token) DO NOTHING",
     )
     .bind(token)
@@ -41,6 +41,24 @@ pub(crate) async fn mirror_legacy_session(
     .await
     {
         tracing::warn!("mirror_legacy_session failed (role={role}): {e:?}");
+    }
+    // Bridge pra funções RPC legadas que ainda vivem no schema `resolutoo`
+    // (motoboy_start_run, motoboy_active_run etc.) -- elas leem de
+    // `resolutoo.sessions`, uma tabela DIFERENTE de `loja.sessions` (sem
+    // tenant_id, schema próprio). Sem esse segundo insert, todo RPC legado
+    // falhava com "unauthorized" mesmo com o token certo, porque o bridge
+    // só escrevia no lugar que o Rust novo lê, não onde a RPC antiga lê.
+    if let Err(e) = sqlx::query(
+        "INSERT INTO resolutoo.sessions (token, role, subject_id) VALUES ($1, $2, $3) \
+         ON CONFLICT (token) DO NOTHING",
+    )
+    .bind(token)
+    .bind(role)
+    .bind(subject_id)
+    .execute(pool)
+    .await
+    {
+        tracing::warn!("mirror_legacy_session (resolutoo.sessions) failed (role={role}): {e:?}");
     }
 }
 
