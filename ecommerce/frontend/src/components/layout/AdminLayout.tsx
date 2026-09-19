@@ -64,7 +64,8 @@ type NavItem = {
   label: string
   icon: typeof ClipboardList
   requiredPlan: PlanoCode
-  /** Hide when tenant is at least this plan (Essential-only Frete vs Management Funcionários). */
+  /** Hide when tenant is at least this plan -- Frete some a partir de Essential porque
+   * a página de Funcionários (também Essential+) já embute o mesmo card de Frete lá dentro. */
   hideAtOrAbove?: PlanoCode
 }
 
@@ -82,7 +83,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/produtos', label: 'Produtos', icon: Package, requiredPlan: 'starter' },
   { href: '/admin/produtos/servicos', label: 'Serviços', icon: Wrench, requiredPlan: 'essential' },
   { href: '/admin/estoque', label: 'Estoque', icon: Boxes, requiredPlan: 'starter' },
-  { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'starter', hideAtOrAbove: 'management' },
+  { href: '/admin/frete', label: 'Frete', icon: MapPinned, requiredPlan: 'starter', hideAtOrAbove: 'essential' },
   { href: '/admin/entregas-terceirizadas', label: 'Entregas terceirizadas', icon: Send, requiredPlan: 'essential' },
   { href: '/admin/fiscal/emitir', label: 'Emitir', icon: FileText, requiredPlan: 'starter' },
   { href: '/admin/fiscal/inutilizar', label: 'Inutilizar/Anular', icon: Ban, requiredPlan: 'essential' },
