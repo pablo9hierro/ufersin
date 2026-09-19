@@ -27,6 +27,7 @@ fn gen_code() -> String {
 #[derive(Debug, Deserialize)]
 pub struct CreateInviteInput {
     pub role: String,
+    pub name: String,
     pub target_phone: String,
     #[serde(default)]
     pub auto_enviar: bool,
@@ -41,7 +42,7 @@ pub struct CreateInviteResponse {
     pub enviado: bool,
 }
 
-fn build_invite_message(role: &str, slug: &str, token: &str, code: &str) -> (String, String) {
+fn build_invite_message(role: &str, name: &str, slug: &str, token: &str, code: &str) -> (String, String) {
     let papel = if role == "motoboy" { "motoboy" } else { "vendedor" };
     // Mesmo padrão de base hardcoded já usado pra outros links públicos
     // (ver `routes::public::sitemap`) -- não existe campo de config
@@ -51,8 +52,9 @@ fn build_invite_message(role: &str, slug: &str, token: &str, code: &str) -> (Str
     // base=/loja/) -- sem o prefixo o link cai na landing Rodoletas (raiz do
     // domínio), não no app real, e a tela fica em branco.
     let url = format!("https://resolutoo.com/loja/convite-funcionario/{token}");
+    let primeiro_nome = name.split_whitespace().next().unwrap_or(name);
     let msg = format!(
-        "Você foi convidado(a) pra trabalhar como {papel} na loja *{slug}*!\n\n\
+        "Oi, {primeiro_nome}! Você foi convidado(a) pra trabalhar como {papel} na loja *{slug}*!\n\n\
          Pra completar seu cadastro, acesse:\n{url}\n\n\
          Código de confirmação: *{code}*\n\
          (Ele vale por 24 horas.)"
@@ -74,6 +76,10 @@ pub async fn create_invite(
 
     if input.role != "motoboy" && input.role != "vendedor" {
         return Err(AppError::BadRequest("role deve ser motoboy ou vendedor".to_string()));
+    }
+    let name = input.name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("informe o nome".to_string()));
     }
     let mut phone = digits_only(&input.target_phone);
     if phone.len() < 8 {
@@ -100,8 +106,8 @@ pub async fn create_invite(
     let mut tx = tenant::tenant_tx(&state.pool, &claims.tenant_id).await?;
     sqlx::query(
         "INSERT INTO employee_invites \
-         (id, tenant_id, role, token, code, target_phone, created_by, expires_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, (now() + interval '24 hours')::text)",
+         (id, tenant_id, role, token, code, target_phone, target_name, created_by, expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (now() + interval '24 hours')::text)",
     )
     .bind(&id)
     .bind(&claims.tenant_id)
@@ -109,6 +115,7 @@ pub async fn create_invite(
     .bind(&token)
     .bind(&code)
     .bind(&phone)
+    .bind(name)
     .bind(&claims.sub)
     .execute(&mut *tx)
     .await?;
@@ -125,7 +132,7 @@ pub async fn create_invite(
     .await?;
     tx.commit().await?;
 
-    let (invite_url, whatsapp_message) = build_invite_message(&input.role, &slug.0, &token, &code);
+    let (invite_url, whatsapp_message) = build_invite_message(&input.role, name, &slug.0, &token, &code);
 
     let enviado = if input.auto_enviar {
         crate::whatsapp::notify_sequential(&state, &tenant.whatsapp_instance, &phone, &whatsapp_message).await
@@ -140,6 +147,7 @@ pub async fn create_invite(
 pub struct InviteStatusResponse {
     pub role: String,
     pub tenant_slug: String,
+    pub target_name: String,
     pub expired: bool,
 }
 
@@ -150,8 +158,8 @@ pub async fn get_invite_public(
     State(state): State<AppState>,
     Path(token): Path<String>,
 ) -> Result<Json<InviteStatusResponse>, AppError> {
-    let row: Option<(String, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT ei.role, t.slug, ei.expires_at, ei.used_at \
+    let row: Option<(String, String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT ei.role, t.slug, ei.target_name, ei.expires_at, ei.used_at \
          FROM employee_invites ei JOIN tenants t ON t.id = ei.tenant_id \
          WHERE ei.token = $1",
     )
@@ -159,11 +167,11 @@ pub async fn get_invite_public(
     .fetch_optional(&state.pool)
     .await?;
 
-    let Some((role, tenant_slug, expires_at, used_at)) = row else {
+    let Some((role, tenant_slug, target_name, expires_at, used_at)) = row else {
         return Err(AppError::NotFound("convite não encontrado".to_string()));
     };
     let expired = used_at.is_some() || is_past(&expires_at);
-    Ok(Json(InviteStatusResponse { role, tenant_slug, expired }))
+    Ok(Json(InviteStatusResponse { role, tenant_slug, target_name, expired }))
 }
 
 fn is_past(text_timestamp: &str) -> bool {
