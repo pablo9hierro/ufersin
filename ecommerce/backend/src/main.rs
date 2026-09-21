@@ -214,7 +214,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     seed::seed_if_empty(&pool).await?;
-    seed::seed_demo_tenants(&pool).await?;
+    // Dado de demonstração nunca pode impedir a API de subir: num banco 100% vazio
+    // o seed do demo-eletronica ainda quebra (ids uuid sem cast), então só logamos.
+    if let Err(e) = seed::seed_demo_tenants(&pool).await {
+        tracing::error!("seed_demo_tenants falhou (seguindo sem dados de demo): {e:#}");
+    }
 
     // Sem timeout, uma chamada travada (Mercado Pago, Evolution API, Google
     // Routes) prendia a requisição pra sempre — inclusive segurando uma
