@@ -174,11 +174,11 @@ export default function CompletarConta() {
         <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 space-y-4">
           <div>
             <label className="label">Nome da loja *</label>
-            <input className="input-field" value={lojaNome} onChange={(e) => setLojaNome(e.target.value)} placeholder="Ex: Minha Loja" />
+            <input className="input-field" value={lojaNome} onChange={(e) => setLojaNome(e.target.value)} placeholder="Ex: Minha Loja" autoComplete="off" />
           </div>
           <div>
             <label className="label">Seu nome *</label>
-            <input className="input-field" value={responsavelNome} onChange={(e) => setResponsavelNome(e.target.value)} placeholder="Nome completo" />
+            <input className="input-field" value={responsavelNome} onChange={(e) => setResponsavelNome(e.target.value)} placeholder="Nome completo" autoComplete="off" />
           </div>
           <div>
             <label className="label">WhatsApp *</label>
@@ -190,6 +190,7 @@ export default function CompletarConta() {
               inputMode="numeric"
               placeholder="(83) 99999-9999"
               maxLength={15}
+              autoComplete="off"
             />
           </div>
           <PasswordField
@@ -197,7 +198,7 @@ export default function CompletarConta() {
             value={senha}
             onChange={setSenha}
             placeholder="A mesma senha do cadastro"
-            autoComplete="current-password"
+            autoComplete="new-password"
             hint="Usamos só pra liberar o acesso ao painel da sua loja depois."
           />
           {error && <p className="error-msg">{error}</p>}

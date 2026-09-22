@@ -146,7 +146,15 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="uf-glass rounded-2xl p-6 space-y-4">
           <div>
             <label className="label">E-mail</label>
-            <input className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="voce@exemplo.com" />
+            <input
+              className="input-field"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              name="email"
+              autoComplete="username"
+              placeholder="voce@exemplo.com"
+            />
           </div>
           <PasswordField label="Senha" value={senha} onChange={setSenha} placeholder="••••••••" />
 

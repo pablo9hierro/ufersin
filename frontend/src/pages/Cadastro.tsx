@@ -241,7 +241,7 @@ export default function Cadastro() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="label">Nome da loja *</label>
-            <input className="input-field" value={lojaNome} onChange={(e) => setLojaNome(e.target.value)} placeholder="Ex: Minha Loja" />
+            <input className="input-field" value={lojaNome} onChange={(e) => setLojaNome(e.target.value)} placeholder="Ex: Minha Loja" autoComplete="off" />
           </div>
           <div>
             <label className="label">Seu nome *</label>
@@ -250,6 +250,7 @@ export default function Cadastro() {
               value={responsavelNome}
               onChange={(e) => setResponsavelNome(e.target.value)}
               placeholder="Nome completo"
+              autoComplete="off"
             />
           </div>
           <div>
@@ -262,11 +263,12 @@ export default function Cadastro() {
               inputMode="numeric"
               placeholder="(83) 99999-9999"
               maxLength={15}
+              autoComplete="off"
             />
           </div>
           <div>
             <label className="label">E-mail *</label>
-            <input className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="voce@exemplo.com" />
+            <input className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} type="email" name="email" autoComplete="username" placeholder="voce@exemplo.com" />
           </div>
           <PasswordField
             label="Senha *"

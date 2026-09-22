@@ -168,6 +168,7 @@ export default function AddressField({ endereco, numero, onEnderecoChange, onNum
             onChange={(e) => onNumeroChange(e.target.value)}
             placeholder="Opcional"
             aria-label="Número"
+            autoComplete="off"
           />
           <p className="text-[10px] text-uf-silver-dim mt-1 text-center">N°</p>
         </div>

@@ -542,6 +542,7 @@ export default function Onboarding() {
               value={nomeLoja}
               onChange={(e) => setNomeLoja(e.target.value)}
               placeholder="Ex: Minha Loja"
+              autoComplete="off"
             />
           </div>
 
