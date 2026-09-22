@@ -60,6 +60,7 @@ export default function Pricing() {
               ciclo={ciclo}
               showDemo
               vertical="ecommerce"
+              codes={['starter', 'essential']}
               cta={{
                 kind: 'link',
                 to: (code, c) => `/cadastro?plano=${code}&ciclo=${c}`,

@@ -19,6 +19,8 @@ type Props = {
   /** Mostra só os planos deste ramo. Omitido = todos (compatível com as
    * telas logadas, que já filtram pelo ramo do próprio assinante). */
   vertical?: Vertical
+  /** Mostra só estes códigos (landing pública). Omitido = todos os do ramo. */
+  codes?: PlanoCode[]
   /** Colunas do grid -- ramo com um plano só não deve esticar em 3 colunas. */
   columns?: 1 | 2 | 3
 }
@@ -36,9 +38,11 @@ export default function PlanCardsGrid({
   animateOnMount = false,
   testId = 'planos-assinar-cards',
   vertical,
+  codes,
   columns = 3,
 }: Props) {
-  const plans = vertical ? getPlansByVertical(vertical) : getPlans()
+  const allPlans = vertical ? getPlansByVertical(vertical) : getPlans()
+  const plans = codes ? allPlans.filter((p) => codes.includes(p.code)) : allPlans
   const ctaLabel = (name: string) =>
     (cta.kind === 'link' ? cta.label?.(name) : cta.label?.(name)) ?? `Assinar ${name}`
   // Menos planos ativos do que colunas pedidas (ex: só Essential ativo
