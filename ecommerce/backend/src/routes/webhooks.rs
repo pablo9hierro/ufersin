@@ -50,15 +50,13 @@ async fn resolve_tenant_id(state: &AppState, instance: &str) -> anyhow::Result<O
 }
 
 async fn handle(state: &AppState, payload: &Value) -> anyhow::Result<()> {
-    let instance = payload.get("instance").and_then(|v| v.as_str()).unwrap_or("?");
-    tracing::info!(
-        "evolution webhook: event={} instance={}",
-        payload.get("event").and_then(|v| v.as_str()).unwrap_or("?"),
-        instance,
-    );
-    // TEMP: dumping the full payload while we pin down the exact shape this
-    // Evolution API version sends — remove once location capture is confirmed
-    // working end-to-end.
+    // Evolution Go manda o nome/token da instância em `instanceToken` (o
+    // mesmo texto que escolhemos em whatsapp.rs::connect, `token == name`),
+    // NÃO em `instance` (esse campo nem existe mais) nem em `instanceId`
+    // (esse é o UUID gerado pelo servidor, sem relação com nossos ids).
+    let instance = payload.get("instanceToken").and_then(|v| v.as_str()).unwrap_or("?");
+    let event = payload.get("event").and_then(|v| v.as_str()).unwrap_or("?");
+    tracing::info!("evolution webhook: event={event} instance={instance}");
     tracing::info!("evolution webhook payload: {payload}");
 
     let Some(tenant_id) = resolve_tenant_id(state, instance).await? else {
@@ -66,21 +64,20 @@ async fn handle(state: &AppState, payload: &Value) -> anyhow::Result<()> {
         return Ok(());
     };
 
-    let event = payload.get("event").and_then(|v| v.as_str()).unwrap_or("");
-    if event == "presence.update" {
+    if event == "Presence" || event == "ChatPresence" {
         forward_presence_to_assistant_ia(state, &tenant_id, payload.get("data").unwrap_or(&Value::Null));
+        return Ok(());
+    }
+    if event != "Message" {
+        // Connected/QRCode/LoggedOut/Receipt/etc -- nada a processar aqui
+        // hoje (status de conexão é consultado sob demanda via
+        // whatsapp::connection_status, não reagimos a evento).
         return Ok(());
     }
 
     let data = payload.get("data").unwrap_or(&Value::Null);
-    // Some Evolution API versions nest messages.upsert events under
-    // data.messages[0] instead of putting key/message directly on data —
-    // handle both shapes.
-    let data = data
-        .get("messages")
-        .and_then(|m| m.get(0))
-        .unwrap_or(data);
-    let message = data.get("message").unwrap_or(&Value::Null);
+    let info = data.get("Info").unwrap_or(&Value::Null);
+    let message = data.get("Message").unwrap_or(&Value::Null);
 
     // O modulo assistant-ia identifica lojas pelo slug (o mesmo usado nas
     // URLs do painel/vitrine), nao pelo id interno (UUID) — busca aqui em
@@ -91,12 +88,13 @@ async fn handle(state: &AppState, payload: &Value) -> anyhow::Result<()> {
         .fetch_optional(&state.pool)
         .await
     {
-        forward_to_assistant_ia(state, &slug, instance, data, message);
+        forward_to_assistant_ia(state, &slug, instance, info, message);
     }
 
     // WhatsApp has two distinct share types: a fixed pin ("locationMessage")
     // and a live/moving share ("liveLocationMessage") — both carry the same
-    // lat/lng field names, so either is handled the same way here.
+    // lat/lng field names (mesmo formato de protocolo do WhatsApp, não muda
+    // entre Baileys/whatsmeow — confirmado na doc oficial do Evolution Go).
     let location = message
         .get("locationMessage")
         .or_else(|| message.get("liveLocationMessage"));
@@ -111,11 +109,7 @@ async fn handle(state: &AppState, payload: &Value) -> anyhow::Result<()> {
     };
 
     // "5583999999999@s.whatsapp.net" -> "5583999999999"
-    let remote_jid = data
-        .get("key")
-        .and_then(|k| k.get("remoteJid"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let remote_jid = info.get("Chat").and_then(|v| v.as_str()).unwrap_or("");
     let phone_digits: String = remote_jid.chars().take_while(char::is_ascii_digit).collect();
     if phone_digits.is_empty() {
         return Ok(());
@@ -483,19 +477,26 @@ fn forward_presence_to_assistant_ia(state: &AppState, tenant_id: &str, data: &Va
     if std::env::var("ASSISTANT_IA_URL").is_err() {
         return;
     }
-    let remote_jid = data.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    // Shape exato do evento "Presence" do Evolution Go não está documentado
+    // publicamente (confirmado na doc oficial) -- tenta os nomes de campo
+    // mais prováveis dado o padrão PascalCase do resto da API (Chat/From) e
+    // cai fora silenciosamente se nenhum bater, em vez de chutar errado.
+    let remote_jid = data
+        .get("Chat")
+        .or_else(|| data.get("From"))
+        .or_else(|| data.get("id"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let phone: String = remote_jid.chars().take_while(char::is_ascii_digit).collect();
     if phone.is_empty() {
         return;
     }
     let presence = data
-        .get("presences")
-        .and_then(|p| p.get(remote_jid))
-        .and_then(|p| p.get("lastKnownPresence"))
+        .get("Presence")
+        .or_else(|| data.get("presence"))
         .and_then(|v| v.as_str())
-        .or_else(|| data.get("presence").and_then(|v| v.as_str()))
         .unwrap_or("")
-        .to_string();
+        .to_lowercase();
     if presence != "composing" && presence != "recording" {
         return;
     }
@@ -527,24 +528,15 @@ fn forward_presence_to_assistant_ia(state: &AppState, tenant_id: &str, data: &Va
     });
 }
 
-fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, data: &Value, message: &Value) {
+fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, info: &Value, message: &Value) {
     if std::env::var("ASSISTANT_IA_URL").is_err() {
         tracing::info!("assistant-ia forward: ASSISTANT_IA_URL not set, skipping");
         return;
     }
-    let from_lojista = data
-        .get("key")
-        .and_then(|k| k.get("fromMe"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    // JID de grupo termina em "@g.us" (contatos 1:1 terminam em
-    // "@s.whatsapp.net") — a assistente é uma vendedora/atendente de
-    // cliente individual, nunca deve responder dentro de um grupo.
-    let is_group = data
-        .get("key")
-        .and_then(|k| k.get("remoteJid"))
-        .and_then(|v| v.as_str())
-        .is_some_and(|jid| jid.ends_with("@g.us"));
+    let from_lojista = info.get("IsFromMe").and_then(|v| v.as_bool()).unwrap_or(false);
+    // Evolution Go já manda um booleano pronto (Info.IsGroup) -- não precisa
+    // mais inferir pelo sufixo do JID como no Node.
+    let is_group = info.get("IsGroup").and_then(|v| v.as_bool()).unwrap_or(false);
     if is_group {
         tracing::info!("assistant-ia forward: skipping, message from a group chat");
         return;
@@ -567,39 +559,35 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
         .or_else(|| message.get("conversation").and_then(|v| v.as_str()))
         .or_else(|| message.get("extendedTextMessage").and_then(|m| m.get("text")).and_then(|v| v.as_str()));
 
-    // Mensagem de voz ("ptt") ou áudio comum — sem texto extraível aqui, mas
-    // dá pra baixar o conteúdo (base64) da Evolution API e mandar pro
-    // assistant-ia transcrever (GPT com fallback Gemini) antes de entrar no
-    // pipeline normal, como se fosse uma mensagem de texto qualquer.
-    // Áudio do PRÓPRIO lojista não é transcrito: transcrição custa chamada de
-    // API e o ganho seria só registrar no histórico o que ele mesmo falou.
-    let audio_key = if text.is_none() && !from_lojista {
-        message.get("audioMessage").map(|_| data.get("key").cloned().unwrap_or(Value::Null))
-    } else {
-        None
-    };
+    // Mensagem de voz ("ptt") ou áudio comum — Evolution Go já manda o
+    // conteúdo em base64 DIRETO no payload (`Message.base64`,
+    // WEBHOOK_FILES=true por padrão), diferente do Node que exigia uma
+    // chamada extra pra baixar. Áudio do PRÓPRIO lojista não é transcrito:
+    // transcrição custa chamada de API e o ganho seria só registrar no
+    // histórico o que ele mesmo falou.
     let audio_mimetype_hint = message
         .get("audioMessage")
         .and_then(|a| a.get("mimetype"))
         .and_then(|v| v.as_str())
         .map(str::to_string);
+    let audio = if text.is_none() && !from_lojista && message.get("audioMessage").is_some() {
+        crate::whatsapp::extract_inline_media(message, audio_mimetype_hint)
+    } else {
+        None
+    };
 
-    if text.is_none() && audio_key.is_none() {
+    if text.is_none() && audio.is_none() {
         tracing::info!("assistant-ia forward: skipping, no text/audio field in message: {message}");
         return;
     }
 
-    let remote_jid = data
-        .get("key")
-        .and_then(|k| k.get("remoteJid"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let remote_jid = info.get("Chat").and_then(|v| v.as_str()).unwrap_or("");
     let phone: String = remote_jid.chars().take_while(char::is_ascii_digit).collect();
     if phone.is_empty() {
-        tracing::info!("assistant-ia forward: skipping, empty phone from remoteJid={remote_jid}");
+        tracing::info!("assistant-ia forward: skipping, empty phone from Chat={remote_jid}");
         return;
     }
-    let customer_name = data.get("pushName").and_then(|v| v.as_str()).map(str::to_string);
+    let customer_name = info.get("PushName").and_then(|v| v.as_str()).map(str::to_string);
     tracing::info!("assistant-ia forward: sending tenant_id={tenant_id} instance={instance} phone={phone}");
 
     let state = state.clone();
@@ -619,18 +607,6 @@ fn forward_to_assistant_ia(state: &AppState, tenant_id: &str, instance: &str, da
             Err(e) => {
                 tracing::warn!("assistant-ia forward: falha ao checar feature (ignorado, não encaminha): {e:?}");
                 return;
-            }
-        }
-        let mut audio: Option<(String, String)> = None;
-        if let Some(key) = audio_key {
-            match crate::whatsapp::get_base64_media(&state, &instance, &key).await {
-                Ok((base64, mimetype_from_evolution)) => {
-                    audio = Some((base64, audio_mimetype_hint.unwrap_or(mimetype_from_evolution)))
-                }
-                Err(e) => {
-                    tracing::warn!("assistant-ia forward: falha ao baixar áudio da evolution api (ignorado): {e:?}");
-                    return;
-                }
             }
         }
         let result = send_to_assistant_ia(
