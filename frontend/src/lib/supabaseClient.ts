@@ -37,6 +37,15 @@ function makeClient(storageKey: string): SupabaseClient {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      // sessionStorage (não localStorage): isolado por ABA, não por origin.
+      // localStorage é compartilhado entre todas as abas — duas abas
+      // logadas com tenants/roles diferentes ficavam brigando pelo mesmo
+      // slot (a última a gravar "vencia" na outra aba), e o supabase-js
+      // ainda propaga isso via evento `storage`, causando os redirects
+      // piscando entre /dashboard, /meu-plano e /completar-conta. Com
+      // sessionStorage cada aba tem sua própria sessão, sem vazar pra
+      // nem ser afetada por nenhuma outra aba aberta.
+      storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
       // local only — logout nunca invalida outras abas/apps na mesma origin
       // via refresh-token revoke global.
     },
@@ -57,16 +66,22 @@ export function clientForRole(role: AuthRole): SupabaseClient {
 }
 
 function moveKey(from: string, to: string) {
+  // Lê a key antiga de onde quer que ela esteja (localStorage — todo o
+  // storage anterior a essa mudança gravava lá) e grava a nova SEMPRE em
+  // sessionStorage, que é onde os clientes Supabase leem agora (isolado
+  // por aba). Nunca deixar a migração "ressuscitar" uma sessão antiga em
+  // localStorage — isso voltaria a vazar entre abas.
   const raw = localStorage.getItem(from)
-  if (!raw) return
-  if (!localStorage.getItem(to)) {
-    localStorage.setItem(to, raw)
-  }
   localStorage.removeItem(from)
+  if (!raw) return
+  if (!sessionStorage.getItem(to)) {
+    sessionStorage.setItem(to, raw)
+  }
 }
 
 /**
- * Migra keys antigas → namespace `resolutoo_platform_*`.
+ * Migra keys antigas (localStorage, compartilhado entre abas) → namespace
+ * `resolutoo_platform_*` em sessionStorage (isolado por aba).
  * Nunca toca `resolutoo_loja_*` / `sonset_*` (sessão do ecommerce).
  */
 export function migrateLegacyAuthStorage() {
@@ -74,21 +89,24 @@ export function migrateLegacyAuthStorage() {
   try {
     moveKey(LEGACY_AUTH_STORAGE_KEYS.lojista, AUTH_STORAGE_KEYS.lojista)
     moveKey(LEGACY_AUTH_STORAGE_KEYS.superadmin, AUTH_STORAGE_KEYS.superadmin)
+    // Uma key namespaced ainda em localStorage (de antes da mudança pra
+    // sessionStorage) também precisa migrar, não só as legadas.
+    moveKey(AUTH_STORAGE_KEYS.lojista, AUTH_STORAGE_KEYS.lojista)
+    moveKey(AUTH_STORAGE_KEYS.superadmin, AUTH_STORAGE_KEYS.superadmin)
 
     const ref = new URL(url).hostname.split('.')[0]
     if (!ref) return
     const legacyKey = `sb-${ref}-auth-token`
     const raw = localStorage.getItem(legacyKey)
+    localStorage.removeItem(legacyKey)
     if (!raw) return
-    // Só move se nenhuma key de plataforma existir ainda.
-    if (localStorage.getItem(AUTH_STORAGE_KEYS.lojista) || localStorage.getItem(AUTH_STORAGE_KEYS.superadmin)) {
-      localStorage.removeItem(legacyKey)
+    // Só move se nenhuma key de plataforma existir ainda nesta aba.
+    if (sessionStorage.getItem(AUTH_STORAGE_KEYS.lojista) || sessionStorage.getItem(AUTH_STORAGE_KEYS.superadmin)) {
       return
     }
     // Sem whoami síncrono: assume lojista (maioria). Superadmin re-loga
     // uma vez se cair no slot errado — Login/sessionHome corrige.
-    localStorage.setItem(AUTH_STORAGE_KEYS.lojista, raw)
-    localStorage.removeItem(legacyKey)
+    sessionStorage.setItem(AUTH_STORAGE_KEYS.lojista, raw)
   } catch {
     /* ignore */
   }
@@ -98,6 +116,7 @@ export function migrateLegacyAuthStorage() {
 export function clearPlatformAuthKey(role: AuthRole) {
   if (typeof window === 'undefined') return
   try {
+    sessionStorage.removeItem(AUTH_STORAGE_KEYS[role])
     localStorage.removeItem(AUTH_STORAGE_KEYS[role])
     localStorage.removeItem(LEGACY_AUTH_STORAGE_KEYS[role])
     // A key crua do supabase-js (formato padrão `sb-<ref>-auth-token`, de
