@@ -92,10 +92,19 @@ export const authStore = {
   getToken: () => activeSession()?.access_token ?? null,
   getTokenForRole: (role: AuthRole) =>
     (role === 'superadmin' ? superadminSession : lojistaSession)?.access_token ?? null,
-  /** Token certo pra cada família de rota — nunca misturar roles. */
+  /** Token certo pra cada família de rota — nunca misturar roles.
+   * `/api/superadmin/*` prefere a sessão superadmin, mas cai pro token
+   * lojista quando ela ainda não existe — é o único jeito de checar "essa
+   * conta lojista é secretamente admin?" (Login.tsx, sessionHome.ts,
+   * Dashboard.tsx chamam whoami sem token explícito). O backend sempre
+   * confere `platform_admins` pelo `sub` do JWT, então mandar o token
+   * lojista aqui não vaza nada — só permite a promoção acontecer; sem
+   * esse fallback, whoami saía sem Authorization nenhum (401) e a conta
+   * nunca conseguia entrar em /dashboard, ficando presa num loop de
+   * redirect entre /dashboard, /meu-plano e /completar-conta. */
   getTokenForPath: (path: string) => {
     if (path.startsWith('/api/superadmin')) {
-      return superadminSession?.access_token ?? null
+      return superadminSession?.access_token ?? lojistaSession?.access_token ?? null
     }
     return lojistaSession?.access_token ?? superadminSession?.access_token ?? null
   },
