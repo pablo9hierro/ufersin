@@ -203,13 +203,11 @@ const ENV_TENANT_SLUG = (import.meta.env.VITE_TENANT_SLUG as string | undefined)
 
 /** Fallback quando o Railway ufersin-api está em binário antigo (sem layout_style).
  *  RPC em schema resolutoo — tabela real do assinante (public.subscribers é legado). */
-const SUPABASE_URL = (
-  (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ||
-  'https://migkkrwzykpztrakbfij.supabase.co'
-).replace(/\/$/, '')
-const SUPABASE_ANON_KEY =
-  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pZ2trcnd6eWtwenRyYWtiZmlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NjI2OTQsImV4cCI6MjA5MTUzODY5NH0.0bEy_WikqnfPU9eV7wusSb757dhiTiK5D2KeDSWyJTo'
+// Sem fallback hardcoded: o projeto Supabase antigo (migkkrwzykpztrakbfij)
+// foi pausado -- cair nele em silêncio quebrava tudo sem erro óbvio. Env
+// ausente = requisição falha alto, que é o comportamento certo.
+const SUPABASE_URL = ((import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || '').replace(/\/$/, '')
+const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() || ''
 
 /** Namespace da loja — isolado de `resolutoo_platform_*`. */
 const SLUG_STORAGE_KEY = 'resolutoo_loja_tenant_slug'
